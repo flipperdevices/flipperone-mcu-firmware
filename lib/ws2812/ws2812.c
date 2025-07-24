@@ -13,11 +13,11 @@ static inline uint32_t urgb_u32(uint8_t r, uint8_t g, uint8_t b) {
     return ((uint32_t)(r) << 8) | ((uint32_t)(g) << 16) | (uint32_t)(b);
 }
 
-void put_pixel_rgb(uint8_t r, uint8_t g, uint8_t b) {
+void ws2812_put_pixel_rgb(uint8_t r, uint8_t g, uint8_t b) {
     put_pixel(pio, sm, urgb_u32(r, g, b));
 }
 
-void init(uint32_t gpio) {
+void ws2812_init(uint32_t gpio) {
     bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&ws2812_program, &pio, &sm, &offset, gpio, 1, true);
     hard_assert(success);
 

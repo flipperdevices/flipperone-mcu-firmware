@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <drivers/log.hpp>
 #include <drivers/display.hpp>
+#include <drivers/ws2812_strip.hpp>
 #include <ws2812.h>
 #include <string.h>
 
@@ -18,11 +19,13 @@
 #define D_WIDTH     258
 #define D_HEIGHT    144
 
-void set_strip_color(uint8_t r, uint8_t g, uint8_t b) {
-    for(int i = 0; i < WS2812_COUNT; i++) {
-        put_pixel_rgb(r, g, b);
-    }
-}
+typedef enum {
+    Power,
+    Unknown,
+    WiFi,
+    Lan2,
+    Lan1,
+} LedType;
 
 void set_pixel_color(uint8_t* buffer, int32_t x, int32_t y, uint8_t color) {
     if(x >= D_WIDTH || y >= D_HEIGHT || x < 0 || y < 0) {
@@ -39,12 +42,20 @@ void set_pixel_color(uint8_t* buffer, int32_t x, int32_t y, uint8_t color) {
 int main() {
     Log::init();
 
-    init(WS2812_GPIO);
-    set_strip_color(0, 1, 0);
+    WS2812Strip<WS2812_GPIO, LedType, WS2812_COUNT> strip;
+    strip.set_rgb_all({6, 2, 0});
+    strip.set_rgb(LedType::Power, {0, 5, 0});
+    strip.set_rgb(LedType::Unknown, {5, 0, 0});
+    strip.set_rgb(LedType::WiFi, {5, 0, 0});
+    strip.set_rgb(LedType::Lan2, {5, 0, 0});
+    strip.set_rgb(LedType::Lan1, {5, 0, 0});
+    strip.flush();
 
     Display<D_PIN_CTRL, D_PIN_RESET, D_PIN_CS, D_PIN_SCL, D_PIN_SDA, D_PIN_WR, D_OFF_X, D_OFF_Y, D_WIDTH, D_HEIGHT> display;
     display.init();
-    display.backlight(0.05f);
+    // display.backlight(0.04f);
+    display.backlight(0.4f);
+    // display.backlight(1.0f);
 
     const size_t buffer_size = D_WIDTH * D_HEIGHT;
     uint8_t buffer_checker_8px[buffer_size];
@@ -63,8 +74,23 @@ int main() {
 
     while(true) {
         display.write_buffer(buffer_checker_8px);
-        sleep_ms(1000);
+        for(size_t i = 0; i < 5; i++) {
+            sleep_ms(100);
+            strip.set_rgb(LedType::Lan1, {0, 0, 0});
+            strip.flush();
+            sleep_ms(100);
+            strip.set_rgb(LedType::Lan1, {5, 5, 0});
+            strip.flush();
+        }
+
         display.write_buffer(buffer_checker_8px_neg);
-        sleep_ms(1000);
+        for(size_t i = 0; i < 5; i++) {
+            sleep_ms(100);
+            strip.set_rgb(LedType::Lan1, {0, 0, 0});
+            strip.flush();
+            sleep_ms(100);
+            strip.set_rgb(LedType::Lan1, {5, 5, 0});
+            strip.flush();
+        }
     }
 }
