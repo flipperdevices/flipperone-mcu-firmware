@@ -23,6 +23,7 @@ public:
     static void init(void) {
         stdio_init_all();
         printf(COLOR_GREEN);
+        printf("\n");
         printf("--------------------------------\n");
         printf("|        RP2350 Started        |\n");
         printf("--------------------------------\n");
