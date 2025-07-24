@@ -10,6 +10,9 @@ class PWMOutput {
 public:
     PWMOutput() {
         gpio_set_function(pin, GPIO_FUNC_PWM);
+        gpio_set_drive_strength(pin, GPIO_DRIVE_STRENGTH_12MA);
+        gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
+
         slice_num = pwm_gpio_to_slice_num(pin);
         channel_num = pwm_gpio_to_channel(pin);
         float freq = (float)clock_get_hz(clk_sys) / (float)clock_div / (1 << bits);

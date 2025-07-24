@@ -1,4 +1,5 @@
 #include <ws2812.h>
+#include <hardware/sync.h>
 
 struct WS2812Color {
     uint8_t r;
@@ -9,7 +10,7 @@ struct WS2812Color {
 template <uint32_t pin, typename T, size_t length = 1>
 class WS2812Strip {
 public:
-    WS2812Strip() {
+    void init(void) {
         ws2812_init(pin);
         for(size_t i = 0; i < length; i++) {
             colors[i] = {0, 0, 0}; // Initialize all pixels to black
@@ -17,9 +18,11 @@ public:
     }
 
     void flush(void) {
+        uint32_t ints = save_and_disable_interrupts();
         for(size_t i = 0; i < length; i++) {
             ws2812_put_pixel_rgb(colors[i].r, colors[i].g, colors[i].b);
         }
+        restore_interrupts(ints);
     }
 
     void set_rgb(T index, WS2812Color color) {
