@@ -7,6 +7,9 @@
 #include <hardware/gpio.h>
 #include <initializer_list>
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #define WS2812_GPIO  2
 #define WS2812_COUNT 16
 
@@ -115,8 +118,11 @@ void test_plasma_draw(uint8_t* buffer) {
     c2B -= 1; // 3;
 }
 
-int main() {
-    Log::init();
+const size_t buffer_size = D_WIDTH * D_HEIGHT;
+uint8_t buffer[buffer_size];
+
+static void main_task(void* arg) {
+    Log::info("Starting main task...");
 
     WS2812Strip<WS2812_GPIO, LedType, WS2812_COUNT> strip;
     strip.init();
@@ -141,9 +147,6 @@ int main() {
     // display.backlight(0.4f);
     display.backlight(0.9f);
     // display.backlight(1.0f);
-
-    const size_t buffer_size = D_WIDTH * D_HEIGHT;
-    uint8_t buffer[buffer_size];
 
     display.eco_mode(false);
 
@@ -229,4 +232,15 @@ int main() {
 
         display.write_buffer(buffer);
     }
+}
+
+int main() {
+    Log::init();
+
+    xTaskCreate(main_task, "main_task", 1024, NULL, configMAX_PRIORITIES - 1, NULL);
+
+    vTaskStartScheduler();
+
+    /* should never reach here */
+    panic_unsupported();
 }

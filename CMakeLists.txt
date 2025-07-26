@@ -61,20 +61,25 @@ pico_set_program_version(one-rp2350-control "0.1")
 pico_enable_stdio_uart(one-rp2350-control 1)
 pico_enable_stdio_usb(one-rp2350-control 1)
 
+# Add the standard include files to the build
+target_include_directories(one-rp2350-control PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/lib
+    ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
+)
+
 add_subdirectory(lib/ws2812)
+add_subdirectory(lib/freertos)
 
 # Add the standard library to the build
 target_link_libraries(one-rp2350-control
+    cmsis_core
     pico_stdlib
     hardware_pwm
     hardware_spi
     ws2812
+    freertos
 )
 
-# Add the standard include files to the build
-target_include_directories(one-rp2350-control PRIVATE
-        ${CMAKE_CURRENT_LIST_DIR}/lib
-)
 
 pico_add_extra_outputs(one-rp2350-control)
 

@@ -74,7 +74,10 @@ public:
         // st7789s_initialize_2025_01_16();
         // st7789s_initialize_2025_04_01();
         st7789s_initialize_2025_04_01_edited();
-        spi_set_baudrate(spi, 75 * 1000 * 1000);
+
+        freq = spi_set_baudrate(spi, 75 * 1000 * 1000);
+        Log::info("SPI%d initialized with frequency: %.2f MHz", SPI_NUM(spi), freq / 1000000.0f);
+
         initialized = true;
     }
 
@@ -123,6 +126,7 @@ private:
     PWMOutput<pin_backlight, 8, 200, false> backlight_pwm;
     spi_inst_t* spi = spi0;
     bool initialized = false;
+    bool init_log_enabled = false;
 
     inline void reset(bool level) {
         gpio_put(pin_reset, level);
@@ -228,7 +232,7 @@ private:
     }
 
     inline void write_command(uint8_t command) {
-        if(!initialized) Log::debug("CMD: 0x%02x", command);
+        if(!initialized && init_log_enabled) Log::debug("CMD: 0x%02x", command);
         cs(false);
         dc(false);
         spi_write_blocking(spi, &command, 1);
@@ -236,7 +240,7 @@ private:
     }
 
     inline void write_data(uint8_t data) {
-        if(!initialized) Log::debug("DAT: 0x%02x", data);
+        if(!initialized && init_log_enabled) Log::debug("DAT: 0x%02x", data);
         cs(false);
         dc(true);
         spi_write_blocking(spi, &data, 1);
