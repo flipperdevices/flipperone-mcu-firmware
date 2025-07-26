@@ -2,7 +2,7 @@
 #include <drivers/log.hpp>
 #include <drivers/display.hpp>
 #include <drivers/ws2812_strip.hpp>
-#include <ws2812.h>
+#include <drivers/keys.hpp>
 #include <string.h>
 #include <hardware/gpio.h>
 #include <initializer_list>
@@ -21,13 +21,13 @@
 #define D_WIDTH     258
 #define D_HEIGHT    144
 
-#define B_KEY1       9
-#define B_KEY2       10
-#define B_KEY3       11
+#define B_KEY1       15
+#define B_KEY2       14
+#define B_KEY3       15
 #define B_KEY4       12
-#define B_KEY5       13
-#define B_KEY_SW     14
-#define B_KEY_UP     15
+#define B_KEY5       11
+#define B_KEY_SW     10
+#define B_KEY_UP     9
 #define B_KEY_LEFT   16
 #define B_KEY_CENTER 17
 #define B_KEY_RIGHT  18
@@ -114,10 +114,6 @@ void test_plasma_draw(uint8_t* buffer) {
     c2B -= 1; // 3;
 }
 
-static void gpio_irq_callback(uint gpio, uint32_t event_mask) {
-    Log::info("GPIO %d event: %d", gpio, event_mask);
-}
-
 int main() {
     Log::init();
 
@@ -149,10 +145,7 @@ int main() {
 
     display.eco_mode(false);
 
-    gpio_set_irq_callback(&gpio_irq_callback);
-
-    std::initializer_list<uint32_t> keys = {
-        BAT_CHARGING_GPIO,
+    Keys keys = {
         B_KEY1,
         B_KEY2,
         B_KEY3,
@@ -165,15 +158,11 @@ int main() {
         B_KEY_RIGHT,
         B_KEY_DOWN,
         B_KEY_BACK,
+        BAT_CHARGING_GPIO,
     };
-    for(auto key : keys) {
-        gpio_init(key);
-        gpio_set_dir(key, GPIO_IN);
-        gpio_set_pulls(key, false, false);
-        gpio_set_input_hysteresis_enabled(key, true);
-        gpio_set_irq_enabled(key, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true);
-    }
-    irq_set_enabled(IO_IRQ_BANK0, true);
+
+    int32_t x_pos = 0;
+    int32_t y_pos = 0;
 
     while(true) {
         test_plasma_draw(buffer);
@@ -184,16 +173,29 @@ int main() {
             }
         }
 
-        display.write_buffer(buffer);
+        if(keys.is_need_update()) {
+            keys.poll();
+        }
+        KeysInfo info = keys.get_keys_info();
 
-        if(gpio_get(BAT_CHARGING_GPIO)) {
+        // for(auto key : info.pressed) {
+        //     Log::info("Key pressed: %u", key);
+        // }
+
+        // for(auto key : info.released) {
+        //     Log::info("Key released: %u", key);
+        // }
+
+        if(info.released.contains(BAT_CHARGING_GPIO)) {
             strip.set_rgb(LedType::USBWatt1, WS2812Colors::green);
             strip.set_rgb(LedType::USBWatt2, WS2812Colors::yellow);
             strip.set_rgb(LedType::USBWatt3, WS2812Colors::orange);
             strip.set_rgb(LedType::USBWatt4, WS2812Colors::red);
             strip.set_rgb(LedType::USBPlug, WS2812Colors::green);
             strip.set_rgb(LedType::BatteryCenter, WS2812Colors::green);
-        } else {
+        }
+
+        if(info.pressed.contains(BAT_CHARGING_GPIO)) {
             strip.set_rgb(LedType::USBWatt1, WS2812Colors::black);
             strip.set_rgb(LedType::USBWatt2, WS2812Colors::black);
             strip.set_rgb(LedType::USBWatt3, WS2812Colors::black);
@@ -201,6 +203,27 @@ int main() {
             strip.set_rgb(LedType::USBPlug, WS2812Colors::black);
             strip.set_rgb(LedType::BatteryCenter, WS2812Colors::black);
         }
+
+        if(info.state.contains(B_KEY_UP)) {
+            y_pos = (y_pos - 1 + D_HEIGHT) % D_HEIGHT;
+        }
+        if(info.state.contains(B_KEY_DOWN)) {
+            y_pos = (y_pos + 1) % D_HEIGHT;
+        }
+        if(info.state.contains(B_KEY_LEFT)) {
+            x_pos = (x_pos - 1 + D_WIDTH) % D_WIDTH;
+        }
+        if(info.state.contains(B_KEY_RIGHT)) {
+            x_pos = (x_pos + 1) % D_WIDTH;
+        }
+
+        set_pixel_color(buffer, x_pos, y_pos, 0xFF); // Set a pixel at the current position to white
+        set_pixel_color(buffer, x_pos, y_pos + 1, 0xFF); // Set the pixel below to white
+        set_pixel_color(buffer, x_pos + 1, y_pos, 0xFF); // Set the pixel to the right to white
+        set_pixel_color(buffer, x_pos - 1, y_pos, 0xFF); // Set the pixel to the left to white
+        set_pixel_color(buffer, x_pos, y_pos - 1, 0xFF); // Set the pixel above to white
+
+        display.write_buffer(buffer);
         strip.flush();
     }
 }

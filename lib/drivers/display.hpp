@@ -120,7 +120,7 @@ public:
     }
 
 private:
-    PWMOutput<pin_backlight, 8, 300, false> backlight_pwm;
+    PWMOutput<pin_backlight, 8, 200, false> backlight_pwm;
     spi_inst_t* spi = spi0;
     bool initialized = false;
 
