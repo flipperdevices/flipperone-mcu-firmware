@@ -18,10 +18,10 @@ public:
         float freq = (float)clock_get_hz(clk_sys) / (float)clock_div / (1 << bits);
         Log::info("PWM %d: slice_num: %ld, channel_num: %ld, frequency: %.2f kHz", pin, slice_num, channel_num, freq / 1000.0f);
 
-        // Set the PWM frequency to maximum
+        // Set the PWM clock divider
         pwm_set_clkdiv_int_frac4(slice_num, clock_div, 0);
 
-        // Set the PWM wrap value to the maximum value
+        // Set the PWM wrap value
         pwm_set_wrap(slice_num, max_value);
         pwm_set_enabled(slice_num, true);
     }
