@@ -290,10 +290,10 @@ static void task_main(void* arg) {
     strip.flush();
 
     display.init();
-    // display.backlight(0.04f);
+    display.backlight(0.04f);
     // display.backlight(0.2f);
     // display.backlight(0.4f);
-    display.backlight(0.9f);
+    // display.backlight(0.9f);
     // display.backlight(1.0f);
 
     display.eco_mode(false);

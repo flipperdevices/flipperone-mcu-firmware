@@ -29,29 +29,32 @@ public:
         Log::info("SPI%d initialized with frequency: %.2f MHz", SPI_NUM(spi), freq / 1000000.0f);
         spi_set_format(spi, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
 
+        const enum gpio_slew_rate spi_slew_rate = GPIO_SLEW_RATE_FAST;
+        const enum gpio_drive_strength spi_drive_strength = GPIO_DRIVE_STRENGTH_12MA;
+
         gpio_set_function(pin_clock, GPIO_FUNC_SPI);
         gpio_set_function(pin_data, GPIO_FUNC_SPI);
 
-        gpio_set_drive_strength(pin_clock, GPIO_DRIVE_STRENGTH_12MA);
-        gpio_set_slew_rate(pin_clock, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(pin_clock, spi_drive_strength);
+        gpio_set_slew_rate(pin_clock, spi_slew_rate);
 
-        gpio_set_drive_strength(pin_data, GPIO_DRIVE_STRENGTH_12MA);
-        gpio_set_slew_rate(pin_data, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(pin_data, spi_drive_strength);
+        gpio_set_slew_rate(pin_data, spi_slew_rate);
 
         gpio_init(pin_cs);
         gpio_set_dir(pin_cs, GPIO_OUT);
-        gpio_set_drive_strength(pin_cs, GPIO_DRIVE_STRENGTH_12MA);
-        gpio_set_slew_rate(pin_cs, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(pin_cs, spi_drive_strength);
+        gpio_set_slew_rate(pin_cs, spi_slew_rate);
 
         gpio_init(pin_dc);
         gpio_set_dir(pin_dc, GPIO_OUT);
-        gpio_set_drive_strength(pin_dc, GPIO_DRIVE_STRENGTH_12MA);
-        gpio_set_slew_rate(pin_dc, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(pin_dc, spi_drive_strength);
+        gpio_set_slew_rate(pin_dc, spi_slew_rate);
 
         gpio_init(pin_reset);
         gpio_set_dir(pin_reset, GPIO_OUT);
-        gpio_set_drive_strength(pin_reset, GPIO_DRIVE_STRENGTH_12MA);
-        gpio_set_slew_rate(pin_reset, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(pin_reset, spi_drive_strength);
+        gpio_set_slew_rate(pin_reset, spi_slew_rate);
 
         cs(true);
         dc(false);

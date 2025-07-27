@@ -10,8 +10,8 @@ class PWMOutput {
 public:
     PWMOutput() {
         gpio_set_function(pin, GPIO_FUNC_PWM);
-        gpio_set_drive_strength(pin, GPIO_DRIVE_STRENGTH_12MA);
-        gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
+        gpio_set_drive_strength(pin, GPIO_DRIVE_STRENGTH_2MA);
+        gpio_set_slew_rate(pin, GPIO_SLEW_RATE_SLOW);
         gpio_disable_pulls(pin);
         gpio_set_input_enabled(pin, false);
 
