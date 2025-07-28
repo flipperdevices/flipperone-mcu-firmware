@@ -20,10 +20,10 @@
 #define D_PIN_CS    3
 #define D_PIN_WR    4
 #define D_PIN_RESET 5
-#define D_OFF_X     77
-#define D_OFF_Y     0
 #define D_WIDTH     258
 #define D_HEIGHT    144
+#define D_OFF_X     77
+#define D_OFF_Y     (320 - D_HEIGHT) // was 0 without mirroring and rotation
 
 #define B_KEY1       15
 #define B_KEY2       14
@@ -77,54 +77,8 @@ void set_pixel_color(uint8_t* buffer, int32_t x, int32_t y, uint8_t color) {
     buffer[index] = color;
 }
 
-static const uint8_t sinustable[0x100] = {
-    0x80, 0x7d, 0x7a, 0x77, 0x74, 0x70, 0x6d, 0x6a, 0x67, 0x64, 0x61, 0x5e, 0x5b, 0x58, 0x55, 0x52, 0x4f, 0x4d, 0x4a, 0x47, 0x44, 0x41, 0x3f, 0x3c, 0x39, 0x37,
-    0x34, 0x32, 0x2f, 0x2d, 0x2b, 0x28, 0x26, 0x24, 0x22, 0x20, 0x1e, 0x1c, 0x1a, 0x18, 0x16, 0x15, 0x13, 0x11, 0x10, 0x0f, 0x0d, 0x0c, 0x0b, 0x0a, 0x08, 0x07,
-    0x06, 0x06, 0x05, 0x04, 0x03, 0x03, 0x02, 0x02, 0x02, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x03, 0x03, 0x04, 0x05, 0x06, 0x06, 0x07,
-    0x08, 0x0a, 0x0b, 0x0c, 0x0d, 0x0f, 0x10, 0x11, 0x13, 0x15, 0x16, 0x18, 0x1a, 0x1c, 0x1e, 0x20, 0x22, 0x24, 0x26, 0x28, 0x2b, 0x2d, 0x2f, 0x32, 0x34, 0x37,
-    0x39, 0x3c, 0x3f, 0x41, 0x44, 0x47, 0x4a, 0x4d, 0x4f, 0x52, 0x55, 0x58, 0x5b, 0x5e, 0x61, 0x64, 0x67, 0x6a, 0x6d, 0x70, 0x74, 0x77, 0x7a, 0x7d, 0x80, 0x83,
-    0x86, 0x89, 0x8c, 0x90, 0x93, 0x96, 0x99, 0x9c, 0x9f, 0xa2, 0xa5, 0xa8, 0xab, 0xae, 0xb1, 0xb3, 0xb6, 0xb9, 0xbc, 0xbf, 0xc1, 0xc4, 0xc7, 0xc9, 0xcc, 0xce,
-    0xd1, 0xd3, 0xd5, 0xd8, 0xda, 0xdc, 0xde, 0xe0, 0xe2, 0xe4, 0xe6, 0xe8, 0xea, 0xeb, 0xed, 0xef, 0xf0, 0xf1, 0xf3, 0xf4, 0xf5, 0xf6, 0xf8, 0xf9, 0xfa, 0xfa,
-    0xfb, 0xfc, 0xfd, 0xfd, 0xfe, 0xfe, 0xfe, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe, 0xfe, 0xfe, 0xfd, 0xfd, 0xfc, 0xfb, 0xfa, 0xfa, 0xf9, 0xf8, 0xf6,
-    0xf5, 0xf4, 0xf3, 0xf1, 0xf0, 0xef, 0xed, 0xeb, 0xea, 0xe8, 0xe6, 0xe4, 0xe2, 0xe0, 0xde, 0xdc, 0xda, 0xd8, 0xd5, 0xd3, 0xd1, 0xce, 0xcc, 0xc9, 0xc7, 0xc4,
-    0xc1, 0xbf, 0xbc, 0xb9, 0xb6, 0xb3, 0xb1, 0xae, 0xab, 0xa8, 0xa5, 0xa2, 0x9f, 0x9c, 0x99, 0x96, 0x93, 0x90, 0x8c, 0x89, 0x86, 0x83,
-};
-
-void test_plasma_draw(uint8_t* buffer) {
-    uint8_t z0;
-    uint8_t z;
-    static uint8_t c1a, c1b;
-    static uint8_t c2a, c2b;
-    static uint8_t c1A, c1B;
-    static uint8_t c2A, c2B;
-    static size_t x, y;
-
-    c1a = c1A;
-    c1b = c1B;
-    for(y = 0; y < D_HEIGHT; ++y) {
-        c2a = c2A;
-        c2b = c2B;
-        z0 = sinustable[c1a] + sinustable[c1b];
-        for(x = 0; x < D_WIDTH; ++x) {
-            z = z0 + sinustable[c2a] + sinustable[c2b];
-            set_pixel_color(buffer, x, y, z);
-            c2a += 1; // 3;
-            c2b += 2; // 7;
-        }
-        c1a += 1; // 4;
-        c1b += 2; // 9;
-    }
-
-    c1A += rand() % 4; // 3;
-    c1B -= 2; // 5;
-    c2A += 3; // 2;
-    c2B -= 1; // 3;
-}
-
-const size_t buffer_size = D_WIDTH * D_HEIGHT;
-uint8_t buffer[buffer_size];
 WS2812Strip<WS2812_GPIO, LedType, WS2812_COUNT> strip;
-Display<D_PIN_CTRL, D_PIN_RESET, D_PIN_CS, D_PIN_SCL, D_PIN_SDA, D_PIN_WR, D_OFF_X, D_OFF_Y, D_WIDTH, D_HEIGHT> display;
+Display<D_PIN_CTRL, D_PIN_RESET, D_PIN_CS, D_PIN_SCL, D_PIN_SDA, D_PIN_WR, D_OFF_X, D_OFF_Y, D_WIDTH, D_HEIGHT> hw_display;
 volatile bool charging = false;
 
 static void task_charge(void* arg) {
@@ -166,7 +120,22 @@ static void task_charge(void* arg) {
 }
 
 static void task_charging(void* arg) {
-    Log::info("Starting charging task...");
+    Log::info("Starting led task...");
+
+    strip.init();
+    strip.set_brightness(0.02f);
+    strip.set_rgb_all({0, 0, 0});
+    strip.set_rgb(LedType::Power, WS2812Colors::green);
+    strip.set_rgb(LedType::Unknown, WS2812Colors::light_blue);
+    strip.set_rgb(LedType::WiFi, WS2812Colors::light_blue);
+    strip.set_rgb(LedType::Lan2, WS2812Colors::light_blue);
+    strip.set_rgb(LedType::Lan1, WS2812Colors::light_blue);
+    strip.set_rgb(LedType::BatteryOutline, WS2812Colors::green);
+    strip.set_rgb(LedType::BatteryWatt1, WS2812Colors::green);
+    strip.set_rgb(LedType::BatteryWatt2, WS2812Colors::yellow);
+    strip.set_rgb(LedType::BatteryWatt3, WS2812Colors::orange);
+    strip.set_rgb(LedType::BatteryWatt4, WS2812Colors::red);
+    strip.flush();
 
     while(true) {
         if(charging) {
@@ -271,32 +240,48 @@ static void task_charging(void* arg) {
     }
 }
 
+#include <lvgl/lvgl.h>
+#include <hardware/timer.h>
+
+static uint32_t lvgl_get_milliseconds_callback() {
+    return (uint32_t)(time_us_32() / 1000);
+}
+
+const lv_color_format_t buffer_color_format = LV_COLOR_FORMAT_L8;
+const size_t buffer_bytes_per_pixel = LV_COLOR_FORMAT_GET_SIZE(buffer_color_format);
+const size_t buffer_size = D_WIDTH * D_HEIGHT * buffer_bytes_per_pixel;
+uint8_t buffer[buffer_size];
+
+void lvgl_flush_callback(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map) {
+    hw_display.write_buffer(buffer);
+    lv_display_flush_ready(disp);
+}
+
 static void task_main(void* arg) {
     Log::info("Starting main task...");
 
-    strip.init();
-    strip.set_brightness(0.02f);
-    strip.set_rgb_all({0, 0, 0});
-    strip.set_rgb(LedType::Power, WS2812Colors::green);
-    strip.set_rgb(LedType::Unknown, WS2812Colors::light_blue);
-    strip.set_rgb(LedType::WiFi, WS2812Colors::light_blue);
-    strip.set_rgb(LedType::Lan2, WS2812Colors::light_blue);
-    strip.set_rgb(LedType::Lan1, WS2812Colors::light_blue);
-    strip.set_rgb(LedType::BatteryOutline, WS2812Colors::green);
-    strip.set_rgb(LedType::BatteryWatt1, WS2812Colors::green);
-    strip.set_rgb(LedType::BatteryWatt2, WS2812Colors::yellow);
-    strip.set_rgb(LedType::BatteryWatt3, WS2812Colors::orange);
-    strip.set_rgb(LedType::BatteryWatt4, WS2812Colors::red);
-    strip.flush();
+    hw_display.init();
+    // hw_display.backlight(0.04f);
+    hw_display.backlight(0.2f);
+    // hw_display.backlight(0.4f);
+    // hw_display.backlight(0.9f);
+    // hw_display.backlight(1.0f);
 
-    display.init();
-    display.backlight(0.04f);
-    // display.backlight(0.2f);
-    // display.backlight(0.4f);
-    // display.backlight(0.9f);
-    // display.backlight(1.0f);
+    lv_init();
+    lv_tick_set_cb(lvgl_get_milliseconds_callback);
+    lv_display_t* display1 = lv_display_create(D_WIDTH, D_HEIGHT);
+    lv_display_set_flush_cb(display1, lvgl_flush_callback);
+    lv_display_set_color_format(display1, buffer_color_format);
+    lv_display_set_buffers(display1, buffer, NULL, buffer_size, LV_DISPLAY_RENDER_MODE_DIRECT);
 
-    display.eco_mode(false);
+    /*Change the active screen's background color*/
+    lv_obj_set_style_bg_color(lv_screen_active(), lv_color_hex(0x000000), LV_PART_MAIN);
+
+    /*Create a white label, set its text and align it to the center*/
+    lv_obj_t* label = lv_label_create(lv_screen_active());
+    lv_label_set_text(label, "Hello world 123");
+    lv_obj_set_style_text_color(lv_screen_active(), lv_color_hex(0xffffff), LV_PART_MAIN);
+    lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
 
     Keys keys = {
         B_KEY1,
@@ -314,25 +299,18 @@ static void task_main(void* arg) {
         BAT_CHARGING_GPIO,
     };
 
-    int32_t x_pos = 0;
-    int32_t y_pos = 0;
-
     xTaskCreate(task_charging, "task_charging", 256, NULL, configMAX_PRIORITIES - 1, NULL);
     xTaskCreate(task_charge, "task_charge", 256, NULL, configMAX_PRIORITIES - 1, NULL);
 
     while(true) {
-        test_plasma_draw(buffer);
-        for(size_t x = 0; x < 64; x++) {
-            for(size_t y = 0; y < D_HEIGHT / 2; y++) {
-                uint32_t color = x;
-                set_pixel_color(buffer, x, y, color << 2);
-            }
-        }
+        // test_plasma_draw(buffer);
 
         if(keys.is_need_update()) {
             keys.poll();
         }
         KeysInfo info = keys.get_keys_info();
+        if(info.pressed.contains(BAT_CHARGING_GPIO)) charging = false;
+        if(info.released.contains(BAT_CHARGING_GPIO)) charging = true;
 
         // for(auto key : info.pressed) {
         //     Log::info("Key pressed: %u", key);
@@ -342,37 +320,12 @@ static void task_main(void* arg) {
         //     Log::info("Key released: %u", key);
         // }
 
-        if(info.released.contains(BAT_CHARGING_GPIO)) {
-            charging = true;
-            Log::info("Charger connected");
-        }
+        // hw_display.write_buffer(buffer);
+        // vTaskDelay(pdMS_TO_TICKS(10));
 
-        if(info.pressed.contains(BAT_CHARGING_GPIO)) {
-            charging = false;
-            Log::info("Charger disconnected");
-        }
-
-        if(info.state.contains(B_KEY_UP)) {
-            y_pos = (y_pos - 1 + D_HEIGHT) % D_HEIGHT;
-        }
-        if(info.state.contains(B_KEY_DOWN)) {
-            y_pos = (y_pos + 1) % D_HEIGHT;
-        }
-        if(info.state.contains(B_KEY_LEFT)) {
-            x_pos = (x_pos - 1 + D_WIDTH) % D_WIDTH;
-        }
-        if(info.state.contains(B_KEY_RIGHT)) {
-            x_pos = (x_pos + 1) % D_WIDTH;
-        }
-
-        set_pixel_color(buffer, x_pos, y_pos, 0xFF); // Set a pixel at the current position to white
-        set_pixel_color(buffer, x_pos, y_pos + 1, 0xFF); // Set the pixel below to white
-        set_pixel_color(buffer, x_pos + 1, y_pos, 0xFF); // Set the pixel to the right to white
-        set_pixel_color(buffer, x_pos - 1, y_pos, 0xFF); // Set the pixel to the left to white
-        set_pixel_color(buffer, x_pos, y_pos - 1, 0xFF); // Set the pixel above to white
-
-        display.write_buffer(buffer);
-        vTaskDelay(pdMS_TO_TICKS(10));
+        uint32_t time_till_next = lv_timer_handler();
+        if(time_till_next == LV_NO_TIMER_READY) time_till_next = LV_DEF_REFR_PERIOD; /*handle LV_NO_TIMER_READY. Another option is to `sleep` for longer*/
+        vTaskDelay(pdMS_TO_TICKS(time_till_next));
     }
 }
 
