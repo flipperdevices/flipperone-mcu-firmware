@@ -61,14 +61,14 @@ public:
 
         // reset sequence
         reset(false);
-        sleep_ms(10);
+        sleep_ms(20);
         reset(false);
-        sleep_ms(5);
+        sleep_ms(10);
         reset(true);
-        sleep_ms(5);
+        sleep_ms(10);
 
         write_command(CMD::SWRESET); // Software reset
-        sleep_ms(6);
+        sleep_ms(10);
 
         // write_command(CMD::SLPOUT); // Sleep out
         // sleep_ms(120);
@@ -486,6 +486,9 @@ private:
         // SSD_PAR(0x00); //Start
         // SSD_PAR(0x00);
         // SSD_PAR(0x8F); //End
+
+        SSD_CMD(CMD::MADCTL);
+        SSD_PAR(0b11001000); // RGB mode, no rotation
 
         SSD_CMD(0x11);
         Delayms(120);
