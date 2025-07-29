@@ -38,7 +38,7 @@ pico_sdk_init()
 
 file(GLOB_RECURSE SOURCES
     "app/*.c*"
-    "app/drivers/*.c*"
+    "app/theme/*.c*"
 )
 
 add_executable(one-rp2350-control 
