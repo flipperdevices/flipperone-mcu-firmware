@@ -6,7 +6,7 @@ file(GLOB_RECURSE IMAGE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/screensaver/*.png
 )
 
-if(WIN32)
+if(CMAKE_HOST_WIN32)
     set(ASSETS_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/python/build.cmd)
 else()
     set(ASSETS_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/python/build.sh)
