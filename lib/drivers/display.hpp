@@ -21,7 +21,8 @@ public:
         backlight_pwm.pwm(value);
     }
 
-    void init(void) {
+    void init(bool normal_black) {
+        backlight_pwm.init();
         uint freq = spi_init(spi, 1 * 1000 * 1000);
         Log::info("SPI%d initialized with frequency: %.2f MHz", SPI_NUM(spi), freq / 1000000.0f);
         spi_set_format(spi, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
@@ -73,7 +74,11 @@ public:
         // st7789s_initialize_bad_gamma();
         // st7789s_initialize_2025_01_16();
         // st7789s_initialize_2025_04_01();
-        st7789s_initialize_2025_04_01_edited();
+        if(normal_black) {
+            st7789s_initialize_2025_04_01_normal_black();
+        } else {
+            st7789s_initialize_2025_04_01_normal_white();
+        }
 
         freq = spi_set_baudrate(spi, 75 * 1000 * 1000);
         Log::info("SPI%d initialized with frequency: %.2f MHz", SPI_NUM(spi), freq / 1000000.0f);
@@ -263,14 +268,14 @@ private:
 
     void st7789s_initialize_bad_gamma(void) {
         // 10.2.4 INVCTR (B4h): Display Inversion Control
-        write_command(CMD::INVCTR);
+        write_command(0xB4);
         write_data(0b00000111); // NLA NLB NLC all 1 - column inversion
 
         // 10.1.33 COLMOD (3Ah): Interface Pixel Format
         write_command(CMD::COLMOD);
         write_data(0b00000110); // IFPF: 0b110/18 bit per pixel
 
-        write_command(CMD::INVCTR);
+        write_command(0xB4);
         write_data(0b00000111); // NLA NLB NLC all 1 - column inversion
 
         // 10.1.29 MADCTL (36h): Memory Data Access Control
@@ -291,7 +296,7 @@ private:
 #define SSD_Stop()
 #define Delayms(ms) sleep_ms(ms)
 
-    void st7789s_initialize_2025_04_01_edited(void) {
+    void st7789s_initialize_2025_04_01_normal_black(void) {
         //SET_PASSWD
         SSD_CMD(0xDF);
         SSD_PAR(0x98);
@@ -393,6 +398,209 @@ private:
         SSD_PAR(0x10);
         SSD_PAR(0x09);
         SSD_PAR(0x0C);
+
+        //SET_GD
+        SSD_CMD(0xD0); //AUTO EXCEL GEN
+        SSD_PAR(0x04);
+        SSD_PAR(0x06);
+        SSD_PAR(0x6B);
+        SSD_PAR(0x0F);
+        SSD_PAR(0x00);
+
+        //RAMCTRL
+        SSD_CMD(0xD7);
+        SSD_PAR(0x00);
+        SSD_PAR(0x30);
+
+        //ECO
+        SSD_CMD(0xE6);
+        SSD_PAR(0x14);
+
+        //page1
+        SSD_CMD(0xDE);
+        SSD_PAR(0x01);
+
+        //option
+        SSD_CMD(0xB2);
+        SSD_PAR(0x12);
+
+        //DCDC_OPT
+        SSD_CMD(0xB7);
+        SSD_PAR(0x07);
+        SSD_PAR(0x13);
+        SSD_PAR(0x0F);
+        SSD_PAR(0x39);
+        SSD_PAR(0x2D);
+
+        //SETRGB
+        SSD_CMD(0xC1);
+        SSD_PAR(0x34);
+        SSD_PAR(0x15);
+        SSD_PAR(0xE0);
+
+        //SETSTBA2
+        SSD_CMD(0xC2);
+        SSD_PAR(0x06);
+        SSD_PAR(0x3A);
+        SSD_PAR(0xC7);
+
+        //SET_GAMMAOP
+        SSD_CMD(0xC4);
+        SSD_PAR(0x7A);
+        SSD_PAR(0x1A);
+
+        //OSC
+        SSD_CMD(0xC5);
+        SSD_PAR(0x01);
+
+        // This fucks up the display (fast vertical lines)
+        // //GAMMA_POWER_TEST
+        // SSD_CMD(0xBE);
+        // SSD_PAR(0x00);
+
+        //page2
+        SSD_CMD(0xDE);
+        SSD_PAR(0x02);
+
+        //
+        SSD_CMD(0xB5);
+        SSD_PAR(0x0A);
+        SSD_PAR(0x1C);
+
+        //page0
+        SSD_CMD(0xDE);
+        SSD_PAR(0x00);
+
+        SSD_CMD(0x35);
+        SSD_PAR(0x00);
+
+        SSD_CMD(0x3A);
+        SSD_PAR(0x06); //0x06=RGB666  0x05=RGB565
+
+        // SSD_CMD(0x2A);
+        // SSD_PAR(0x00);
+        // SSD_PAR(0x4D); //Start
+        // SSD_PAR(0x00);
+        // SSD_PAR(0xA2); //End
+
+        // SSD_CMD(0x2B);
+        // SSD_PAR(0x00);
+        // SSD_PAR(0x00); //Start
+        // SSD_PAR(0x00);
+        // SSD_PAR(0x8F); //End
+
+        SSD_CMD(CMD::MADCTL);
+        SSD_PAR(0b11001000); // RGB mode, no rotation
+
+        SSD_CMD(0x11);
+        Delayms(120);
+
+        SSD_CMD(0x29);
+        // Delayms(50);
+    }
+
+    void st7789s_initialize_2025_04_01_normal_white(void) {
+        //SET_PASSWD
+        SSD_CMD(0xDF);
+        SSD_PAR(0x98);
+        SSD_PAR(0x53);
+
+        //Page0
+        SSD_CMD(0xDE);
+        SSD_PAR(0x00);
+
+        //Vcom
+        SSD_CMD(0xB2);
+        SSD_PAR(0x64);
+
+        //GAMMA_SET
+        SSD_CMD(0xB7);
+        SSD_PAR(0x00); // VGSP_S
+        SSD_PAR(0x7D); // VGMP_S //4.6
+        SSD_PAR(0x00); // VGSN_S
+        SSD_PAR(0x7D); // VGMN_S //4.6
+
+        //AP
+        SSD_CMD(0xB9);
+        SSD_PAR(0b01110101);
+
+        SSD_CMD(0xBB);
+        SSD_PAR(0b01110111); //VGHZ_S =11V VGLZ_S =-9.25V
+        SSD_PAR(0b10111001); //VGHZ_RT  AVDDZ_S  VGLZ_RT  AVEEZ_S
+        SSD_PAR(0x55); //VGHZ_CLK  VGLZ_CLK
+        SSD_PAR(0x61); //MVZ_S_CLK  MVZ_G_CLK
+        SSD_PAR(0x7F); //MVZ_NS_CLK  HV_CLKP  MV_CLKP
+        SSD_PAR(0xFE); //VGHZ_CLKE  CGLZ_CLKE  MVZ_S_CLKE  MVZ_NS_CLKE
+
+        //SETSTBA
+        SSD_CMD(0xC0);
+        SSD_PAR(0b11111111);
+        SSD_PAR(0b11111111);
+
+        //SETPANEL
+        SSD_CMD(0xC1);
+        SSD_PAR(0x16);
+
+        //SETRGBCYC
+        SSD_CMD(0xC3);
+        SSD_PAR(0x7E);
+        SSD_PAR(0x07);
+        SSD_PAR(0x16);
+        SSD_PAR(0x0B);
+        SSD_PAR(0xCB);
+        SSD_PAR(0x71);
+        SSD_PAR(0x72);
+        SSD_PAR(0x7F);
+
+        //SET_TCON
+        SSD_CMD(0xC4);
+        SSD_PAR(0x00);
+        SSD_PAR(0x00);
+        SSD_PAR(0x48);
+        SSD_PAR(0x79);
+        SSD_PAR(0x14);
+        SSD_PAR(0x12);
+        SSD_PAR(0x16);
+        SSD_PAR(0x79);
+        SSD_PAR(0x0C);
+        SSD_PAR(0x0A);
+        SSD_PAR(0x16);
+        SSD_PAR(0x82);
+
+        //SET_R_GAMMA
+        SSD_CMD(0xC8);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
+        SSD_PAR(0xFF);
 
         //SET_GD
         SSD_CMD(0xD0); //AUTO EXCEL GEN

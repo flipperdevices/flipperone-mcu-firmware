@@ -8,7 +8,7 @@
 template <uint32_t pin, size_t bits = 12, size_t clock_div = 1, bool invert = false>
 class PWMOutput {
 public:
-    PWMOutput() {
+    void init(void) {
         gpio_set_function(pin, GPIO_FUNC_PWM);
         gpio_set_drive_strength(pin, GPIO_DRIVE_STRENGTH_2MA);
         gpio_set_slew_rate(pin, GPIO_SLEW_RATE_SLOW);
@@ -40,7 +40,7 @@ public:
             pwm_value = max_value - pwm_value; // Invert the PWM value
         }
 
-        Log::user("PWM %d: value: %d", pin, pwm_value);
+        Log::info("PWM %d: value: %d", pin, pwm_value);
         pwm_set_chan_level(slice_num, channel_num, pwm_value);
     }
 

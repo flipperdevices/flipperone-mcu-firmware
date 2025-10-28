@@ -181,7 +181,7 @@
     #define LV_DRAW_SW_SUPPORT_ARGB8888     1
     #define LV_DRAW_SW_SUPPORT_ARGB8888_PREMULTIPLIED 0
     #define LV_DRAW_SW_SUPPORT_L8           1
-    #define LV_DRAW_SW_SUPPORT_AL88         0
+    #define LV_DRAW_SW_SUPPORT_AL88         1
     #define LV_DRAW_SW_SUPPORT_A8           0
     #define LV_DRAW_SW_SUPPORT_I1           0
 
