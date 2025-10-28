@@ -2,9 +2,16 @@ project("assets")
 
 file(GLOB_RECURSE IMAGE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.png
+    ${CMAKE_CURRENT_SOURCE_DIR}/phrase/*.png
+    ${CMAKE_CURRENT_SOURCE_DIR}/screensaver/*.png
 )
 
-set(ASSETS_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/python/build.sh)
+if(WIN32)
+    set(ASSETS_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/python/build.cmd)
+else()
+    set(ASSETS_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/python/build.sh)
+endif()
+
 set(ASSETS_SOURCES)
 
 foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
@@ -14,7 +21,7 @@ foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
     add_custom_command(
         OUTPUT ${ASSETS_SOURCE}
         COMMAND ${ASSETS_COMMAND} --ofmt C --cf L8 -o ${CMAKE_CURRENT_BINARY_DIR} ${IMAGE_SOURCE}
-        DEPENDS ${IMAGE_SOURCE} ${ASSETS_COMMAND}
+        DEPENDS ${IMAGE_SOURCE} ${ASSETS_COMMAND} ${CMAKE_CURRENT_SOURCE_DIR}
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/python
         COMMENT "Generating C file for ${IMAGE_NAME}"
     )
