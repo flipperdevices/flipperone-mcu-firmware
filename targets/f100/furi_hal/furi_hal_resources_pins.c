@@ -5,7 +5,7 @@ const GpioPin gpio_display_ctrl = {.pin = 35};
 const GpioPin gpio_display_sda = {.pin = 19};
 const GpioPin gpio_display_scl = {.pin = 18};
 const GpioPin gpio_display_reset = {.pin = 12};
-const GpioPin gpio_display_wr = {.pin = 13};
+const GpioPin gpio_display_dc = {.pin = 13};
 const GpioPin gpio_display_cs = {.pin = 17};
 
 const GpioPin gpio_key1 = {.pin = 15};

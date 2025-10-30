@@ -11,8 +11,9 @@
 
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
-#include <furi_hal_spi.h>
-#include <furi_hal_spi_types_i.h>
+#include <drivers/display/display_jd9853.h>
+// #include <furi_hal_spi.h>
+// #include <furi_hal_spi_types_i.h>
 
 //#include <platform_startup.h>
 
@@ -69,10 +70,10 @@ static void task_main(void* arg) {
     furi_hal_gpio_init_simple(&gpio_key1, GpioModeInput);
     furi_hal_gpio_add_int_callback(&gpio_key1, GpioConditionFall, key1_callback, NULL);
 
-    FuriHalSpiHandle spi_handle = {
-        .id = FuriHalSpiIdSPI0,
-    };
-    furi_hal_spi_init(&spi_handle, 4000000, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
+    // FuriHalSpiHandle spi_handle = {
+    //     .id = FuriHalSpiIdSPI0,
+    // };
+    // furi_hal_spi_init(&spi_handle, 4000000, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
 
     // hw_display.init(false);
     // const size_t buffer_bytes_per_pixel = 2;
@@ -80,18 +81,27 @@ static void task_main(void* arg) {
     // uint8_t buffer[buffer_size];
     // hw_display.write_buffer(buffer);
 
+    DisplayJd9853* display = display_jd9853_init();
+    display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
+
     while(true) {
         furi_hal_gpio_write(&gpio_pico_led, true);
         vTaskDelay(pdMS_TO_TICKS(100));
         furi_hal_gpio_write(&gpio_pico_led, false);
         vTaskDelay(pdMS_TO_TICKS(100));
+        display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
+        display_jd9853_fill(display, 0x00, 0xFF, 0xFF); // Fill cyan
+        display_jd9853_fill(display, 0xFF, 0x00, 0xFF); // Fill magenta
+        display_jd9853_fill(display, 0xFF, 0xFF, 0x00); // Fill yellow
+        display_jd9853_fill(display, 0x00, 0x00, 0x00); // Fill black
+        
 
-        uint8_t tx_data[] = {0xAA, 0x55, 0xFF, 0x00};
-        furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
-        uint8_t tx_data1[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-        furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
-        furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
-        furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
+        // uint8_t tx_data[] = {0xAA, 0x55, 0xFF, 0x00};
+        // furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
+        // uint8_t tx_data1[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+        // furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
+        // furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
+        // furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
     }
     furi_crash();
 }

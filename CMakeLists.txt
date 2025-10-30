@@ -42,7 +42,8 @@ file(GLOB_RECURSE SOURCES
     "app/fs/*.c"
     "lib/furi/*.c*" 
     "lib/furi/core/*.c*" 
-    "targets/f100/furi_hal/*.c*" 
+    "targets/f100/furi_hal/*.c*"
+    "lib/drivers/display/*.c*"  
     "targets/f100/src/*.c*" 
    
 )

@@ -1,7 +1,5 @@
 #pragma once
 
-//#include <furi_hal_spi_config.h>
-//#include <stdbool.h>
 #include <furi_hal_spi_types.h>
 
 #ifdef __cplusplus
