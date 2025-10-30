@@ -6,7 +6,6 @@
 
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
-#include <furi_hal_dma.h>
 
 #include "hardware/spi.h"
 #include "hardware/dma.h"
@@ -115,9 +114,11 @@ void furi_hal_spi_init(
     }
 
     //Initialize DMA channels
-    //furi_check(furi_hal_dma_allocate_channel(spi->dma_rx_channel));
-    //furi_check(furi_hal_dma_allocate_channel(spi->dma_tx_channel));
-    furi_hal_dma_allocate_channel(&spi->dma_tx_channel);
+    spi->dma_tx_channel = dma_claim_unused_channel(true);
+    furi_check(dma_channel_is_claimed(spi->dma_tx_channel));
+
+    // spi->dma_rx_channel = dma_claim_unused_channel(true);
+    // furi_check(dma_channel_is_claimed(spi->dma_rx_channel));
 
     dma_channel_config c = dma_channel_get_default_config(spi->dma_tx_channel);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_8);
@@ -146,7 +147,7 @@ void furi_hal_spi_deinit(FuriHalSpiHandle* handle) {
     }
 
     // Free DMA channels
-    furi_hal_dma_free_channel(spi->dma_tx_channel);
+    dma_channel_unclaim(spi->dma_tx_channel);
     // furi_hal_dma_free_channel(spi->dma_rx_channel);
 
     free(spi);
