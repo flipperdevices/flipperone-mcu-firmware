@@ -1,4 +1,5 @@
 #include "core/check.h"
+#include "core/log.h"
 #include <furi.h>
 #include <furi_hal.h>
 //#include <flipper.h>
@@ -59,8 +60,14 @@ static void key1_callback(void* ctx) {
 
 static void task_main(void* arg) {
    Log::info("Starting main task...");
+
+   FURI_LOG_D("tag", "Debug");
+   FURI_LOG_I("tag", "Info");
+    FURI_LOG_W("tag", "Warning");
+    FURI_LOG_E("tag", "Error");
+    
     furi_hal_gpio_init_simple(&gpio_pico_led, GpioModeOutputPushPull);
-    //furi_hal_gpio_init_simple(&gpio_key1, GpioModeInput);
+    furi_hal_gpio_init_simple(&gpio_key1, GpioModeInput);
     furi_hal_gpio_add_int_callback(
         &gpio_key1,
         GpioConditionFall,
