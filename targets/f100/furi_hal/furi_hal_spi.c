@@ -172,4 +172,6 @@ void furi_hal_spi_tx_blocking(FuriHalSpiHandle* handle, const uint8_t* tx_buffer
     if(dma_channel_is_busy(spi->dma_tx_channel)) {
         panic("TX completed");
     }
+    while(spi_is_busy(periph)) {
+    }
 }
