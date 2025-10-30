@@ -44,7 +44,7 @@ void furi_hal_gpio_init_ex(
         gpio_set_slew_rate(gpio->pin, GPIO_SLEW_RATE_FAST);   
         break;
     default:
-        //furi_crash("Incorrect GpioSpeed");
+        furi_crash("Incorrect GpioSpeed");
         break;
     }
 
@@ -60,7 +60,7 @@ void furi_hal_gpio_init_ex(
         gpio_set_pulls(gpio->pin, false, true);
         break;
     default:
-        //furi_crash("Incorrect GpioPull");
+        furi_crash("Incorrect GpioPull");
         break;
     }
 
@@ -81,7 +81,7 @@ void furi_hal_gpio_init_ex(
         adc_gpio_init(gpio->pin);
         break;
     default:
-        //furi_crash("Incorrect GpioMode");
+        furi_crash("Incorrect GpioMode");
         break;    
     }
     
@@ -89,11 +89,11 @@ void furi_hal_gpio_init_ex(
 }
 
 void furi_hal_gpio_add_int_callback(const GpioPin* gpio, GpioCondition condition, GpioExtiCallback cb, void* ctx) {
-    // furi_check(gpio->pin <= NUM_BANK0_GPIOS);
-    // furi_check(cb);
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(cb);
 
     FURI_CRITICAL_ENTER();
-    //furi_check(gpio_interrupt[gpio->pin].callback == NULL);
+    furi_check(gpio_interrupt[gpio->pin].callback == NULL);
     gpio_interrupt[gpio->pin].callback = cb;
     gpio_interrupt[gpio->pin].context = ctx;
 
@@ -109,7 +109,7 @@ void furi_hal_gpio_add_int_callback(const GpioPin* gpio, GpioCondition condition
 }
 
 void furi_hal_gpio_enable_int_callback(const GpioPin* gpio) {
-    // furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     FURI_CRITICAL_ENTER();
 
@@ -119,7 +119,7 @@ void furi_hal_gpio_enable_int_callback(const GpioPin* gpio) {
 }
 
 void furi_hal_gpio_disable_int_callback(const GpioPin* gpio) {
-    //furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     FURI_CRITICAL_ENTER();
 
@@ -129,7 +129,7 @@ void furi_hal_gpio_disable_int_callback(const GpioPin* gpio) {
 }
 
 void furi_hal_gpio_remove_int_callback(const GpioPin* gpio) {
-    //furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     FURI_CRITICAL_ENTER();
     gpio_set_irq_enabled_with_callback(gpio->pin, 0, false, NULL);

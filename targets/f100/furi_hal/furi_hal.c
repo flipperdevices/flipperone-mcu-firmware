@@ -9,7 +9,7 @@ void furi_hal_init_early(void) {
     // furi_hal_bus_init_early();
     // furi_hal_dma_init_early();
     // furi_hal_resources_init_early();
-    // furi_hal_os_init();
+    furi_hal_os_init();
     // furi_hal_spi_config_init_early();
     // furi_hal_i2c_init_early();
     // // furi_hal_light_init();

@@ -66,11 +66,12 @@ extern "C" {
 /* Scheduler Related */
 #define configUSE_PREEMPTION                    1
 #define configUSE_PORT_OPTIMISED_TASK_SELECTION 0
-#define configUSE_TICKLESS_IDLE                 0
+#define configUSE_TICKLESS_IDLE                 2
 #define configUSE_IDLE_HOOK                     0
 #define configUSE_TICK_HOOK                     0
 #define configCPU_CLOCK_HZ                      SystemCoreClock
 #define configTICK_RATE_HZ                      ((TickType_t)1000)
+#define configTICK_RATE_HZ_RAW                  1000
 #define portTICK_RATE_MS                        ((TickType_t)1000 / configTICK_RATE_HZ)
 #define configMAX_PRIORITIES                    32
 #define configMINIMAL_STACK_SIZE                (configSTACK_DEPTH_TYPE)128
