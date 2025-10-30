@@ -15,9 +15,9 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
-set(sdkVersion 2.2.0)
+set(sdkVersion 2.1.1)
 set(toolchainVersion 14_2_Rel1)
-set(picotoolVersion 2.2.0-a4)
+set(picotoolVersion 2.1.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
     include(${picoVscode})
@@ -79,6 +79,7 @@ target_include_directories(one-rp2350-control PRIVATE
 add_subdirectory(lib/ws2812)
 add_subdirectory(lib/freertos)
 add_subdirectory(lib/lvgl)
+add_subdirectory(lib/mlib)
 add_subdirectory(assets)
 
 # Add the standard library to the build
@@ -93,6 +94,7 @@ target_link_libraries(one-rp2350-control
     freertos
     lvgl_lib
     assets
+    mlib
 )
 
 
