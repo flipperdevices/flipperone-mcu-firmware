@@ -12,6 +12,9 @@
 
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
+#include <furi_hal_spi.h>
+#include <furi_hal_spi_types_i.h>
+
 
 //#include <platform_startup.h>
 
@@ -47,15 +50,22 @@ static void task_main(void* arg) {
         GpioConditionFall,
         key1_callback,
         NULL);
+
+    FuriHalSpiHandle spi_handle = {
+        .id = FuriHalSpiIdSPI0,    
+    };
+    furi_hal_spi_init(&spi_handle, 4000000, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
+
     while(true) {
         furi_hal_gpio_write(&gpio_pico_led, true);
         vTaskDelay(pdMS_TO_TICKS(100));
         furi_hal_gpio_write(&gpio_pico_led, false);
         vTaskDelay(pdMS_TO_TICKS(100));
 
-        // if(!furi_hal_gpio_read(&gpio_key1)) {
-        //     Log::info("Key1 is pressed");
-        // }
+        uint8_t tx_data[] = {0xAA, 0x55, 0xFF, 0x00};
+        furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
+        uint8_t tx_data1[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+        furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
     }
     furi_crash();
 }

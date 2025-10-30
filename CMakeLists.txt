@@ -41,8 +41,9 @@ file(GLOB_RECURSE SOURCES
     "app/theme/*.c"
     "app/fs/*.c"
     "lib/furi/core/*.c*" 
-    "targets/f100/src/*.c*" 
     "targets/f100/furi_hal/*.c*" 
+    "targets/f100/src/*.c*" 
+   
 )
 
 add_executable(one-rp2350-control 
@@ -96,4 +97,6 @@ target_link_libraries(one-rp2350-control
 
 
 pico_add_extra_outputs(one-rp2350-control)
+
+add_compile_options(/Od)
 
