@@ -1,4 +1,3 @@
-#include <furi.h>
 #include <furi_hal_gpio.h>
 #include <hardware/exception.h>
 #include <hardware/adc.h>

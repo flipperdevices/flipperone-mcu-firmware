@@ -1,4 +1,5 @@
 #pragma once
+#include <furi.h>
 #include "stdbool.h"
 #include <hardware/gpio.h>
 
@@ -70,10 +71,10 @@ typedef enum {
 * Gpio Drive strength levels for GPIO outputs.
 */
 typedef enum {
-    GpioDriveStrengthLow = GPIO_DRIVE_STRENGTH_2MA, /**< 2 mA nominal drive strength */
-    GpioDriveStrengthMedium = GPIO_DRIVE_STRENGTH_4MA, /**< 4 mA nominal drive strength */
-    GpioDriveStrengthHigh = GPIO_DRIVE_STRENGTH_8MA, /**< 8 mA nominal drive strength */
-    GpioDriveStrengthVeryHigh = GPIO_DRIVE_STRENGTH_12MA, /**< 12 mA nominal drive strength */
+    GpioDriveStrengthLow, /**< 2 mA nominal drive strength */
+    GpioDriveStrengthMedium, /**< 4 mA nominal drive strength */
+    GpioDriveStrengthHigh, /**< 8 mA nominal drive strength */
+    GpioDriveStrengthVeryHigh, /**< 12 mA nominal drive strength */
 } GpioDriveStrength;
 
 /**
@@ -136,6 +137,23 @@ void furi_hal_gpio_init_ex(
     const GpioPull pull,
     const GpioSpeed speed,
     const GpioAltFn alt_fn);
+
+/**
+ * Set GPIO drive strength
+* @param gpio GpioPin
+* @param strength GpioDriveStrength
+*/
+static inline void furi_hal_gpio_set_drive_strength(const GpioPin* gpio, GpioDriveStrength strength) {
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+
+    const enum gpio_drive_strength drive_strength =
+        (strength == GpioDriveStrengthLow) ? GPIO_DRIVE_STRENGTH_2MA :
+        (strength == GpioDriveStrengthMedium) ? GPIO_DRIVE_STRENGTH_4MA :
+        (strength == GpioDriveStrengthHigh) ? GPIO_DRIVE_STRENGTH_8MA :
+        (strength == GpioDriveStrengthVeryHigh) ? GPIO_DRIVE_STRENGTH_12MA : GPIO_DRIVE_STRENGTH_2MA;
+
+    gpio_set_drive_strength(gpio->pin, drive_strength);
+}
 
 /**
  * Add and enable interrupt

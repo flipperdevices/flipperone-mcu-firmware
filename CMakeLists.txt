@@ -87,6 +87,7 @@ target_link_libraries(one-rp2350-control
     hardware_pwm
     hardware_spi
     hardware_adc
+    hardware_dma
     ws2812
     freertos
     lvgl_lib
