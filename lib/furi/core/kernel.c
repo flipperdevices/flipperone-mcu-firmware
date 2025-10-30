@@ -6,7 +6,11 @@
 #include <furi_hal.h>
 
 #include <FreeRTOS.h>
+#include <pico/time.h>
 #include <task.h>
+
+//todo
+#include <pico/time.h>
 
 bool furi_kernel_is_irq_or_masked(void) {
     bool irq = false;
@@ -204,6 +208,7 @@ void furi_delay_ms(uint32_t milliseconds) {
 }
 
 void furi_delay_us(uint32_t microseconds) {
-    //ToDO: need to implement accurate us delay
+    //ToDo: need to implement accurate us delay
     //furi_hal_cortex_delay_us(microseconds);
+    sleep_us(microseconds);
 }

@@ -10,8 +10,7 @@
 extern void SysTick_Handler(void);
 
 void furi_hal_os_init(void) {
-    //ToDO: add any os specific initializations if needed
-    //FURI_LOG_I(TAG, "Init OK");
+    FURI_LOG_I(TAG, "Init OK");
 }
 
 void furi_hal_os_tick(void) {

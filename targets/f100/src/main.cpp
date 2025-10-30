@@ -1,11 +1,10 @@
-#include "core/check.h"
-#include "core/log.h"
 #include <furi.h>
 #include <furi_hal.h>
 //#include <flipper.h>
 
 #include <stdio.h>
-#include <drivers/log.hpp>
+#include "pico/stdlib.h"
+//#include <drivers/log.hpp>
 #include "FreeRTOS.h"
 #include "task.h"
 #include "pico/multicore.h"
@@ -57,10 +56,9 @@ static void key1_callback(void* ctx) {
 
 static void task_main(void* arg) {
     //Log::info("Starting main task...");
-    
-    
-    furi_log_init();
-    stdio_init_all();
+
+    //furi_log_init();
+    //stdio_init_all();
     FURI_LOG_T("tag", "Trace");
     FURI_LOG_D("tag", "Debug");
     FURI_LOG_I("tag", "Info");
@@ -99,27 +97,28 @@ static void task_main(void* arg) {
 }
 
 int main(void) {
-    //Log::init();
+    // xTaskCreate(task_main, "task_main", 1024 * 8, NULL, configMAX_PRIORITIES - 1, NULL);
 
-    xTaskCreate(task_main, "task_main", 1024 * 8, NULL, configMAX_PRIORITIES - 1, NULL);
+    // // somehow openocd fucks up the multicore reset
+    // // so we need to reset core1 manually
+    // sleep_ms(5);
+    // multicore_reset_core1();
+    // (void)multicore_fifo_pop_blocking();
 
-    // somehow openocd fucks up the multicore reset
-    // so we need to reset core1 manually
-    sleep_ms(5);
-    multicore_reset_core1();
-    (void)multicore_fifo_pop_blocking();
+    // vTaskStartScheduler();
 
-    vTaskStartScheduler();
+    // /* should never reach here */
+    // panic_unsupported();
 
-    /* should never reach here */
-    panic_unsupported();
+    //Initialize FURI layer
 
-    // Initialize FURI layer
+    furi_init();
 
-    // furi_init();
+    //todo stdio_init_all???
+    stdio_init_all();
 
     // Critical FURI HAL
-    //    furi_hal_init_early();
+    furi_hal_init_early();
 
     //     FuriThread* main_thread = furi_thread_alloc_ex("Init", 4096, init_task, NULL);
     //     furi_thread_set_priority(main_thread, FuriThreadPriorityInit);
@@ -139,12 +138,21 @@ int main(void) {
     //     }
 
     // #endif
-    //     // Run Kernel
-    //     furi_run();
 
-    //     furi_crash("Kernel is Dead");
+    xTaskCreate(task_main, "task_main", 1024 * 8, NULL, configMAX_PRIORITIES - 1, NULL);
+
+    // somehow openocd fucks up the multicore reset
+    // so we need to reset core1 manually
+    sleep_ms(5);
+    multicore_reset_core1();
+    (void)multicore_fifo_pop_blocking();
+
+    // Run Kernel
+    furi_run();
+
+    furi_crash("Kernel is Dead");
 }
 
-// void abort(void) {
-//     //furi_crash("AbortHandler");
-// }
+void abort(void) {
+    furi_crash("AbortHandler");
+}
