@@ -109,11 +109,7 @@ void furi_hal_spi_init(
     for(size_t i = 0; i < FuriHalSpiPinMax; i++) {
         const GpioPin* gpio = furi_hal_spi_resources[spi_id].gpio[i];
         if(gpio != NULL) {
-            if(gpio == furi_hal_spi_resources[spi_id].gpio[FuriHalSpiPinCs]) {
-                furi_hal_gpio_init_ex(gpio, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn5Sio);
-            } else {
-                furi_hal_gpio_init_ex(gpio, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, furi_hal_spi_resources[spi_id].alt_fn);
-            }
+            furi_hal_gpio_init_ex(gpio, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, furi_hal_spi_resources[spi_id].alt_fn);
             furi_hal_gpio_set_drive_strength(gpio, GpioDriveStrengthHigh);
         }
     }
@@ -168,10 +164,6 @@ void furi_hal_spi_tx_blocking(FuriHalSpiHandle* handle, const uint8_t* tx_buffer
     dma_channel_set_read_addr(spi->dma_tx_channel, tx_buffer, false);
     dma_channel_set_transfer_count(spi->dma_tx_channel, size, false);
 
-    // Cs low
-    const GpioPin* cs_gpio = furi_hal_spi_resources[spi_id].gpio[FuriHalSpiPinCs];
-    furi_hal_gpio_write(cs_gpio, false);
-
     // Start DMA transfer
     dma_start_channel_mask(1u << spi->dma_tx_channel);
 
@@ -180,9 +172,4 @@ void furi_hal_spi_tx_blocking(FuriHalSpiHandle* handle, const uint8_t* tx_buffer
     if(dma_channel_is_busy(spi->dma_tx_channel)) {
         panic("TX completed");
     }
-    while (spi_is_busy(periph)) {
-    
-    }
-    // Cs high
-    furi_hal_gpio_write(cs_gpio, true);
 }

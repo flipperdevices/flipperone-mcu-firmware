@@ -40,6 +40,22 @@
 static void key1_callback(void* ctx) {
     printf("Key1 pressed!");
 }
+// #include <drivers/display.hpp>
+// #define D_PIN_CTRL  35 //8
+// #define D_PIN_SDA   19 //7
+// #define D_PIN_SCL   18 //6
+// #define D_PIN_RESET 12 //5
+// #define D_PIN_WR    13 //4
+// #define D_PIN_CS    17 //3
+// // #define D_WIDTH     258
+// // #define D_HEIGHT    144
+// #define D_WIDTH     240
+// #define D_HEIGHT    240
+// #define D_OFF_X     77
+// #define D_OFF_Y     (320 - D_HEIGHT) // was 0 without mirroring and rotation
+
+// Display<D_PIN_CTRL, D_PIN_RESET, D_PIN_CS, D_PIN_SCL, D_PIN_SDA, D_PIN_WR, D_OFF_X, D_OFF_Y, D_WIDTH, D_HEIGHT> hw_display;
+
 
 static void task_main(void* arg) {
    Log::info("Starting main task...");
@@ -56,6 +72,13 @@ static void task_main(void* arg) {
     };
     furi_hal_spi_init(&spi_handle, 4000000, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
 
+
+   // hw_display.init(false);
+    // const size_t buffer_bytes_per_pixel = 2;
+    // const size_t buffer_size = D_WIDTH * D_HEIGHT * buffer_bytes_per_pixel;
+    // uint8_t buffer[buffer_size];
+    // hw_display.write_buffer(buffer);
+
     while(true) {
         furi_hal_gpio_write(&gpio_pico_led, true);
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -65,6 +88,8 @@ static void task_main(void* arg) {
         uint8_t tx_data[] = {0xAA, 0x55, 0xFF, 0x00};
         furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
         uint8_t tx_data1[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+        furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
+        furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
         furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
     }
     furi_crash();

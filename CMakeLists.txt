@@ -98,5 +98,3 @@ target_link_libraries(one-rp2350-control
 
 pico_add_extra_outputs(one-rp2350-control)
 
-add_compile_options(/Od)
-
