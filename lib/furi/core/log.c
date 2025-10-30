@@ -123,79 +123,79 @@ void furi_log_puthex32(uint32_t data) {
 }
 
 void furi_log_print_format(FuriLogLevel level, const char* tag, const char* format, ...) {
-    // do {
-    //     if(level > furi_log.log_level) {
-    //         break;
-    //     }
+    do {
+        if(level > furi_log.log_level) {
+            break;
+        }
 
-    //     if(furi_mutex_acquire(furi_log.mutex, furi_kernel_is_running() ? FuriWaitForever : 0) !=
-    //        FuriStatusOk) {
-    //         break;
-    //     }
+        // if(furi_mutex_acquire(furi_log.mutex, furi_kernel_is_running() ? FuriWaitForever : 0) !=
+        //    FuriStatusOk) {
+        //     break;
+        // }
          FuriString* string = furi_string_alloc();
 
-    //     const char* color = _FURI_LOG_CLR_RESET;
-    //     const char* log_letter = " ";
-    //     switch(level) {
-    //     case FuriLogLevelError:
-    //         color = _FURI_LOG_CLR_E;
-    //         log_letter = "E";
-    //         break;
-    //     case FuriLogLevelWarn:
-    //         color = _FURI_LOG_CLR_W;
-    //         log_letter = "W";
-    //         break;
-    //     case FuriLogLevelInfo:
-    //         color = _FURI_LOG_CLR_I;
-    //         log_letter = "I";
-    //         break;
-    //     case FuriLogLevelDebug:
-    //         color = _FURI_LOG_CLR_D;
-    //         log_letter = "D";
-    //         break;
-    //     case FuriLogLevelTrace:
-    //         color = _FURI_LOG_CLR_T;
-    //         log_letter = "T";
-    //         break;
-    //     default:
-    //         break;
-    //     }
+        const char* color = _FURI_LOG_CLR_RESET;
+        const char* log_letter = " ";
+        switch(level) {
+        case FuriLogLevelError:
+            color = _FURI_LOG_CLR_E;
+            log_letter = "E";
+            break;
+        case FuriLogLevelWarn:
+            color = _FURI_LOG_CLR_W;
+            log_letter = "W";
+            break;
+        case FuriLogLevelInfo:
+            color = _FURI_LOG_CLR_I;
+            log_letter = "I";
+            break;
+        case FuriLogLevelDebug:
+            color = _FURI_LOG_CLR_D;
+            log_letter = "D";
+            break;
+        case FuriLogLevelTrace:
+            color = _FURI_LOG_CLR_T;
+            log_letter = "T";
+            break;
+        default:
+            break;
+        }
 
-    //     // Timestamp
-    //     furi_string_printf(
-    //         string, "%lu %s[%s][%s] " _FURI_LOG_CLR_RESET, furi_get_tick(), color, log_letter, tag);
-    //     furi_log_puts(furi_string_get_cstr(string));
-    //     furi_string_reset(string);
+        // Timestamp
+        furi_string_printf(
+            string, "%lu %s[%s][%s] " _FURI_LOG_CLR_RESET, furi_get_tick(), color, log_letter, tag);
+        furi_log_puts(furi_string_get_cstr(string));
+        furi_string_reset(string);
 
-    //     va_list args;
-    //     va_start(args, format);
-    //     furi_string_vprintf(string, format, args);
-    //     va_end(args);
+        va_list args;
+        va_start(args, format);
+        furi_string_vprintf(string, format, args);
+        va_end(args);
 
-    //     furi_log_puts(furi_string_get_cstr(string));
-    //     furi_string_free(string);
+        furi_log_puts(furi_string_get_cstr(string));
+        furi_string_free(string);
 
-    //     furi_log_puts("\r\n");
+        furi_log_puts("\r\n");
 
-    //     furi_mutex_release(furi_log.mutex);
-    // } while(0);
+        //furi_mutex_release(furi_log.mutex);
+    } while(0);
 }
 
 void furi_log_print_raw_format(FuriLogLevel level, const char* format, ...) {
-    // if(level <= furi_log.log_level &&
-    //    furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk) {
-    //     FuriString* string;
-    //     string = furi_string_alloc();
-    //     va_list args;
-    //     va_start(args, format);
-    //     furi_string_vprintf(string, format, args);
-    //     va_end(args);
+    if(level <= furi_log.log_level){//} &&
+       //furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk) {
+        FuriString* string;
+        string = furi_string_alloc();
+        va_list args;
+        va_start(args, format);
+        furi_string_vprintf(string, format, args);
+        va_end(args);
 
-    //     furi_log_puts(furi_string_get_cstr(string));
-    //     furi_string_free(string);
+        furi_log_puts(furi_string_get_cstr(string));
+        furi_string_free(string);
 
-    //     furi_mutex_release(furi_log.mutex);
-    // }
+        //furi_mutex_release(furi_log.mutex);
+    }
 }
 
 void furi_log_set_level(FuriLogLevel level) {

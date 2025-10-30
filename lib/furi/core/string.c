@@ -302,27 +302,27 @@ void furi_string_utf8_push(FuriString* str, FuriStringUnicodeValue u) {
 static m_str1ng_utf8_state_e furi_state_to_state(FuriStringUTF8State state) {
     switch(state) {
     case FuriStringUTF8StateStarting:
-        return M_STRING_UTF8_STARTING;
+        return M_STR1NG_UTF8_STARTING;
     case FuriStringUTF8StateDecoding1:
-        return M_STRING_UTF8_DECODING_1;
+        return M_STR1NG_UTF8_DECODING_1;
     case FuriStringUTF8StateDecoding2:
-        return M_STRING_UTF8_DECODING_2;
+        return M_STR1NG_UTF8_DECODING_2;
     case FuriStringUTF8StateDecoding3:
-        return M_STRING_UTF8_DOCODING_3;
+        return M_STR1NG_UTF8_DECODING_3;
     default:
-        return M_STRING_UTF8_ERROR;
+        return M_STR1NG_UTF8_ERROR;
     }
 }
 
 static FuriStringUTF8State state_to_furi_state(m_str1ng_utf8_state_e state) {
     switch(state) {
-    case M_STRING_UTF8_STARTING:
+    case M_STR1NG_UTF8_STARTING:
         return FuriStringUTF8StateStarting;
-    case M_STRING_UTF8_DECODING_1:
+    case M_STR1NG_UTF8_DECODING_1:
         return FuriStringUTF8StateDecoding1;
-    case M_STRING_UTF8_DECODING_2:
+    case M_STR1NG_UTF8_DECODING_2:
         return FuriStringUTF8StateDecoding2;
-    case M_STRING_UTF8_DOCODING_3:
+    case M_STR1NG_UTF8_DECODING_3:
         return FuriStringUTF8StateDecoding3;
     default:
         return FuriStringUTF8StateError;

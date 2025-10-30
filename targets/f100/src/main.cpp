@@ -10,12 +10,10 @@
 #include "task.h"
 #include "pico/multicore.h"
 
-
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_spi.h>
 #include <furi_hal_spi_types_i.h>
-
 
 //#include <platform_startup.h>
 
@@ -57,30 +55,28 @@ static void key1_callback(void* ctx) {
 
 // Display<D_PIN_CTRL, D_PIN_RESET, D_PIN_CS, D_PIN_SCL, D_PIN_SDA, D_PIN_WR, D_OFF_X, D_OFF_Y, D_WIDTH, D_HEIGHT> hw_display;
 
-
 static void task_main(void* arg) {
-   Log::info("Starting main task...");
-
-   FURI_LOG_D("tag", "Debug");
-   FURI_LOG_I("tag", "Info");
+    //Log::info("Starting main task...");
+    
+    
+    furi_log_init();
+    stdio_init_all();
+    FURI_LOG_T("tag", "Trace");
+    FURI_LOG_D("tag", "Debug");
+    FURI_LOG_I("tag", "Info");
     FURI_LOG_W("tag", "Warning");
     FURI_LOG_E("tag", "Error");
-    
+
     furi_hal_gpio_init_simple(&gpio_pico_led, GpioModeOutputPushPull);
     furi_hal_gpio_init_simple(&gpio_key1, GpioModeInput);
-    furi_hal_gpio_add_int_callback(
-        &gpio_key1,
-        GpioConditionFall,
-        key1_callback,
-        NULL);
+    furi_hal_gpio_add_int_callback(&gpio_key1, GpioConditionFall, key1_callback, NULL);
 
     FuriHalSpiHandle spi_handle = {
-        .id = FuriHalSpiIdSPI0,    
+        .id = FuriHalSpiIdSPI0,
     };
     furi_hal_spi_init(&spi_handle, 4000000, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
 
-
-   // hw_display.init(false);
+    // hw_display.init(false);
     // const size_t buffer_bytes_per_pixel = 2;
     // const size_t buffer_size = D_WIDTH * D_HEIGHT * buffer_bytes_per_pixel;
     // uint8_t buffer[buffer_size];
@@ -103,7 +99,7 @@ static void task_main(void* arg) {
 }
 
 int main(void) {
-    Log::init();
+    //Log::init();
 
     xTaskCreate(task_main, "task_main", 1024 * 8, NULL, configMAX_PRIORITIES - 1, NULL);
 
@@ -123,30 +119,30 @@ int main(void) {
     // furi_init();
 
     // Critical FURI HAL
-//    furi_hal_init_early();
+    //    furi_hal_init_early();
 
-//     FuriThread* main_thread = furi_thread_alloc_ex("Init", 4096, init_task, NULL);
-//     furi_thread_set_priority(main_thread, FuriThreadPriorityInit);
-// #ifdef FURI_RAM_EXEC
-//     furi_thread_start(main_thread);
-// #else
-//     FuriHalNvmBootMode boot_mode = furi_hal_nvm_get_boot_mode();
-//     if(boot_mode == FuriHalNvmBootModeUpdate) {
-//         furi_delay_ms(200);
-//         furi_hal_nvm_set_boot_mode(FuriHalNvmBootModeNormal);
-//         platform_boot_to_update();
-//         // If we are here, the switch to the update was not successful
-//         // FURI_LOG_W(TAG, "Failed to switch to update mode");
-//         furi_hal_power_reset();
-//     } else {
-//         furi_thread_start(main_thread);
-//     }
+    //     FuriThread* main_thread = furi_thread_alloc_ex("Init", 4096, init_task, NULL);
+    //     furi_thread_set_priority(main_thread, FuriThreadPriorityInit);
+    // #ifdef FURI_RAM_EXEC
+    //     furi_thread_start(main_thread);
+    // #else
+    //     FuriHalNvmBootMode boot_mode = furi_hal_nvm_get_boot_mode();
+    //     if(boot_mode == FuriHalNvmBootModeUpdate) {
+    //         furi_delay_ms(200);
+    //         furi_hal_nvm_set_boot_mode(FuriHalNvmBootModeNormal);
+    //         platform_boot_to_update();
+    //         // If we are here, the switch to the update was not successful
+    //         // FURI_LOG_W(TAG, "Failed to switch to update mode");
+    //         furi_hal_power_reset();
+    //     } else {
+    //         furi_thread_start(main_thread);
+    //     }
 
-// #endif
-//     // Run Kernel
-//     furi_run();
+    // #endif
+    //     // Run Kernel
+    //     furi_run();
 
-//     furi_crash("Kernel is Dead");
+    //     furi_crash("Kernel is Dead");
 }
 
 // void abort(void) {
