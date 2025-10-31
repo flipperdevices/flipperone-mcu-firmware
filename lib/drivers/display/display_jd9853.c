@@ -1,6 +1,4 @@
 #include "display_jd9853.h"
-#include "core/check.h"
-#include "core/kernel.h"
 #include "display_jd9853_reg.h"
 
 #include <furi_hal_gpio.h>

@@ -44,6 +44,7 @@ file(GLOB_RECURSE SOURCES
     "lib/furi/core/*.c*" 
     "targets/f100/furi_hal/*.c*"
     "lib/drivers/display/*.c*"  
+    #"lib/drivers/ws2812/*.c*"  
     "targets/f100/src/*.c*" 
    
 )
@@ -80,7 +81,7 @@ target_include_directories(one-rp2350-control PRIVATE
 )
 
 add_subdirectory(lib/mlib)
-add_subdirectory(lib/ws2812)
+add_subdirectory(lib/drivers/ws2812)
 add_subdirectory(lib/freertos)
 add_subdirectory(lib/lvgl)
 add_subdirectory(assets)

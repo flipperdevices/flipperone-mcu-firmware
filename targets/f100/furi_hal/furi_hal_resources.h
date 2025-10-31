@@ -60,6 +60,9 @@ extern const GpioPin gpio_bat_charge_adc;
 extern const GpioPin gpio_pico_first_adc;
 
 extern const GpioPin gpio_pico_led;
+extern const GpioPin gpio_status_led_line1;
+// extern const GpioPin gpio_status_led_line2;
+// extern const GpioPin gpio_status_led_line3;
 
 extern const GpioPinRecord gpio_pins[];
 extern const size_t gpio_pins_count;

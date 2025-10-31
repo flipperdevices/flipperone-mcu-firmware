@@ -18,6 +18,7 @@
 
 //#include <platform_startup.h>
 #include <furi_hal_pwm.h>
+#include <drivers/ws2812/ws2812.h>
 
 #define TAG "Main"
 
@@ -61,9 +62,15 @@ static void task_main(void* arg) {
     FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_key_back, 8, 200000, false);
     uint8_t duty = 0;
 
+    GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 1);
+    ws2812_pins[0] = gpio_status_led_line1;
+
+    Ws2812* ws2812 = ws2812_init(ws2812_pins, 1);
+    free(ws2812_pins);
+
     DisplayJd9853* display = display_jd9853_init();
     display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
-
+    
     while(true) {
         furi_hal_gpio_write(&gpio_pico_led, true);
         vTaskDelay(pdMS_TO_TICKS(100));
@@ -81,6 +88,7 @@ static void task_main(void* arg) {
 
         furi_hal_pwm_set_duty_cycle(pwm, duty);
         duty += 5;
+        ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
 
 
         // uint8_t tx_data[] = {0xAA, 0x55, 0xFF, 0x00};

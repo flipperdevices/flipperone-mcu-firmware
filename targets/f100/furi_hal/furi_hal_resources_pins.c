@@ -27,6 +27,9 @@ const GpioPin gpio_bat_charge_adc = {.pin = 29};
 const GpioPin gpio_pico_first_adc = {.pin = 26};
 
 const GpioPin gpio_pico_led = {.pin = 25};
+const GpioPin gpio_status_led_line1 = {.pin = 2};
+// const GpioPin gpio_status_led_line2 = {.pin = 2};
+// const GpioPin gpio_status_led_line3 = {.pin = 2};
 
 const GpioPinRecord gpio_pins[] = {};
 
