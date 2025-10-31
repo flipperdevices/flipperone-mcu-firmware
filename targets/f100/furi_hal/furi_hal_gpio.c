@@ -10,11 +10,7 @@ void furi_hal_gpio_init_simple(const GpioPin* gpio, const GpioMode mode) {
     furi_hal_gpio_init(gpio, mode, GpioPullNo, GpioSpeedLow);
 }
 
-void furi_hal_gpio_init(
-    const GpioPin* gpio,
-    const GpioMode mode,
-    const GpioPull pull,
-    const GpioSpeed speed) {
+void furi_hal_gpio_init(const GpioPin* gpio, const GpioMode mode, const GpioPull pull, const GpioSpeed speed) {
     // // we cannot set alternate mode in this function
     // furi_check(mode != GpioModeAltFunctionPushPull);
     // furi_check(mode != GpioModeAltFunctionOpenDrain);
@@ -22,13 +18,7 @@ void furi_hal_gpio_init(
     furi_hal_gpio_init_ex(gpio, mode, pull, speed, GpioAltFn5Sio);
 }
 
-void furi_hal_gpio_init_ex(
-    const GpioPin* gpio,
-    const GpioMode mode,
-    const GpioPull pull,
-    const GpioSpeed speed,
-    const GpioAltFn alt_fn) {
-    
+void furi_hal_gpio_init_ex(const GpioPin* gpio, const GpioMode mode, const GpioPull pull, const GpioSpeed speed, const GpioAltFn alt_fn) {
     // Configure gpio with interrupts disabled
     FURI_CRITICAL_ENTER();
 
@@ -38,9 +28,9 @@ void furi_hal_gpio_init_ex(
     switch(speed) {
     case GpioSpeedLow:
         gpio_set_slew_rate(gpio->pin, GPIO_SLEW_RATE_SLOW);
-        break; 
+        break;
     case GpioSpeedFast:
-        gpio_set_slew_rate(gpio->pin, GPIO_SLEW_RATE_FAST);   
+        gpio_set_slew_rate(gpio->pin, GPIO_SLEW_RATE_FAST);
         break;
     default:
         furi_crash("Incorrect GpioSpeed");
@@ -85,9 +75,9 @@ void furi_hal_gpio_init_ex(
         break;
     default:
         furi_crash("Incorrect GpioMode");
-        break;    
+        break;
     }
-    
+
     FURI_CRITICAL_EXIT();
 }
 
@@ -102,9 +92,10 @@ void furi_hal_gpio_add_int_callback(const GpioPin* gpio, GpioCondition condition
 
     gpio_set_irq_enabled_with_callback(
         gpio->pin,
-        (condition == GpioConditionRise) ? GPIO_IRQ_EDGE_RISE :
-        (condition == GpioConditionFall) ? GPIO_IRQ_EDGE_FALL :
-        (condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL : 0,
+        (condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
+        (condition == GpioConditionFall)     ? GPIO_IRQ_EDGE_FALL :
+        (condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL :
+                                               0,
         true,
         furi_hal_gpio_callback);
 
@@ -148,6 +139,6 @@ FURI_ALWAYS_INLINE static void furi_hal_gpio_int_call(uint16_t pin_num) {
     }
 }
 
-void furi_hal_gpio_callback(uint gpio, uint32_t event_mask) {
+void __isr __not_in_flash_func(furi_hal_gpio_callback)(uint gpio, uint32_t event_mask) {
     furi_hal_gpio_int_call(gpio);
 }

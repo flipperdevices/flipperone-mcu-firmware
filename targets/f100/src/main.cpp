@@ -19,6 +19,7 @@
 //#include <platform_startup.h>
 #include <furi_hal_pwm.h>
 #include <drivers/ws2812/ws2812.h>
+#include <strings.h>
 
 #define TAG "Main"
 
@@ -40,7 +41,9 @@
 // }
 
 static void key1_callback(void* ctx) {
-    printf("Key1 pressed!");
+    //printf("Key1 pressed!");
+    furi_hal_gpio_write(&gpio_pico_led, true);
+    furi_hal_gpio_write(&gpio_pico_led, false);
 }
 
 static void task_main(void* arg) {
@@ -55,48 +58,49 @@ static void task_main(void* arg) {
     furi_hal_gpio_init_simple(&gpio_key1, GpioModeInput);
     furi_hal_gpio_add_int_callback(&gpio_key1, GpioConditionFall, key1_callback, NULL);
 
-    // FuriHalSpiHandle spi_handle = {
-    //     .id = FuriHalSpiIdSPI0,
-    // };
-    // furi_hal_spi_init(&spi_handle, 4000000, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
     FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_key_back, 8, 200000, false);
     uint8_t duty = 0;
 
     GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 1);
     ws2812_pins[0] = gpio_status_led_line1;
-
     Ws2812* ws2812 = ws2812_init(ws2812_pins, 1);
     free(ws2812_pins);
 
     DisplayJd9853* display = display_jd9853_init();
     display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
+    uint8_t index_led = 0;
     
     while(true) {
         furi_hal_gpio_write(&gpio_pico_led, true);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
         furi_hal_gpio_write(&gpio_pico_led, false);
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
         display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
         display_jd9853_fill(display, 0x00, 0xFF, 0xFF); // Fill cyan
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
         display_jd9853_fill(display, 0xFF, 0x00, 0xFF); // Fill magenta
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
         display_jd9853_fill(display, 0xFF, 0xFF, 0x00); // Fill yellow
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(10));
         display_jd9853_fill(display, 0x00, 0x00, 0x00); // Fill black
 
         furi_hal_pwm_set_duty_cycle(pwm, duty);
         duty += 5;
-        ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
+        for (size_t i = 0; i < 29; i++){
+            if(index_led == i){
+                ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
+                ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, 0, duty);
+                ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, duty, 0);
+            } else {
+                ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 0);
+            }  
+        }
+        index_led++;
+        if(index_led >= 30) {
+            index_led = 0;
+        }
 
-
-        // uint8_t tx_data[] = {0xAA, 0x55, 0xFF, 0x00};
-        // furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
-        // uint8_t tx_data1[] = {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
-        // furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
-        // furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
-        // furi_hal_spi_tx_blocking(&spi_handle, tx_data1, sizeof(tx_data1));
     }
     furi_crash();
 }
