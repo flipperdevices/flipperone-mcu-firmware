@@ -3,6 +3,7 @@
 #include <furi_hal_gpio.h>
 #include <hardware/pwm.h>
 #include "hardware/clocks.h"
+#include <stdint.h>
 
 #define TAG "FuriHalPwm"
 
@@ -14,8 +15,9 @@ struct FuriHalPwm {
     bool invert;
 };
 
-FuriHalPwm* furi_hal_pwm_init(const GpioPin* gpio, size_t bits, size_t clock_div, bool invert) {
+FuriHalPwm* furi_hal_pwm_init(const GpioPin* gpio, size_t bits, size_t freq_hz, bool invert) {
     furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(bits > 0 && bits <= 16);
 
     FuriHalPwm* instance = malloc(sizeof(FuriHalPwm));
     furi_hal_gpio_init_ex(gpio, GpioModeOutputPushPull, GpioPullNo, GpioSpeedLow, GpioAltFn4Pwm);
@@ -27,10 +29,21 @@ FuriHalPwm* furi_hal_pwm_init(const GpioPin* gpio, size_t bits, size_t clock_div
     instance->max_value = (1 << bits);
     instance->invert = invert;
 
-    float freq = (float)clock_get_hz(clk_sys) / (float)clock_div / instance->max_value;
-    FURI_LOG_D(TAG, "PWM %d: slice_num: %ld, channel_num: %ld, frequency: %.2f kHz", gpio->pin, instance->slice_num, instance->channel_num, freq / 1000.0f);
+    float div = (float)clock_get_hz(clk_sys) / ((float)freq_hz * instance->max_value);
+
+    uint8_t div_value = (uint8_t)roundf(div);
+    float freq_temp = (float)clock_get_hz(clk_sys) / (float)(div_value) / instance->max_value;
+    FURI_LOG_D(
+        TAG,
+        "PWM %d: slice_num: %ld, channel_num: %ld, frequency: %.2f kHz, div: %f",
+        gpio->pin,
+        instance->slice_num,
+        instance->channel_num,
+        freq_temp / 1000.0f,
+        div_value);
+
     // Set the PWM clock divider
-    pwm_set_clkdiv_int_frac4(instance->slice_num, clock_div, 0);
+    pwm_set_clkdiv_int_frac4(instance->slice_num, div_value, 0);
 
     // Set the PWM wrap value
     pwm_set_wrap(instance->slice_num, instance->max_value);

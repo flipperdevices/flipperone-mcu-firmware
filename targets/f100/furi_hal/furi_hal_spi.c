@@ -125,13 +125,7 @@ void furi_hal_spi_init(
     dma_channel_set_write_addr(spi->dma_tx_channel, &spi_get_hw(periph)->dr, false);
     dma_channel_set_config(spi->dma_tx_channel, &c, false);
 
-    FURI_LOG_D(
-        TAG,
-        "SPI %d initialized: baud_rate=%lu, mode=%d, bit_order=%d",
-        spi_id,
-        baud_rate,
-        mode,
-        bit_order);
+    FURI_LOG_D(TAG, "SPI %d initialized: baud_rate=%lu, mode=%d, bit_order=%d", spi_id, baud_rate, mode, bit_order);
 }
 
 void furi_hal_spi_deinit(FuriHalSpiHandle* handle) {

@@ -58,7 +58,7 @@ static void task_main(void* arg) {
     //     .id = FuriHalSpiIdSPI0,
     // };
     // furi_hal_spi_init(&spi_handle, 4000000, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
-    FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_key_back, 8, 1, false);
+    FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_key_back, 8, 200000, false);
     uint8_t duty = 0;
 
     DisplayJd9853* display = display_jd9853_init();
