@@ -1,4 +1,3 @@
-#include "core/check.h"
 #include "furi_hal_spi_types.h"
 #include <furi.h>
 #include <furi_hal_spi.h>
@@ -9,8 +8,8 @@
 
 #include "hardware/spi.h"
 #include "hardware/dma.h"
-#include "pico/binary_info.h"
-#include <stdint.h>
+
+#define TAG "FuriHalSpi"
 
 typedef struct {
     FuriHalSpiHandle* handle;
@@ -125,6 +124,14 @@ void furi_hal_spi_init(
     channel_config_set_dreq(&c, spi_get_dreq(periph, true));
     dma_channel_set_write_addr(spi->dma_tx_channel, &spi_get_hw(periph)->dr, false);
     dma_channel_set_config(spi->dma_tx_channel, &c, false);
+
+    FURI_LOG_D(
+        TAG,
+        "SPI %d initialized: baud_rate=%lu, mode=%d, bit_order=%d",
+        spi_id,
+        baud_rate,
+        mode,
+        bit_order);
 }
 
 void furi_hal_spi_deinit(FuriHalSpiHandle* handle) {
@@ -152,6 +159,8 @@ void furi_hal_spi_deinit(FuriHalSpiHandle* handle) {
 
     free(spi);
     furi_hal_spi[spi_id] = NULL;
+
+    FURI_LOG_D(TAG, "SPI %d deinitialized", spi_id);
 }
 
 void furi_hal_spi_tx_blocking(FuriHalSpiHandle* handle, const uint8_t* tx_buffer, size_t size) {

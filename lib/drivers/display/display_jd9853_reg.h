@@ -1,4 +1,8 @@
 #pragma once
+
+#define SCREEN_WIDTH 240
+#define SCREEN_HEIGHT 240
+
 //https://github.com/flipperdevices/one-rp2350-control/blob/main/docs/GWT-2.39-256144-AWMN-04-FS-1.1.pdf
 typedef enum {
     nop = 0x00, /* No Operation */
@@ -42,8 +46,6 @@ typedef enum {
     rdid3 = 0xDC, /* Read ID3 Value */
 } DisplayJd9853Reg;
 
-#define SCREEN_WIDTH 240
-#define SCREEN_HEIGHT 240
 static const uint8_t st7789_init_seq[] = {
         1, 20, 0x01,                        // Software reset
         1, 10, 0x11,                        // Exit sleep mode

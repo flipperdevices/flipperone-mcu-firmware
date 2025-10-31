@@ -8,7 +8,7 @@
 #include <furi_hal_spi.h>
 #include <furi_hal_spi_types_i.h>
 
-#define DISPLAY_BAUNDRATE (4 * 1000 * 1000)
+#define DISPLAY_BAUNDRATE (100 * 1000 * 1000)
 
 struct DisplayJd9853 {
     FuriHalSpiHandle* spi_handle;
@@ -26,15 +26,14 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853* display,
     furi_hal_spi_tx_blocking(display->spi_handle, data, size);
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_init_sequence(DisplayJd9853* display, const uint8_t* init_seq) {
-    const uint8_t* cmd = init_seq;
-    while(*cmd) {
-        display_jd9853_write_reg(display, (DisplayJd9853Reg)(*(cmd + 2)));
-        if(*(cmd + 1)) {
-            display_jd9853_write_data(display, (uint8_t*)(cmd + 3), *(cmd + 1));
+static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853* display, const uint8_t* config) {
+    while(*config) {
+        display_jd9853_write_reg(display, (DisplayJd9853Reg)(*(config + 2)));
+        if(*(config + 1)) {
+            display_jd9853_write_data(display, (uint8_t*)(config + 3), *(config + 1));
         }
-        furi_delay_ms(*(cmd + 1) * 5);
-        cmd += *(cmd) + 2;
+        furi_delay_ms(*(config + 1) * 5);
+        config += *(config) + 2;
     }
 }
 
@@ -45,7 +44,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853* display,
     display_jd9853_write_reg(display, caset); // Column address set
     display_jd9853_write_data(display, caset_data, sizeof(caset_data));
 
-    display_jd9853_write_reg(display, paset); // Row address set
+    display_jd9853_write_reg(display, paset); // Page address set
     display_jd9853_write_data(display, paset_data, sizeof(paset_data));
 }
 
@@ -95,14 +94,14 @@ DisplayJd9853* display_jd9853_init(void) {
     furi_delay_ms(30);
 
     //Initialization sequence
-    display_jd9853_init_sequence(display, st7789_init_seq);
+    display_jd9853_load_config(display, st7789_init_seq);
 
     return display;
 }
 
 void display_jd9853_deinit(DisplayJd9853* display) {
     furi_check(display);
-    display_jd9853_init_sequence(display, st7789_deinit_seq);
+    display_jd9853_load_config(display, st7789_deinit_seq);
     if(display) {
         furi_hal_spi_deinit(display->spi_handle);
         free(display->spi_handle);

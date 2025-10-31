@@ -2,6 +2,7 @@
 #include <furi_hal.h>
 //#include <flipper.h>
 
+#include <pico/types.h>
 #include <stdio.h>
 #include "pico/stdlib.h"
 //#include <drivers/log.hpp>
@@ -16,6 +17,7 @@
 // #include <furi_hal_spi_types_i.h>
 
 //#include <platform_startup.h>
+#include <furi_hal_pwm.h>
 
 #define TAG "Main"
 
@@ -39,27 +41,9 @@
 static void key1_callback(void* ctx) {
     printf("Key1 pressed!");
 }
-// #include <drivers/display.hpp>
-// #define D_PIN_CTRL  35 //8
-// #define D_PIN_SDA   19 //7
-// #define D_PIN_SCL   18 //6
-// #define D_PIN_RESET 12 //5
-// #define D_PIN_WR    13 //4
-// #define D_PIN_CS    17 //3
-// // #define D_WIDTH     258
-// // #define D_HEIGHT    144
-// #define D_WIDTH     240
-// #define D_HEIGHT    240
-// #define D_OFF_X     77
-// #define D_OFF_Y     (320 - D_HEIGHT) // was 0 without mirroring and rotation
-
-// Display<D_PIN_CTRL, D_PIN_RESET, D_PIN_CS, D_PIN_SCL, D_PIN_SDA, D_PIN_WR, D_OFF_X, D_OFF_Y, D_WIDTH, D_HEIGHT> hw_display;
 
 static void task_main(void* arg) {
-    //Log::info("Starting main task...");
-
-    //furi_log_init();
-    //stdio_init_all();
+    furi_log_set_level(FuriLogLevelDebug);
     FURI_LOG_T("tag", "Trace");
     FURI_LOG_D("tag", "Debug");
     FURI_LOG_I("tag", "Info");
@@ -74,12 +58,8 @@ static void task_main(void* arg) {
     //     .id = FuriHalSpiIdSPI0,
     // };
     // furi_hal_spi_init(&spi_handle, 4000000, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
-
-    // hw_display.init(false);
-    // const size_t buffer_bytes_per_pixel = 2;
-    // const size_t buffer_size = D_WIDTH * D_HEIGHT * buffer_bytes_per_pixel;
-    // uint8_t buffer[buffer_size];
-    // hw_display.write_buffer(buffer);
+    FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_key_back, 8, 1, false);
+    uint8_t duty = 0;
 
     DisplayJd9853* display = display_jd9853_init();
     display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
@@ -90,11 +70,18 @@ static void task_main(void* arg) {
         furi_hal_gpio_write(&gpio_pico_led, false);
         vTaskDelay(pdMS_TO_TICKS(100));
         display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
+        vTaskDelay(pdMS_TO_TICKS(100));
         display_jd9853_fill(display, 0x00, 0xFF, 0xFF); // Fill cyan
+        vTaskDelay(pdMS_TO_TICKS(100));
         display_jd9853_fill(display, 0xFF, 0x00, 0xFF); // Fill magenta
+        vTaskDelay(pdMS_TO_TICKS(100));
         display_jd9853_fill(display, 0xFF, 0xFF, 0x00); // Fill yellow
+        vTaskDelay(pdMS_TO_TICKS(100));
         display_jd9853_fill(display, 0x00, 0x00, 0x00); // Fill black
-        
+
+        furi_hal_pwm_set_duty_cycle(pwm, duty);
+        duty += 5;
+
 
         // uint8_t tx_data[] = {0xAA, 0x55, 0xFF, 0x00};
         // furi_hal_spi_tx_blocking(&spi_handle, tx_data, sizeof(tx_data));
