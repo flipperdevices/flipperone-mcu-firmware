@@ -63,6 +63,10 @@ extern const GpioPin gpio_pico_led;
 extern const GpioPin gpio_status_led_line1;
 // extern const GpioPin gpio_status_led_line2;
 // extern const GpioPin gpio_status_led_line3;
+extern const GpioPin gpio_i2c0_sda;
+extern const GpioPin gpio_i2c0_scl;
+extern const GpioPin gpio_i2c1_sda;
+extern const GpioPin gpio_i2c1_scl;
 
 extern const GpioPinRecord gpio_pins[];
 extern const size_t gpio_pins_count;

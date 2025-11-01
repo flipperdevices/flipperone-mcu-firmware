@@ -1,4 +1,3 @@
-#include "furi_hal_spi_types.h"
 #include <furi.h>
 #include <furi_hal_spi.h>
 #include <furi_hal_spi_types_i.h>
@@ -169,7 +168,7 @@ void furi_hal_spi_tx_blocking(FuriHalSpiHandle* handle, const uint8_t* tx_buffer
     dma_channel_set_transfer_count(spi->dma_tx_channel, size, false);
 
     // Start DMA transfer
-    dma_start_channel_mask(1u << spi->dma_tx_channel);
+    dma_channel_start(spi->dma_tx_channel);
 
     // Wait for DMA transfer to complete
     dma_channel_wait_for_finish_blocking(spi->dma_tx_channel);

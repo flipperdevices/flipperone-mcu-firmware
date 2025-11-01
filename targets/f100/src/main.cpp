@@ -21,6 +21,9 @@
 #include <drivers/ws2812/ws2812.h>
 #include <strings.h>
 
+#include <furi_hal_i2c.h>
+#include <furi_hal_i2c_types_i.h>
+
 #define TAG "Main"
 
 // int32_t init_task(void* context) {
@@ -69,6 +72,9 @@ static void task_main(void* arg) {
     DisplayJd9853* display = display_jd9853_init();
     display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
     uint8_t index_led = 0;
+
+    FuriHalI2cHandle i2c_handle = {.id = FuriHalI2cIdI2c0, .in_use = true};
+    furi_hal_i2c_master_init(&i2c_handle, 400000);
     
     while(true) {
         furi_hal_gpio_write(&gpio_pico_led, true);
@@ -100,6 +106,10 @@ static void task_main(void* arg) {
         if(index_led >= 30) {
             index_led = 0;
         }
+
+
+
+    furi_hal_i2c_bus_scan_print(&i2c_handle);
 
     }
     furi_crash();

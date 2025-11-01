@@ -1,7 +1,7 @@
 #pragma once
 
 /**
- * UART channels
+ * SPI channels
  */
 typedef enum {
     FuriHalSpiIdSPI0 = 0,

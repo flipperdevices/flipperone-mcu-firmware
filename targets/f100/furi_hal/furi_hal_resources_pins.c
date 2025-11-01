@@ -19,9 +19,9 @@ const GpioPin gpio_key_left = {.pin = 16};
 const GpioPin gpio_key_center = {.pin = 6};
 const GpioPin gpio_key_right = {.pin = 5};
 const GpioPin gpio_key_down = {.pin = 4};
-const GpioPin gpio_key_back = {.pin = 20};
+const GpioPin gpio_key_back = {.pin = 22};
 
-const GpioPin gpio_normal_black = {.pin = 21};
+//const GpioPin gpio_normal_black = {.pin = 21};
 const GpioPin gpio_bat_charging = {.pin = 24};
 const GpioPin gpio_bat_charge_adc = {.pin = 29};
 const GpioPin gpio_pico_first_adc = {.pin = 26};
@@ -30,6 +30,11 @@ const GpioPin gpio_pico_led = {.pin = 25};
 const GpioPin gpio_status_led_line1 = {.pin = 2};
 // const GpioPin gpio_status_led_line2 = {.pin = 2};
 // const GpioPin gpio_status_led_line3 = {.pin = 2};
+
+const GpioPin gpio_i2c0_sda = {.pin = 20};
+const GpioPin gpio_i2c0_scl = {.pin = 21};
+const GpioPin gpio_i2c1_sda = {.pin = 22};
+const GpioPin gpio_i2c1_scl = {.pin = 23};
 
 const GpioPinRecord gpio_pins[] = {};
 

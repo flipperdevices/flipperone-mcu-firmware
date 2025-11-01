@@ -92,6 +92,7 @@ target_link_libraries(one-rp2350-control
     pico_stdlib
     hardware_pwm
     hardware_spi
+    hardware_i2c
     hardware_adc
     hardware_dma
     ws2812
