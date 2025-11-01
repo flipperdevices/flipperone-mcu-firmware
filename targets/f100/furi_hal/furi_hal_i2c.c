@@ -8,6 +8,7 @@
 #include <furi_hal_power.h>
 
 #include "hardware/i2c.h"
+#include <pico/error.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -173,7 +174,7 @@ bool furi_hal_i2c_device_ready(FuriHalI2cHandle* handle, uint8_t device_address,
     else
         ret = furi_hal_i2c_master_rx_blocking(handle, device_address, &rxdata, 1, FURI_HAL_I2C_TIMEOUT_US);
 
-    return ret == PICO_OK;
+    return ret < PICO_OK ? false : true;
 }
 
 void furi_hal_i2c_bus_scan_print(FuriHalI2cHandle* handle) {
@@ -196,8 +197,8 @@ void furi_hal_i2c_bus_scan_print(FuriHalI2cHandle* handle) {
         // -1.
 
         // Skip over any reserved addresses.
-        int ret = furi_hal_i2c_device_ready(handle, addr, FURI_HAL_I2C_TIMEOUT_US) ? 0 : -1;
-        FURI_LOG_RAW_I(ret < 0 ? "." : "@");
+        bool ret = furi_hal_i2c_device_ready(handle, addr, FURI_HAL_I2C_TIMEOUT_US);
+        FURI_LOG_RAW_I(ret ? "@" : ".");
         FURI_LOG_RAW_I(addr % 16 == 15 ? "\n" : "  ");
     }
 }
