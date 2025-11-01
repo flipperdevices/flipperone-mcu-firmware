@@ -44,7 +44,7 @@ file(GLOB_RECURSE SOURCES
     "lib/furi/core/*.c*" 
     "targets/f100/furi_hal/*.c*"
     "lib/drivers/display/*.c*"  
-    #"lib/drivers/ws2812/*.c*"  
+    "lib/drivers/tps62868x/*.c*"  
     "targets/f100/src/*.c*" 
    
 )

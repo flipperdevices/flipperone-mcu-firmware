@@ -42,6 +42,7 @@ extern const GpioPin gpio_display_scl;
 extern const GpioPin gpio_display_reset;
 extern const GpioPin gpio_display_dc;
 extern const GpioPin gpio_display_cs;
+extern const GpioPin gpio_display_vci_en;
 extern const GpioPin gpio_key1;
 extern const GpioPin gpio_key2;
 extern const GpioPin gpio_key3;

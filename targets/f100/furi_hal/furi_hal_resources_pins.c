@@ -7,6 +7,7 @@ const GpioPin gpio_display_scl = {.pin = 18};
 const GpioPin gpio_display_reset = {.pin = 12};
 const GpioPin gpio_display_dc = {.pin = 13};
 const GpioPin gpio_display_cs = {.pin = 17};
+const GpioPin gpio_display_vci_en = {.pin = 24};
 
 const GpioPin gpio_key1 = {.pin = 15};
 const GpioPin gpio_key2 = {.pin = 14};
@@ -35,6 +36,8 @@ const GpioPin gpio_i2c0_sda = {.pin = 20};
 const GpioPin gpio_i2c0_scl = {.pin = 21};
 const GpioPin gpio_i2c1_sda = {.pin = 22};
 const GpioPin gpio_i2c1_scl = {.pin = 23};
+
+
 
 const GpioPinRecord gpio_pins[] = {};
 

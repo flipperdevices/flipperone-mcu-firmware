@@ -5,8 +5,10 @@
 #include <furi_hal.h>
 #include <furi_hal_gpio.h>
 #include "furi_hal_resources.h"
+#include <furi_hal_power.h>
 
 #include "hardware/i2c.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 #define TAG "FuriHalI2c"
@@ -47,6 +49,16 @@ static const FuriHalI2cResources furi_hal_i2c_resources[FuriHalI2cIdMax] = {
 };
 
 static FuriHalI2c* furi_hal_i2c[FuriHalI2cIdMax];
+
+void furi_hal_i2c_acquire(FuriHalI2cHandle* handle) {
+    //Todo: add lock
+    furi_hal_power_insomnia_enter();
+}
+
+void furi_hal_i2c_release(FuriHalI2cHandle* handle) {
+    //Todo: add unlock
+    furi_hal_power_insomnia_exit();
+}
 
 void furi_hal_i2c_master_init(FuriHalI2cHandle* handle, uint32_t baud_rate) {
     furi_check(handle);
@@ -146,6 +158,24 @@ int furi_hal_i2c_master_trx_blocking(
     return i2c_read_blocking_until(periph, device_address, rx_buffer, rx_size, false, make_timeout_time_us(timeout_us));
 }
 
+bool furi_hal_i2c_device_ready(FuriHalI2cHandle* handle, uint8_t device_address, uint32_t timeout_us) {
+    furi_check(handle);
+    const FuriHalI2cId i2c_id = handle->id;
+    furi_check(furi_hal_i2c[i2c_id]);
+
+    FuriHalI2c* i2c = furi_hal_i2c[i2c_id];
+    i2c_inst_t* periph = i2c->periph_ptr;
+
+    int ret;
+    uint8_t rxdata;
+    if((device_address & 0x78) == 0 || (device_address & 0x78) == 0x78)
+        ret = PICO_ERROR_GENERIC;
+    else
+        ret = furi_hal_i2c_master_rx_blocking(handle, device_address, &rxdata, 1, FURI_HAL_I2C_TIMEOUT_US);
+
+    return ret == PICO_OK;
+}
+
 void furi_hal_i2c_bus_scan_print(FuriHalI2cHandle* handle) {
     furi_check(handle);
     const FuriHalI2cId i2c_id = handle->id;
@@ -166,13 +196,7 @@ void furi_hal_i2c_bus_scan_print(FuriHalI2cHandle* handle) {
         // -1.
 
         // Skip over any reserved addresses.
-        int ret;
-        uint8_t rxdata;
-        if((addr & 0x78) == 0 || (addr & 0x78) == 0x78)
-            ret = PICO_ERROR_GENERIC;
-        else
-            ret = furi_hal_i2c_master_rx_blocking(handle, addr, &rxdata, 1, FURI_HAL_I2C_TIMEOUT_US);
-
+        int ret = furi_hal_i2c_device_ready(handle, addr, FURI_HAL_I2C_TIMEOUT_US) ? 0 : -1;
         FURI_LOG_RAW_I(ret < 0 ? "." : "@");
         FURI_LOG_RAW_I(addr % 16 == 15 ? "\n" : "  ");
     }
