@@ -3,9 +3,10 @@
 #include "common_defines.h"
 
 #include <furi_hal_debug.h>
-//#include <furi_hal_interrupt.h>
+#include <furi_hal_interrupt.h>
 #include <furi_hal_power.h>
-//#include <furi_hal_flash.h>
+#include <furi_hal_nvm.h>
+#include <furi_hal_flash.h>
 
 #include <stdio.h>
 
@@ -54,8 +55,7 @@ static volatile uint32_t __furi_check_registers[13] = {0};
                  : "r"(r0)                              \
                  : "memory");
 
-//todo: implement xPortGetTotalHeapSize
-//extern size_t xPortGetTotalHeapSize(void);
+extern size_t xPortGetTotalHeapSize(void);
 
 static void __furi_print_register_info(void) {
     // Print registers
@@ -77,23 +77,18 @@ static void __furi_print_stack_info(void) {
 
 static void __furi_print_heap_info(void) {
     furi_log_puts("\r\n\t     heap total: ");
-    //todo: implement xPortGetTotalHeapSize
-    //furi_log_putu32(xPortGetTotalHeapSize());
+    furi_log_putu32(xPortGetTotalHeapSize());
     furi_log_puts("\r\n\t      heap free: ");
-    //todo: implement xPortGetFreeHeapSize
-    //furi_log_putu32(xPortGetFreeHeapSize());
+    furi_log_putu32(xPortGetFreeHeapSize());
     furi_log_puts("\r\n\t heap watermark: ");
-    //todo: implement xPortGetMinimumEverFreeHeapSize
-    //furi_log_putu32(xPortGetMinimumEverFreeHeapSize());
+    furi_log_putu32(xPortGetMinimumEverFreeHeapSize());
     furi_log_puts("\r\n\n");
 }
 
 static void __furi_print_name(bool isr) {
     if(isr) {
         uint8_t exception_number = __get_IPSR();
-        //TODO: implement furi_hal_interrupt_get_name
-        const char* name = "FixMe";
-        //const char* name = furi_hal_interrupt_get_name(exception_number);
+        const char* name = furi_hal_interrupt_get_name(exception_number);
         furi_log_puts("[ISR ");
         if(name) {
             furi_log_puts(name);
@@ -156,17 +151,15 @@ FURI_NORETURN void __furi_crash_implementation(void) {
         RESTORE_REGISTERS_AND_HALT_MCU(debug);
 #ifndef FURI_DEBUG
     } else {
-        //todo: implement storing crash data to NVM
-
-        // uint32_t ptr = (uint32_t)__furi_check_message;
-        // if(ptr < (uint32_t)furi_hal_flash_get_base() ||
-        //    ptr > (uint32_t)furi_hal_flash_get_free_end_address()) {
-        //     ptr = (uint32_t) "Check serial logs";
-        // }
-        // furi_hal_nvm_set_fault_data(ptr);
-        // furi_log_puts("\r\nRebooting system.\r\n");
-        // furi_log_puts("\033[0m\r\n");
-        // furi_hal_power_reset();
+        uint32_t ptr = (uint32_t)__furi_check_message;
+        if(ptr < (uint32_t)furi_hal_flash_get_base() ||
+           ptr > (uint32_t)furi_hal_flash_get_free_end_address()) {
+            ptr = (uint32_t) "Check serial logs";
+        }
+        furi_hal_nvm_set_fault_data(ptr);
+        furi_log_puts("\r\nRebooting system.\r\n");
+        furi_log_puts("\033[0m\r\n");
+        furi_hal_power_reset();
     }
 #endif
     __builtin_unreachable();

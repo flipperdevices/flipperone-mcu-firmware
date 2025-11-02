@@ -1,3 +1,4 @@
+#include "core/kernel.h"
 #include "core/log.h"
 #define PICO_DEBUG_MALLOC 1
 
@@ -82,9 +83,12 @@ void task_main(void* arg) {
         duty += 5;
         for(size_t i = 0; i < 29; i++) {
             if(index_led == i) {
-                ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
-                ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, 0, duty);
-                ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, duty, 0);
+                // ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
+                // ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, 0, duty);
+                // ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, duty, 0);
+                ws2812_put_pixel_rgb(ws2812, 0, 255, 0, 0);
+                ws2812_put_pixel_rgb(ws2812, 0, 0, 255, 0);
+                ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 255);
             } else {
                 ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 0);
             }
@@ -93,7 +97,7 @@ void task_main(void* arg) {
         if(index_led >= 30) {
             index_led = 0;
         }
-
+        furi_delay_ms(10);
         furi_hal_i2c_bus_scan_print(&i2c_handle);
     }
     furi_crash();
@@ -102,14 +106,14 @@ void task_main(void* arg) {
 int32_t init_task(void* context) {
     UNUSED(context);
 
-    //task_main(context);
+    task_main(context);
 
-    // Flipper FURI HAL
+    // Flipper FURI HAL\
     furi_hal_init();
 
     // Set the UART for logging output
     //furi_hal_serial_control_set_logging_config(FuriHalSerialIdUsart6, 230400);
-    stdio_init_all();
+    //stdio_init_all();
     FURI_LOG_I(TAG, "Init task started");
 
     // Init flipper
@@ -117,14 +121,17 @@ int32_t init_task(void* context) {
 
     furi_background();
 
+    //task_main(context);
     return 0;
 }
 
 int main(void) {
     //Initialize FURI layer
-
+    stdio_init_all();
+    printf("Start");
     furi_init();
     //todo stdio_init_all???
+    
 
     // Critical FURI HAL
     furi_hal_init_early();

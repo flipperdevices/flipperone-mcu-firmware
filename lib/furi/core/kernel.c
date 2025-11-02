@@ -6,7 +6,6 @@
 #include <furi_hal.h>
 
 #include <FreeRTOS.h>
-#include <pico/time.h>
 #include <task.h>
 
 //todo
@@ -133,7 +132,7 @@ uint32_t furi_kernel_get_tick_frequency(void) {
 
 void furi_delay_tick(uint32_t ticks) {
     furi_check(!furi_kernel_is_irq_or_masked());
-    //Todo: fix 
+    // Todo: check idle task?
     //furi_check(furi_thread_get_current_id() != xTaskGetIdleTaskHandle());
 
     if(ticks == 0U) {
@@ -145,7 +144,7 @@ void furi_delay_tick(uint32_t ticks) {
 
 FuriStatus furi_delay_until_tick(uint32_t tick) {
     furi_check(!furi_kernel_is_irq_or_masked());
-    //Todo: fix 
+    // Todo: check idle task?
     //furi_check(furi_thread_get_current_id() != xTaskGetIdleTaskHandle());
 
     TickType_t tcnt, delay;

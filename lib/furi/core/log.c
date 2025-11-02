@@ -1,7 +1,6 @@
 #include "log.h"
 #include "check.h"
 #include "mutex.h"
-#include <stdio.h>
 #include <furi_hal.h>
 #include <m-list.h>
 
@@ -44,7 +43,7 @@ bool furi_log_add_handler(FuriLogHandler handler) {
 
     bool ret = true;
 
-   furi_check(furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk);
+    furi_check(furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk);
 
     FuriLogHandlersList_it_t it;
     FuriLogHandlersList_it(it, furi_log.tx_handlers);
@@ -100,9 +99,10 @@ void furi_log_tx(const uint8_t* data, size_t size) {
         FuriLogHandlersList_next(it);
     }
 
-    if(!FURI_IS_ISR()) furi_mutex_release(furi_log.mutex);
-
+    //Todo: remove printf when handlers are present
     printf("%.*s", (int)size, data);
+
+    if(!FURI_IS_ISR()) furi_mutex_release(furi_log.mutex);
 }
 
 void furi_log_puts(const char* data) {
@@ -132,7 +132,7 @@ void furi_log_print_format(FuriLogLevel level, const char* tag, const char* form
            FuriStatusOk) {
             break;
         }
-         FuriString* string = furi_string_alloc();
+        FuriString* string = furi_string_alloc();
 
         const char* color = _FURI_LOG_CLR_RESET;
         const char* log_letter = " ";
