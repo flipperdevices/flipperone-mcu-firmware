@@ -37,7 +37,9 @@ pico_sdk_init()
 # Add executable. Default name is the project name, version 0.1
 
 file(GLOB_RECURSE SOURCES
-    "lib/furi/core/*.c*" 
+    "lib/furi/core/*.c*"
+    "lib/furi/version/*.c*" 
+    "lib/furi/*.c*" 
     "app/*.c"
     "app/theme/*.c"
     "app/fs/*.c"
@@ -74,12 +76,12 @@ pico_enable_stdio_usb(one-rp2350-control 1)
 
 # Add the standard include files to the build
 target_include_directories(one-rp2350-control PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_hal
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/config
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
-    ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
 )

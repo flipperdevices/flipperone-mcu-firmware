@@ -1,8 +1,10 @@
+#include "core/log.h"
 #define PICO_DEBUG_MALLOC 1
 
 #include <furi.h>
 #include <furi_hal.h>
-//#include <flipper.h>
+#include <furi_hal_nvm.h>
+#include <flipper.h>
 
 #include <pico/types.h>
 #include <stdio.h>
@@ -28,30 +30,13 @@
 
 #define TAG "Main"
 
-// int32_t init_task(void* context) {
-//     UNUSED(context);
-
-//     // Flipper FURI HAL
-//     furi_hal_init();
-
-//     // Set the UART for logging output
-//     furi_hal_serial_control_set_logging_config(FuriHalSerialIdUsart6, 230400);
-
-//     // Init flipper
-//     flipper_init();
-
-//     furi_background();
-
-//     return 0;
-// }
-
 static void key1_callback(void* ctx) {
     //printf("Key1 pressed!");
     furi_hal_gpio_write(&gpio_pico_led, true);
     furi_hal_gpio_write(&gpio_pico_led, false);
 }
 
-static void task_main(void* arg) {
+void task_main(void* arg) {
     furi_log_set_level(FuriLogLevelDebug);
     FURI_LOG_T("tag", "Trace");
     FURI_LOG_D("tag", "Debug");
@@ -77,7 +62,7 @@ static void task_main(void* arg) {
 
     FuriHalI2cHandle i2c_handle = {.id = FuriHalI2cIdI2c0, .in_use = true};
     furi_hal_i2c_master_init(&i2c_handle, 400000);
-    
+
     while(true) {
         furi_hal_gpio_write(&gpio_pico_led, true);
         vTaskDelay(pdMS_TO_TICKS(10));
@@ -95,73 +80,73 @@ static void task_main(void* arg) {
 
         furi_hal_pwm_set_duty_cycle(pwm, duty);
         duty += 5;
-        for (size_t i = 0; i < 29; i++){
-            if(index_led == i){
+        for(size_t i = 0; i < 29; i++) {
+            if(index_led == i) {
                 ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
                 ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, 0, duty);
                 ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, duty, 0);
             } else {
                 ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 0);
-            }  
+            }
         }
         index_led++;
         if(index_led >= 30) {
             index_led = 0;
         }
 
-
-
-    furi_hal_i2c_bus_scan_print(&i2c_handle);
-
+        furi_hal_i2c_bus_scan_print(&i2c_handle);
     }
     furi_crash();
 }
 
-int main(void) {
-    // xTaskCreate(task_main, "task_main", 1024 * 8, NULL, configMAX_PRIORITIES - 1, NULL);
+int32_t init_task(void* context) {
+    UNUSED(context);
 
-    // // somehow openocd fucks up the multicore reset
-    // // so we need to reset core1 manually
-    // sleep_ms(5);
-    // multicore_reset_core1();
-    // (void)multicore_fifo_pop_blocking();
+    //task_main(context);
 
-    // vTaskStartScheduler();
+    // Flipper FURI HAL
+    furi_hal_init();
 
-    // /* should never reach here */
-    // panic_unsupported();
-
-    //Initialize FURI layer
+    // Set the UART for logging output
+    //furi_hal_serial_control_set_logging_config(FuriHalSerialIdUsart6, 230400);
     stdio_init_all();
-    printf("Start\n");
-    furi_init();
+    FURI_LOG_I(TAG, "Init task started");
 
+    // Init flipper
+    //flipper_init();
+
+    furi_background();
+
+    return 0;
+}
+
+int main(void) {
+    //Initialize FURI layer
+
+    furi_init();
     //todo stdio_init_all???
-    
 
     // Critical FURI HAL
     furi_hal_init_early();
 
-    //     FuriThread* main_thread = furi_thread_alloc_ex("Init", 4096, init_task, NULL);
-    //     furi_thread_set_priority(main_thread, FuriThreadPriorityInit);
-    // #ifdef FURI_RAM_EXEC
-    //     furi_thread_start(main_thread);
-    // #else
-    //     FuriHalNvmBootMode boot_mode = furi_hal_nvm_get_boot_mode();
-    //     if(boot_mode == FuriHalNvmBootModeUpdate) {
-    //         furi_delay_ms(200);
-    //         furi_hal_nvm_set_boot_mode(FuriHalNvmBootModeNormal);
-    //         platform_boot_to_update();
-    //         // If we are here, the switch to the update was not successful
-    //         // FURI_LOG_W(TAG, "Failed to switch to update mode");
-    //         furi_hal_power_reset();
-    //     } else {
-    //         furi_thread_start(main_thread);
-    //     }
+    FuriThread* main_thread = furi_thread_alloc_ex("Init", 4096, init_task, NULL);
+    furi_thread_set_priority(main_thread, FuriThreadPriorityInit);
+#ifdef FURI_RAM_EXEC
+    furi_thread_start(main_thread);
+#else
+    //FuriHalNvmBootMode boot_mode = furi_hal_nvm_get_boot_mode();
+    // if(boot_mode == FuriHalNvmBootModeUpdate) {
+    //     furi_delay_ms(200);
+    //     furi_hal_nvm_set_boot_mode(FuriHalNvmBootModeNormal);
+    //     platform_boot_to_update();
+    //     // If we are here, the switch to the update was not successful
+    //     // FURI_LOG_W(TAG, "Failed to switch to update mode");
+    //     furi_hal_power_reset();
+    // } else {
+    furi_thread_start(main_thread);
+    //}
 
-    // #endif
-
-    xTaskCreate(task_main, "task_main", 1024 * 8, NULL, configMAX_PRIORITIES - 1, NULL);
+#endif
 
     // somehow openocd fucks up the multicore reset
     // so we need to reset core1 manually

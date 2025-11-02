@@ -12,7 +12,7 @@ struct STOP_EXTERNING_ME {};
 #include <furi.h>
 // #include <furi_hal_rtc.h>
 // #include <furi_hal_flash.h>
-// #include <furi_hal_version.h>
+#include <furi_hal_version.h>
 #include <furi_hal_memory.h>
 // #include <furi_hal_debug.h>
 #include <furi_hal_interrupt.h>

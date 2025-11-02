@@ -1,16 +1,16 @@
 #include "FreeRTOS.h"
 #include "task.h"
-#include "drivers/log.hpp"
+//#include "drivers/log.hpp"
 
 extern "C" void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskName) {
-    Log::error("Stack overflow in task: %s[%p]", pcTaskName, xTask);
+    //Log::error("Stack overflow in task: %s[%p]", pcTaskName, xTask);
     while(1) {
         /* Loop forever */
     }
 }
 
 extern "C" void vApplicationMallocFailedHook(void) {
-    Log::error("Memory allocation failed!");
+    //Log::error("Memory allocation failed!");
     while(1) {
         /* Loop forever */
     }
