@@ -1,6 +1,6 @@
 #include "log.h"
 #include "check.h"
-//#include "mutex.h"
+#include "mutex.h"
 #include <stdio.h>
 #include <furi_hal.h>
 #include <m-list.h>
@@ -11,7 +11,7 @@ LIST_DEF(FuriLogHandlersList, FuriLogHandler, M_POD_OPLIST)
 
 typedef struct {
     FuriLogLevel log_level;
-    //FuriMutex* mutex;
+    FuriMutex* mutex;
     FuriLogHandlersList_t tx_handlers;
 } FuriLogParams;
 
@@ -35,7 +35,7 @@ static const FuriLogLevelDescription FURI_LOG_LEVEL_DESCRIPTIONS[] = {
 void furi_log_init(void) {
     // Set default logging parameters
     furi_log.log_level = FURI_LOG_LEVEL_DEFAULT;
-    //furi_log.mutex = furi_mutex_alloc(FuriMutexTypeRecursive);
+    furi_log.mutex = furi_mutex_alloc(FuriMutexTypeRecursive);
     FuriLogHandlersList_init(furi_log.tx_handlers);
 }
 
@@ -44,7 +44,7 @@ bool furi_log_add_handler(FuriLogHandler handler) {
 
     bool ret = true;
 
-   // furi_check(furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk);
+   furi_check(furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk);
 
     FuriLogHandlersList_it_t it;
     FuriLogHandlersList_it(it, furi_log.tx_handlers);
@@ -60,7 +60,7 @@ bool furi_log_add_handler(FuriLogHandler handler) {
         FuriLogHandlersList_push_back(furi_log.tx_handlers, handler);
     }
 
-    //furi_mutex_release(furi_log.mutex);
+    furi_mutex_release(furi_log.mutex);
 
     return ret;
 }
@@ -68,7 +68,7 @@ bool furi_log_add_handler(FuriLogHandler handler) {
 bool furi_log_remove_handler(FuriLogHandler handler) {
     bool ret = false;
 
-    //furi_check(furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk);
+    furi_check(furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk);
 
     FuriLogHandlersList_it_t it;
     FuriLogHandlersList_it(it, furi_log.tx_handlers);
@@ -81,16 +81,16 @@ bool furi_log_remove_handler(FuriLogHandler handler) {
         }
     }
 
-    //furi_mutex_release(furi_log.mutex);
+    furi_mutex_release(furi_log.mutex);
 
     return ret;
 }
 
 void furi_log_tx(const uint8_t* data, size_t size) {
     if(!FURI_IS_ISR()) {
-        //furi_check(furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk);
+        furi_check(furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk);
     } else {
-        //if(furi_mutex_get_owner(furi_log.mutex)) return;
+        if(furi_mutex_get_owner(furi_log.mutex)) return;
     }
 
     FuriLogHandlersList_it_t it;
@@ -100,7 +100,7 @@ void furi_log_tx(const uint8_t* data, size_t size) {
         FuriLogHandlersList_next(it);
     }
 
-    //if(!FURI_IS_ISR()) furi_mutex_release(furi_log.mutex);
+    if(!FURI_IS_ISR()) furi_mutex_release(furi_log.mutex);
 
     printf("%.*s", (int)size, data);
 }
@@ -128,10 +128,10 @@ void furi_log_print_format(FuriLogLevel level, const char* tag, const char* form
             break;
         }
 
-        // if(furi_mutex_acquire(furi_log.mutex, furi_kernel_is_running() ? FuriWaitForever : 0) !=
-        //    FuriStatusOk) {
-        //     break;
-        // }
+        if(furi_mutex_acquire(furi_log.mutex, furi_kernel_is_running() ? FuriWaitForever : 0) !=
+           FuriStatusOk) {
+            break;
+        }
          FuriString* string = furi_string_alloc();
 
         const char* color = _FURI_LOG_CLR_RESET;
@@ -177,13 +177,13 @@ void furi_log_print_format(FuriLogLevel level, const char* tag, const char* form
 
         furi_log_puts("\r\n");
 
-        //furi_mutex_release(furi_log.mutex);
+        furi_mutex_release(furi_log.mutex);
     } while(0);
 }
 
 void furi_log_print_raw_format(FuriLogLevel level, const char* format, ...) {
-    if(level <= furi_log.log_level){//} &&
-       //furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk) {
+    if(level <= furi_log.log_level &&
+       furi_mutex_acquire(furi_log.mutex, FuriWaitForever) == FuriStatusOk) {
         FuriString* string;
         string = furi_string_alloc();
         va_list args;
@@ -194,7 +194,7 @@ void furi_log_print_raw_format(FuriLogLevel level, const char* format, ...) {
         furi_log_puts(furi_string_get_cstr(string));
         furi_string_free(string);
 
-        //furi_mutex_release(furi_log.mutex);
+        furi_mutex_release(furi_log.mutex);
     }
 }
 

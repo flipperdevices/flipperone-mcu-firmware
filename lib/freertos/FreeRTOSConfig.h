@@ -75,7 +75,7 @@ extern "C" {
 #define portTICK_RATE_MS                        ((TickType_t)1000 / configTICK_RATE_HZ)
 #define configMAX_PRIORITIES                    32
 #define configMINIMAL_STACK_SIZE                (configSTACK_DEPTH_TYPE)128
-#define configMAX_TASK_NAME_LEN                 16
+#define configMAX_TASK_NAME_LEN                 32
 //#define configUSE_16_BIT_TICKS                  0
 #define configTICK_TYPE_WIDTH_IN_BITS           TICK_TYPE_WIDTH_32_BITS
 #define configIDLE_SHOULD_YIELD                 1
@@ -86,14 +86,17 @@ extern "C" {
 #define configUSE_MUTEXES                       1
 #define configUSE_RECURSIVE_MUTEXES             1
 #define configUSE_APPLICATION_TASK_TAG          0
-#define configUSE_COUNTING_SEMAPHORES           0
+#define configUSE_COUNTING_SEMAPHORES           1
 #define configUSE_ALTERNATIVE_API               0 /* Deprecated! */
-#define configQUEUE_REGISTRY_SIZE               10
+//#define configQUEUE_REGISTRY_SIZE               10
+#define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_QUEUE_SETS                    1
 #define configUSE_TIME_SLICING                  1
 #define configUSE_NEWLIB_REENTRANT              1 // Necessary if any floating point printfs are used!
 #define configENABLE_BACKWARD_COMPATIBILITY     0
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 5
+
+#define configEXPECTED_IDLE_TIME_BEFORE_SLEEP 4
 
 /* System */
 #define configSTACK_DEPTH_TYPE           uint32_t
@@ -102,12 +105,14 @@ extern "C" {
 /* Memory allocation related definitions. */
 #define configSUPPORT_STATIC_ALLOCATION  1
 #define configSUPPORT_DYNAMIC_ALLOCATION 1
-#define configTOTAL_HEAP_SIZE            (UINT32_MAX)
+//#define configTOTAL_HEAP_SIZE            (UINT32_MAX)
 #define configAPPLICATION_ALLOCATED_HEAP 0
 
 /* Hook function related definitions. */
-#define configCHECK_FOR_STACK_OVERFLOW     2
-#define configUSE_MALLOC_FAILED_HOOK       1
+//#define configCHECK_FOR_STACK_OVERFLOW     2
+#define configCHECK_FOR_STACK_OVERFLOW     0
+//#define configUSE_MALLOC_FAILED_HOOK       1
+#define configUSE_MALLOC_FAILED_HOOK       0
 #define configUSE_DAEMON_TASK_STARTUP_HOOK 0
 
 /* Run time and task stats gathering related definitions. */
@@ -119,12 +124,24 @@ extern "C" {
 #define configUSE_CO_ROUTINES           0
 #define configMAX_CO_ROUTINE_PRIORITIES 1
 
+
+
 /* Software timer related definitions. */
 #define configUSE_TIMERS             1
-#define configTIMER_TASK_PRIORITY    (configMAX_PRIORITIES - 1)
-#define configTIMER_QUEUE_LENGTH     10
-#define configTIMER_TASK_STACK_DEPTH 512
-#define configIDLE_TASK_STACK_DEPTH  512
+//#define configTIMER_TASK_PRIORITY    (configMAX_PRIORITIES - 1)
+#define configTIMER_TASK_PRIORITY     (2)
+//#define configTIMER_QUEUE_LENGTH     10
+#define configTIMER_QUEUE_LENGTH      32
+
+//#define configTIMER_TASK_STACK_DEPTH 512
+#define configTIMER_TASK_STACK_DEPTH  256
+#define configTIMER_SERVICE_TASK_NAME "TimersSrv"
+
+#define configIDLE_TASK_NAME        "(-_-)"
+//#define configIDLE_TASK_STACK_DEPTH  512
+#define configIDLE_TASK_STACK_DEPTH 256
+
+
 
 /* Interrupt nesting behaviour configuration. */
 /*  The Cortex-M0+ implements the two most significant bits of an 8-bit priority field, 
@@ -180,8 +197,10 @@ to exclude the API function. */
 #define INCLUDE_xTaskGetSchedulerState      1
 #define INCLUDE_xTaskGetCurrentTaskHandle   1
 #define INCLUDE_uxTaskGetStackHighWaterMark 1
-#define INCLUDE_xTaskGetIdleTaskHandle      0
-#define INCLUDE_eTaskGetState               0
+//#define INCLUDE_xTaskGetIdleTaskHandle      0
+#define INCLUDE_xTaskGetIdleTaskHandle      1
+//#define INCLUDE_eTaskGetState               0
+#define INCLUDE_eTaskGetState               1
 #define INCLUDE_xEventGroupSetBitFromISR    1
 #define INCLUDE_xTimerPendFunctionCall      1
 #define INCLUDE_xTaskAbortDelay             0
@@ -190,11 +209,42 @@ to exclude the API function. */
 #define INCLUDE_xQueueGetMutexHolder        1
 #define INCLUDE_xSemaphoreGetMutexHolder    1
 
+#define INCLUDE_vTaskCleanUpResources       0
+
 #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
 extern uint64_t time_us_64(void); // "hardware/timer.h"
 #define portGET_RUN_TIME_COUNTER_VALUE() (time_us_64() / 100)
 
 /* A header file that defines trace macro can be included here. */
+#define configRECORD_STACK_HIGH_ADDRESS         1
+
+/* The lowest interrupt priority that can be used in a call to a "set priority"
+function. */
+#define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15
+
+/* The highest interrupt priority that can be used by any interrupt service
+routine that makes calls to interrupt safe FreeRTOS API functions.  DO NOT CALL
+INTERRUPT SAFE FREERTOS API FUNCTIONS FROM ANY INTERRUPT THAT HAS A HIGHER
+PRIORITY THAN THIS! (higher priorities are lower numeric values. */
+#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5
+
+/*
+ * The CMSIS-RTOS V2 FreeRTOS wrapper is dependent on the heap implementation used
+ * by the application thus the correct define need to be enabled below
+ */
+#define USE_FreeRTOS_HEAP_4
+
+/* Normal assert() semantics without relying on the provision of an assert.h
+header file. */
+#ifdef DEBUG
+#define configASSERT(x)                \
+    if((x) == 0) {                     \
+        furi_crash("FreeRTOS Assert"); \
+    }
+#endif
+
+// // Must be last line of config because of recursion
+// #include <core/check.h>
 
 #ifdef __cplusplus
 }

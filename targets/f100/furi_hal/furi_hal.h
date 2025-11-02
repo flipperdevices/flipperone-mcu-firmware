@@ -13,9 +13,9 @@ struct STOP_EXTERNING_ME {};
 // #include <furi_hal_rtc.h>
 // #include <furi_hal_flash.h>
 // #include <furi_hal_version.h>
-// #include <furi_hal_memory.h>
+#include <furi_hal_memory.h>
 // #include <furi_hal_debug.h>
-// #include <furi_hal_interrupt.h>
+#include <furi_hal_interrupt.h>
 #include <furi_hal_os.h>
 // #include <furi_hal_cortex.h>
 // #include <furi_hal_bus.h>

@@ -8,7 +8,7 @@ set(INCLUDES
 
 target_sources(${PROJECT_NAME} INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/freertos_glue.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS-Kernel/portable/MemMang/heap_3.c # simple wrapper for malloc/free
+    #${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS-Kernel/portable/MemMang/heap_3.c # simple wrapper for malloc/free
 )
 
 target_compile_options(${PROJECT_NAME} INTERFACE

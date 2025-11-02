@@ -1,3 +1,5 @@
+#define PICO_DEBUG_MALLOC 1
+
 #include <furi.h>
 #include <furi_hal.h>
 //#include <flipper.h>
@@ -130,11 +132,12 @@ int main(void) {
     // panic_unsupported();
 
     //Initialize FURI layer
-
+    stdio_init_all();
+    printf("Start\n");
     furi_init();
 
     //todo stdio_init_all???
-    stdio_init_all();
+    
 
     // Critical FURI HAL
     furi_hal_init_early();

@@ -37,11 +37,11 @@ pico_sdk_init()
 # Add executable. Default name is the project name, version 0.1
 
 file(GLOB_RECURSE SOURCES
+    "lib/furi/core/*.c*" 
     "app/*.c"
     "app/theme/*.c"
     "app/fs/*.c"
     "lib/furi/*.c*" 
-    "lib/furi/core/*.c*" 
     "targets/f100/furi_hal/*.c*"
     "lib/drivers/display/*.c*"  
     "lib/drivers/tps62868x/*.c*"  
@@ -60,7 +60,10 @@ target_compile_definitions(one-rp2350-control PRIVATE
     PARAM_ASSERTIONS_ENABLE_ALL=1
     USE_PRINTF
     USE_DBG_PRINTF
+    PICO_USE_MALLOC_MUTEX=0
     )
+
+
 
 pico_set_program_name(one-rp2350-control "one-rp2350-control")
 pico_set_program_version(one-rp2350-control "0.1")
@@ -78,6 +81,7 @@ target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
+    ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
 )
 
 add_subdirectory(lib/mlib)
