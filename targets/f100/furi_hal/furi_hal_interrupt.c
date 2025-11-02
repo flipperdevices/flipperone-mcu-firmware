@@ -17,157 +17,83 @@ typedef struct {
 FuriHalInterruptISRPair furi_hal_interrupt_isr[FuriHalInterruptIdMax] = {0};
 
 const IRQn_Type furi_hal_interrupt_irqn[FuriHalInterruptIdMax] = {
-
-    /** IRQ | Interrupt Source
- * ----|-----------------
- * 0 | TIMER0_IRQ_0
- * 1 | TIMER0_IRQ_1
- * 2 | TIMER0_IRQ_2
- * 3 | TIMER0_IRQ_3
- * 4 | TIMER1_IRQ_0
- * 5 | TIMER1_IRQ_1
- * 6 | TIMER1_IRQ_2
- * 7 | TIMER1_IRQ_3
- * 8 | PWM_IRQ_WRAP_0
- * 9 | PWM_IRQ_WRAP_1
- * 10 | DMA_IRQ_0
- * 11 | DMA_IRQ_1
- * 12 | DMA_IRQ_2
- * 13 | DMA_IRQ_3
- * 14 | USBCTRL_IRQ
- * 15 | PIO0_IRQ_0
- * 16 | PIO0_IRQ_1
- * 17 | PIO1_IRQ_0
- * 18 | PIO1_IRQ_1
- * 19 | PIO2_IRQ_0
- * 20 | PIO2_IRQ_1
- * 21 | IO_IRQ_BANK0
- * 22 | IO_IRQ_BANK0_NS
- * 23 | IO_IRQ_QSPI
- * 24 | IO_IRQ_QSPI_NS
- * 25 | SIO_IRQ_FIFO
- * 26 | SIO_IRQ_BELL
- * 27 | SIO_IRQ_FIFO_NS
- * 28 | SIO_IRQ_BELL_NS
- * 29 | SIO_IRQ_MTIMECMP
- * 30 | CLOCKS_IRQ
- * 31 | SPI0_IRQ
- * 32 | SPI1_IRQ
- * 33 | UART0_IRQ
- * 34 | UART1_IRQ
- * 35 | ADC_IRQ_FIFO
- * 36 | I2C0_IRQ
- * 37 | I2C1_IRQ
- * 38 | OTP_IRQ
- * 39 | TRNG_IRQ
- * 40 | PROC0_IRQ_CTI
- * 41 | PROC1_IRQ_CTI
- * 42 | PLL_SYS_IRQ
- * 43 | PLL_USB_IRQ
- * 44 | POWMAN_IRQ_POW
- * 45 | POWMAN_IRQ_TIMER
- * 46 | SPAREIRQ_IRQ_0
- * 47 | SPAREIRQ_IRQ_1
- * 48 | SPAREIRQ_IRQ_2
- * 49 | SPAREIRQ_IRQ_3
- * 50 | SPAREIRQ_IRQ_4
- * 51 | SPAREIRQ_IRQ_5
- */
-    // [FuriHalInterruptIdTimer0Irq0] = TIMER0_IRQ_0_IRQn,
-    // [FuriHalInterruptIdTimer0Irq1] = TIMER0_IRQ_1_IRQn,
-
-    // // SDMMC
-    // [FuriHalInterruptIdSdMmc1] = SDMMC1_IRQn,
-
-    // // GPDMA
-    // [FuriHalInterruptIdGPDMA1Channel0] = GPDMA1_Channel0_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel1] = GPDMA1_Channel1_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel2] = GPDMA1_Channel2_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel3] = GPDMA1_Channel3_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel4] = GPDMA1_Channel4_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel5] = GPDMA1_Channel5_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel6] = GPDMA1_Channel6_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel7] = GPDMA1_Channel7_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel8] = GPDMA1_Channel8_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel9] = GPDMA1_Channel9_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel10] = GPDMA1_Channel10_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel11] = GPDMA1_Channel11_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel12] = GPDMA1_Channel12_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel13] = GPDMA1_Channel13_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel14] = GPDMA1_Channel14_IRQn,
-    // [FuriHalInterruptIdGPDMA1Channel15] = GPDMA1_Channel15_IRQn,
-
-    // // LPDMA
-    // [FuriHalInterruptIdLPDMA1Channel0] = LPDMA1_Channel0_IRQn,
-    // [FuriHalInterruptIdLPDMA1Channel1] = LPDMA1_Channel1_IRQn,
-    // [FuriHalInterruptIdLPDMA1Channel2] = LPDMA1_Channel2_IRQn,
-    // [FuriHalInterruptIdLPDMA1Channel3] = LPDMA1_Channel3_IRQn,
-
-    // // GPU
-    // [FuriHalInterruptIdDMA2D] = DMA2D_IRQn,
-    // // [FuriHalInterruptIdGPU2D] = GPU2D_IRQn,
-    // // [FuriHalInterruptIdGPU2DError] = GPU2D_ER_IRQn,
-
-    // // LPUART
-    // [FuriHalInterruptIdLPUART1] = LPUART1_IRQn,
-
-    // // USART
-    // [FuriHalInterruptIdUsart1] = USART1_IRQn,
-    // [FuriHalInterruptIdUsart2] = USART2_IRQn,
-    // [FuriHalInterruptIdUsart3] = USART3_IRQn,
-    // [FuriHalInterruptIdUsart6] = USART6_IRQn,
-
-    // // UART
-    // [FuriHalInterruptIdUart4] = UART4_IRQn,
-    // [FuriHalInterruptIdUart5] = UART5_IRQn,
-
-    // // LPTIM
-    // [FuriHalInterruptIdLPTIM1] = LPTIM1_IRQn,
-    // [FuriHalInterruptIdLPTIM2] = LPTIM2_IRQn,
-    // [FuriHalInterruptIdLPTIM3] = LPTIM3_IRQn,
-    // [FuriHalInterruptIdLPTIM4] = LPTIM4_IRQn,
-
-    // // USB
-    // [FuriHalInterruptIdUSBHS] = OTG_HS_IRQn,
-
-    // // RCC
-    // [FuriHalInterruptIdRcc] = RCC_IRQn,
-
-    // // USB PD
-    // [FuriHalInterruptIdUCPD1] = UCPD1_IRQn,
+    [FuriHalInterruptIdTimer0Irq0] = TIMER0_IRQ_0,
+    [FuriHalInterruptIdTimer0Irq1] = TIMER0_IRQ_1,
+    [FuriHalInterruptIdTimer0Irq2] = TIMER0_IRQ_2,
+    [FuriHalInterruptIdTimer0Irq3] = TIMER0_IRQ_3,
+    [FuriHalInterruptIdTimer1Irq0] = TIMER1_IRQ_0,
+    [FuriHalInterruptIdTimer1Irq1] = TIMER1_IRQ_1,
+    [FuriHalInterruptIdTimer1Irq2] = TIMER1_IRQ_2,
+    [FuriHalInterruptIdTimer1Irq3] = TIMER1_IRQ_3,
+    [FuriHalInterruptIdPwmWrap0] = PWM_IRQ_WRAP_0,
+    [FuriHalInterruptIdPwmWrap1] = PWM_IRQ_WRAP_1,
+    [FuriHalInterruptIdDmaChannel0] = DMA_IRQ_0,
+    [FuriHalInterruptIdDmaChannel1] = DMA_IRQ_1,
+    [FuriHalInterruptIdDmaChannel2] = DMA_IRQ_2,
+    [FuriHalInterruptIdDmaChannel3] = DMA_IRQ_3,
+    [FuriHalInterruptIdUsbCtrl] = USBCTRL_IRQ,
+    [FuriHalInterruptIdPio0Irq0] = PIO0_IRQ_0,
+    [FuriHalInterruptIdPio0Irq1] = PIO0_IRQ_1,
+    [FuriHalInterruptIdPio1Irq0] = PIO1_IRQ_0,
+    [FuriHalInterruptIdPio1Irq1] = PIO1_IRQ_1,
+    [FuriHalInterruptIdPio2Irq0] = PIO2_IRQ_0,
+    [FuriHalInterruptIdPio2Irq1] = PIO2_IRQ_1,
+    [FuriHalInterruptIdIoBank0] = IO_IRQ_BANK0,
+    [FuriHalInterruptIdIoBank0Ns] = IO_IRQ_BANK0_NS,
+    [FuriHalInterruptIdIoQspi] = IO_IRQ_QSPI,
+    [FuriHalInterruptIdIoQspiNs] = IO_IRQ_QSPI_NS,
+    [FuriHalInterruptIdSioFifo] = SIO_IRQ_FIFO,
+    [FuriHalInterruptIdSioBell] = SIO_IRQ_BELL,
+    [FuriHalInterruptIdSioFifoNs] = SIO_IRQ_FIFO_NS,
+    [FuriHalInterruptIdSioBellNs] = SIO_IRQ_BELL_NS,
+    [FuriHalInterruptIdSioMtimecmp] = SIO_IRQ_MTIMECMP,
+    [FuriHalInterruptIdClocks] = CLOCKS_IRQ,
+    [FuriHalInterruptIdSpi0] = SPI0_IRQ,
+    [FuriHalInterruptIdSpi1] = SPI1_IRQ,
+    [FuriHalInterruptIdUart0] = UART0_IRQ,
+    [FuriHalInterruptIdUart1] = UART1_IRQ,
+    [FuriHalInterruptIdAdcFifo] = ADC_IRQ_FIFO,
+    [FuriHalInterruptIdI2c0] = I2C0_IRQ,
+    [FuriHalInterruptIdI2c1] = I2C1_IRQ,
+    [FuriHalInterruptIdOtp] = OTP_IRQ,
+    [FuriHalInterruptIdTrng] = TRNG_IRQ,
+    [FuriHalInterruptIdProc0Cti] = PROC0_IRQ_CTI,
+    [FuriHalInterruptIdProc1Cti] = PROC1_IRQ_CTI,
+    [FuriHalInterruptIdPllSys] = PLL_SYS_IRQ,
+    [FuriHalInterruptIdPllUsb] = PLL_USB_IRQ,
+    [FuriHalInterruptIdPowmanPow] = POWMAN_IRQ_POW,
+    [FuriHalInterruptIdPowmanTimer] = POWMAN_IRQ_TIMER,
+    [FuriHalInterruptIdSpareIrq0] = SPARE_IRQ_0,
+    [FuriHalInterruptIdSpareIrq1] = SPARE_IRQ_1,
+    [FuriHalInterruptIdSpareIrq2] = SPARE_IRQ_2,
+    [FuriHalInterruptIdSpareIrq3] = SPARE_IRQ_3,
+    [FuriHalInterruptIdSpareIrq4] = SPARE_IRQ_4,
+    [FuriHalInterruptIdSpareIrq5] = SPARE_IRQ_5,
 };
 
-__attribute__((always_inline)) static inline void
-    furi_hal_interrupt_call(FuriHalInterruptId index) {
+__attribute__((always_inline)) static inline void furi_hal_interrupt_call(FuriHalInterruptId index) {
     furi_check(furi_hal_interrupt_isr[index].isr);
     furi_hal_interrupt_isr[index].isr(furi_hal_interrupt_isr[index].context);
 }
 
-__attribute__((always_inline)) static inline void
-    furi_hal_interrupt_enable(FuriHalInterruptId index, uint16_t priority) {
-    NVIC_SetPriority(
-        furi_hal_interrupt_irqn[index],
-        NVIC_EncodePriority(NVIC_GetPriorityGrouping(), priority, 0));
+__attribute__((always_inline)) static inline void furi_hal_interrupt_enable(FuriHalInterruptId index, uint16_t priority) {
+    NVIC_SetPriority(furi_hal_interrupt_irqn[index], NVIC_EncodePriority(NVIC_GetPriorityGrouping(), priority, 0));
     NVIC_EnableIRQ(furi_hal_interrupt_irqn[index]);
 }
 
-__attribute__((always_inline)) static inline void
-    furi_hal_interrupt_clear_pending(FuriHalInterruptId index) {
+__attribute__((always_inline)) static inline void furi_hal_interrupt_clear_pending(FuriHalInterruptId index) {
     NVIC_ClearPendingIRQ(furi_hal_interrupt_irqn[index]);
 }
 
-__attribute__((always_inline)) static inline void
-    furi_hal_interrupt_get_pending(FuriHalInterruptId index) {
+__attribute__((always_inline)) static inline void furi_hal_interrupt_get_pending(FuriHalInterruptId index) {
     NVIC_GetPendingIRQ(furi_hal_interrupt_irqn[index]);
 }
 
-__attribute__((always_inline)) static inline void
-    furi_hal_interrupt_set_pending(FuriHalInterruptId index) {
+__attribute__((always_inline)) static inline void furi_hal_interrupt_set_pending(FuriHalInterruptId index) {
     NVIC_SetPendingIRQ(furi_hal_interrupt_irqn[index]);
 }
 
-__attribute__((always_inline)) static inline void
-    furi_hal_interrupt_disable(FuriHalInterruptId index) {
+__attribute__((always_inline)) static inline void furi_hal_interrupt_disable(FuriHalInterruptId index) {
     NVIC_DisableIRQ(furi_hal_interrupt_irqn[index]);
 }
 
@@ -195,22 +121,13 @@ void furi_hal_interrupt_init() {
 }
 
 void furi_hal_interrupt_set_isr(FuriHalInterruptId index, FuriHalInterruptISR isr, void* context) {
-    FuriHalInterruptPriority priority = furi_kernel_is_running() ?
-                                            FuriHalInterruptPriorityNormal :
-                                            FuriHalInterruptPriorityKamiSama;
+    FuriHalInterruptPriority priority = furi_kernel_is_running() ? FuriHalInterruptPriorityNormal : FuriHalInterruptPriorityKamiSama;
     furi_hal_interrupt_set_isr_ex(index, priority, isr, context);
 }
 
-void furi_hal_interrupt_set_isr_ex(
-    FuriHalInterruptId index,
-    FuriHalInterruptPriority priority,
-    FuriHalInterruptISR isr,
-    void* context) {
+void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPriority priority, FuriHalInterruptISR isr, void* context) {
     furi_check(index < FuriHalInterruptIdMax);
-    furi_check(
-        (priority >= FuriHalInterruptPriorityLowest &&
-         priority <= FuriHalInterruptPriorityHighest) ||
-        priority == FuriHalInterruptPriorityKamiSama);
+    furi_check((priority >= FuriHalInterruptPriorityLowest && priority <= FuriHalInterruptPriorityHighest) || priority == FuriHalInterruptPriorityKamiSama);
 
     uint16_t real_priority = FURI_HAL_INTERRUPT_DEFAULT_PRIORITY - priority;
 
@@ -236,170 +153,162 @@ void furi_hal_interrupt_set_isr_ex(
     }
 }
 
-// void SDMMC1_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdSdMmc1);
-// }
-
-// void GPDMA1_Channel0_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel0);
-// }
-
-// void GPDMA1_Channel1_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel1);
-// }
-
-// void GPDMA1_Channel2_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel2);
-// }
-
-// void GPDMA1_Channel3_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel3);
-// }
-
-// void GPDMA1_Channel4_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel4);
-// }
-
-// void GPDMA1_Channel5_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel5);
-// }
-
-// void GPDMA1_Channel6_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel6);
-// }
-
-// void GPDMA1_Channel7_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel7);
-// }
-
-// void GPDMA1_Channel8_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel8);
-// }
-
-// void GPDMA1_Channel9_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel9);
-// }
-
-// void GPDMA1_Channel10_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel10);
-// }
-
-// void GPDMA1_Channel11_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel11);
-// }
-
-// void GPDMA1_Channel12_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel12);
-// }
-
-// void GPDMA1_Channel13_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel13);
-// }
-
-// void GPDMA1_Channel14_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel14);
-// }
-
-// void GPDMA1_Channel15_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPDMA1Channel15);
-// }
-
-// void LPDMA1_Channel0_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPDMA1Channel0);
-// }
-
-// void LPDMA1_Channel1_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPDMA1Channel1);
-// }
-
-// void LPDMA1_Channel2_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPDMA1Channel2);
-// }
-
-// void LPDMA1_Channel3_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPDMA1Channel3);
-// }
-
-// void DMA2D_IRQHandler(void) {
-//     furi_hal_interrupt_call(FuriHalInterruptIdDMA2D);
-// }
-
-// void LPUART1_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPUART1);
-// }
-
-// void USART1_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdUsart1);
-// }
-
-// void USART2_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdUsart2);
-// }
-
-// void USART3_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdUsart3);
-// }
-
-// void USART6_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdUsart6);
-// }
-
-// void UART4_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdUart4);
-// }
-
-// void UART5_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdUart5);
-// }
-
-// void TAMP_IRQHandler(void) {
-//     if(LL_RCC_LSE_IsCSSDetected()) {
-//         LL_RCC_LSE_DisableCSS();
-//         if(!LL_RCC_LSE_IsReady()) {
-//             FURI_LOG_E(TAG, "LSE CSS fired: resetting system");
-//             NVIC_SystemReset();
-//         } else {
-//             FURI_LOG_E(TAG, "LSE CSS fired: but LSE is alive");
-//             LL_RCC_LSE_EnableCSS(); // TODO: we really can recover from this?
-//         }
-//     }
-// }
-
-// void UCPD1_IRQHandler(void) {
-//     furi_hal_interrupt_call(FuriHalInterruptIdUCPD1);
-// }
-
-// void RCC_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdRcc);
-// }
-
-// void GPU2D_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPU2D);
-// }
-
-// void GPU2D_ER_IRQHandler() {
-//     furi_hal_interrupt_call(FuriHalInterruptIdGPU2DError);
-// }
-
-// void LPTIM1_IRQHandler(void) {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPTIM1);
-// }
-
-// void LPTIM2_IRQHandler(void) {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPTIM2);
-// }
-
-// void LPTIM3_IRQHandler(void) {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPTIM3);
-// }
-
-// void LPTIM4_IRQHandler(void) {
-//     furi_hal_interrupt_call(FuriHalInterruptIdLPTIM4);
-// }
-
-// void OTG_HS_IRQHandler(void) {
-//     furi_hal_interrupt_call(FuriHalInterruptIdUSBHS);
-// }
+void TIMER0_IRQ_0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq0);
+}
+void TIMER0_IRQ_1_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq1);
+}
+void TIMER0_IRQ_2_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq2);
+}
+void TIMER0_IRQ_3_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq3);
+}
+void TIMER1_IRQ_0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq0);
+}
+void TIMER1_IRQ_1_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq1);
+}
+void TIMER1_IRQ_2_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq2);
+}
+void TIMER1_IRQ_3_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq3);
+}
+void PWM_IRQ_WRAP_0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPwmWrap0);
+}
+void PWM_IRQ_WRAP_1_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPwmWrap1);
+}
+void DMA_IRQ_0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel0);
+}
+void DMA_IRQ_1_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel1);
+}
+void DMA_IRQ_2_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel2);
+}
+void DMA_IRQ_3_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel3);
+}
+void USBCTRL_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdUsbCtrl);
+}
+void PIO0_IRQ_0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio0Irq0);
+}
+void PIO0_IRQ_1_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio0Irq1);
+}
+void PIO1_IRQ_0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio1Irq0);
+}
+void PIO1_IRQ_1_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio1Irq1);
+}
+void PIO2_IRQ_0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio2Irq0);
+}
+void PIO2_IRQ_1_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio2Irq1);
+}
+void IO_IRQ_BANK0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdIoBank0);
+}
+void IO_IRQ_BANK0_NS_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdIoBank0Ns);
+}
+void IO_IRQ_QSPI_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdIoQspi);
+}
+void IO_IRQ_QSPI_NS_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdIoQspiNs);
+}
+void SIO_IRQ_FIFO_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioFifo);
+}
+void SIO_IRQ_BELL_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioBell);
+}
+void SIO_IRQ_FIFO_NS_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioFifoNs);
+}
+void SIO_IRQ_BELL_NS_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioBellNs);
+}
+void SIO_IRQ_MTIMECMP_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioMtimecmp);
+}
+void CLOCKS_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdClocks);
+}
+void SPI0_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpi0);
+}
+void SPI1_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpi1);
+}
+void UART0_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdUart0);
+}
+void UART1_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdUart1);
+}
+void ADC_IRQ_FIFO_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdAdcFifo);
+}
+void I2C0_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdI2c0);
+}
+void I2C1_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdI2c1);
+}
+void OTP_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdOtp);
+}
+void TRNG_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdTrng);
+}
+void PROC0_IRQ_CTI_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdProc0Cti);
+}
+void PROC1_IRQ_CTI_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdProc1Cti);
+}
+void PLL_SYS_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPllSys);
+}
+void PLL_USB_IRQ_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPllUsb);
+}
+void POWMAN_IRQ_POW_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPowmanPow);
+}
+void POWMAN_IRQ_TIMER_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdPowmanTimer);
+}
+void SPARE_IRQ_0_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq0);
+}
+void SPARE_IRQ_1_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq1);
+}
+void SPARE_IRQ_2_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq2);
+}
+void SPARE_IRQ_3_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq3);
+}
+void SPARE_IRQ_4_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq4);
+}
+void SPARE_IRQ_5_IRQHandler() {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq5);
+}
 
 // void NMI_Handler() {
 //     if(LL_RCC_IsActiveFlag_HSECSS()) {
@@ -545,7 +454,7 @@ void furi_hal_interrupt_set_isr_ex(
 const char* furi_hal_interrupt_get_name(uint8_t exception_number) {
     int32_t id = (int32_t)exception_number - 16;
 
-    switch (id) {
+    switch(id) {
     case -15:
         return "Reset";
         break;
@@ -569,7 +478,7 @@ const char* furi_hal_interrupt_get_name(uint8_t exception_number) {
         break;
     case -5:
         return "SVC";
-        break;  
+        break;
     case -4:
         return "DebugMon";
         break;
@@ -593,7 +502,7 @@ const char* furi_hal_interrupt_get_name(uint8_t exception_number) {
         break;
     case 4:
         return "TIMER1_IRQ_0";
-        break;  
+        break;
     case 5:
         return "TIMER1_IRQ_1";
         break;
@@ -604,7 +513,7 @@ const char* furi_hal_interrupt_get_name(uint8_t exception_number) {
         return "TIMER1_IRQ_3";
         break;
     case 8:
-        return "PWM_IRQ_WRAP_0";    
+        return "PWM_IRQ_WRAP_0";
         break;
     case 9:
         return "PWM_IRQ_WRAP_1";
@@ -620,10 +529,10 @@ const char* furi_hal_interrupt_get_name(uint8_t exception_number) {
         break;
     case 13:
         return "DMA_IRQ_3";
-        break;  
+        break;
     case 14:
         return "USBCTRL_IRQ";
-        break;  
+        break;
     case 15:
         return "PIO0_IRQ_0";
         break;
@@ -647,7 +556,7 @@ const char* furi_hal_interrupt_get_name(uint8_t exception_number) {
         break;
     case 22:
         return "IO_IRQ_BANK0_NS";
-        break;  
+        break;
     case 23:
         return "IO_IRQ_QSPI";
         break;

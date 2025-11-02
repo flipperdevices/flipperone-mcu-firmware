@@ -8,83 +8,92 @@ extern "C" {
 typedef void (*FuriHalInterruptISR)(void* context);
 
 typedef enum {
-    // // SDMMC
-     FuriHalInterruptIdSdMmc1,
-
-    // // GPDMA
-    // FuriHalInterruptIdGPDMA1Channel0,
-    // FuriHalInterruptIdGPDMA1Channel1,
-    // FuriHalInterruptIdGPDMA1Channel2,
-    // FuriHalInterruptIdGPDMA1Channel3,
-    // FuriHalInterruptIdGPDMA1Channel4,
-    // FuriHalInterruptIdGPDMA1Channel5,
-    // FuriHalInterruptIdGPDMA1Channel6,
-    // FuriHalInterruptIdGPDMA1Channel7,
-    // FuriHalInterruptIdGPDMA1Channel8,
-    // FuriHalInterruptIdGPDMA1Channel9,
-    // FuriHalInterruptIdGPDMA1Channel10,
-    // FuriHalInterruptIdGPDMA1Channel11,
-    // FuriHalInterruptIdGPDMA1Channel12,
-    // FuriHalInterruptIdGPDMA1Channel13,
-    // FuriHalInterruptIdGPDMA1Channel14,
-    // FuriHalInterruptIdGPDMA1Channel15,
-
-    // // LPDMA
-    // FuriHalInterruptIdLPDMA1Channel0,
-    // FuriHalInterruptIdLPDMA1Channel1,
-    // FuriHalInterruptIdLPDMA1Channel2,
-    // FuriHalInterruptIdLPDMA1Channel3,
-
-    // // GPU
-    // FuriHalInterruptIdDMA2D,
-    // FuriHalInterruptIdGPU2D,
-    // FuriHalInterruptIdGPU2DError,
-
-    // // USART
-    // FuriHalInterruptIdUsart1,
-    // FuriHalInterruptIdUsart2,
-    // FuriHalInterruptIdUsart3,
-    // FuriHalInterruptIdUsart6,
-
-    // // UART
-    // FuriHalInterruptIdUart4,
-    // FuriHalInterruptIdUart5,
-
-    // // RCC
-    // FuriHalInterruptIdRcc,
-
-    // // LPUART
-    // FuriHalInterruptIdLPUART1,
-
-    // // LPTIM
-    // FuriHalInterruptIdLPTIM1,
-    // FuriHalInterruptIdLPTIM2,
-    // FuriHalInterruptIdLPTIM3,
-    // FuriHalInterruptIdLPTIM4,
-
-    // // USB + PD
-    // FuriHalInterruptIdUCPD1,
-    // FuriHalInterruptIdUSBHS,
+    // Timer IRQs
+    FuriHalInterruptIdTimer0Irq0,
+    FuriHalInterruptIdTimer0Irq1,
+    FuriHalInterruptIdTimer0Irq2,
+    FuriHalInterruptIdTimer0Irq3,
+    FuriHalInterruptIdTimer1Irq0,
+    FuriHalInterruptIdTimer1Irq1,
+    FuriHalInterruptIdTimer1Irq2,
+    FuriHalInterruptIdTimer1Irq3,
+    // PWM IRQs
+    FuriHalInterruptIdPwmWrap0,
+    FuriHalInterruptIdPwmWrap1,
+    // DMA IRQs
+    FuriHalInterruptIdDmaChannel0,
+    FuriHalInterruptIdDmaChannel1,
+    FuriHalInterruptIdDmaChannel2,
+    FuriHalInterruptIdDmaChannel3,
+    // USBCTRL
+    FuriHalInterruptIdUsbCtrl,
+    // PIO0
+    FuriHalInterruptIdPio0Irq0,
+    FuriHalInterruptIdPio0Irq1,
+    // PIO1
+    FuriHalInterruptIdPio1Irq0,
+    FuriHalInterruptIdPio1Irq1,
+    // PIO2
+    FuriHalInterruptIdPio2Irq0,
+    FuriHalInterruptIdPio2Irq1,
+    // IO_BANK0
+    FuriHalInterruptIdIoBank0,
+    FuriHalInterruptIdIoBank0Ns,
+    // IO_QSPI
+    FuriHalInterruptIdIoQspi,
+    FuriHalInterruptIdIoQspiNs,
+    // SIO
+    FuriHalInterruptIdSioFifo,
+    FuriHalInterruptIdSioBell,
+    FuriHalInterruptIdSioFifoNs,
+    FuriHalInterruptIdSioBellNs,
+    FuriHalInterruptIdSioMtimecmp,
+    // CLOCKS
+    FuriHalInterruptIdClocks,
+    // SPI
+    FuriHalInterruptIdSpi0,
+    FuriHalInterruptIdSpi1,
+    // UART
+    FuriHalInterruptIdUart0,
+    FuriHalInterruptIdUart1,
+    // ADC
+    FuriHalInterruptIdAdcFifo,
+    // I2C
+    FuriHalInterruptIdI2c0,
+    FuriHalInterruptIdI2c1,
+    // OTP
+    FuriHalInterruptIdOtp,
+    // TRNG
+    FuriHalInterruptIdTrng,
+    // PROC CTI
+    FuriHalInterruptIdProc0Cti,
+    FuriHalInterruptIdProc1Cti,
+    // PLL
+    FuriHalInterruptIdPllSys,
+    FuriHalInterruptIdPllUsb,
+    // POWMAN
+    FuriHalInterruptIdPowmanPow,
+    FuriHalInterruptIdPowmanTimer,
+    // SPARE IRQs
+    FuriHalInterruptIdSpareIrq0,
+    FuriHalInterruptIdSpareIrq1,
+    FuriHalInterruptIdSpareIrq2,
+    FuriHalInterruptIdSpareIrq3,
+    FuriHalInterruptIdSpareIrq4,
+    FuriHalInterruptIdSpareIrq5,
 
     // Service value
     FuriHalInterruptIdMax,
 } FuriHalInterruptId;
 
 typedef enum {
-    FuriHalInterruptPriorityLowest =
-        -3, /**< Lowest priority level, you can use ISR-safe OS primitives */
-    FuriHalInterruptPriorityLower =
-        -2, /**< Lower priority level, you can use ISR-safe OS primitives */
-    FuriHalInterruptPriorityLow =
-        -1, /**< Low priority level, you can use ISR-safe OS primitives */
-    FuriHalInterruptPriorityNormal =
-        0, /**< Normal(default) priority level, you can use ISR-safe OS primitives */
-    FuriHalInterruptPriorityHigh =
-        1, /**< High priority level, you can use ISR-safe OS primitives */
-    FuriHalInterruptPriorityHigher =
-        2, /**< Higher priority level, you can use ISR-safe OS primitives */
-    FuriHalInterruptPriorityHighest =
-        3, /**< Highest priority level, you can use ISR-safe OS primitives */
+    FuriHalInterruptPriorityLowest = -3, /**< Lowest priority level, you can use ISR-safe OS primitives */
+    FuriHalInterruptPriorityLower = -2, /**< Lower priority level, you can use ISR-safe OS primitives */
+    FuriHalInterruptPriorityLow = -1, /**< Low priority level, you can use ISR-safe OS primitives */
+    FuriHalInterruptPriorityNormal = 0, /**< Normal(default) priority level, you can use ISR-safe OS primitives */
+    FuriHalInterruptPriorityHigh = 1, /**< High priority level, you can use ISR-safe OS primitives */
+    FuriHalInterruptPriorityHigher = 2, /**< Higher priority level, you can use ISR-safe OS primitives */
+    FuriHalInterruptPriorityHighest = 3, /**< Highest priority level, you can use ISR-safe OS primitives */
 
     /* Special group, read docs first(ALL OF THEM: especially FreeRTOS configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY) */
     FuriHalInterruptPriorityKamiSama =
@@ -120,11 +129,7 @@ void furi_hal_interrupt_set_isr(FuriHalInterruptId index, FuriHalInterruptISR is
  * @note       Before FreeRTOS scheduler is started, only ISRs with priority 
  *             `FuriHalInterruptPriorityKamiSama` will trigger.
  */
-void furi_hal_interrupt_set_isr_ex(
-    FuriHalInterruptId index,
-    FuriHalInterruptPriority priority,
-    FuriHalInterruptISR isr,
-    void* context);
+void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPriority priority, FuriHalInterruptISR isr, void* context);
 
 /** Get interrupt name by exception number.
  * Exception number can be obtained from IPSR register.
