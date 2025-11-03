@@ -37,16 +37,18 @@ pico_sdk_init()
 # Add executable. Default name is the project name, version 0.1
 
 file(GLOB_RECURSE SOURCES
-    "lib/furi/core/*.c*"
-    "lib/furi/version/*.c*" 
     "lib/furi/*.c*" 
+    "lib/furi/version/*.c*" 
+    "lib/furi/core/*.c*"
     "app/*.c"
     "app/theme/*.c"
     "app/fs/*.c"
-    "lib/furi/*.c*" 
     "targets/f100/furi_hal/*.c*"
     "lib/drivers/display/*.c*"  
     "lib/drivers/tps62868x/*.c*"  
+    "applications/*.c"
+    "applications/services/*.c"
+    "applications/main/*.c"
     "targets/f100/src/*.c*" 
    
 )
@@ -76,6 +78,7 @@ pico_enable_stdio_usb(one-rp2350-control 1)
 
 # Add the standard include files to the build
 target_include_directories(one-rp2350-control PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_hal

@@ -6,6 +6,8 @@
 
 #include <FreeRTOS.h>
 
+#include "applications.h"
+
 #define TAG "Flipper"
 
 static void flipper_print_version(const char* target, const Version* version) {
@@ -38,6 +40,19 @@ void flipper_init(void) {
     FURI_LOG_I(TAG, "Boot mode %d", furi_hal_nvm_get_boot_mode());
 
     flipper_init_services();
+
+     for(size_t i = 0; i < FLIPPER_SERVICES_COUNT; i++) {
+        FURI_LOG_D(TAG, "Starting service %s", FLIPPER_SERVICES[i].name);
+
+        FuriThread* thread = furi_thread_alloc_service(
+            FLIPPER_SERVICES[i].name,
+            FLIPPER_SERVICES[i].stack_size,
+            FLIPPER_SERVICES[i].app,
+            NULL);
+        furi_thread_set_appid(thread, FLIPPER_SERVICES[i].appid);
+
+        furi_thread_start(thread);
+    }
 
     FURI_LOG_I(TAG, "Startup complete");
 }
