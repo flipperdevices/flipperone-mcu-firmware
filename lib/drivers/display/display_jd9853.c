@@ -100,9 +100,9 @@ DisplayJd9853* display_jd9853_init(void) {
 void display_jd9853_deinit(DisplayJd9853* display) {
     furi_check(display);
     display_jd9853_load_config(display, st7789_deinit_seq);
-    if(display) {
-        furi_hal_spi_deinit(display->spi_handle);
-        free(display->spi_handle);
-        free(display);
-    }
+    furi_hal_gpio_init_ex(display->pin_dc, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    furi_hal_gpio_init_ex(display->pin_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    furi_hal_spi_deinit(display->spi_handle);
+    free(display->spi_handle);
+    free(display);
 }

@@ -37,8 +37,28 @@ const GpioPin gpio_i2c0_scl = {.pin = 21};
 const GpioPin gpio_i2c1_sda = {.pin = 22};
 const GpioPin gpio_i2c1_scl = {.pin = 23};
 
+const GpioPin gpio_expander_reset = {.pin = 14};
+const GpioPin gpio_expander_int = {.pin = 15};
+
 
 
 const GpioPinRecord gpio_pins[] = {};
-
 const size_t gpio_pins_count = COUNT_OF(gpio_pins);
+
+const InputPin input_pins[] = {
+    {.key = InputKey1, .inverted = true, .name = "Key1"},
+    {.key = InputKey2, .inverted = true, .name = "Key2"},
+    {.key = InputKey3, .inverted = true, .name = "Power"},
+    {.key = InputKey4, .inverted = true, .name = "Key4"},
+    {.key = InputKey5, .inverted = true, .name = "Key5"},
+    {.key = InputKeyBack, .inverted = true, .name = "Back"},
+    {.key = InputKeyUp, .inverted = true, .name = "Up"},
+    {.key = InputKeyDown, .inverted = true, .name = "Down"},
+    {.key = InputKeyRight, .inverted = true, .name = "Right"},
+    {.key = InputKeyLeft, .inverted = true, .name = "Left"},
+    {.key = InputKeyOk, .inverted = true, .name = "OK"},
+    {.key = InputKeyRtt, .inverted = true, .name = "RTT"},
+    {.key = InputKeySw, .inverted = true, .name = "Sw"},
+};
+
+const size_t input_pins_count = COUNT_OF(input_pins);

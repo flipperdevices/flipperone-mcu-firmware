@@ -168,11 +168,11 @@ bool furi_hal_i2c_device_ready(FuriHalI2cHandle* handle, uint8_t device_address,
     i2c_inst_t* periph = i2c->periph_ptr;
 
     int ret;
-    uint8_t rxdata;
+    uint8_t rxdata = 0;
     if((device_address & 0x78) == 0 || (device_address & 0x78) == 0x78)
         ret = PICO_ERROR_GENERIC;
     else
-        ret = furi_hal_i2c_master_rx_blocking(handle, device_address, &rxdata, 1, FURI_HAL_I2C_TIMEOUT_US);
+        ret = furi_hal_i2c_master_tx_blocking(handle, device_address, &rxdata, 1, FURI_HAL_I2C_TIMEOUT_US);
 
     return ret < PICO_OK ? false : true;
 }

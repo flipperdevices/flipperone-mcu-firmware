@@ -11,23 +11,38 @@
 extern "C" {
 #endif
 
-typedef enum {
-    InputKeyUp,
-    InputKeyDown,
-    InputKeyRight,
-    InputKeyLeft,
-    InputKeyOk,
-    InputKeyBack,
-    InputKeyRtt,
-    InputKeySw,
-    InputKey1,
-    InputKey2,
-    InputKeyPower, //InputKey3,
-    InputKey4,
-    InputKey5,
+/* Input Related Constants */
+#define INPUT_DEBOUNCE_TICKS 4
 
-    InputKeyMAX, /**< Special value, don't use it */
+typedef enum {
+    InputKey1 = (1 << 0),
+    InputKey2 = (1 << 1),
+    InputKey3 = (1 << 2), //,InputKeyPower
+    InputKey4 = (1 << 3),
+    InputKey5 = (1 << 4),
+    InputKeyBack = (1 << 5),
+    InputKeyUp = (1 << 6),
+    InputKeyLeft = (1 << 7),
+    InputKeyOk = (1 << 8),
+    InputKeyRight = (1 << 9),
+    InputKeyDown = (1 << 10),
+    InputKeySw = (1 << 11),
+    InputKeyRtt = (1 << 12),
+    InputKeyMask = (0x1FFF),
 } InputKey;
+
+typedef enum {
+    StatusLedPowerLine1 = (1 << 13),
+    StatusLedPowerLine2 = (1 << 14),
+    StatusLedPowerLine3 = (1 << 15),
+    StatusLedPowerMask = (0xE000),
+} StatusLedPower;
+
+typedef struct {
+    const InputKey key;
+    const bool inverted;
+    const char* name;
+} InputPin;
 
 typedef struct {
     const GpioPin* pin;
@@ -69,8 +84,14 @@ extern const GpioPin gpio_i2c0_scl;
 extern const GpioPin gpio_i2c1_sda;
 extern const GpioPin gpio_i2c1_scl;
 
+extern const GpioPin gpio_expander_reset;
+extern const GpioPin gpio_expander_int;
+
 extern const GpioPinRecord gpio_pins[];
 extern const size_t gpio_pins_count;
+
+extern const InputPin input_pins[];
+extern const size_t input_pins_count;
 
 void furi_hal_resources_init_early(void);
 

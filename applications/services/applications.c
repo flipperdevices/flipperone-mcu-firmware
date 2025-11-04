@@ -3,6 +3,7 @@
 const char* FLIPPER_AUTORUN_APP_NAME = "";
 extern int32_t test_srv(void* p);
 extern int32_t test_peref_srv(void* p);
+extern int32_t input_srv(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
 
@@ -14,6 +15,11 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {.app = test_peref_srv,
      .name = "TestPerefSrv",
      .appid = "test_peref",
+     .stack_size = 1024,
+     .flags = FlipperInternalApplicationFlagDefault },
+    {.app = input_srv,
+     .name = "InputSrv",
+     .appid = "input_srv",
      .stack_size = 1024,
      .flags = FlipperInternalApplicationFlagDefault },
 
