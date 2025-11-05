@@ -40,6 +40,7 @@ Tsa6416a* tsa6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     furi_hal_i2c_release(instance->i2c_handle);
 
     if(ret) {
+        tsa6416a_write_output(instance, 0x0000); // All low
         furi_hal_gpio_init_simple(instance->pin_interrupt, GpioModeInput);
         furi_hal_gpio_add_int_callback(instance->pin_interrupt, GpioConditionFall, tsa6416a_interrupt_handler, instance);
     } else {
@@ -68,7 +69,7 @@ void tsa6416a_set_input_callback(Tsa6416a* instance, Tsa6416aCallbackInput callb
 static FURI_ALWAYS_INLINE int tsa6416a_write_reg(Tsa6416a* instance, Tsa6416aReg reg, uint16_t data) {
     furi_check(instance);
 
-    uint8_t buffer[3] = {reg, data & 0xF, data >> 8};
+    uint8_t buffer[3] = {reg, data & 0xFF, data >> 8};
 
     furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);

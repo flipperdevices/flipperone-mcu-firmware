@@ -1,9 +1,11 @@
 #include "input.h"
 
+#include "core/log.h"
 #include "furi_hal_i2c_config.h"
 #include <furi.h>
 
 #include <drivers/tsa6416a/tsa6416a.h>
+#include <stdint.h>
 
 #define INPUT_DEBOUNCE_TICKS      4
 #define INPUT_DEBOUNCE_TICKS_HALF (INPUT_DEBOUNCE_TICKS / 2)
@@ -100,11 +102,15 @@ int32_t input_srv(void* p) {
 #endif
 
     InputPinState pin_states[input_pins_count];
-    // //// todo init tsa6416a  move furi_hal_ init
-    // FuriHalI2cBusHandle i2c_handle = {.id = FuriHalI2cIdI2c0, .in_use = true};
-    // furi_hal_i2c_master_init(&i2c_handle, 400000);
+
     Tsa6416a* tsa6416a = tsa6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
+    uint16_t read_mode = tsa6416a_read_mode(tsa6416a);
+    FURI_LOG_D("22", "Wrote : %016b", read_mode);
+    tsa6416a_write_mode(tsa6416a, InputKeyMask);
     tsa6416a_set_input_callback(tsa6416a, input_isr, thread_id);
+
+    read_mode = tsa6416a_read_mode(tsa6416a);
+    FURI_LOG_D("22", "Wrote : %016b", read_mode);
 
     uint16_t input_state = tsa6416a_read_input(tsa6416a);
 
