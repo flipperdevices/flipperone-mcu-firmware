@@ -11,12 +11,12 @@
 int32_t init_task(void* context) {
     UNUSED(context);
 
-    // Flipper FURI HAL\
+    // Flipper FURI HAL
     furi_hal_init();
 
     // Set the UART for logging output
-    //furi_hal_serial_control_set_logging_config(FuriHalSerialIdUsart6, 230400);
-    //stdio_init_all();
+    furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart0, 230400);
+
     FURI_LOG_I(TAG, "Init task started");
 
     // Init flipper
@@ -29,13 +29,9 @@ int32_t init_task(void* context) {
 
 int main(void) {
     //Initialize FURI layer
-    stdio_init_all();
-    printf("Start");
-    
-    furi_init();
-    //todo stdio_init_all???
-    
 
+    furi_init();
+ 
     // Critical FURI HAL
     furi_hal_init_early();
 

@@ -99,9 +99,6 @@ void furi_log_tx(const uint8_t* data, size_t size) {
         FuriLogHandlersList_next(it);
     }
 
-    //Todo: remove printf when handlers are present
-    printf("%.*s", (int)size, data);
-
     if(!FURI_IS_ISR()) furi_mutex_release(furi_log.mutex);
 }
 

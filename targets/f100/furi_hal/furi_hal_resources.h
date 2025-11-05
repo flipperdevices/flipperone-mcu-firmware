@@ -51,6 +51,11 @@ typedef struct {
     const bool debug;
 } GpioPinRecord;
 
+extern const GpioPin gpio_uart0_tx;
+extern const GpioPin gpio_uart0_rx;
+extern const GpioPin gpio_uart1_tx;
+extern const GpioPin gpio_uart1_rx;
+
 extern const GpioPin gpio_display_ctrl;
 extern const GpioPin gpio_display_sda;
 extern const GpioPin gpio_display_scl;

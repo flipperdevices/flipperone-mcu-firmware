@@ -105,6 +105,7 @@ target_link_libraries(one-rp2350-control
     hardware_i2c
     hardware_adc
     hardware_dma
+    hardware_uart
     ws2812
     freertos
     lvgl_lib
