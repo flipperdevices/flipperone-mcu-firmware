@@ -1,7 +1,5 @@
 #pragma once
 
-#include <stdint.h>
-#include <stdbool.h>
 #include <furi_hal_i2c_types.h>
 #include <furi_hal_gpio.h>
 
@@ -15,7 +13,7 @@ typedef void (*Tsa6416aCallbackInput)(void* context);
 extern "C" {
 #endif
 
-Tsa6416a* tsa6416a_init(FuriHalI2cHandle* i2c_handle, const GpioPin* pin_reset, const GpioPin* pin_interrupt, uint8_t address);
+Tsa6416a* tsa6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pin_reset, const GpioPin* pin_interrupt, uint8_t address);
 void tsa6416a_deinit(Tsa6416a* instance);
 void tsa6416a_set_input_callback(Tsa6416a* instance, Tsa6416aCallbackInput callback, void* context);
 bool tsa6416a_write_output(Tsa6416a* instance, uint16_t output_mask);

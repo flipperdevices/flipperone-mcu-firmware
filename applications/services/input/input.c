@@ -1,13 +1,7 @@
 #include "input.h"
 
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
+#include "furi_hal_i2c_config.h"
 #include <furi.h>
-#include <furi_hal_resources.h>
-
-#include <furi_hal_i2c.h>
-#include <furi_hal_i2c_types_i.h>
 
 #include <drivers/tsa6416a/tsa6416a.h>
 
@@ -16,6 +10,8 @@
 #define INPUT_PRESS_TICKS         150
 #define INPUT_LONG_PRESS_COUNTS   2
 #define INPUT_THREAD_FLAG_ISR     0x00000001
+
+// #define INPUT_DEBUG
 
 /** Input pin state */
 typedef struct {
@@ -29,9 +25,7 @@ typedef struct {
     volatile uint32_t counter;
 } InputPinState;
 
-// #define INPUT_DEBUG
-
-static bool Key_check_state(uint16_t state_pin, InputPinState input_pin) {
+static bool input_key_check_state(uint16_t state_pin, InputPinState input_pin) {
     bool val = (state_pin & input_pin.pin->key) ? true : false;
     if(input_pin.pin->inverted) {
         val = !val;
@@ -96,7 +90,7 @@ int32_t input_srv(void* p) {
     furi_record_create(RECORD_INPUT_EVENTS, event_pubsub);
 
 #ifdef INPUT_DEBUG
-    furi_hal_gpio_init_simple(&gpio_ext_pa4, GpioModeOutputPushPull);
+    furi_hal_gpio_init_simple(&debug_pin1, GpioModeOutputPushPull);
 #endif
 
 #ifdef SRV_CLI
@@ -106,17 +100,17 @@ int32_t input_srv(void* p) {
 #endif
 
     InputPinState pin_states[input_pins_count];
-    //// todo init tsa6416a  move furi_hal_ init
-    FuriHalI2cHandle i2c_handle = {.id = FuriHalI2cIdI2c0, .in_use = true};
-    furi_hal_i2c_master_init(&i2c_handle, 400000);
-    Tsa6416a* tsa6416a = tsa6416a_init(&i2c_handle, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
+    // //// todo init tsa6416a  move furi_hal_ init
+    // FuriHalI2cBusHandle i2c_handle = {.id = FuriHalI2cIdI2c0, .in_use = true};
+    // furi_hal_i2c_master_init(&i2c_handle, 400000);
+    Tsa6416a* tsa6416a = tsa6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
     tsa6416a_set_input_callback(tsa6416a, input_isr, thread_id);
 
-    uint16_t last_input_state = tsa6416a_read_input(tsa6416a);
+    uint16_t input_state = tsa6416a_read_input(tsa6416a);
 
     for(size_t i = 0; i < input_pins_count; i++) {
         pin_states[i].pin = &input_pins[i];
-        pin_states[i].state = Key_check_state(last_input_state, pin_states[i]);
+        pin_states[i].state = input_key_check_state(input_state, pin_states[i]);
         pin_states[i].debounce = INPUT_DEBOUNCE_TICKS_HALF;
         pin_states[i].press_timer = furi_timer_alloc(input_press_timer_callback, FuriTimerTypePeriodic, &pin_states[i]);
         pin_states[i].event_pubsub = event_pubsub;
@@ -125,9 +119,9 @@ int32_t input_srv(void* p) {
 
     while(1) {
         bool is_changing = false;
-        uint16_t current_input_state = tsa6416a_read_input(tsa6416a);
+        input_state = tsa6416a_read_input(tsa6416a);
         for(size_t i = 0; i < input_pins_count; i++) {
-            bool state = Key_check_state(current_input_state, pin_states[i]);
+            bool state = input_key_check_state(input_state, pin_states[i]);
             if(state) {
                 if(pin_states[i].debounce < INPUT_DEBOUNCE_TICKS) pin_states[i].debounce += 1;
             } else {

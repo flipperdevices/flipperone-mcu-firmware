@@ -7,7 +7,7 @@
 #define TAG "Tsa6416a"
 
 struct Tsa6416a {
-    FuriHalI2cHandle* i2c_handle;
+    const FuriHalI2cBusHandle* i2c_handle;
     const GpioPin* pin_reset;
     const GpioPin* pin_interrupt;
     uint8_t address;
@@ -22,7 +22,7 @@ static __isr __not_in_flash_func(void) tsa6416a_interrupt_handler(void* ctx) {
     }
 }
 
-Tsa6416a* tsa6416a_init(FuriHalI2cHandle* i2c_handle, const GpioPin* pin_reset, const GpioPin* pin_interrupt, uint8_t address) {
+Tsa6416a* tsa6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pin_reset, const GpioPin* pin_interrupt, uint8_t address) {
     Tsa6416a* instance = (Tsa6416a*)malloc(sizeof(Tsa6416a));
     instance->i2c_handle = i2c_handle;
     instance->pin_reset = pin_reset;

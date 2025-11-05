@@ -15,14 +15,14 @@ extern "C" {
 // uint8_t tps62868x_set_voltage(float volt);
 // float tps62868x_get_voltage(void);
 
-bool tps62868x_init(FuriHalI2cHandle* handle);
+bool tps62868x_init(FuriHalI2cBusHandle* handle);
 void tps62868x_deinit(void);
-void tps62868x_set_pwm_on(FuriHalI2cHandle* handle);
-void tps62868x_set_pwm_off(FuriHalI2cHandle* handle);
-int tps62868x_read_reg(FuriHalI2cHandle* handle, uint8_t reg, uint8_t* data);
-int tps62868x_write_reg(FuriHalI2cHandle* handle, uint8_t reg, uint8_t* data);
-int tps62868x_set_voltage(FuriHalI2cHandle* handle, float volt);
-float tps62868x_get_voltage(FuriHalI2cHandle* handle);	
+void tps62868x_set_pwm_on(FuriHalI2cBusHandle* handle);
+void tps62868x_set_pwm_off(FuriHalI2cBusHandle* handle);
+int tps62868x_read_reg(FuriHalI2cBusHandle* handle, uint8_t reg, uint8_t* data);
+int tps62868x_write_reg(FuriHalI2cBusHandle* handle, uint8_t reg, uint8_t* data);
+int tps62868x_set_voltage(FuriHalI2cBusHandle* handle, float volt);
+float tps62868x_get_voltage(FuriHalI2cBusHandle* handle);	
 
 #ifdef __cplusplus
 }
