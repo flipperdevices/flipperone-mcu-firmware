@@ -1,3 +1,4 @@
+#include "furi_hal_gpio.h"
 #include "tsa6416a_reg.h"
 #include "tsa6416a.h"
 #include <furi.h>
@@ -28,11 +29,10 @@ Tsa6416a* tsa6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     instance->pin_reset = pin_reset;
     instance->pin_interrupt = pin_interrupt;
     instance->address = address;
-    //Todo open drain implementation!
-    furi_hal_gpio_init_simple(instance->pin_reset, GpioModeOutputPushPull);
-    furi_hal_gpio_write(instance->pin_reset, false);
+    furi_hal_gpio_init_simple(instance->pin_reset, GpioModeOutputOpenDrain);
+    furi_hal_gpio_write_open_drain(instance->pin_reset, false);
     furi_delay_ms(10);
-    furi_hal_gpio_write(instance->pin_reset, true);
+    furi_hal_gpio_write_open_drain(instance->pin_reset, true);
     furi_delay_ms(10);
 
     furi_hal_i2c_acquire(instance->i2c_handle);

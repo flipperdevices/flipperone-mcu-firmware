@@ -64,10 +64,10 @@ void furi_hal_gpio_init_ex(const GpioPin* gpio, const GpioMode mode, const GpioP
         gpio_set_input_hysteresis_enabled(gpio->pin, false);
         break;
     case GpioModeOutputOpenDrain:
-        // Open drain not supported directly, set as output for now
-        //Todo: implement open drain using GPIO registers directly
-        gpio_set_dir(gpio->pin, GPIO_OUT);
-        gpio_set_input_hysteresis_enabled(gpio->pin, false);
+        gpio_set_dir(gpio->pin, GPIO_IN);
+        gpio_set_oeover(gpio->pin, GPIO_OVERRIDE_INVERT);
+        gpio_set_outover(gpio->pin, GPIO_OVERRIDE_LOW);
+        gpio_set_input_hysteresis_enabled(gpio->pin, true);
         break;
     case GpioModeAnalog:
         adc_gpio_init(gpio->pin);

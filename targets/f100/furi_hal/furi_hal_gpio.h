@@ -33,15 +33,7 @@ typedef enum {
     GpioModeInput,
     GpioModeOutputPushPull,
     GpioModeOutputOpenDrain,
-    // GpioModeAltFunctionPushPull,
-    // GpioModeAltFunctionOpenDrain,
     GpioModeAnalog,
-    // GpioModeInterruptRise,
-    // GpioModeInterruptFall,
-    // GpioModeInterruptRiseFall,
-    // GpioModeEventRise,
-    // GpioModeEventFall,
-    // GpioModeEventRiseFall,
 } GpioMode;
 
 /**
@@ -192,10 +184,13 @@ static inline void furi_hal_gpio_write(const GpioPin* gpio, const bool state) {
 }
 
 /**
- * Compatibility macro for systems that require a different
- * open drain GPIO procedure
+ * GPIO write pin, open drain mode
+ * @param gpio  GpioPin
+ * @param state true (high level) / false (low level)
  */
-#define furi_hal_gpio_write_open_drain(gpio, state) furi_hal_gpio_write(gpio, state)
+static inline void furi_hal_gpio_write_open_drain(const GpioPin* gpio, const bool state) {
+    gpio_set_dir(gpio->pin, state);
+}
 
 /**
  * GPIO read pin

@@ -82,13 +82,13 @@ DisplayJd9853* display_jd9853_init(void) {
 
     //Gpio init
     furi_hal_gpio_init_simple(display->pin_dc, GpioModeOutputPushPull);
-    furi_hal_gpio_init_simple(display->pin_reset, GpioModeOutputPushPull);
+    furi_hal_gpio_init_simple(display->pin_reset, GpioModeOutputOpenDrain);
     furi_hal_gpio_write(display->pin_dc, false);
 
     //Reset display
-    furi_hal_gpio_write(display->pin_reset, false);
+    furi_hal_gpio_write_open_drain(display->pin_reset, false);
     furi_delay_ms(30);
-    furi_hal_gpio_write(display->pin_reset, true);
+    furi_hal_gpio_write_open_drain(display->pin_reset, true);
     furi_delay_ms(30);
 
     //Initialization sequence
