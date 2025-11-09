@@ -1,8 +1,6 @@
 #include <furi_hal.h>
 #include <FreeRTOS.h>
 #include <hardware/structs/resets.h>
-// #include <stm32u5xx_ll_cortex.h>
-// #include <stm32u5xx_ll_system.h>
 #include <hardware/irq.h>
 
 #define TAG "FuriHalInterrupt"
@@ -76,26 +74,26 @@ __attribute__((always_inline)) static inline void furi_hal_interrupt_call(FuriHa
     furi_hal_interrupt_isr[index].isr(furi_hal_interrupt_isr[index].context);
 }
 
-__attribute__((always_inline)) static inline void furi_hal_interrupt_enable(FuriHalInterruptId index, uint16_t priority) {
-    NVIC_SetPriority(furi_hal_interrupt_irqn[index], NVIC_EncodePriority(NVIC_GetPriorityGrouping(), priority, 0));
-    NVIC_EnableIRQ(furi_hal_interrupt_irqn[index]);
-}
+// __attribute__((always_inline)) static inline void furi_hal_interrupt_enable(FuriHalInterruptId index, uint16_t priority) {
+//     NVIC_SetPriority(furi_hal_interrupt_irqn[index], NVIC_EncodePriority(NVIC_GetPriorityGrouping(), priority, 0));
+//     NVIC_EnableIRQ(furi_hal_interrupt_irqn[index]);
+// }
 
-__attribute__((always_inline)) static inline void furi_hal_interrupt_clear_pending(FuriHalInterruptId index) {
-    NVIC_ClearPendingIRQ(furi_hal_interrupt_irqn[index]);
-}
+// __attribute__((always_inline)) static inline void furi_hal_interrupt_clear_pending(FuriHalInterruptId index) {
+//     NVIC_ClearPendingIRQ(furi_hal_interrupt_irqn[index]);
+// }
 
-__attribute__((always_inline)) static inline void furi_hal_interrupt_get_pending(FuriHalInterruptId index) {
-    NVIC_GetPendingIRQ(furi_hal_interrupt_irqn[index]);
-}
+// __attribute__((always_inline)) static inline void furi_hal_interrupt_get_pending(FuriHalInterruptId index) {
+//     NVIC_GetPendingIRQ(furi_hal_interrupt_irqn[index]);
+// }
 
-__attribute__((always_inline)) static inline void furi_hal_interrupt_set_pending(FuriHalInterruptId index) {
-    NVIC_SetPendingIRQ(furi_hal_interrupt_irqn[index]);
-}
+// __attribute__((always_inline)) static inline void furi_hal_interrupt_set_pending(FuriHalInterruptId index) {
+//     NVIC_SetPendingIRQ(furi_hal_interrupt_irqn[index]);
+// }
 
-__attribute__((always_inline)) static inline void furi_hal_interrupt_disable(FuriHalInterruptId index) {
-    NVIC_DisableIRQ(furi_hal_interrupt_irqn[index]);
-}
+// __attribute__((always_inline)) static inline void furi_hal_interrupt_disable(FuriHalInterruptId index) {
+//     NVIC_DisableIRQ(furi_hal_interrupt_irqn[index]);
+// }
 
 void furi_hal_interrupt_init() {
     // NVIC_SetPriority(TAMP_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
@@ -125,6 +123,176 @@ void furi_hal_interrupt_set_isr(FuriHalInterruptId index, FuriHalInterruptISR is
     furi_hal_interrupt_set_isr_ex(index, priority, isr, context);
 }
 
+void __isr __not_in_flash_func(timer0_irq_0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq0);
+}
+void __isr __not_in_flash_func(timer0_irq_1_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq1);
+}
+void __isr __not_in_flash_func(timer0_irq_2_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq2);
+}
+void __isr __not_in_flash_func(timer0_irq_3_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq3);
+}
+void __isr __not_in_flash_func(timer1_irq_0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq0);
+}
+void __isr __not_in_flash_func(timer1_irq_1_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq1);
+}
+void __isr __not_in_flash_func(timer1_irq_2_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq2);
+}
+void __isr __not_in_flash_func(timer1_irq_3_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq3);
+}
+void __isr __not_in_flash_func(pwm_irq_wrap_0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPwmWrap0);
+}
+void __isr __not_in_flash_func(pwm_irq_wrap_1_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPwmWrap1);
+}
+void __isr __not_in_flash_func(dma_irq_0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel0);
+}
+void __isr __not_in_flash_func(dma_irq_1_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel1);
+}
+void __isr __not_in_flash_func(dma_irq_2_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel2);
+}
+void __isr __not_in_flash_func(dma_irq_3_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel3);
+}
+void __isr __not_in_flash_func(usbctrl_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdUsbCtrl);
+}
+void __isr __not_in_flash_func(pio0_irq_0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio0Irq0);
+}
+void __isr __not_in_flash_func(pio0_irq_1_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio0Irq1);
+}
+void __isr __not_in_flash_func(pio1_irq_0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio1Irq0);
+}
+void __isr __not_in_flash_func(pio1_irq_1_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio1Irq1);
+}
+void __isr __not_in_flash_func(pio2_irq_0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio2Irq0);
+}
+void __isr __not_in_flash_func(pio2_irq_1_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPio2Irq1);
+}
+void __isr __not_in_flash_func(io_irq_bank0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdIoBank0);
+}
+void __isr __not_in_flash_func(io_irq_bank0_ns_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdIoBank0Ns);
+}
+void __isr __not_in_flash_func(io_irq_qspi_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdIoQspi);
+}
+void __isr __not_in_flash_func(io_irq_qspi_ns_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdIoQspiNs);
+}
+void __isr __not_in_flash_func(sio_irq_fifo_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioFifo);
+}
+void __isr __not_in_flash_func(sio_irq_bell_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioBell);
+}
+void __isr __not_in_flash_func(sio_irq_fifo_ns_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioFifoNs);
+}
+void __isr __not_in_flash_func(sio_irq_bell_ns_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioBellNs);
+}
+void __isr __not_in_flash_func(sio_irq_mtimecmp_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSioMtimecmp);
+}
+void __isr __not_in_flash_func(clocks_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdClocks);
+}
+void __isr __not_in_flash_func(spi0_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpi0);
+}
+void __isr __not_in_flash_func(spi1_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpi1);
+}
+void __isr __not_in_flash_func(uart0_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdUart0);
+}
+void __isr __not_in_flash_func(uart1_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdUart1);
+}
+void __isr __not_in_flash_func(adc_irq_fifo_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdAdcFifo);
+}
+void __isr __not_in_flash_func(i2c0_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdI2c0);
+}
+void __isr __not_in_flash_func(i2c1_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdI2c1);
+}
+void __isr __not_in_flash_func(otp_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdOtp);
+}
+void __isr __not_in_flash_func(trng_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdTrng);
+}
+void __isr __not_in_flash_func(proc0_cti_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdProc0Cti);
+}
+void __isr __not_in_flash_func(proc1_cti_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdProc1Cti);
+}
+void __isr __not_in_flash_func(pll_sys_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPllSys);
+}
+void __isr __not_in_flash_func(pll_usb_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPllUsb);
+}
+void __isr __not_in_flash_func(powman_pow_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPowmanPow);
+}
+void __isr __not_in_flash_func(powman_timer_irq_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdPowmanTimer);
+}
+void __isr __not_in_flash_func(spare_irq_0_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq0);
+}
+void __isr __not_in_flash_func(spare_irq_1_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq1);
+}
+void __isr __not_in_flash_func(spare_irq_2_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq2);
+}
+void __isr __not_in_flash_func(spare_irq_3_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq3);
+}
+void __isr __not_in_flash_func(spare_irq_4_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq4);
+}
+void __isr __not_in_flash_func(spare_irq_5_handler)(void) {
+    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq5);
+}
+
+//the sequence cannot be changed
+void (*furi_hal_interrupt_isr_handler[FuriHalInterruptIdMax])(void) = {
+    timer0_irq_0_handler,   timer0_irq_1_handler, timer0_irq_2_handler,   timer0_irq_3_handler,     timer1_irq_0_handler,    timer1_irq_1_handler,
+    timer1_irq_2_handler,   timer1_irq_3_handler, pwm_irq_wrap_0_handler, pwm_irq_wrap_1_handler,   dma_irq_0_handler,       dma_irq_1_handler,
+    dma_irq_2_handler,      dma_irq_3_handler,    usbctrl_irq_handler,    pio0_irq_0_handler,       pio0_irq_1_handler,      pio1_irq_0_handler,
+    pio1_irq_1_handler,     pio2_irq_0_handler,   pio2_irq_1_handler,     io_irq_bank0_handler,     io_irq_bank0_ns_handler, io_irq_qspi_handler,
+    io_irq_qspi_ns_handler, sio_irq_fifo_handler, sio_irq_bell_handler,   sio_irq_fifo_ns_handler,  sio_irq_bell_ns_handler, sio_irq_mtimecmp_handler,
+    clocks_irq_handler,     spi0_irq_handler,     spi1_irq_handler,       uart0_irq_handler,        uart1_irq_handler,       adc_irq_fifo_handler,
+    i2c0_irq_handler,       i2c1_irq_handler,     otp_irq_handler,        trng_irq_handler,         proc0_cti_handler,       proc1_cti_handler,
+    pll_sys_irq_handler,    pll_usb_irq_handler,  powman_pow_irq_handler, powman_timer_irq_handler, spare_irq_0_handler,     spare_irq_1_handler,
+    spare_irq_2_handler,    spare_irq_3_handler,  spare_irq_4_handler,    spare_irq_5_handler,
+};
+
 void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPriority priority, FuriHalInterruptISR isr, void* context) {
     furi_check(index < FuriHalInterruptIdMax);
     furi_check((priority >= FuriHalInterruptPriorityLowest && priority <= FuriHalInterruptPriorityHighest) || priority == FuriHalInterruptPriorityKamiSama);
@@ -136,8 +304,12 @@ void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPri
         furi_check(furi_hal_interrupt_isr[index].isr == NULL);
     } else {
         // Pre ISR clear
-        furi_hal_interrupt_disable(index);
-        furi_hal_interrupt_clear_pending(index);
+
+        //Todo: check the implementation
+        irq_set_enabled(furi_hal_interrupt_irqn[index], false);
+        irq_set_exclusive_handler(furi_hal_interrupt_irqn[index], NULL);
+        // furi_hal_interrupt_disable(index);
+        // furi_hal_interrupt_clear_pending(index);
     }
 
     furi_hal_interrupt_isr[index].isr = isr;
@@ -146,168 +318,15 @@ void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPri
 
     if(isr) {
         // Post ISR set
-        furi_hal_interrupt_clear_pending(index);
-        furi_hal_interrupt_enable(index, real_priority);
+        // furi_hal_interrupt_clear_pending(index);
+        // furi_hal_interrupt_enable(index, real_priority);
+
+        //Todo: check the implementation
+        irq_set_exclusive_handler(furi_hal_interrupt_irqn[index], furi_hal_interrupt_isr_handler[index]);
+        irq_set_enabled(furi_hal_interrupt_irqn[index], true);
     } else {
         // Post ISR clear
     }
-}
-
-void TIMER0_IRQ_0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq0);
-}
-void TIMER0_IRQ_1_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq1);
-}
-void TIMER0_IRQ_2_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq2);
-}
-void TIMER0_IRQ_3_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTimer0Irq3);
-}
-void TIMER1_IRQ_0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq0);
-}
-void TIMER1_IRQ_1_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq1);
-}
-void TIMER1_IRQ_2_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq2);
-}
-void TIMER1_IRQ_3_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTimer1Irq3);
-}
-void PWM_IRQ_WRAP_0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPwmWrap0);
-}
-void PWM_IRQ_WRAP_1_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPwmWrap1);
-}
-void DMA_IRQ_0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel0);
-}
-void DMA_IRQ_1_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel1);
-}
-void DMA_IRQ_2_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel2);
-}
-void DMA_IRQ_3_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdDmaChannel3);
-}
-void USBCTRL_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdUsbCtrl);
-}
-void PIO0_IRQ_0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPio0Irq0);
-}
-void PIO0_IRQ_1_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPio0Irq1);
-}
-void PIO1_IRQ_0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPio1Irq0);
-}
-void PIO1_IRQ_1_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPio1Irq1);
-}
-void PIO2_IRQ_0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPio2Irq0);
-}
-void PIO2_IRQ_1_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPio2Irq1);
-}
-void IO_IRQ_BANK0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdIoBank0);
-}
-void IO_IRQ_BANK0_NS_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdIoBank0Ns);
-}
-void IO_IRQ_QSPI_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdIoQspi);
-}
-void IO_IRQ_QSPI_NS_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdIoQspiNs);
-}
-void SIO_IRQ_FIFO_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSioFifo);
-}
-void SIO_IRQ_BELL_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSioBell);
-}
-void SIO_IRQ_FIFO_NS_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSioFifoNs);
-}
-void SIO_IRQ_BELL_NS_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSioBellNs);
-}
-void SIO_IRQ_MTIMECMP_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSioMtimecmp);
-}
-void CLOCKS_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdClocks);
-}
-void SPI0_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSpi0);
-}
-void SPI1_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSpi1);
-}
-void UART0_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdUart0);
-}
-void UART1_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdUart1);
-}
-void ADC_IRQ_FIFO_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdAdcFifo);
-}
-void I2C0_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdI2c0);
-}
-void I2C1_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdI2c1);
-}
-void OTP_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdOtp);
-}
-void TRNG_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdTrng);
-}
-void PROC0_IRQ_CTI_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdProc0Cti);
-}
-void PROC1_IRQ_CTI_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdProc1Cti);
-}
-void PLL_SYS_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPllSys);
-}
-void PLL_USB_IRQ_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPllUsb);
-}
-void POWMAN_IRQ_POW_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPowmanPow);
-}
-void POWMAN_IRQ_TIMER_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdPowmanTimer);
-}
-void SPARE_IRQ_0_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq0);
-}
-void SPARE_IRQ_1_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq1);
-}
-void SPARE_IRQ_2_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq2);
-}
-void SPARE_IRQ_3_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq3);
-}
-void SPARE_IRQ_4_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq4);
-}
-void SPARE_IRQ_5_IRQHandler() {
-    furi_hal_interrupt_call(FuriHalInterruptIdSpareIrq5);
 }
 
 // void NMI_Handler() {

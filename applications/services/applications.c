@@ -5,6 +5,7 @@ extern int32_t test_srv(void* p);
 extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
 extern int32_t test_input_srv(void* p);
+extern int32_t uart_echo_app(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
 
@@ -27,6 +28,11 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
      .name = "TestInputSrv",
      .appid = "test_input",
      .stack_size = 1024,
+     .flags = FlipperInternalApplicationFlagDefault },
+    {.app = uart_echo_app,
+     .name = "UartEcho",
+     .appid = "uart_echo",
+     .stack_size = 2048,
      .flags = FlipperInternalApplicationFlagDefault },
 
 };

@@ -11,10 +11,6 @@ void furi_hal_gpio_init_simple(const GpioPin* gpio, const GpioMode mode) {
 }
 
 void furi_hal_gpio_init(const GpioPin* gpio, const GpioMode mode, const GpioPull pull, const GpioSpeed speed) {
-    // // we cannot set alternate mode in this function
-    // furi_check(mode != GpioModeAltFunctionPushPull);
-    // furi_check(mode != GpioModeAltFunctionOpenDrain);
-
     furi_hal_gpio_init_ex(gpio, mode, pull, speed, GpioAltFn5Sio);
 }
 

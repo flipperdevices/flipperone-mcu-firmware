@@ -28,7 +28,7 @@ typedef enum {
     FuriHalSerialRxEventData = (1 << 0), /**< Data: new data available */
     FuriHalSerialRxEventIdle = (1 << 1), /**< Idle: bus idle detected */
     FuriHalSerialRxEventFrameError = (1 << 2), /**< Framing Error: incorrect frame detected */
-    FuriHalSerialRxEventNoiseError = (1 << 3), /**< Noise Error: noise on the line detected */
+    FuriHalSerialRxEventBreakError = (1 << 3), /**< Break Error: break condition detected */
     FuriHalSerialRxEventParityError = (1 << 4), /**< Parity Error: incorrect parity detected */
     FuriHalSerialRxEventOverrunError = (1 << 5), /**< Overrun Error: no space for received data */
 } FuriHalSerialRxEvent;
@@ -37,13 +37,6 @@ typedef enum {
 typedef enum {
     FuriHalSerialTxEventComplete = (1 << 0), /**< Transmission complete */
 } FuriHalSerialTxEvent;
-
-// typedef enum {
-//     FuriHalSerialAutoBaudRateModeStartBit,
-//     FuriHalSerialAutoBaudRateModeFallingEdge,
-//     FuriHalSerialAutoBaudRateMode0x7FFrame,
-//     FuriHalSerialAutoBaudRateMode0x55Frame,
-// } FuriHalSerialAutoBaudRateMode;
 
 /**
  * Receive callback function type.
@@ -195,6 +188,16 @@ uint8_t furi_hal_serial_rx(FuriHalSerialHandle* handle);
 /* Interrupt-based asynchronous API */
 
 /**
+ * Read available received data characters without blocking.
+ *
+ * @param handle Pointer to the serial handle.
+ * @param data Pointer to the data buffer.
+ * @param data_size Size of the data buffer.
+ * @returns Number of bytes read into the buffer.
+ */
+size_t furi_hal_serial_rx_data_non_blocking(FuriHalSerialHandle* handle, uint8_t* data, size_t data_size);
+
+/**
  * Start receiving in interrupt-driven mode.
  *
  * @param handle Pointer to the serial handle.
@@ -246,6 +249,20 @@ void furi_hal_serial_dma_rx_stop(FuriHalSerialHandle* handle);
  * @param handle Pointer to the serial handle.
  */
 void furi_hal_serial_clear(FuriHalSerialHandle* handle);
+
+/**
+ * Set serial framing configuration.
+ *
+ * @param handle Pointer to the serial handle.
+ * @param data_bits Number of data bits.
+ * @param parity Parity configuration.
+ * @param stop_bits Number of stop bits.
+ */
+void furi_hal_serial_set_config(
+    FuriHalSerialHandle* handle,
+    FuriHalSerialConfigDataBits data_bits,
+    FuriHalSerialConfigParity parity,
+    FuriHalSerialConfigStopBits stop_bits);
 
 #ifdef __cplusplus
 }

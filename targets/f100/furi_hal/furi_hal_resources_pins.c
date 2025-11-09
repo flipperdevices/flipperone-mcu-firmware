@@ -4,8 +4,8 @@
 const GpioPin gpio_uart0_tx = {.pin = 0};
 const GpioPin gpio_uart0_rx = {.pin = 1};
 
-const GpioPin gpio_uart1_tx = {.pin = 32};
-const GpioPin gpio_uart1_rx = {.pin = 33};
+const GpioPin gpio_uart1_tx = {.pin = 8};
+const GpioPin gpio_uart1_rx = {.pin = 9};
 
 const GpioPin gpio_display_ctrl = {.pin = 35};
 const GpioPin gpio_display_sda = {.pin = 19};
