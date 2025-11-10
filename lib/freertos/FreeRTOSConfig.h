@@ -155,8 +155,8 @@ extern "C" {
  that is used by newer ports only. The two are equivalent. */
 #define configMAX_API_CALL_INTERRUPT_PRIORITY configMAX_SYSCALL_INTERRUPT_PRIORITY
 
-/* SMP port only */
-/* https://www.freertos.org/symmetric-multiprocessing-introduction.html */
+// /* SMP port only */
+// /* https://www.freertos.org/symmetric-multiprocessing-introduction.html */
 // #define configNUMBER_OF_CORES         2
 // #define configNUM_CORES               configNUMBER_OF_CORES
 // #define configTICK_CORE               0

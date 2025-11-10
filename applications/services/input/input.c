@@ -1,6 +1,7 @@
 #include "input.h"
 
 #include "core/log.h"
+#include "furi_hal_gpio.h"
 #include "furi_hal_i2c_config.h"
 #include <furi.h>
 
@@ -167,6 +168,10 @@ int32_t input_srv(void* p) {
                 event.type = pin_states[i].state ? InputTypePress : InputTypeRelease;
                 furi_pubsub_publish(event_pubsub, &event);
             }
+        }
+
+        if(furi_hal_gpio_read(&gpio_expander_int) == 0) {
+            furi_thread_flags_set(thread_id, INPUT_THREAD_FLAG_ISR);
         }
 
         if(is_changing) {
