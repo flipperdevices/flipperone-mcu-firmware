@@ -66,6 +66,7 @@ target_compile_definitions(one-rp2350-control PRIVATE
     USE_PRINTF
     USE_DBG_PRINTF
     PICO_USE_MALLOC_MUTEX=0
+    #PICO_USE_SW_SPIN_LOCKS=0
     )
 
 

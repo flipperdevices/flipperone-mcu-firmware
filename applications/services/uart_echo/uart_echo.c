@@ -90,14 +90,14 @@ static void uart_echo_on_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialRxEven
     char buf[32];
 
     if(event & FuriHalSerialRxEventData) {
-        length = furi_hal_serial_rx_data_non_blocking(handle, data, 64);
-        sprintf(buf, "\r\nReceived %zu\t", length);
-        furi_hal_serial_tx(app->serial_handle, buf, strlen(buf), FuriWaitForever);
-        furi_hal_serial_tx(app->serial_handle, data, length, FuriWaitForever);
+        // length = furi_hal_serial_rx_data_non_blocking(handle, data, 64);
+        // sprintf(buf, "\r\nReceived %zu\t", length);
+        // furi_hal_serial_tx(app->serial_handle, buf, strlen(buf), FuriWaitForever);
+        // furi_hal_serial_tx(app->serial_handle, data, length, FuriWaitForever);
 
         //Todo: spinlock
-        // length = furi_hal_serial_rx_data_non_blocking(handle, data, 64);
-        // furi_stream_buffer_send(app->rx_stream, &data, length, 0);
+        length = furi_hal_serial_rx_data_non_blocking(handle, data, 64);
+        furi_stream_buffer_send(app->rx_stream, &data, length, 0);
 
         flag |= WorkerEventRxData;
     }
@@ -107,8 +107,8 @@ static void uart_echo_on_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialRxEven
         flag |= WorkerEventRxIdle | WorkerEventRxData;
 
         length = furi_hal_serial_rx_data_non_blocking(handle, data, 64);
-        if(length > 0) furi_hal_serial_tx(app->serial_handle, data, length, FuriWaitForever);
-        //furi_stream_buffer_send(app->rx_stream, &data, length, 0);
+        //if(length > 0) furi_hal_serial_tx(app->serial_handle, data, length, FuriWaitForever);
+        furi_stream_buffer_send(app->rx_stream, &data, length, 0);
     }
 
     //error detected

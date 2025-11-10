@@ -126,6 +126,8 @@ int32_t input_srv(void* p) {
     while(1) {
         bool is_changing = false;
         input_state = tsa6416a_read_input(tsa6416a);
+        read_mode = tsa6416a_read_mode(tsa6416a);
+    FURI_LOG_D("22", "Wrote : %016b", read_mode);
         for(size_t i = 0; i < input_pins_count; i++) {
             bool state = input_key_check_state(input_state, pin_states[i]);
             if(state) {

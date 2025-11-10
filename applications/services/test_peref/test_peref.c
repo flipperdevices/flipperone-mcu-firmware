@@ -88,13 +88,13 @@ int32_t test_peref_srv(void* p) {
             index_led = 0;
         }
         furi_delay_ms(100);
-        
+
         //furi_hal_i2c_acquire(&furi_hal_i2c_handle_internal);
         // furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);
         // furi_hal_i2c_release(&furi_hal_i2c_handle_internal);
         // uint16_t input_state = tsa6416a_read_input(tsa6416a);
         // FURI_LOG_I(tag, "TSA6416A input state bin: %016b", input_state);
-        furi_thread_yield();
+        // furi_thread_yield();
 
         // if(input_temp == 1) {
         //     uint16_t input_state = tsa6416a_read_input(tsa6416a);

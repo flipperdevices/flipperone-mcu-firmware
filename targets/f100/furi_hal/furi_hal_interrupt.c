@@ -323,6 +323,7 @@ void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPri
 
         //Todo: check the implementation
         irq_set_exclusive_handler(furi_hal_interrupt_irqn[index], furi_hal_interrupt_isr_handler[index]);
+        irq_set_priority(furi_hal_interrupt_irqn[index], real_priority);
         irq_set_enabled(furi_hal_interrupt_irqn[index], true);
     } else {
         // Post ISR clear
