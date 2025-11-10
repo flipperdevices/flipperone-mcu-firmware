@@ -157,15 +157,15 @@ extern "C" {
 
 /* SMP port only */
 /* https://www.freertos.org/symmetric-multiprocessing-introduction.html */
-#define configNUMBER_OF_CORES         2
-#define configNUM_CORES               configNUMBER_OF_CORES
-#define configTICK_CORE               0
-#define configRUN_MULTIPLE_PRIORITIES 1
+// #define configNUMBER_OF_CORES         2
+// #define configNUM_CORES               configNUMBER_OF_CORES
+// #define configTICK_CORE               0
+// #define configRUN_MULTIPLE_PRIORITIES 1
 
-/* SMP Related config. */
-#define configUSE_CORE_AFFINITY     1
-#define configUSE_PASSIVE_IDLE_HOOK 0
-#define portSUPPORT_SMP             1
+// /* SMP Related config. */
+// #define configUSE_CORE_AFFINITY     1
+// #define configUSE_PASSIVE_IDLE_HOOK 0
+// #define portSUPPORT_SMP             1
 
 /* RP2040 specific */
 #define configSUPPORT_PICO_SYNC_INTEROP 1
