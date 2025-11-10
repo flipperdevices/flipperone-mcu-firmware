@@ -107,6 +107,7 @@ target_link_libraries(one-rp2350-control
     hardware_adc
     hardware_dma
     hardware_uart
+    pico_unique_id
     ws2812
     freertos
     lvgl_lib
