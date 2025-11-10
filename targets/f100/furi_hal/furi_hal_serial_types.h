@@ -10,13 +10,6 @@ typedef enum {
     FuriHalSerialIdMax,
 } FuriHalSerialId;
 
-// typedef enum {
-//     FuriHalSerialDirectionNone = 0,
-//     FuriHalSerialDirectionTx = 1 << 0,
-//     FuriHalSerialDirectionRx = 1 << 1,
-//     FuriHalSerialDirectionTxRx = FuriHalSerialDirectionTx | FuriHalSerialDirectionRx,
-// } FuriHalSerialDirection;
-
 typedef enum {
     FuriHalSerialPinTx,
     FuriHalSerialPinRx,
@@ -43,15 +36,5 @@ typedef enum {
     FuriHalSerialConfigStopBits_1,
     FuriHalSerialConfigStopBits_2,
 } FuriHalSerialConfigStopBits;
-
-// typedef enum {
-//     FuriHalSerialTransferBitOrderLsbFirst,
-//     FuriHalSerialTransferBitOrderMsbFirst,
-// } FuriHalSerialTransferBitOrder;
-
-// typedef enum {
-//     FuriHalSerialBinaryDataLogicPositive,
-//     FuriHalSerialBinaryDataLogicNegative,
-// } FuriHalSerialBinaryDataLogic;
 
 typedef struct FuriHalSerialHandle FuriHalSerialHandle;

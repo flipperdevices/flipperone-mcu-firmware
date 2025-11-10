@@ -3,7 +3,6 @@
 #include <furi_hal_gpio.h>
 #include <hardware/pwm.h>
 #include "hardware/clocks.h"
-#include <stdint.h>
 
 #define TAG "FuriHalPwm"
 
