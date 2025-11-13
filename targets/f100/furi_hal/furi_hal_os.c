@@ -2,12 +2,9 @@
 #include <furi.h>
 #include <furi_hal_power.h>
 #include <furi_hal_clock.h>
-
 #include <FreeRTOS.h>
-#include <sys/_intsup.h>
 #include <task.h>
-
-#include <hardware/uart.h>
+#include <furi_hal_debug.h>
 
 #define TAG "FuriHalOs"
 
@@ -22,39 +19,39 @@ void furi_hal_os_tick(void) {
         SysTick_Handler();
     }
 }
-#include <hardware/uart.h>
-#include <furi_hal_resources.h>
+
+static inline bool furi_hal_os_deep_sleep_available(void) {
+    //todo: Add a check for enabling/disabling deep sleep mode
+    return !furi_hal_debug_is_gdb_session_active();
+}
+
+static inline void furi_hal_power_light_sleep(void) {
+    __WFI();
+}
+
 void vPortSuppressTicksAndSleep(TickType_t expected_idle_ticks) {
-    furi_hal_gpio_write(&gpio_key_right, false);
     if(!furi_hal_power_sleep_available()) {
-        
         __WFI();
-        furi_hal_gpio_write(&gpio_key_right, true);
-        return;
+    } else if(!furi_hal_os_deep_sleep_available()) {
+        furi_hal_power_light_sleep();
+    } else {
+        TickType_t unexpected_idle_ticks = expected_idle_ticks - 1;
+        uint32_t completed_ticks = 0;
+        furi_hal_clock_suspend_tick();
+        __disable_irq();
+
+        do {
+            // Confirm OS that sleep is still possible
+            if(eTaskConfirmSleepModeStatus() == eAbortSleep) { // nvic_hw->ispr[num/32] = 1 << (num % 32); || furi_hal_os_is_pending_irq()) {
+                break;
+            }
+
+            completed_ticks = furi_hal_power_deep_sleep(unexpected_idle_ticks);
+
+            vTaskStepTick(completed_ticks);
+        } while(0);
+
+        __enable_irq();
+        furi_hal_clock_resume_tick();
     }
-    
-    TickType_t unexpected_idle_ticks = expected_idle_ticks - 1;
-    uint32_t completed_ticks = 0;
-    furi_hal_clock_suspend_tick();
-    __disable_irq();
-
-    do {
-        // Confirm OS that sleep is still possible
-        if(eTaskConfirmSleepModeStatus() == eAbortSleep ) {  // nvic_hw->ispr[num/32] = 1 << (num % 32); || furi_hal_os_is_pending_irq()) {
-            break;
-        }
-        
-        //uart_tx_wait_blocking(uart0);
-        completed_ticks = furi_hal_power_sleep(unexpected_idle_ticks);
-        
-        
-        vTaskStepTick(completed_ticks);
-    } while(0);
-    // char buf[64];
-    // snprintf(buf, sizeof(buf), "%d %d ticks\r\n", unexpected_idle_ticks, completed_ticks);
-    // uart_write_blocking(uart0, (const uint8_t*)buf, strlen(buf));
-
-    __enable_irq();
-    furi_hal_clock_resume_tick();
-    furi_hal_gpio_write(&gpio_key_right, true);
 }

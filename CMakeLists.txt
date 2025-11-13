@@ -108,7 +108,6 @@ target_link_libraries(one-rp2350-control
     hardware_dma
     hardware_uart
     hardware_watchdog
-    hardware_powman
     hardware_clocks
     pico_unique_id
     ws2812

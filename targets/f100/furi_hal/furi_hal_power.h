@@ -37,9 +37,16 @@ void furi_hal_power_insomnia_exit(void);
   */
 bool furi_hal_power_sleep_available(void);
 
-
+/** Initialize power HAL
+  */
 void furi_hal_power_init(void);
-uint32_t furi_hal_power_sleep(uint32_t expected_idle_ticks);
+
+/** Enter deep sleep mode
+  *
+  * @param expected_idle_ticks Expected idle ticks
+  * @return Number of ticks spent in deep sleep
+  */
+uint32_t furi_hal_power_deep_sleep(uint32_t expected_idle_ticks);
 
 #ifdef __cplusplus
 }
