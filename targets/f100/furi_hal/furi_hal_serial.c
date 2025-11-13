@@ -469,6 +469,8 @@ size_t furi_hal_serial_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, si
 
     //Todo: implement timeout
     uart_write_blocking(furi_hal_serial_resources[handle->id].periph, buffer, buffer_size);
+    //Todo: You can remove the wait for sending all bytes of data, but hope to implement the wait before going into deep sleep
+    furi_hal_serial_tx_wait_complete(handle, timeout);
 
     return buffer_size;
 }

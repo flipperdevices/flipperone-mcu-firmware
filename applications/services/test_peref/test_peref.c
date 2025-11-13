@@ -12,6 +12,7 @@
 
 #include <furi_hal_i2c.h>
 #include <drivers/tsa6416a/tsa6416a.h>
+#include <furi_hal_power.h>
 
 #define tag "TestPerefSrv"
 
@@ -38,7 +39,7 @@ int32_t test_peref_srv(void* p) {
     FURI_LOG_W("tag", "Warning");
     FURI_LOG_E("tag", "Error");
 
-    // furi_hal_gpio_init_simple(&gpio_pico_led, GpioModeOutputPushPull);
+    furi_hal_gpio_init_simple(&gpio_key_right, GpioModeOutputPushPull);
     // furi_hal_gpio_init_simple(&gpio_key3, GpioModeInput);
     // furi_hal_gpio_add_int_callback(&gpio_key3, GpioConditionFall, key3_callback, NULL);
 
@@ -71,6 +72,8 @@ int32_t test_peref_srv(void* p) {
 
         // furi_hal_pwm_set_duty_cycle(pwm, duty);
         duty += 5;
+      //  furi_hal_power_insomnia_enter();
+      //furi_delay_ms(3);
         for(size_t i = 0; i < 29; i++) {
             if(index_led == i) {
                 // ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
@@ -83,11 +86,19 @@ int32_t test_peref_srv(void* p) {
                 ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 0);
             }
         }
+        
         index_led++;
         if(index_led >= 30) {
             index_led = 0;
         }
+        //todo : It is necessary to provide a sufficient delay before going to sleep so that the PIO has time to transfer data
+        for(size_t i = 0; i < 10000; i++) {
+            __asm__("nop"); // Delay for WS2812 timing
+        }
+       // furi_delay_ms(3);
+       // furi_hal_power_insomnia_exit();
         furi_delay_ms(100);
+
 
         //furi_hal_i2c_acquire(&furi_hal_i2c_handle_internal);
         // furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);

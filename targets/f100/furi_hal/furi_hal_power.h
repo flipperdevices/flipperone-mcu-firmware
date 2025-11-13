@@ -5,6 +5,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,6 +36,10 @@ void furi_hal_power_insomnia_exit(void);
   * @return     true if available
   */
 bool furi_hal_power_sleep_available(void);
+
+
+void furi_hal_power_init(void);
+uint32_t furi_hal_power_sleep(uint32_t expected_idle_ticks);
 
 #ifdef __cplusplus
 }

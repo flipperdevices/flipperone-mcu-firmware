@@ -1,8 +1,7 @@
-#include "core/log.h"
 #include "furi_hal_gpio.h"
 #include <furi.h>
 #include <furi_hal_resources.h>
-#include <stdbool.h>
+#include <furi_hal_power.h>
 
 #define TAG "TestSrv"
 
@@ -23,7 +22,9 @@ int32_t test_srv(void* p) {
         furi_delay_ms(1000);
         gpio_key_down_state = !gpio_key_down_state;
         furi_hal_gpio_write_open_drain(&gpio_key_down, gpio_key_down_state);
+        furi_hal_power_insomnia_enter();
         FURI_LOG_I(TAG, " GPIO Key Down state: %d", gpio_key_down_state);
+        furi_hal_power_insomnia_exit();
     }
 
     free(instance);
