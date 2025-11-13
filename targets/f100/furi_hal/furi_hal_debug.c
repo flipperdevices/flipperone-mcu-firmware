@@ -1,7 +1,10 @@
 #include <furi_hal_debug.h>
 #include <furi_hal_resources.h>
 
-volatile bool furi_hal_debug_gdb_session_active = false;
+//todo: implement detection of gdb session
+// deep sleep mode OFF
+//volatile bool furi_hal_debug_gdb_session_active = false;
+volatile bool furi_hal_debug_gdb_session_active = true;
 
 void furi_hal_debug_enable(void) {
     // Low power mode debug

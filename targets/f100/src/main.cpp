@@ -3,9 +3,7 @@
 #include <furi_hal_nvm.h>
 #include <flipper.h>
 
-#include "pico/stdlib.h"
 #include "pico/multicore.h"
-#include <furi_hal_power.h>
 
 #define TAG "Main"
 
@@ -29,8 +27,6 @@ int32_t init_task(void* context) {
 
 int main(void) {
     //Initialize FURI layer
-    sleep_ms(5000);
-    //furi_hal_power_init();
     furi_init();
  
     // Critical FURI HAL
