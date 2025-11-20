@@ -7,8 +7,6 @@
 
 #include <furi_hal_pwm.h>
 #include <drivers/ws2812/ws2812.h>
-#include <stdint.h>
-#include <strings.h>
 
 #include <furi_hal_i2c.h>
 #include <drivers/tsa6416a/tsa6416a.h>
@@ -18,10 +16,10 @@
 
 uint8_t input_temp =0;
 
-static void input_callback (void* ctx) {
-    Tsa6416a* instance = (Tsa6416a*)ctx;
-    input_temp = 1;
-}
+// static void input_callback (void* ctx) {
+//     Tsa6416a* instance = (Tsa6416a*)ctx;
+//     input_temp = 1;
+// }
 
 // static void key3_callback(void* ctx) {
 //     //printf("Key1 pressed!");
@@ -39,11 +37,11 @@ int32_t test_peref_srv(void* p) {
     FURI_LOG_W("tag", "Warning");
     FURI_LOG_E("tag", "Error");
 
-    furi_hal_gpio_init_simple(&gpio_key_right, GpioModeOutputPushPull);
+    //furi_hal_gpio_init_simple(&gpio_key_right, GpioModeOutputPushPull);
     // furi_hal_gpio_init_simple(&gpio_key3, GpioModeInput);
     // furi_hal_gpio_add_int_callback(&gpio_key3, GpioConditionFall, key3_callback, NULL);
 
-    FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_key_back, 8, 200000, false);
+    //FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_key_back, 8, 200000, false);
     uint8_t duty = 0;
 
     GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 1);
@@ -51,24 +49,74 @@ int32_t test_peref_srv(void* p) {
     Ws2812* ws2812 = ws2812_init(ws2812_pins, 1);
     free(ws2812_pins);
 
-    // DisplayJd9853* display = display_jd9853_init();
-    // display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
+    DisplayJd9853* display = display_jd9853_init();
+    display_jd9853_fill(display, 0x00); // Fill white
     uint8_t index_led = 0;
 
+    FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_display_ctrl, 8, 50000, false);
+    furi_hal_pwm_set_duty_cycle(pwm, 160);
     while(true) {
         // furi_hal_gpio_write(&gpio_pico_led, true);
         // furi_delay_ms(10);
         // furi_hal_gpio_write(&gpio_pico_led, false);
         // furi_delay_ms(10);
-        // display_jd9853_fill(display, 0x00, 0x00, 0xFF); // Fill blue
-        // furi_delay_ms(10);
-        // display_jd9853_fill(display, 0x00, 0xFF, 0xFF); // Fill cyan
-        // furi_delay_ms(10);
-        // display_jd9853_fill(display, 0xFF, 0x00, 0xFF); // Fill magenta
-        // furi_delay_ms(10);
-        // display_jd9853_fill(display, 0xFF, 0xFF, 0x00); // Fill yellow
-        // furi_delay_ms(10);
-        // display_jd9853_fill(display, 0x00, 0x00, 0x00); // Fill black
+
+        //bw display test
+        // display_jd9853_fill(display, 0); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_fill(display, 50); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_fill(display, 100); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_fill(display, 150); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_fill(display, 200); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_fill(display, 255); // Fill white
+        // furi_delay_ms(400);
+
+        
+        // uint16_t w1 = 50;
+        // uint8_t h1 = 50;
+        
+        
+        // uint8_t* data = (uint8_t*)malloc(w1 * h1);
+        // for(size_t i = 0; i < w1 * h1; i += 1) {
+        //     data[i] = 00;
+        // }
+        // //display_jd9853_write_buffer_x_y(display, 0, 0, 10, 10, data, sizeof(data));
+        // display_jd9853_write_buffer_x_y(display, 10, 10, w1, h1, data, w1 * h1);
+        // display_jd9853_write_buffer_x_y(display, 40, 40, w1, h1, data, w1 * h1);
+        // furi_delay_ms(200);
+        // for(size_t i = 0; i < w1 * h1; i += 1) {
+        //     data[i] = 255;
+        // }
+        // display_jd9853_write_buffer_x_y(display, 10, 10, w1, h1, data, w1 * h1);
+        // display_jd9853_write_buffer_x_y(display, 40, 40, w1, h1, data, w1 * h1);
+
+        // free(data);
+
+
+        // //random SQUARE
+        uint16_t x0 = rand() % 257;
+        uint16_t y0 = rand() % 143;
+        uint8_t w = rand() % 25;
+        uint8_t h = rand() % 25;
+        uint8_t color = rand() % 255;
+
+       // FURI_LOG_I("TAG", "Drawing square at (%d, %d) to (%d, %d) with color %d", x0, y0, w, h, color);
+
+        uint8_t* buf = (uint8_t*)malloc( (w+1) * (h+1));
+        for(size_t i = 0; i < (w+1) * (h+1); i++) {
+            buf[i] = color;
+        }
+        display_jd9853_write_buffer_x_y(display, x0, y0, w+1, h+1, buf, (w+1) * (h+1));
+        free(buf);
+        furi_delay_ms(10);
+        
+
+
+
 
         // furi_hal_pwm_set_duty_cycle(pwm, duty);
         duty += 5;
@@ -97,7 +145,7 @@ int32_t test_peref_srv(void* p) {
         }
        // furi_delay_ms(3);
        // furi_hal_power_insomnia_exit();
-        furi_delay_ms(100);
+       // furi_delay_ms(100);
 
 
         //furi_hal_i2c_acquire(&furi_hal_i2c_handle_internal);
@@ -107,11 +155,6 @@ int32_t test_peref_srv(void* p) {
         // FURI_LOG_I(tag, "TSA6416A input state bin: %016b", input_state);
         // furi_thread_yield();
 
-        // if(input_temp == 1) {
-        //     uint16_t input_state = tsa6416a_read_input(tsa6416a);
-        //     FURI_LOG_I(tag, "TSA6416A input state bin: %016b", input_state);
-        //     input_temp = 0;
-        // }
     }
     furi_crash();
 }

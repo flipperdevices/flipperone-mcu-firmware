@@ -1,7 +1,11 @@
 #pragma once
 
-#define SCREEN_WIDTH 240
-#define SCREEN_HEIGHT 240
+#define JD9853_WIDTH    258
+#define JD9853_HEIGHT   144
+#define JD9853_OFF_X    77
+#define JD9853_OFF_Y    (320 - JD9853_HEIGHT) // was 0 without mirroring and rotation
+
+#define JD9853_WIDTH_END JD9853_OFF_X+JD9853_WIDTH
 
 //https://github.com/flipperdevices/one-rp2350-control/blob/main/docs/GWT-2.39-256144-AWMN-04-FS-1.1.pdf
 typedef enum {
@@ -52,9 +56,9 @@ static const uint8_t st7789_init_seq[] = {
         2, 2, 0x3a, 0x55,                   // Set colour mode to 16 bit
         2, 0, 0x36, 0x00,                   // Set MADCTL: row then column, refresh is bottom to top ????
         5, 0, 0x2a, 0x00, 0x00,             // CASET: column addresses
-            SCREEN_WIDTH >> 8, SCREEN_WIDTH & 0xff,
+            JD9853_WIDTH >> 8, JD9853_WIDTH & 0xff,
         5, 0, 0x2b, 0x00, 0x00,             // RASET: row addresses
-            SCREEN_HEIGHT >> 8, SCREEN_HEIGHT & 0xff,
+            JD9853_HEIGHT >> 8, JD9853_HEIGHT & 0xff,
         1, 2, 0x21,                         // Inversion on, then 10 ms delay (supposedly a hack?)
         1, 2, 0x13,                         // Normal display on, then 10 ms delay
         1, 2, 0x29,                         // Main screen turn on, then wait 500 ms
@@ -65,4 +69,126 @@ static const uint8_t st7789_deinit_seq[] = {
         1, 20, 0x28,                        // Display off
         1, 20, 0x10,                        // Enter sleep mode
         0                                   // Terminate list
+};
+
+static const uint8_t jd9853_init_seq_2025_04_01_normal_white[] = {
+        1, 20, 0x01,                                // Software reset
+        3, 0, 0xDF, 0x98, 0x53,                     // SET_PASSWD
+        2, 0, 0xDE, 0x00,                           // Page0
+        2, 0, 0xB2, 0x64,                           // Vcom
+        // GAMMA_SET
+        5, 0, 0xB7, 0x00,                           // VGSP_S
+                    0x7D,                           // VGMP_S //4.6
+                    0x00,                           // VGSN_S
+                    0x7D,                           // VGPN_S //-4.6
+        2, 0, 0xB9, 0b01110101,                     // AP
+        // Voltage settings
+        7, 0, 0xBB, 0b01110111,             // VGHZ_S =11V VGLZ_S =-9.25V
+                    0b10111001,             // VGHZ_RT  AVDDZ_S  VGLZ_RT  AVEEZ_S    
+                    0x55,                   // VGHZ_CLK  VGLZ_CLK
+                    0x61,                   // MVZ_S_CLK  MVZ_G_CLK
+                    0x7F,                   // MVZ_NS_CLK  HV_CLKP  MV_CLKP
+                    0xFE,                   // VGHZ_CLKE  CGLZ_CLKE  MVZ_S_CLKE  MVZ_NS_CLKE
+        3, 0, 0xC0, 0b11111111, 0b11111111,         // SETSTBA
+        2, 0, 0xC1, 0x16,                           // SETPANEL
+        9, 0, 0xC3, 0x7E, 0x07, 0x16, 0x0B,         // SETRGBCYC
+                    0xCB, 0x71, 0x72, 0x7F, 
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79,        // SET_TCON
+                    0x14, 0x12, 0x16, 0x79,
+                    0x0C, 0x0A, 0x16, 0x82,
+        33, 0, 0xC8, 0xFF, 0xFF, 0xFF, 0xFF,        // SET_R_GAMMA
+                    0xFF, 0xFF, 0xFF, 0xFF,
+                    0xFF, 0xFF, 0xFF, 0xFF,
+                    0xFF, 0xFF, 0xFF, 0xFF,
+                    0xFF, 0xFF, 0xFF, 0xFF,        
+                    0xFF, 0xFF, 0xFF, 0xFF,
+                    0xFF, 0xFF, 0xFF, 0xFF,
+                    0xFF, 0xFF, 0xFF, 0xFF,
+        6, 0, 0xD0, 0x04, 0x06, 0x6B, 0x0F, 0x00,   // SET_GD
+        3, 0, 0xD7, 0x00, 0x30,                     // RAMCTRL
+        2, 0, 0xE6, 0x14,                           // ECO
+        2, 0, 0xDE, 0x01,                           // page1
+        2, 0, 0xB2, 0x12,                           // option
+        6, 0, 0xB7, 0x07, 0x13, 0x0F, 0x39, 0x2D,   // DCDC_OPT
+        4, 0, 0xC1, 0x34, 0x15, 0xE0,               // SETRGB
+        4, 0, 0xC2, 0x06, 0x3A, 0xC7,               // SETSTBA2
+        3, 0, 0xC4, 0x7A, 0x1A,                     // SET_GAMMAOP
+        2, 0, 0xC5, 0x01,                           // OSC
+        // 2, 0, 0xBE, 0x00,                           // GAMMA_POWER_TEST
+        2, 0, 0xDE, 0x02,                           // page2
+        3, 0, 0xB5, 0x0A, 0x1C,                     //
+        2, 0, 0xDE, 0x00,                           // page0
+        2, 0, 0x35, 0x00,                           // Tearing Effect Line ON
+        2, 0, 0x3A, 0x06,                           // Set colour mode to RGB666
+
+        5, 0, 0x2A, JD9853_OFF_X >> 8, JD9853_OFF_X & 0xff, // CASET: column addresses
+            JD9853_WIDTH_END >> 8, JD9853_WIDTH_END & 0xff,
+        5, 0, 0x2B, 0x00, 0x00,             // RASET: row addresses
+            JD9853_HEIGHT >> 8, JD9853_HEIGHT & 0xff,
+
+        2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
+        1, 20, 0x11,                            // Exit sleep mode
+        1, 2, 0x29,                             // Main screen turn on, then wait 500 ms
+        0,                                      // Terminate list
+};
+
+static const uint8_t jd9853_init_seq_2025_04_01_normal_black[] = {
+        1, 20, 0x01,                                // Software reset
+        3, 0, 0xDF, 0x98, 0x53,                     // SET_PASSWD
+        2, 0, 0xDE, 0x00,                           // Page0
+        2, 0, 0xB2, 0x0C,                           // Vcom
+        // GAMMA_SET
+        5, 0, 0xB7, 0x00,                           // VGSP_S
+                    0x25,                           //4.6
+                    0x00,                           // VGSN_S
+                    0x4D,                           //4.6
+        2, 0, 0xB9, 0x35,                           // AP
+        // Voltage settings
+        7, 0, 0xBB, 0x36,                           // VGHZ_S =11V VGLZ_S =-9.25V
+                    0xB9,                           // VGHZ_RT  AVDDZ_S  VGLZ_RT  AVEEZ_S    
+                    0x55,                           // VGHZ_CLK  VGLZ_CLK
+                    0x61,                           // MVZ_S_CLK  MVZ_G_CLK
+                    0x7F,                           // MVZ_NS_CLK  HV_CLKP  MV_CLKP
+                    0xFE,                           // VGHZ_CLKE  CGLZ_CLKE  MVZ_S_CLKE  MVZ_NS_CLKE
+        3, 0, 0xC0, 0x19, 0x95,                     // SETSTBA
+        2, 0, 0xC1, 0x12,                           // SETPANEL
+        9, 0, 0xC3, 0x7E, 0x07, 0x16, 0x0B,         // SETRGBCYC
+                    0xCB, 0x71, 0x72, 0x7F,
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79,        // SET_TCON
+                    0x14, 0x12, 0x16, 0x79,
+                    0x0C, 0x0A, 0x16, 0x82,
+        33, 0, 0xC8, 0x3F, 0x3A, 0x35, 0x35,        // SET_R_GAMMA
+                    0x38, 0x3C, 0x37, 0x36,
+                    0x33, 0x30, 0x2C, 0x1C,
+                    0x17, 0x10, 0x09, 0x0C,
+                    0x3F, 0x3A, 0x35, 0x35,
+                    0x38, 0x3C, 0x37, 0x36,
+                    0x33, 0x30, 0x2C, 0x1C,
+                    0x17, 0x10, 0x09, 0x0C,
+        6, 0, 0xD0, 0x04, 0x06, 0x6B, 0x0F, 0x00,   // SET_GD
+        3, 0, 0xD7, 0x00, 0x30,                     // RAMCTRL
+        2, 0, 0xE6, 0x14,                           // ECO
+        2, 0, 0xDE, 0x01,                           // page1
+        2, 0, 0xB2, 0x12,                           // option
+        6, 0, 0xB7, 0x07, 0x13, 0x0F, 0x39, 0x2D,   // DCDC_OPT
+        4, 0, 0xC1, 0x34, 0x15, 0xE0,               // SETRGB
+        4, 0, 0xC2, 0x06, 0x3A, 0xC7,               // SETSTBA2
+        3, 0, 0xC4, 0x7A, 0x1A,                     // SET_GAMMAOP
+        2, 0, 0xC5, 0x01,                           // OSC
+        // 2, 0, 0xBE, 0x00,                           // GAMMA_POWER_TEST
+        2, 0, 0xDE, 0x02,                           // page2
+        3, 0, 0xB5, 0x0A, 0x1C,                     //
+        2, 0, 0xDE, 0x00,                           // page0
+        2, 0, 0x35, 0x00,                           // Tearing Effect Line ON
+        2, 0, 0x3A, 0x06,                           // Set colour mode to RGB666
+
+        5, 0, 0x2A, JD9853_OFF_X >> 8, JD9853_OFF_X & 0xff, // CASET: column addresses
+            JD9853_WIDTH_END >> 8, JD9853_WIDTH_END & 0xff,
+        5, 0, 0x2B, 0x00, 0x00,             // RASET: row addresses
+            JD9853_HEIGHT >> 8, JD9853_HEIGHT & 0xff,
+        
+        2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
+        1, 20, 0x11,                            // Exit sleep mode
+        1, 2, 0x29,                             // Main screen turn on
+        0,                                      // Terminate list
 };
