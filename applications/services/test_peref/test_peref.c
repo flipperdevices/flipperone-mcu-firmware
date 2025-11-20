@@ -41,7 +41,6 @@ int32_t test_peref_srv(void* p) {
     // furi_hal_gpio_init_simple(&gpio_key3, GpioModeInput);
     // furi_hal_gpio_add_int_callback(&gpio_key3, GpioConditionFall, key3_callback, NULL);
 
-    //FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_key_back, 8, 200000, false);
     uint8_t duty = 0;
 
     GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 1);
@@ -62,57 +61,36 @@ int32_t test_peref_srv(void* p) {
         // furi_delay_ms(10);
 
         //bw display test
-        // display_jd9853_fill(display, 0); // Fill white
-        // furi_delay_ms(200);
-        // display_jd9853_fill(display, 50); // Fill white
-        // furi_delay_ms(200);
-        // display_jd9853_fill(display, 100); // Fill white
-        // furi_delay_ms(200);
-        // display_jd9853_fill(display, 150); // Fill white
-        // furi_delay_ms(200);
-        // display_jd9853_fill(display, 200); // Fill white
-        // furi_delay_ms(200);
-        // display_jd9853_fill(display, 255); // Fill white
-        // furi_delay_ms(400);
-
-        
-        // uint16_t w1 = 50;
-        // uint8_t h1 = 50;
-        
-        
-        // uint8_t* data = (uint8_t*)malloc(w1 * h1);
-        // for(size_t i = 0; i < w1 * h1; i += 1) {
-        //     data[i] = 00;
-        // }
-        // //display_jd9853_write_buffer_x_y(display, 0, 0, 10, 10, data, sizeof(data));
-        // display_jd9853_write_buffer_x_y(display, 10, 10, w1, h1, data, w1 * h1);
-        // display_jd9853_write_buffer_x_y(display, 40, 40, w1, h1, data, w1 * h1);
-        // furi_delay_ms(200);
-        // for(size_t i = 0; i < w1 * h1; i += 1) {
-        //     data[i] = 255;
-        // }
-        // display_jd9853_write_buffer_x_y(display, 10, 10, w1, h1, data, w1 * h1);
-        // display_jd9853_write_buffer_x_y(display, 40, 40, w1, h1, data, w1 * h1);
-
-        // free(data);
+        display_jd9853_fill(display, 0); // Fill white
+        furi_delay_ms(200);
+        display_jd9853_fill(display, 50); // Fill white
+        furi_delay_ms(200);
+        display_jd9853_fill(display, 100); // Fill white
+        furi_delay_ms(200);
+        display_jd9853_fill(display, 150); // Fill white
+        furi_delay_ms(200);
+        display_jd9853_fill(display, 200); // Fill white
+        furi_delay_ms(200);
+        display_jd9853_fill(display, 255); // Fill white
+        furi_delay_ms(400);
 
 
-        // //random SQUARE
-        uint16_t x0 = rand() % 257;
-        uint16_t y0 = rand() % 143;
-        uint8_t w = rand() % 25;
-        uint8_t h = rand() % 25;
-        uint8_t color = rand() % 255;
+    //     // //random SQUARE
+    //     uint16_t x0 = rand() % 257;
+    //     uint16_t y0 = rand() % 143;
+    //     uint8_t w = rand() % 25;
+    //     uint8_t h = rand() % 25;
+    //     uint8_t color = rand() % 255;
 
-       // FURI_LOG_I("TAG", "Drawing square at (%d, %d) to (%d, %d) with color %d", x0, y0, w, h, color);
+    //    // FURI_LOG_I("TAG", "Drawing square at (%d, %d) to (%d, %d) with color %d", x0, y0, w, h, color);
 
-        uint8_t* buf = (uint8_t*)malloc( (w+1) * (h+1));
-        for(size_t i = 0; i < (w+1) * (h+1); i++) {
-            buf[i] = color;
-        }
-        display_jd9853_write_buffer_x_y(display, x0, y0, w+1, h+1, buf, (w+1) * (h+1));
-        free(buf);
-        furi_delay_ms(10);
+    //     uint8_t* buf = (uint8_t*)malloc( (w+1) * (h+1));
+    //     for(size_t i = 0; i < (w+1) * (h+1); i++) {
+    //         buf[i] = color;
+    //     }
+    //     display_jd9853_write_buffer_x_y(display, x0, y0, w+1, h+1, buf, (w+1) * (h+1));
+    //     free(buf);
+    //     furi_delay_ms(10);
         
 
 
