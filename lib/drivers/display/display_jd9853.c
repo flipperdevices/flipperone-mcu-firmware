@@ -3,20 +3,20 @@
 
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
-// #include <furi_hal_spi.h>
-// #include <furi_hal_spi_types_i.h>
-#include "hardware/resets.h"
+
 #include "hardware/structs/clocks.h"
 #include "hardware/structs/hstx_ctrl.h"
 #include "hardware/structs/hstx_fifo.h"
+#include <pico/types.h>
 
-#define DISPLAY_BAUNDRATE (1 * 1000 * 1000)
+#include <hardware/clocks.h>
 
 struct DisplayJd9853 {
     // FuriHalSpiHandle* spi_handle;
 
     const GpioPin* pin_dc;
     const GpioPin* pin_reset;
+    uint8_t line_mode;
 };
 
 #define FIRST_HSTX_PIN 12
@@ -31,31 +31,103 @@ static inline void lcd_put_dc_cs_data(bool csn, uint8_t data) {
 	hstx_put_word(
 		(uint32_t)data |
 		(csn ? 0x0ff00000u : 0x00000000u) 
-        //|
-		// Note DC gets inverted inside of HSTX:
-		//(dc  ? 0x00000000u : 0x0003fc00u)
 	);
 }
 
-
-static FURI_ALWAYS_INLINE void display_jd9853_write_reg(DisplayJd9853* display, DisplayJd9853Reg reg) {
-    // furi_hal_gpio_write(display->pin_dc, false); // DC = 0 for command
-    // furi_hal_spi_tx_blocking(display->spi_handle, &reg, 1);
-    // furi_hal_gpio_write(display->pin_dc, true); // DC = 1 for data
-    lcd_put_dc_cs_data(true, 0);
+static FURI_ALWAYS_INLINE void display_jd9853_write_reg_1line(DisplayJd9853* display, DisplayJd9853Reg reg){
     lcd_put_dc_cs_data(false, (uint8_t)0x02); // Command Write Quad SPI
     lcd_put_dc_cs_data(false, (uint8_t)0x00);
     lcd_put_dc_cs_data(false, (uint8_t)reg);
     lcd_put_dc_cs_data(false, (uint8_t)0x00);
-    
+}
 
+
+uint32_t convert_to_dual_line_compact(uint8_t data, uint8_t line ) {
+    uint32_t result = 0;
+
+    for(size_t i = 0; i < 8; i++) {
+        result <<= line;
+        if(data & 0x80) {
+            result |= 0x1;
+        }
+        data <<= 1;
+        //result <<= 1;
+    }    
+    return result;
+}
+
+static FURI_ALWAYS_INLINE void display_jd9853_write_reg_2line(DisplayJd9853* display, DisplayJd9853Reg reg){
+
+    uint32_t reg_16 = convert_to_dual_line_compact((uint8_t)0xA2, 2); // Command Write Quad SPI
+    
+    //reg_16 = 0x5555;
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16>>8));
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16 & 0xFF));
+    //FURI_LOG_I("F", "reg_16: 0x%04X", reg_16); //4404
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+
+    reg_16 = convert_to_dual_line_compact((uint8_t)reg, 2);
+    //FURI_LOG_I("F", "reg_16: 0x%04X", reg_16); //0450
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16>>8));
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16 & 0xFF));
+
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+}
+
+static FURI_ALWAYS_INLINE void display_jd9853_write_reg_4line(DisplayJd9853* display, DisplayJd9853Reg reg){
+
+    uint32_t reg_16 = convert_to_dual_line_compact((uint8_t)0x32, 4); // Command Write Quad SPI
+    
+    //reg_16 = 0x5555;
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16>>24)& 0xFF);
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16>>16)& 0xFF);
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16>>8)& 0xFF);
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16 & 0xFF));
+    //FURI_LOG_I("F", "reg_16: 0x%04X", reg_16); //4404
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+
+    reg_16 = convert_to_dual_line_compact((uint8_t)reg, 4);
+    //FURI_LOG_I("F", "reg_16: 0x%04X", reg_16); //0450
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16>>24)& 0xFF);
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16>>16)& 0xFF);
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16>>8)& 0xFF);
+    lcd_put_dc_cs_data(false, (uint8_t)(reg_16 & 0xFF));
+
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+    lcd_put_dc_cs_data(false, (uint8_t)0x00);
+}
+
+static FURI_ALWAYS_INLINE void display_jd9853_write_reg(DisplayJd9853* display, DisplayJd9853Reg reg) {
+    lcd_put_dc_cs_data(true, 0x0);
+    switch (display->line_mode) {
+    case 1:
+        display_jd9853_write_reg_1line(display, reg);
+        break;
+    case 2:
+        display_jd9853_write_reg_2line(display, reg);
+        break;
+    case 4:
+        display_jd9853_write_reg_4line(display, reg);
+        break;
+    default:
+        display_jd9853_write_reg_1line(display, reg);
+        break;
+        
+    }
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853* display, uint8_t* data, size_t size) {
-    //furi_hal_spi_tx_blocking(display->spi_handle, data, size);
     for(size_t i = 0; i < size; i++) {
         lcd_put_dc_cs_data(false, data[i]);
     }
+    //lcd_put_dc_cs_data(true, 0);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853* display, const uint8_t* config) {
@@ -96,13 +168,112 @@ void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
     const size_t width = JD9853_WIDTH; // 1 byte per pixel
     const size_t height = JD9853_HEIGHT;
 
+    // const size_t width = 100; // 1 byte per pixel
+    // const size_t height = 100;
+
     uint8_t* data = (uint8_t*)malloc(width * height);
     for(size_t i = 0; i < width * height; i += 1) {
         data[i] = color;
     }
 
     display_jd9853_write_buffer(display, width, height, data, width * height);
+    // uint16_t x = 100;
+    // uint16_t y = 100;
+    // display_jd9853_set_window(display, x , y , x+100, y+100);
+    // display_jd9853_write_reg(display, ramwr);
+    // display_jd9853_write_data(display, (uint8_t*)data, width * height);
+
     free(data);
+}
+
+
+static void display_jd9853_hstx_init_1_line(void) {
+    hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] =
+    HSTX_CTRL_BIT0_CLK_BITS;
+
+    hstx_ctrl_hw->bit[gpio_display_sda.pin - FIRST_HSTX_PIN] =
+        (7u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
+    hstx_ctrl_hw->bit[gpio_display_d0.pin - FIRST_HSTX_PIN] =
+        (7u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+    hstx_ctrl_hw->bit[gpio_display_d1.pin - FIRST_HSTX_PIN] =
+        (7u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
+    hstx_ctrl_hw->bit[gpio_display_d2.pin - FIRST_HSTX_PIN] =
+        (7u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+    hstx_ctrl_hw->bit[gpio_display_cs.pin - FIRST_HSTX_PIN] =
+        (27u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (27u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+    //We have packed 8-bit fields, so shift left 1 bit/cycle, 8 times.
+    hstx_ctrl_hw->csr =
+        HSTX_CTRL_CSR_EN_BITS |
+        (31u << HSTX_CTRL_CSR_SHIFT_LSB) |  
+        (8u << HSTX_CTRL_CSR_N_SHIFTS_LSB) | 
+        (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
+}
+
+static void display_jd9853_hstx_init_2_line(void) {
+        hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] =
+    HSTX_CTRL_BIT0_CLK_BITS;
+
+    hstx_ctrl_hw->bit[gpio_display_sda.pin - FIRST_HSTX_PIN] =
+        (6u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (6u << HSTX_CTRL_BIT0_SEL_N_LSB);
+    hstx_ctrl_hw->bit[gpio_display_d0.pin - FIRST_HSTX_PIN] =
+        (7u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+    hstx_ctrl_hw->bit[gpio_display_d1.pin - FIRST_HSTX_PIN] =
+        (6u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (6u << HSTX_CTRL_BIT0_SEL_N_LSB);
+    hstx_ctrl_hw->bit[gpio_display_d2.pin - FIRST_HSTX_PIN] =
+        (7u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+    hstx_ctrl_hw->bit[gpio_display_cs.pin - FIRST_HSTX_PIN] =
+        (27u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (27u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+    //We have packed 8-bit fields, so shift left 1 bit/cycle, 8 times.
+    hstx_ctrl_hw->csr =
+        HSTX_CTRL_CSR_EN_BITS |
+        (30u << HSTX_CTRL_CSR_SHIFT_LSB) | 
+        (4u << HSTX_CTRL_CSR_N_SHIFTS_LSB) |
+        (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
+}
+
+static void display_jd9853_hstx_init_4_line(void) {
+    hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] =
+    HSTX_CTRL_BIT0_CLK_BITS;
+
+    hstx_ctrl_hw->bit[gpio_display_sda.pin - FIRST_HSTX_PIN] =
+        (4u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (4u << HSTX_CTRL_BIT0_SEL_N_LSB);
+    hstx_ctrl_hw->bit[gpio_display_d0.pin - FIRST_HSTX_PIN] =
+        (5u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (5u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+    hstx_ctrl_hw->bit[gpio_display_d1.pin - FIRST_HSTX_PIN] =
+        (6u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (6u << HSTX_CTRL_BIT0_SEL_N_LSB);
+    hstx_ctrl_hw->bit[gpio_display_d2.pin - FIRST_HSTX_PIN] =
+        (7u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+    hstx_ctrl_hw->bit[gpio_display_cs.pin - FIRST_HSTX_PIN] =
+        (27u << HSTX_CTRL_BIT0_SEL_P_LSB) |
+        (27u << HSTX_CTRL_BIT0_SEL_N_LSB);
+
+        hstx_ctrl_hw->csr =
+        HSTX_CTRL_CSR_EN_BITS |
+        (28u << HSTX_CTRL_CSR_SHIFT_LSB) |
+        (2u << HSTX_CTRL_CSR_N_SHIFTS_LSB) |
+        (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
 }
 
 DisplayJd9853* display_jd9853_init(void) {
@@ -113,13 +284,19 @@ DisplayJd9853* display_jd9853_init(void) {
     // running a bit too fast for this example -- 48 MHz means 48 Mbps on
     // PIN_DIN. Need to reset around clock mux change, as the AUX mux can
     // introduce short clock pulses:
-    reset_block(RESETS_RESET_HSTX_BITS);
-    hw_write_masked(
-        &clocks_hw->clk[clk_hstx].ctrl,
-        CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB << CLOCKS_CLK_HSTX_CTRL_AUXSRC_LSB,
-        CLOCKS_CLK_HSTX_CTRL_AUXSRC_BITS
-    );
-    unreset_block_wait(RESETS_RESET_HSTX_BITS);
+    // reset_block(RESETS_RESET_HSTX_BITS);
+    // hw_write_masked(
+    //     &clocks_hw->clk[clk_hstx].ctrl,
+    //     CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB << CLOCKS_CLK_HSTX_CTRL_AUXSRC_LSB,
+    //     CLOCKS_CLK_HSTX_CTRL_AUXSRC_BITS
+    // );
+    // unreset_block_wait(RESETS_RESET_HSTX_BITS);
+
+    clock_configure(clk_hstx,
+                        0,
+                        CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+                        USB_CLK_HZ,
+                        USB_CLK_HZ/4);
     
     
     display->pin_dc = &gpio_display_dc;
@@ -141,34 +318,18 @@ DisplayJd9853* display_jd9853_init(void) {
     furi_delay_ms(30);
     furi_hal_gpio_write(display->pin_reset, true);
     furi_delay_ms(30);
-
-    hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] =
-    HSTX_CTRL_BIT0_CLK_BITS;
-
-    hstx_ctrl_hw->bit[gpio_display_sda.pin - FIRST_HSTX_PIN] =
-        (7u << HSTX_CTRL_BIT0_SEL_P_LSB) |
-        (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
-
-    hstx_ctrl_hw->bit[gpio_display_cs.pin - FIRST_HSTX_PIN] =
-        (27u << HSTX_CTRL_BIT0_SEL_P_LSB) |
-        (27u << HSTX_CTRL_BIT0_SEL_N_LSB);
-
-    // hstx_ctrl_hw->bit[gpio_display_dc.pin - FIRST_HSTX_PIN] =
-    //     (17u << HSTX_CTRL_BIT0_SEL_P_LSB) |
-    //     (17u << HSTX_CTRL_BIT0_SEL_N_LSB) |
-    //     (HSTX_CTRL_BIT0_INV_BITS);
-
-    // We have packed 8-bit fields, so shift left 1 bit/cycle, 8 times.
-    hstx_ctrl_hw->csr =
-        HSTX_CTRL_CSR_EN_BITS |
-        (31u << HSTX_CTRL_CSR_SHIFT_LSB) |
-        (8u << HSTX_CTRL_CSR_N_SHIFTS_LSB) |
-        (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
+    
+    
     
     //todo set gpio functions add implement furi hal gpio
     gpio_set_function(gpio_display_scl.pin, GPIO_FUNC_HSTX);
     gpio_set_function(gpio_display_sda.pin, GPIO_FUNC_HSTX);
     gpio_set_function(gpio_display_cs.pin, GPIO_FUNC_HSTX);
+
+    gpio_set_function(gpio_display_d0.pin, GPIO_FUNC_HSTX);
+    gpio_set_function(gpio_display_d1.pin, GPIO_FUNC_HSTX);
+    gpio_set_function(gpio_display_d2.pin, GPIO_FUNC_HSTX);
+
     //gpio_set_function(gpio_display_dc.pin, GPIO_FUNC_HSTX);   
     
     
@@ -181,10 +342,13 @@ DisplayJd9853* display_jd9853_init(void) {
     // furi_hal_spi_init(display->spi_handle, DISPLAY_BAUNDRATE, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
 
 
-
+    display->line_mode = 1; 
+    display_jd9853_hstx_init_1_line();
     //Initialization sequence
-    //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
     display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
+    //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
+    display->line_mode = 1; 
+    display_jd9853_hstx_init_1_line();
 
     return display;
 }
