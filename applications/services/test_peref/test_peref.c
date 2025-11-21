@@ -60,7 +60,7 @@ int32_t test_peref_srv(void* p) {
         // furi_hal_gpio_write(&gpio_pico_led, false);
         // furi_delay_ms(10);
 
-        //bw display test
+        // //bw display test
         // display_jd9853_fill(display, 0); // Fill white
         // furi_delay_ms(200);
         // display_jd9853_fill(display, 50); // Fill white
@@ -74,8 +74,8 @@ int32_t test_peref_srv(void* p) {
         // display_jd9853_fill(display, 255); // Fill white
         // furi_delay_ms(400);
 
-        // for(size_t i = 0; i < 255; i++) {
-        //     display_jd9853_fill(display, i); // Fill white
+        // for(size_t i = 0; i < 64; i++) {
+        //     display_jd9853_fill(display, i<<2); // Fill white
         //     furi_delay_ms(20);
         // }
         // furi_delay_ms(200);
@@ -96,37 +96,38 @@ int32_t test_peref_srv(void* p) {
         }
         display_jd9853_write_buffer_x_y(display, x0, y0, w+1, h+1, buf, (w+1) * (h+1));
         free(buf);
-        furi_delay_ms(10);
+        //furi_delay_ms(10);
         
 
 
 
 
-        // furi_hal_pwm_set_duty_cycle(pwm, duty);
-        duty += 5;
-      //  furi_hal_power_insomnia_enter();
-      //furi_delay_ms(3);
-        for(size_t i = 0; i < 29; i++) {
-            if(index_led == i) {
-                // ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
-                // ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, 0, duty);
-                // ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, duty, 0);
-                ws2812_put_pixel_rgb(ws2812, 0, 255, 0, 0);
-                ws2812_put_pixel_rgb(ws2812, 0, 0, 255, 0);
-                ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 255);
-            } else {
-                ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 0);
-            }
-        }
+    //     // furi_hal_pwm_set_duty_cycle(pwm, duty);
+    //     duty += 5;
+    //   //  furi_hal_power_insomnia_enter();
+    //   //furi_delay_ms(3);
+    //     for(size_t i = 0; i < 29; i++) {
+    //         if(index_led == i) {
+    //             // ws2812_put_pixel_rgb(ws2812, 0, duty, 0, 255 - duty);
+    //             // ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, 0, duty);
+    //             // ws2812_put_pixel_rgb(ws2812, 0, 255 - duty, duty, 0);
+    //             ws2812_put_pixel_rgb(ws2812, 0, 255, 0, 0);
+    //             ws2812_put_pixel_rgb(ws2812, 0, 0, 255, 0);
+    //             ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 255);
+    //         } else {
+    //             ws2812_put_pixel_rgb(ws2812, 0, 0, 0, 0);
+    //         }
+    //     }
         
-        index_led++;
-        if(index_led >= 30) {
-            index_led = 0;
-        }
-        //todo : It is necessary to provide a sufficient delay before going to sleep so that the PIO has time to transfer data
-        for(size_t i = 0; i < 10000; i++) {
-            __asm__("nop"); // Delay for WS2812 timing
-        }
+    //     index_led++;
+    //     if(index_led >= 30) {
+    //         index_led = 0;
+    //     }
+    //     //todo : It is necessary to provide a sufficient delay before going to sleep so that the PIO has time to transfer data
+    //     for(size_t i = 0; i < 10000; i++) {
+    //         __asm__("nop"); // Delay for WS2812 timing
+    //     }
+    
        // furi_delay_ms(3);
        // furi_hal_power_insomnia_exit();
        // furi_delay_ms(100);

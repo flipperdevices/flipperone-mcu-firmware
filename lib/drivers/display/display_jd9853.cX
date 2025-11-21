@@ -6,7 +6,7 @@
 #include <furi_hal_spi.h>
 #include <furi_hal_spi_types_i.h>
 
-#define DISPLAY_BAUNDRATE (48 * 1000 * 1000)
+#define DISPLAY_BAUNDRATE (12 * 1000 * 1000)
 
 struct DisplayJd9853 {
     FuriHalSpiHandle* spi_handle;
