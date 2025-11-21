@@ -5,7 +5,11 @@
 #define JD9853_OFF_X    77
 #define JD9853_OFF_Y    (320 - JD9853_HEIGHT) // was 0 without mirroring and rotation
 
-#define JD9853_WIDTH_END JD9853_OFF_X+JD9853_WIDTH
+#define JD9853_WIDTH_END (JD9853_OFF_X + JD9853_WIDTH)
+
+#define JD9853_QSPI_CMD_1_LINE_MODE (0x02u)
+#define JD9853_QSPI_CMD_2_LINE_MODE (0xA2u)
+#define JD9853_QSPI_CMD_4_LINE_MODE (0x32u)
 
 //https://github.com/flipperdevices/one-rp2350-control/blob/main/docs/GWT-2.39-256144-AWMN-04-FS-1.1.pdf
 typedef enum {

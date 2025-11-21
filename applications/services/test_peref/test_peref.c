@@ -50,6 +50,12 @@ int32_t test_peref_srv(void* p) {
 
     DisplayJd9853* display = display_jd9853_init();
     display_jd9853_fill(display, 0x00); // Fill white
+    furi_delay_ms(1000);
+    display_jd9853_deinit(display);
+    furi_delay_ms(1000);
+    display = display_jd9853_init();
+    display_jd9853_fill(display, 0x00); // Fill white
+
     uint8_t index_led = 0;
 
     FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_display_ctrl, 8, 50000, false);
@@ -127,7 +133,7 @@ int32_t test_peref_srv(void* p) {
     //     for(size_t i = 0; i < 10000; i++) {
     //         __asm__("nop"); // Delay for WS2812 timing
     //     }
-    
+
        // furi_delay_ms(3);
        // furi_hal_power_insomnia_exit();
        // furi_delay_ms(100);
