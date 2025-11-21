@@ -178,7 +178,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_black[] = {
         4, 0, 0xC1, 0x34, 0x15, 0xE0,               // SETRGB
         4, 0, 0xC2, 0x06, 0x3A, 0xC7,               // SETSTBA2
         3, 0, 0xC4, 0x7A, 0x1A,                     // SET_GAMMAOP
-        2, 0, 0xC5, 0x01,                           // OSC
+        2, 0, 0xC5, 0x11,                           // OSC
         // 2, 0, 0xBE, 0x00,                           // GAMMA_POWER_TEST
         2, 0, 0xDE, 0x02,                           // page2
         3, 0, 0xB5, 0x0A, 0x1C,                     //

@@ -307,14 +307,14 @@ DisplayJd9853* display_jd9853_init(void) {
                         0,
                         CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
                         USB_CLK_HZ,
-                        USB_CLK_HZ);
+                        USB_CLK_HZ/2);
     
     
     //Gpio init
     //furi_hal_gpio_init_simple(display->pin_reset, GpioModeOutputOpenDrain);
     furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputPushPull);
     furi_hal_gpio_init_simple(&gpio_display_te, GpioModeInput);
-    furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionFall, display_jd9853_te_callback, display);
+    furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionRise, display_jd9853_te_callback, display);
 
 
     //Reset display

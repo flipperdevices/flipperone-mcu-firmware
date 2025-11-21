@@ -82,7 +82,7 @@ int32_t test_peref_srv(void* p) {
             //furi_delay_ms(50);  //20FPS
             // furi_delay_ms(33); //30FPS
             // furi_delay_ms(16); //60FPS
-             furi_delay_ms(6); //120FPS
+             furi_delay_ms(5); //120FPS
         }
         furi_delay_ms(200);
 
