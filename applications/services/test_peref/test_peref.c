@@ -75,29 +75,34 @@ int32_t test_peref_srv(void* p) {
         // display_jd9853_fill(display, 255); // Fill white
         // furi_delay_ms(400);
 
-        // for(size_t i = 0; i < 64; i++) {
-        //     display_jd9853_fill(display, i<<2); // Fill white
-        //     furi_delay_ms(20);
-        // }
-        // furi_delay_ms(200);
-
-
-        // //random SQUARE
-        uint16_t x0 = rand() % 257;
-        uint16_t y0 = rand() % 143;
-        uint8_t w = (rand() % 25)+1;
-        uint8_t h = (rand() % 25)+1;
-        uint8_t color = rand() % 255;
-
-       //FURI_LOG_I("TAG", "Drawing square at (%d, %d) to (%d, %d) with color %d", x0, y0, w, h, color);
-
-        uint8_t* buf = (uint8_t*)malloc( (w) * (h));
-        for(size_t i = 0; i < (w) * (h); i++) {
-            buf[i] = color;
+        for(size_t i = 0; i < 64; i++) {
+            display_jd9853_fill(display, i<<2); // Fill white
+            //furi_delay_ms(100); //10FPS
+            //furi_delay_ms(66);  //15FPS
+            //furi_delay_ms(50);  //20FPS
+            // furi_delay_ms(33); //30FPS
+            // furi_delay_ms(16); //60FPS
+             furi_delay_ms(6); //120FPS
         }
-        display_jd9853_write_buffer_x_y(display, x0, y0, w, h, buf, (w) * (h));
-        free(buf);
-        furi_delay_ms(10);
+        furi_delay_ms(200);
+
+
+    //     // //random SQUARE
+    //     uint16_t x0 = rand() % 257;
+    //     uint16_t y0 = rand() % 143;
+    //     uint8_t w = (rand() % 25)+1;
+    //     uint8_t h = (rand() % 25)+1;
+    //     uint8_t color = rand() % 255;
+
+    //    //FURI_LOG_I("TAG", "Drawing square at (%d, %d) to (%d, %d) with color %d", x0, y0, w, h, color);
+
+    //     uint8_t* buf = (uint8_t*)malloc( (w) * (h));
+    //     for(size_t i = 0; i < (w) * (h); i++) {
+    //         buf[i] = color;
+    //     }
+    //     display_jd9853_write_buffer_x_y(display, x0, y0, w, h, buf, (w) * (h));
+    //     free(buf);
+    //     furi_delay_ms(10);
 
 
 

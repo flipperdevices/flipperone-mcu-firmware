@@ -12,6 +12,7 @@
 #include <hardware/clocks.h>
 
 #define FIRST_HSTX_PIN 12
+#define DISPLAY_JD9853_TE_TIMEOUT_DELTA 4 //4ms 
 
 typedef enum {
     DisplayJd9853Line1,
@@ -20,7 +21,9 @@ typedef enum {
 } DisplayJd9853Line;
 
 struct DisplayJd9853 {
+    FuriSemaphore* te_semaphore;
     DisplayJd9853Line line_mode;
+    volatile uint32_t te_timestamp;
 };
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853* display) {
@@ -261,6 +264,11 @@ static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853* display,
 
 FURI_ALWAYS_INLINE void display_jd9853_write_buffer_x_y(DisplayJd9853* display, uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size) {
     furi_assert(display);
+    //furi_check(furi_semaphore_acquire(display->te_semaphore, FuriWaitForever) == FuriStatusOk);
+    //furi_check(furi_semaphore_acquire(display->te_semaphore, FuriWaitForever) == FuriStatusOk);
+    while( (furi_get_tick() - display->te_timestamp) > DISPLAY_JD9853_TE_TIMEOUT_DELTA ) {
+        //wait for next TE signal
+    }
     display_jd9853_set_window(display, JD9853_OFF_X + x, JD9853_OFF_Y + y, JD9853_OFF_X + x + (w / 3)-1, JD9853_OFF_Y + y + h - 1);
     display_jd9853_write_reg(display, ramwr);
     display_jd9853_write_data(display, (uint8_t*)buffer, size);
@@ -285,8 +293,15 @@ void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
     free(data);
 }
 
+static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
+    DisplayJd9853* display = (DisplayJd9853*)ctx;
+    display->te_timestamp = furi_get_tick();
+    furi_semaphore_release(display->te_semaphore);
+}
+
 DisplayJd9853* display_jd9853_init(void) {
     DisplayJd9853* display = malloc(sizeof(DisplayJd9853));
+    display->te_semaphore = furi_semaphore_alloc(1, 1);
 
     clock_configure(clk_hstx,
                         0,
@@ -298,6 +313,8 @@ DisplayJd9853* display_jd9853_init(void) {
     //Gpio init
     //furi_hal_gpio_init_simple(display->pin_reset, GpioModeOutputOpenDrain);
     furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputPushPull);
+    furi_hal_gpio_init_simple(&gpio_display_te, GpioModeInput);
+    furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionFall, display_jd9853_te_callback, display);
 
 
     //Reset display
@@ -343,6 +360,7 @@ void display_jd9853_deinit(DisplayJd9853* display) {
     furi_hal_gpio_init_ex(&gpio_display_d2, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     display_jd9853_hstx_wait_complete(display);
     clock_stop(clk_hstx);
+    furi_semaphore_free(display->te_semaphore);
     free(display);
 }
 
