@@ -346,4 +346,3 @@ void display_jd9853_deinit(DisplayJd9853* display) {
     free(display);
 }
 
-

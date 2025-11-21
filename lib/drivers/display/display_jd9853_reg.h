@@ -186,10 +186,10 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_black[] = {
         2, 0, 0x35, 0x00,                           // Tearing Effect Line ON
         2, 0, 0x3A, 0x06,                           // Set colour mode to RGB666
 
-        5, 0, 0x2A, JD9853_OFF_X >> 8, JD9853_OFF_X & 0xff, // CASET: column addresses
-            JD9853_WIDTH_END >> 8, JD9853_WIDTH_END & 0xff,
-        5, 0, 0x2B, 0x00, 0x00,             // RASET: row addresses
-            JD9853_HEIGHT >> 8, JD9853_HEIGHT & 0xff,
+        // 5, 0, 0x2A, JD9853_OFF_X >> 8, JD9853_OFF_X & 0xff, // CASET: column addresses
+        //     JD9853_WIDTH_END >> 8, JD9853_WIDTH_END & 0xff,
+        // 5, 0, 0x2B, 0x00, 0x00,             // RASET: row addresses
+        //     JD9853_HEIGHT >> 8, JD9853_HEIGHT & 0xff,
         
         2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
         1, 20, 0x11,                            // Exit sleep mode
