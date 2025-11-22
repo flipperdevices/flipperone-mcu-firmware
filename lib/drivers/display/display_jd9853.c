@@ -15,12 +15,10 @@
 #include <hardware/clocks.h>
 #include <pico/stdlib.h>
 
-
-
 #define FIRST_HSTX_PIN 12
 #define DISPLAY_JD9853_HSTX_END_TX_DELAY_US 5   //5us
 #define DISPLAY_JD9853_BACKLIGHT_BIT 8          //8-bit PWM for backlight
-#define DISPLAY_JD9853_BACKLIGHT_FREQ_HZ 50000  //50kHz PWM for backlight
+#define DISPLAY_JD9853_BACKLIGHT_FREQ_HZ 40000  //25kHz PWM for backlight
 
 typedef struct {
     uint32_t cmd[4];
@@ -32,6 +30,7 @@ struct DisplayJd9853 {
     FuriSemaphore* busy;
     uint32_t dma_tx_channel;
     FuriHalPwm* backlight_pwm;
+    uint8_t backlight;
     DisplayJd9853BufferHeader buffer_header;
 };
 
@@ -250,9 +249,30 @@ void display_jd9853_hstx_clock_init(void) {
 
 void display_jd9853_backlight_set_brightness(DisplayJd9853* display, uint8_t brightness) {
     furi_check(display);
-    uint32_t max_value = (1 << DISPLAY_JD9853_BACKLIGHT_BIT) - 1;
-    uint32_t duty_cycle = (brightness * max_value) / 100;
-    furi_hal_pwm_set_duty_cycle(display->backlight_pwm, duty_cycle);
+    display->backlight = brightness;
+    if(!display->backlight){
+        if(display->backlight_pwm){
+            furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 0);
+            furi_hal_pwm_deinit(display->backlight_pwm);
+            display->backlight_pwm = NULL;
+        }
+    } else{
+        uint32_t max_value = (1 << DISPLAY_JD9853_BACKLIGHT_BIT) - 1;
+        uint32_t duty_cycle = (brightness * max_value) / 100;
+        if(!display->backlight_pwm){
+            //To enable the device, the CTRL signal must be high for 500 µs.
+            // The PWM signal can then be applied with a pulse width (tp) 
+            // greater or smaller than tON. To force the device into shutdown mode,
+            // the CTRL signal must be low for at least 32 ms. 
+            // Requiring the CTRL pin to be low for 32 mS before the device enters 
+            // shutdown allows for PWM dimming frequencies as low as 100 Hz.
+            // The device is enabled again when a CTRL signal is high for a period of 500 µs minimum.
+            display->backlight_pwm = furi_hal_pwm_init(&gpio_display_ctrl, DISPLAY_JD9853_BACKLIGHT_BIT, DISPLAY_JD9853_BACKLIGHT_FREQ_HZ, false);
+            furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 140);
+            furi_delay_us(2400);
+        }
+        furi_hal_pwm_set_duty_cycle(display->backlight_pwm, duty_cycle);
+    }
 }
 
 DisplayJd9853* display_jd9853_init(void) {
@@ -260,6 +280,7 @@ DisplayJd9853* display_jd9853_init(void) {
     DisplayJd9853* display = malloc(sizeof(DisplayJd9853));
     display_instance = display;
     display->busy = furi_semaphore_alloc(1, 1);
+    display->backlight = 0;
 
     display->buffer_header.cmd[0] = JD9853_QSPI_CMD_4_LINE_MODE;
     display->buffer_header.cmd[1] = 0;
@@ -317,11 +338,7 @@ DisplayJd9853* display_jd9853_init(void) {
     //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     display_jd9853_fill(display, 0); // Fill white
 
-    display->backlight_pwm = furi_hal_pwm_init(&gpio_display_ctrl, DISPLAY_JD9853_BACKLIGHT_BIT, DISPLAY_JD9853_BACKLIGHT_FREQ_HZ, false);
-    display_jd9853_backlight_set_brightness(display, 55); // Set backlight to 50%
-    //ToDo The backlight doesn't turn on immediately at low brightness
-    furi_delay_ms(10);
-    display_jd9853_backlight_set_brightness(display, 3); // Set backlight to 50%
+    display_jd9853_backlight_set_brightness(display, 2); // Set backlight to 50%
 
     return display;
 }

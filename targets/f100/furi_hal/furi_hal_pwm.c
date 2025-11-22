@@ -71,7 +71,5 @@ void furi_hal_pwm_set_duty_cycle(FuriHalPwm* instance, uint32_t value) {
     if(instance->invert) {
         value = instance->max_value - value; // Invert the PWM value
     }
-
-    FURI_LOG_D(TAG, "PWM %d: value: %d", instance->gpio->pin, value);
     pwm_set_chan_level(instance->slice_num, instance->channel_num, value);
 }

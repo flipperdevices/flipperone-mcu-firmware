@@ -50,19 +50,19 @@ int32_t test_peref_srv(void* p) {
 
     DisplayJd9853* display = display_jd9853_init();
     furi_delay_ms(500);
-    display_jd9853_deinit(display);
-    furi_delay_ms(500);
-    display = display_jd9853_init();
+    // display_jd9853_deinit(display);
+    // furi_delay_ms(500);
+    // display = display_jd9853_init();
 
-    display_jd9853_backlight_set_brightness(display, 1);
-    furi_delay_ms(500);
-    display_jd9853_backlight_set_brightness(display, 50);
-    furi_delay_ms(500);
-    display_jd9853_backlight_set_brightness(display, 100);
-    furi_delay_ms(500);
-    display_jd9853_backlight_set_brightness(display, 1);
-    furi_delay_ms(500);
-    display_jd9853_backlight_set_brightness(display, 10);
+    // display_jd9853_backlight_set_brightness(display, 1);
+    // furi_delay_ms(500);
+    // display_jd9853_backlight_set_brightness(display, 50);
+    // furi_delay_ms(500);
+    // display_jd9853_backlight_set_brightness(display, 100);
+    // furi_delay_ms(500);
+    // display_jd9853_backlight_set_brightness(display, 1);
+    // furi_delay_ms(500);
+    // display_jd9853_backlight_set_brightness(display, 10);
     uint8_t index_led = 0;
 
     while(true) {
@@ -115,17 +115,17 @@ int32_t test_peref_srv(void* p) {
     //     free(buf);
     //     furi_delay_ms(10);
 
-        duty += 1;
-        if(duty % 2){
-            display_jd9853_eco_mode(display, true);
-        } else {
-            display_jd9853_eco_mode(display, false);
-        }
-        FURI_LOG_I("backlight", "Brightness: %d", duty);
-        display_jd9853_backlight_set_brightness(display, duty);
-        if(duty >= 100) {
-            duty = 0;
-        }
+        // duty += 1;
+        // if(duty % 2){
+        //     display_jd9853_eco_mode(display, true);
+        // } else {
+        //     display_jd9853_eco_mode(display, false);
+        // }
+        // FURI_LOG_I("backlight", "Brightness: %d", duty);
+        // display_jd9853_backlight_set_brightness(display, duty);
+        // if(duty >= 100) {
+        //     duty = 0;
+        // }
     //   //  furi_hal_power_insomnia_enter();
     //   //furi_delay_ms(3);
     //     for(size_t i = 0; i < 29; i++) {
