@@ -275,6 +275,11 @@ void display_jd9853_backlight_set_brightness(DisplayJd9853* display, uint8_t bri
     }
 }
 
+uint8_t display_jd9853_backlight_get_brightness(DisplayJd9853* display) {
+    furi_check(display);
+    return display->backlight;
+}
+
 DisplayJd9853* display_jd9853_init(void) {
     furi_check(display_instance == NULL); // Only one instance allowed
     DisplayJd9853* display = malloc(sizeof(DisplayJd9853));
