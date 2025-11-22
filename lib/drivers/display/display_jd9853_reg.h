@@ -1,11 +1,11 @@
 #pragma once
 
-#define JD9853_WIDTH    258
-#define JD9853_HEIGHT   144
-#define JD9853_OFF_X    77
-#define JD9853_OFF_Y    (320 - JD9853_HEIGHT) // was 0 without mirroring and rotation
-
-#define JD9853_WIDTH_END (JD9853_OFF_X + JD9853_WIDTH)
+#define JD9853_WIDTH        (258u)
+#define JD9853_HEIGHT       (144u)
+#define JD9853_OFF_X0       (77u)
+#define JD9853_OFF_Y0       (320u - JD9853_HEIGHT) // was 0 without mirroring and rotation
+#define JD9853_OFF_X1       (JD9853_OFF_X0 + (JD9853_WIDTH / 3) - 1)
+#define JD9853_OFF_Y1       (JD9853_OFF_Y0 + JD9853_HEIGHT - 1)
 
 #define JD9853_QSPI_CMD_1_LINE_MODE (0x02u)
 #define JD9853_QSPI_CMD_2_LINE_MODE (0xA2u)
@@ -117,7 +117,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white[] = {
         4, 0, 0xC1, 0x34, 0x15, 0xE0,               // SETRGB
         4, 0, 0xC2, 0x06, 0x3A, 0xC7,               // SETSTBA2
         3, 0, 0xC4, 0x7A, 0x1A,                     // SET_GAMMAOP
-        2, 0, 0xC5, 0x01,                           // OSC
+        2, 0, 0xC5, 0x11,                           // OSC 60FPS
         // 2, 0, 0xBE, 0x00,                           // GAMMA_POWER_TEST
         2, 0, 0xDE, 0x02,                           // page2
         3, 0, 0xB5, 0x0A, 0x1C,                     //
@@ -125,10 +125,10 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white[] = {
         2, 0, 0x35, 0x00,                           // Tearing Effect Line ON
         2, 0, 0x3A, 0x06,                           // Set colour mode to RGB666
 
-        5, 0, 0x2A, JD9853_OFF_X >> 8, JD9853_OFF_X & 0xff, // CASET: column addresses
-            JD9853_WIDTH_END >> 8, JD9853_WIDTH_END & 0xff,
-        5, 0, 0x2B, 0x00, 0x00,             // RASET: row addresses
-            JD9853_HEIGHT >> 8, JD9853_HEIGHT & 0xff,
+        5, 0, 0x2A, JD9853_OFF_X0 >> 8, JD9853_OFF_X0 & 0xff, // CASET: column addresses
+            JD9853_OFF_X1 >> 8, JD9853_OFF_X1 & 0xff,
+        5, 0, 0x2B, JD9853_OFF_Y0 >> 8, JD9853_OFF_Y0 & 0xff,             // RASET: row addresses
+            JD9853_OFF_Y1 >> 8, JD9853_OFF_Y1 & 0xff,
 
         2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
         1, 20, 0x11,                            // Exit sleep mode
@@ -178,7 +178,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_black[] = {
         4, 0, 0xC1, 0x34, 0x15, 0xE0,               // SETRGB
         4, 0, 0xC2, 0x06, 0x3A, 0xC7,               // SETSTBA2
         3, 0, 0xC4, 0x7A, 0x1A,                     // SET_GAMMAOP
-        2, 0, 0xC5, 0x11,                           // OSC
+        2, 0, 0xC5, 0x11,                           // OSC 60FPS
         // 2, 0, 0xBE, 0x00,                           // GAMMA_POWER_TEST
         2, 0, 0xDE, 0x02,                           // page2
         3, 0, 0xB5, 0x0A, 0x1C,                     //
@@ -186,13 +186,15 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_black[] = {
         2, 0, 0x35, 0x00,                           // Tearing Effect Line ON
         2, 0, 0x3A, 0x06,                           // Set colour mode to RGB666
 
-        // 5, 0, 0x2A, JD9853_OFF_X >> 8, JD9853_OFF_X & 0xff, // CASET: column addresses
-        //     JD9853_WIDTH_END >> 8, JD9853_WIDTH_END & 0xff,
-        // 5, 0, 0x2B, 0x00, 0x00,             // RASET: row addresses
-        //     JD9853_HEIGHT >> 8, JD9853_HEIGHT & 0xff,
+        5, 0, 0x2A, JD9853_OFF_X0 >> 8, JD9853_OFF_X0 & 0xff, // CASET: column addresses
+            JD9853_OFF_X1 >> 8, JD9853_OFF_X1 & 0xff,
+        5, 0, 0x2B, JD9853_OFF_Y0 >> 8, JD9853_OFF_Y0 & 0xff,             // RASET: row addresses
+            JD9853_OFF_Y1 >> 8, JD9853_OFF_Y1 & 0xff,
         
         2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
         1, 20, 0x11,                            // Exit sleep mode
         1, 2, 0x29,                             // Main screen turn on
         0,                                      // Terminate list
+
+        
 };

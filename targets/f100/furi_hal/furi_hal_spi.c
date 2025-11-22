@@ -5,8 +5,8 @@
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
 
-#include "hardware/spi.h"
-#include "hardware/dma.h"
+#include <hardware/spi.h>
+#include <hardware/dma.h>
 
 #define TAG "FuriHalSpi"
 
