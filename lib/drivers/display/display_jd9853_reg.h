@@ -8,8 +8,8 @@
 #define JD9853_OFF_Y1       (JD9853_OFF_Y0 + JD9853_HEIGHT - 1)
 
 #define JD9853_QSPI_CMD_1_LINE_MODE (0x02u)
-#define JD9853_QSPI_CMD_2_LINE_MODE (0xA2u)
-#define JD9853_QSPI_CMD_4_LINE_MODE (0x32u)
+#define JD9853_QSPI_CMD_4_LINE_MODE (0x10001100u) // Quad SPI command 0x32
+#define JD9853_QSPI_CMD_4_LINE_RAMWR (0x00111000u) // Quad SPI data 0x2C
 
 //https://github.com/flipperdevices/one-rp2350-control/blob/main/docs/GWT-2.39-256144-AWMN-04-FS-1.1.pdf
 typedef enum {

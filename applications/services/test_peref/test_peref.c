@@ -1,5 +1,4 @@
 #include "test_peref.h"
-#include "core/kernel.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -57,8 +56,8 @@ int32_t test_peref_srv(void* p) {
 
     uint8_t index_led = 0;
 
-    FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_display_ctrl, 8, 50000, false);
-    furi_hal_pwm_set_duty_cycle(pwm, 160);
+    // FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_display_ctrl, 8, 50000, false);
+    // furi_hal_pwm_set_duty_cycle(pwm, 160);
     //furi_hal_gpio_init_simple(&gpio_display_ctrl, GpioModeOutputPushPull);
     while(true) {
         // furi_hal_gpio_write(&gpio_pico_led, true);
