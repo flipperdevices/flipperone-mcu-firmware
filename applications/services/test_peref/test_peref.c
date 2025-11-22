@@ -59,6 +59,7 @@ int32_t test_peref_srv(void* p) {
 
     FuriHalPwm* pwm = furi_hal_pwm_init(&gpio_display_ctrl, 8, 50000, false);
     furi_hal_pwm_set_duty_cycle(pwm, 160);
+    //furi_hal_gpio_init_simple(&gpio_display_ctrl, GpioModeOutputPushPull);
     while(true) {
         // furi_hal_gpio_write(&gpio_pico_led, true);
         // furi_delay_ms(10);
@@ -80,6 +81,7 @@ int32_t test_peref_srv(void* p) {
          furi_delay_ms(400);
 
         // for(size_t i = 0; i < 64; i++) {
+        //     //furi_hal_gpio_write(&gpio_display_ctrl, true);
         //     display_jd9853_fill(display, i<<2); // Fill white
         //     //furi_delay_ms(100); //10FPS
         //     //furi_delay_ms(66);  //15FPS

@@ -1,7 +1,4 @@
 #include "display_jd9853.h"
-#include "core/check.h"
-#include "core/kernel.h"
-#include "core/log.h"
 #include "display_jd9853_reg.h"
 
 #include <furi_hal_gpio.h>
@@ -15,9 +12,8 @@
 #include <hardware/dma.h>
 
 #include <hardware/clocks.h>
-#include <hardware/timer.h>
-#include "pico/stdlib.h"
-#include <stdio.h>
+#include <pico/stdlib.h>
+
 
 #define FIRST_HSTX_PIN 12
 #define DISPLAY_JD9853_TE_TIMEOUT_DELTA 4 //4ms 
@@ -29,29 +25,30 @@ typedef enum {
     DisplayJd9853Line4,
 } DisplayJd9853Line;
 
-// typedef struct {
-//     uint32_t cmd;
-//     uint8_t data[];
-// } DisplayJd9853BufferHeader;
+typedef struct {
+    uint32_t cmd[4];
+    uint8_t data[JD9853_WIDTH * JD9853_HEIGHT];
+} DisplayJd9853BufferHeader;
 
 
 struct DisplayJd9853 {
-    FuriSemaphore* te_semaphore;
+    FuriSemaphore* busy;
     DisplayJd9853Line line_mode;
-    volatile uint32_t te_timestamp;
     uint32_t dma_tx_channel;
+    DisplayJd9853BufferHeader buffer_header;
 };
 
 static DisplayJd9853* display_instance = NULL;
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853* display) {
-    while (!(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS))
-        ;
+    while (!(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS)){
+        tight_loop_contents();
+    }
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853* display) {
     
-   // display_jd9853_hstx_wait_complete(display);
+    display_jd9853_hstx_wait_complete(display);
     
     hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] =
         HSTX_CTRL_BIT0_CLK_BITS;
@@ -123,7 +120,6 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_2_line(DisplayJd9853* di
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853* display) {
    
     display_jd9853_hstx_wait_complete(display);
-    //hstx_ctrl_hw->csr = ~HSTX_CTRL_CSR_EN_BITS ;
     
     hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] =
         HSTX_CTRL_BIT0_CLK_BITS;
@@ -156,8 +152,9 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853* di
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
-	while (hstx_fifo_hw->stat & HSTX_FIFO_STAT_FULL_BITS)
-		;
+	while (hstx_fifo_hw->stat & HSTX_FIFO_STAT_FULL_BITS){
+        tight_loop_contents();
+    }
 	hstx_fifo_hw->fifo = data;
 }
 
@@ -167,13 +164,8 @@ static FURI_ALWAYS_INLINE void display_jd9853_dma_put_buffer(DisplayJd9853* disp
     dma_channel_set_read_addr(display->dma_tx_channel, data, false);
     dma_channel_set_transfer_count(display->dma_tx_channel, size/4, false);
 
-
     // Start DMA transfer
     dma_channel_start(display->dma_tx_channel);
-
-    // Wait for DMA transfer to complete
-    dma_channel_wait_for_finish_blocking(display->dma_tx_channel);
-    //furi_delay_ms(2);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_cs_up(void) {
@@ -254,7 +246,6 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853* display,
     for(size_t i = 0; i < size; i++) {
         display_jd9853_hstx_put_word(data[i]);
     }
-    //display_jd9853_cs_up();
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853* display, const uint8_t* config) {
@@ -288,25 +279,16 @@ static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853* display,
 
 FURI_ALWAYS_INLINE void display_jd9853_write_buffer_x_y(DisplayJd9853* display, uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size) {
     furi_assert(display);
-    //furi_check(furi_semaphore_acquire(display->te_semaphore, FuriWaitForever) == FuriStatusOk);
-    //furi_check(furi_semaphore_acquire(display->te_semaphore, FuriWaitForever) == FuriStatusOk);
-    while( (furi_get_tick() - display->te_timestamp) > DISPLAY_JD9853_TE_TIMEOUT_DELTA ) {
-        //wait for next TE signal
-    }
-    //display_jd9853_set_window(display, JD9853_OFF_X0 + x, JD9853_OFF_Y0 + y, JD9853_OFF_X0 + x + (w / 3)-1, JD9853_OFF_Y0 + y + h - 1);
-    furi_hal_gpio_write(&gpio_display_cs, false); 
+    furi_check(size == JD9853_WIDTH * JD9853_HEIGHT); //size must be equal to full buffer size
 
+    while (furi_semaphore_get_space(display->busy)) {
+        tight_loop_contents();
+    };
 
-    display_jd9853_write_reg_4line(display, ramwr);
-    //display_jd9853_write_reg(display, ramwr);
-    //display_jd9853_write_data(display, (uint8_t*)buffer, size);
+    memcpy(display->buffer_header.data, buffer, size);
 
-    display_jd9853_dma_put_buffer(display, buffer, size);
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
 
-    // furi_hal_gpio_write(&gpio_display_cs, true); 
-    
-    // display_jd9853_hstx_wait_complete(display);
-    //display_jd9853_cs_up();
 }
 
 FURI_ALWAYS_INLINE void display_jd9853_write_buffer(DisplayJd9853* display, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size) {
@@ -337,12 +319,16 @@ void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
 
 static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
     DisplayJd9853* display = (DisplayJd9853*)ctx;
-    display->te_timestamp = furi_get_tick();
-    furi_semaphore_release(display->te_semaphore);
+    if(!furi_semaphore_get_space(display->busy)) {
+        return;
+    }
+    furi_hal_gpio_write(&gpio_display_cs, false); 
+    display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
 }
 
 static int64_t __isr __not_in_flash_func(display_jd9853_end_tx_hstx_callback)(alarm_id_t id, __unused void *user_data) {
     furi_hal_gpio_write(&gpio_display_cs, true);
+    furi_semaphore_release(display_instance->busy);
     return 0;
 }
 
@@ -356,7 +342,12 @@ DisplayJd9853* display_jd9853_init(void) {
     furi_check(display_instance == NULL); // Only one instance allowed
     DisplayJd9853* display = malloc(sizeof(DisplayJd9853));
     display_instance = display;
-    display->te_semaphore = furi_semaphore_alloc(1, 1);
+    display->busy = furi_semaphore_alloc(1, 1);
+
+    display->buffer_header.cmd[0] = 0x10001100;// convert_to_dual_line_compact(JD9853_QSPI_CMD_4_LINE_MODE, 4);
+    display->buffer_header.cmd[1] = 0;
+    display->buffer_header.cmd[2] = 0x00111000; //convert_to_dual_line_compact((uint8_t)ramwr, 4);
+    display->buffer_header.cmd[3] = 0;
 
     //dma init
     display->dma_tx_channel=dma_claim_unused_channel(true);
@@ -414,7 +405,6 @@ DisplayJd9853* display_jd9853_init(void) {
     //Initialization sequence
     display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
-    //display_jd9853_set_window(display, JD9853_OFF_X0, JD9853_OFF_Y0, JD9853_OFF_X0 + (JD9853_WIDTH / 3)-1, JD9853_OFF_Y0 + JD9853_HEIGHT - 1);
     display_jd9853_fill(display, 255); // Fill white
 
     return display;
@@ -422,7 +412,7 @@ DisplayJd9853* display_jd9853_init(void) {
 
 void display_jd9853_deinit(DisplayJd9853* display) {
     furi_check(display);
-    
+
     furi_hal_gpio_remove_int_callback(&gpio_display_te);
     display_jd9853_load_config(display, st7789_deinit_seq);
     furi_hal_gpio_init_ex(&gpio_display_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
@@ -434,7 +424,8 @@ void display_jd9853_deinit(DisplayJd9853* display) {
     furi_hal_gpio_init_ex(&gpio_display_d2, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     
     clock_stop(clk_hstx);
-    furi_semaphore_free(display->te_semaphore);
+    furi_semaphore_free(display->busy);
+
     //deinit dma
     irq_set_enabled(DMA_IRQ_3, false);
     irq_remove_handler(DMA_IRQ_3, display_jd9853_dma_irq_handler);
