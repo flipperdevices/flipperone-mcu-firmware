@@ -205,7 +205,6 @@ FURI_ALWAYS_INLINE void display_jd9853_write_buffer(DisplayJd9853* display, cons
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
 }
 
-uint8_t d = 0;
 void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
     furi_assert(display);
     const size_t width = JD9853_WIDTH; // 1 byte per pixel
@@ -213,14 +212,9 @@ void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
 
     uint8_t* data = (uint8_t*)malloc(width * height);
     for(size_t i = 0; i < width * height; i += 1) {
-        data[i] = ((d+i)%64) << 2;
-        //data[i] = color;
+        data[i] = color;
     }
-    d++;
-    if(d >= 64) {
-        d = 0;
-    }
-    
+
     display_jd9853_write_buffer(display, data, width * height);
     free(data);
 }
@@ -251,7 +245,7 @@ void display_jd9853_hstx_clock_init(void) {
                         0,
                         CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
                         USB_CLK_HZ,
-                        USB_CLK_HZ/2);
+                        USB_CLK_HZ);
 }
 
 void display_jd9853_backlight_set_brightness(DisplayJd9853* display, uint8_t brightness) {
@@ -321,10 +315,13 @@ DisplayJd9853* display_jd9853_init(void) {
     //Initialization sequence
     display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
-    display_jd9853_fill(display, 255); // Fill white
+    display_jd9853_fill(display, 0); // Fill white
 
     display->backlight_pwm = furi_hal_pwm_init(&gpio_display_ctrl, DISPLAY_JD9853_BACKLIGHT_BIT, DISPLAY_JD9853_BACKLIGHT_FREQ_HZ, false);
     display_jd9853_backlight_set_brightness(display, 55); // Set backlight to 50%
+    //ToDo The backlight doesn't turn on immediately at low brightness
+    furi_delay_ms(10);
+    display_jd9853_backlight_set_brightness(display, 3); // Set backlight to 50%
 
     return display;
 }
