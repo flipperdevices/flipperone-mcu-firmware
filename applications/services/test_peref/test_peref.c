@@ -62,8 +62,8 @@ int32_t test_peref_srv(void* p) {
         // furi_delay_ms(10);
 
         // //bw display test
-        // display_jd9853_fill(display, 0); // Fill white
-        // furi_delay_ms(200);
+        display_jd9853_fill(display, 0); // Fill white
+        furi_delay_ms(200);
         // display_jd9853_fill(display, 50); // Fill white
         // furi_delay_ms(200);
         // display_jd9853_fill(display, 100); // Fill white
@@ -72,19 +72,19 @@ int32_t test_peref_srv(void* p) {
         // furi_delay_ms(200);
         // display_jd9853_fill(display, 200); // Fill white
         // furi_delay_ms(200);
-        // display_jd9853_fill(display, 255); // Fill white
-        // furi_delay_ms(400);
+        display_jd9853_fill(display, 255); // Fill white
+         furi_delay_ms(400);
 
-        for(size_t i = 0; i < 64; i++) {
-            display_jd9853_fill(display, i<<2); // Fill white
-            //furi_delay_ms(100); //10FPS
-            //furi_delay_ms(66);  //15FPS
-            //furi_delay_ms(50);  //20FPS
-            // furi_delay_ms(33); //30FPS
-            // furi_delay_ms(16); //60FPS
-             furi_delay_ms(5); //120FPS
-        }
-        furi_delay_ms(200);
+        // for(size_t i = 0; i < 64; i++) {
+        //     display_jd9853_fill(display, i<<2); // Fill white
+        //     //furi_delay_ms(100); //10FPS
+        //     //furi_delay_ms(66);  //15FPS
+        //     //furi_delay_ms(50);  //20FPS
+        //     // furi_delay_ms(33); //30FPS
+        //     // furi_delay_ms(16); //60FPS
+        //      furi_delay_ms(5); //120FPS
+        // }
+        // furi_delay_ms(200);
 
 
     //     // //random SQUARE

@@ -14,9 +14,8 @@
 #include <hardware/dma.h>
 
 #include <hardware/clocks.h>
-#include <reent.h>
-#include <stdbool.h>
-#include <stdint.h>
+#include <hardware/timer.h>
+#include "pico/stdlib.h"
 
 #define FIRST_HSTX_PIN 12
 #define DISPLAY_JD9853_TE_TIMEOUT_DELTA 4 //4ms 
@@ -169,7 +168,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_dma_put_buffer(DisplayJd9853* disp
 
     // Wait for DMA transfer to complete
     dma_channel_wait_for_finish_blocking(display->dma_tx_channel);
-    furi_delay_ms(2);
+    //furi_delay_ms(2);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_cs_up(void) {
@@ -297,7 +296,7 @@ FURI_ALWAYS_INLINE void display_jd9853_write_buffer_x_y(DisplayJd9853* display, 
 
     display_jd9853_dma_put_buffer(display, buffer, size);
 
-    furi_hal_gpio_write(&gpio_display_cs, true); 
+    // furi_hal_gpio_write(&gpio_display_cs, true); 
     
     // display_jd9853_hstx_wait_complete(display);
     //display_jd9853_cs_up();
@@ -317,7 +316,7 @@ void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
     uint8_t* data = (uint8_t*)malloc(width * height);
     for(size_t i = 0; i < width * height; i += 1) {
         data[i] = ((d+i)%64) << 2;
-       // data[i] = color;
+        data[i] = color;
     }
     d++;
     if(d >= 64) {
@@ -335,10 +334,36 @@ static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
     furi_semaphore_release(display->te_semaphore);
 }
 
-void hstx_irq_handler() {
+int dma_chan;
+static volatile int wakeup_alarm_irq_num;
+
+int64_t alarm_callback(alarm_id_t id, __unused void *user_data) {
+    furi_hal_gpio_write(&gpio_display_cs, false); 
+    furi_hal_gpio_write(&gpio_display_cs, true); 
+}
+
+void furi_hal_power_alarm_sleep_callback() {
+    furi_hal_gpio_write(&gpio_display_cs, false); 
+    furi_hal_gpio_write(&gpio_display_cs, true); 
+}
+
+void dma_irq_handler() {
     // Clear the interrupt request.
     //dma_hw->ints0 = 1u << display_instance->dma_tx_channel;
+
+// add_alarm_in_ms
+    absolute_time_t t = make_timeout_time_us(100);
+    if(hardware_alarm_set_target(wakeup_alarm_irq_num, t)) {
+        hardware_alarm_set_callback(wakeup_alarm_irq_num, NULL);
+        hardware_alarm_unclaim(wakeup_alarm_irq_num);
+        return;
+    }
+   // add_alarm_in_us(10000, alarm_callback, NULL, true);
+    // Clear the interrupt request.
+    
+    dma_hw->ints0 = 1u << dma_chan;
 }
+
 
 DisplayJd9853* display_jd9853_init(void) {
     DisplayJd9853* display = malloc(sizeof(DisplayJd9853));
@@ -347,8 +372,7 @@ DisplayJd9853* display_jd9853_init(void) {
     display->dma_tx_channel=dma_claim_unused_channel(true);
     furi_check(dma_channel_is_claimed(display->dma_tx_channel));
 
-    // !!!!irq_set_exclusive_handler(DMA_IRQ_0, dma_irq_handler);
-    // irq_set_enabled(DMA_IRQ_0, true);
+    dma_chan = display->dma_tx_channel;
 
     dma_channel_config c = dma_channel_get_default_config(display->dma_tx_channel);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
@@ -356,6 +380,19 @@ DisplayJd9853* display_jd9853_init(void) {
     channel_config_set_bswap(&c, true); // Byte swap for little-endian data
     dma_channel_set_write_addr(display->dma_tx_channel, &hstx_fifo_hw->fifo, false);
     dma_channel_set_config(display->dma_tx_channel, &c, false);
+
+     dma_channel_set_irq0_enabled(display->dma_tx_channel, true);
+    irq_set_exclusive_handler(DMA_IRQ_0, dma_irq_handler);
+    irq_set_enabled(DMA_IRQ_0, true);
+
+    wakeup_alarm_irq_num = hardware_alarm_claim_unused(true);
+    hardware_alarm_set_callback(wakeup_alarm_irq_num, &furi_hal_power_alarm_sleep_callback);
+    // absolute_time_t t = make_timeout_time_ms(1);
+    // if(hardware_alarm_set_target(wakeup_alarm_irq_num, t)) {
+    //     hardware_alarm_set_callback(wakeup_alarm_irq_num, NULL);
+    //     hardware_alarm_unclaim(wakeup_alarm_irq_num);
+    //     return;
+    // }
 
     clock_configure(clk_hstx,
                         0,
