@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 typedef struct DisplayJd9853 DisplayJd9853;
 
@@ -14,7 +15,7 @@ void display_jd9853_hstx_clock_init(void);
 void display_jd9853_backlight_set_brightness(DisplayJd9853* display, uint8_t brightness);
 void display_jd9853_write_buffer(DisplayJd9853* display, const uint8_t* buffer, size_t size);
 void display_jd9853_fill(DisplayJd9853* display, uint8_t color);
-
+void display_jd9853_eco_mode(DisplayJd9853* display, bool enable);
 #ifdef __cplusplus
 }
 #endif

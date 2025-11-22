@@ -66,8 +66,8 @@ int32_t test_peref_srv(void* p) {
         // furi_delay_ms(10);
 
         // //bw display test
-        display_jd9853_fill(display, 0); // Fill white
-        furi_delay_ms(200);
+        //display_jd9853_fill(display, 0); // Fill white
+        //furi_delay_ms(200);
         // display_jd9853_fill(display, 50); // Fill white
         // furi_delay_ms(200);
         // display_jd9853_fill(display, 100); // Fill white
@@ -76,20 +76,20 @@ int32_t test_peref_srv(void* p) {
         // furi_delay_ms(200);
         // display_jd9853_fill(display, 200); // Fill white
         // furi_delay_ms(200);
-        display_jd9853_fill(display, 255); // Fill white
-         furi_delay_ms(400);
+        //display_jd9853_fill(display, 255); // Fill white
+        // furi_delay_ms(400);
 
-        // for(size_t i = 0; i < 64; i++) {
-        //     //furi_hal_gpio_write(&gpio_display_ctrl, true);
-        //     display_jd9853_fill(display, i<<2); // Fill white
-        //     //furi_delay_ms(100); //10FPS
-        //     //furi_delay_ms(66);  //15FPS
-        //     //furi_delay_ms(50);  //20FPS
-        //     // furi_delay_ms(33); //30FPS
-        //     // furi_delay_ms(16); //60FPS
-        //      furi_delay_ms(5); //120FPS
-        // }
-        // furi_delay_ms(200);
+        for(size_t i = 0; i < 64; i++) {
+            //furi_hal_gpio_write(&gpio_display_ctrl, true);
+            display_jd9853_fill(display, i<<2); // Fill white
+            //furi_delay_ms(100); //10FPS
+            //furi_delay_ms(66);  //15FPS
+            //furi_delay_ms(50);  //20FPS
+            // furi_delay_ms(33); //30FPS
+            // furi_delay_ms(16); //60FPS
+             furi_delay_ms(5); //120FPS
+        }
+        furi_delay_ms(200);
 
 
     //     // //random SQUARE
@@ -109,12 +109,17 @@ int32_t test_peref_srv(void* p) {
     //     free(buf);
     //     furi_delay_ms(10);
 
-
-
-
-
-    //     // furi_hal_pwm_set_duty_cycle(pwm, duty);
-    //     duty += 5;
+        duty += 1;
+        if(duty % 2){
+            display_jd9853_eco_mode(display, true);
+        } else {
+            display_jd9853_eco_mode(display, false);
+        }
+        FURI_LOG_I("backlight", "Brightness: %d", duty);
+        display_jd9853_backlight_set_brightness(display, duty);
+        if(duty >= 100) {
+            duty = 0;
+        }
     //   //  furi_hal_power_insomnia_enter();
     //   //furi_delay_ms(3);
     //     for(size_t i = 0; i < 29; i++) {

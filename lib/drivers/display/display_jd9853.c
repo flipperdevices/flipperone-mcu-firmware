@@ -355,3 +355,13 @@ void display_jd9853_deinit(DisplayJd9853* display) {
     display_instance = NULL;
 }
 
+void display_jd9853_eco_mode(DisplayJd9853* display, bool enable) {
+    furi_check(display);
+    display_jd9853_hstx_init_1_line(display);
+    if(enable) {
+        display_jd9853_write_reg(display, idmon);
+    } else {
+        display_jd9853_write_reg(display, idmoff);
+    }
+    display_jd9853_hstx_init_4_line(display);
+}
