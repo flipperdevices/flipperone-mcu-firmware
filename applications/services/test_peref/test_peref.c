@@ -1,4 +1,5 @@
 #include "test_peref.h"
+#include "core/kernel.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -49,7 +50,10 @@ int32_t test_peref_srv(void* p) {
     free(ws2812_pins);
 
     DisplayJd9853* display = display_jd9853_init();
-    display_jd9853_fill(display, 0x00); // Fill white
+    furi_delay_ms(500);
+    display_jd9853_deinit(display);
+    furi_delay_ms(500);
+    display = display_jd9853_init();
 
     uint8_t index_led = 0;
 

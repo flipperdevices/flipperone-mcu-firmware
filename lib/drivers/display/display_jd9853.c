@@ -1,4 +1,5 @@
 #include "display_jd9853.h"
+#include "core/check.h"
 #include "core/kernel.h"
 #include "core/log.h"
 #include "display_jd9853_reg.h"
@@ -16,9 +17,11 @@
 #include <hardware/clocks.h>
 #include <hardware/timer.h>
 #include "pico/stdlib.h"
+#include <stdio.h>
 
 #define FIRST_HSTX_PIN 12
 #define DISPLAY_JD9853_TE_TIMEOUT_DELTA 4 //4ms 
+#define DISPLAY_JD9853_HSTX_END_TX_DELAY_US 5 //5us
 
 typedef enum {
     DisplayJd9853Line1,
@@ -38,6 +41,8 @@ struct DisplayJd9853 {
     volatile uint32_t te_timestamp;
     uint32_t dma_tx_channel;
 };
+
+static DisplayJd9853* display_instance = NULL;
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853* display) {
     while (!(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS))
@@ -253,6 +258,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853* display,
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853* display, const uint8_t* config) {
+    display_jd9853_hstx_init_1_line(display);
     while(*config) {
         display_jd9853_write_reg(display, (DisplayJd9853Reg)(*(config + 2)));
         
@@ -262,6 +268,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853* display
         furi_delay_ms(*(config + 1) * 5);
         config += *(config) + 2;
     }
+    display_jd9853_hstx_init_4_line(display);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853* display, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
@@ -316,7 +323,7 @@ void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
     uint8_t* data = (uint8_t*)malloc(width * height);
     for(size_t i = 0; i < width * height; i += 1) {
         data[i] = ((d+i)%64) << 2;
-        data[i] = color;
+        //data[i] = color;
     }
     d++;
     if(d >= 64) {
@@ -334,46 +341,26 @@ static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
     furi_semaphore_release(display->te_semaphore);
 }
 
-int dma_chan;
-static volatile int wakeup_alarm_irq_num;
-
-int64_t alarm_callback(alarm_id_t id, __unused void *user_data) {
-    furi_hal_gpio_write(&gpio_display_cs, false); 
-    furi_hal_gpio_write(&gpio_display_cs, true); 
+static int64_t __isr __not_in_flash_func(display_jd9853_end_tx_hstx_callback)(alarm_id_t id, __unused void *user_data) {
+    furi_hal_gpio_write(&gpio_display_cs, true);
+    return 0;
 }
 
-void furi_hal_power_alarm_sleep_callback() {
-    furi_hal_gpio_write(&gpio_display_cs, false); 
-    furi_hal_gpio_write(&gpio_display_cs, true); 
-}
-
-void dma_irq_handler() {
+static void __isr __not_in_flash_func(display_jd9853_dma_irq_handler)(void) {
+    add_alarm_in_us(DISPLAY_JD9853_HSTX_END_TX_DELAY_US, display_jd9853_end_tx_hstx_callback, NULL, true);
     // Clear the interrupt request.
-    //dma_hw->ints0 = 1u << display_instance->dma_tx_channel;
-
-// add_alarm_in_ms
-    absolute_time_t t = make_timeout_time_us(100);
-    if(hardware_alarm_set_target(wakeup_alarm_irq_num, t)) {
-        hardware_alarm_set_callback(wakeup_alarm_irq_num, NULL);
-        hardware_alarm_unclaim(wakeup_alarm_irq_num);
-        return;
-    }
-   // add_alarm_in_us(10000, alarm_callback, NULL, true);
-    // Clear the interrupt request.
-    
-    dma_hw->ints0 = 1u << dma_chan;
+    dma_hw->ints3 = 1u << display_instance->dma_tx_channel;
 }
-
 
 DisplayJd9853* display_jd9853_init(void) {
+    furi_check(display_instance == NULL); // Only one instance allowed
     DisplayJd9853* display = malloc(sizeof(DisplayJd9853));
+    display_instance = display;
     display->te_semaphore = furi_semaphore_alloc(1, 1);
+
     //dma init
     display->dma_tx_channel=dma_claim_unused_channel(true);
     furi_check(dma_channel_is_claimed(display->dma_tx_channel));
-
-    dma_chan = display->dma_tx_channel;
-
     dma_channel_config c = dma_channel_get_default_config(display->dma_tx_channel);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
     channel_config_set_dreq(&c, DREQ_HSTX);
@@ -381,19 +368,12 @@ DisplayJd9853* display_jd9853_init(void) {
     dma_channel_set_write_addr(display->dma_tx_channel, &hstx_fifo_hw->fifo, false);
     dma_channel_set_config(display->dma_tx_channel, &c, false);
 
-     dma_channel_set_irq0_enabled(display->dma_tx_channel, true);
-    irq_set_exclusive_handler(DMA_IRQ_0, dma_irq_handler);
-    irq_set_enabled(DMA_IRQ_0, true);
+    // Set up the DMA_IRQ_3 not used SDK
+    hw_set_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
+    irq_set_exclusive_handler(DMA_IRQ_3, display_jd9853_dma_irq_handler);
+    irq_set_enabled(DMA_IRQ_3, true);
 
-    wakeup_alarm_irq_num = hardware_alarm_claim_unused(true);
-    hardware_alarm_set_callback(wakeup_alarm_irq_num, &furi_hal_power_alarm_sleep_callback);
-    // absolute_time_t t = make_timeout_time_ms(1);
-    // if(hardware_alarm_set_target(wakeup_alarm_irq_num, t)) {
-    //     hardware_alarm_set_callback(wakeup_alarm_irq_num, NULL);
-    //     hardware_alarm_unclaim(wakeup_alarm_irq_num);
-    //     return;
-    // }
-
+    // Configure HSTX clock
     clock_configure(clk_hstx,
                         0,
                         CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
@@ -430,12 +410,11 @@ DisplayJd9853* display_jd9853_init(void) {
     gpio_set_function(gpio_display_d1.pin, GPIO_FUNC_HSTX);
     gpio_set_function(gpio_display_d2.pin, GPIO_FUNC_HSTX);
 
-    display_jd9853_hstx_init_1_line(display);
+
     //Initialization sequence
     display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     //display_jd9853_set_window(display, JD9853_OFF_X0, JD9853_OFF_Y0, JD9853_OFF_X0 + (JD9853_WIDTH / 3)-1, JD9853_OFF_Y0 + JD9853_HEIGHT - 1);
-    display_jd9853_hstx_init_4_line(display);
     display_jd9853_fill(display, 255); // Fill white
 
     return display;
@@ -443,7 +422,8 @@ DisplayJd9853* display_jd9853_init(void) {
 
 void display_jd9853_deinit(DisplayJd9853* display) {
     furi_check(display);
-    display_jd9853_hstx_init_1_line(display);
+    
+    furi_hal_gpio_remove_int_callback(&gpio_display_te);
     display_jd9853_load_config(display, st7789_deinit_seq);
     furi_hal_gpio_init_ex(&gpio_display_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
@@ -452,10 +432,16 @@ void display_jd9853_deinit(DisplayJd9853* display) {
     furi_hal_gpio_init_ex(&gpio_display_d0, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_d1, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_d2, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
-    display_jd9853_hstx_wait_complete(display);
+    
     clock_stop(clk_hstx);
     furi_semaphore_free(display->te_semaphore);
+    //deinit dma
+    irq_set_enabled(DMA_IRQ_3, false);
+    irq_remove_handler(DMA_IRQ_3, display_jd9853_dma_irq_handler);
+    hw_clear_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
     dma_channel_unclaim(display->dma_tx_channel);
+
     free(display);
+    display_instance = NULL;
 }
 

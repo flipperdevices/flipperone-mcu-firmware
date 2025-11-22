@@ -18,12 +18,19 @@ extern "C" {
 typedef void (*GpioExtiCallback)(void* ctx);
 //typedef void (*GpioExtiCallback)(uint gpio, uint32_t event_mask);
 
+typedef enum {
+    GpioConditionRise,
+    GpioConditionFall,
+    GpioConditionRiseFall,
+} GpioCondition;
+
 /**
  * Gpio interrupt type
  */
 typedef struct {
     GpioExtiCallback callback;
     void* context;
+    GpioCondition condition;
 } GpioInterrupt;
 
 /**
@@ -44,12 +51,6 @@ typedef enum {
     GpioPullUp,
     GpioPullDown,
 } GpioPull;
-
-typedef enum {
-    GpioConditionRise,
-    GpioConditionFall,
-    GpioConditionRiseFall,
-} GpioCondition;
 
 /**
  * Gpio speed modes

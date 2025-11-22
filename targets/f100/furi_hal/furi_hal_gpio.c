@@ -85,6 +85,7 @@ void furi_hal_gpio_add_int_callback(const GpioPin* gpio, GpioCondition condition
     furi_check(gpio_interrupt[gpio->pin].callback == NULL);
     gpio_interrupt[gpio->pin].callback = cb;
     gpio_interrupt[gpio->pin].context = ctx;
+    gpio_interrupt[gpio->pin].condition = condition;
 
     gpio_set_irq_enabled_with_callback(
         gpio->pin,
@@ -103,7 +104,13 @@ void furi_hal_gpio_enable_int_callback(const GpioPin* gpio) {
 
     FURI_CRITICAL_ENTER();
 
-    irq_set_enabled(gpio->pin, true);
+    //gpio_interrupt[gpio->pin].enabled = true;
+    gpio_set_irq_enabled(gpio->pin, 
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionFall)     ? GPIO_IRQ_EDGE_FALL :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL :
+                                                                       0,
+        true);
 
     FURI_CRITICAL_EXIT();
 }
@@ -113,7 +120,12 @@ void furi_hal_gpio_disable_int_callback(const GpioPin* gpio) {
 
     FURI_CRITICAL_ENTER();
 
-    irq_set_enabled(gpio->pin, false);
+     gpio_set_irq_enabled(gpio->pin, 
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionFall)     ? GPIO_IRQ_EDGE_FALL :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL :
+                                                                       0,
+        false);
 
     FURI_CRITICAL_EXIT();
 }
@@ -122,7 +134,12 @@ void furi_hal_gpio_remove_int_callback(const GpioPin* gpio) {
     furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     FURI_CRITICAL_ENTER();
-    gpio_set_irq_enabled_with_callback(gpio->pin, 0, false, NULL);
+    gpio_set_irq_enabled_with_callback(gpio->pin, 
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionFall)     ? GPIO_IRQ_EDGE_FALL :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL :
+                                                                       0, 
+        false, NULL);
     gpio_interrupt[gpio->pin].callback = NULL;
     gpio_interrupt[gpio->pin].context = NULL;
 
