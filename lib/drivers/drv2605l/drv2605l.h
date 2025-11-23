@@ -3,8 +3,7 @@
 #include <furi_hal_i2c_types.h>
 #include <furi_hal_gpio.h>
 
-#define DRV2605L_ADDRESS_A0 0x20
-#define DRV2605L_ADDRESS_A1 0x21
+#define DRV2605L_ADDRESS (0x5Au)
 
 typedef struct Drv2605l Drv2605l;
 typedef void (*Drv2605lCallbackInput)(void* context);
