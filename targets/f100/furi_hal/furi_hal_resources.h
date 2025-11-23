@@ -96,6 +96,9 @@ extern const GpioPin gpio_i2c1_scl;
 extern const GpioPin gpio_expander_reset;
 extern const GpioPin gpio_expander_int;
 
+extern const GpioPin gpio_haptic_en;
+extern const GpioPin gpio_haptic_pwm;
+
 extern const GpioPinRecord gpio_pins[];
 extern const size_t gpio_pins_count;
 

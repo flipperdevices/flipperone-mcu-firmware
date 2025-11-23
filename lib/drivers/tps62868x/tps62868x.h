@@ -8,13 +8,6 @@
 extern "C" {
 #endif
 
-// uint8_t tps62868x_init(void);
-// void tps62868x_deinit(void);
-// uint8_t tps62868x_read_reg(uint8_t reg, uint8_t* data);
-// uint8_t tps62868x_write_reg(uint8_t reg, uint8_t* data);
-// uint8_t tps62868x_set_voltage(float volt);
-// float tps62868x_get_voltage(void);
-
 bool tps62868x_init(FuriHalI2cBusHandle* handle);
 void tps62868x_deinit(void);
 void tps62868x_set_pwm_on(FuriHalI2cBusHandle* handle);

@@ -1,6 +1,6 @@
 #include "input.h"
 
-#include "furi_hal_i2c_config.h"
+#include <furi_hal_i2c_config.h>
 #include <furi.h>
 #include <drivers/tsa6416a/tsa6416a.h>
 

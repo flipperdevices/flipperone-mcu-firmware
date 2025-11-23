@@ -50,7 +50,8 @@ const GpioPin gpio_i2c1_scl = {.pin = 23};
 const GpioPin gpio_expander_reset = {.pin = 10};
 const GpioPin gpio_expander_int = {.pin = 9};
 
-
+const GpioPin gpio_haptic_en = {.pin = 38};
+const GpioPin gpio_haptic_pwm = {.pin = 39};
 
 const GpioPinRecord gpio_pins[] = {};
 const size_t gpio_pins_count = COUNT_OF(gpio_pins);

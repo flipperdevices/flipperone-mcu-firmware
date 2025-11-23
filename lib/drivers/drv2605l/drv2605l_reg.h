@@ -1,8 +1,9 @@
 #pragma once
 
+#include <stdint.h>
+
 //https://www.ti.com/lit/ds/symlink/drv2605l.pdf?ts=1763803821733&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FDRV2605L%253Futm_source%253Dgoogle%2526utm_medium%253Dcpc%2526utm_campaign%253Dasc-null-null-GPN_EN-cpc-pf-google-eu_en_cons%2526utm_content%253DDRV2605L%2526ds_k%253DDRV2605L%2526DCM%253Dyes%2526gclsrc%253Daw.ds%2526gad_source%253D1%2526gad_campaignid%253D8752110670%2526gbraid%253D0AAAAAC068F1DNu-L2iP4S8o2M0XHmBTQT%2526gclid%253DCjwKCAiA24XJBhBXEiwAXElO38zRQot2y5ghyUHtV3rc_ENHblKwa4acWh9cJWM8MZWGArRetKJSMBoCsQkQAvD_BwE
 
-#include <stdint.h>
 typedef enum {
     /* 0x00 STATUS
     *   - General device status information.
