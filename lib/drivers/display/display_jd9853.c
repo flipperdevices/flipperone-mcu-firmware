@@ -202,6 +202,7 @@ FURI_ALWAYS_INLINE void display_jd9853_write_buffer(DisplayJd9853* display, cons
     memcpy(display->buffer_header.data, buffer, size);
 
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
+    furi_hal_gpio_enable_int_callback(&gpio_display_te);
 }
 
 void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
@@ -220,15 +221,13 @@ void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
 
 static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
     DisplayJd9853* display = (DisplayJd9853*)ctx;
-    if(!furi_semaphore_get_space(display->busy)) {
-        return;
-    }
     furi_hal_gpio_write(&gpio_display_cs, false); 
     display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
 }
 
 static int64_t __isr __not_in_flash_func(display_jd9853_end_tx_hstx_callback)(alarm_id_t id, __unused void *user_data) {
     furi_hal_gpio_write(&gpio_display_cs, true);
+    furi_hal_gpio_disable_int_callback(&gpio_display_te);
     furi_semaphore_release(display_instance->busy);
     return 0;
 }
@@ -315,6 +314,7 @@ DisplayJd9853* display_jd9853_init(void) {
     furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputPushPull);
     furi_hal_gpio_init_simple(&gpio_display_te, GpioModeInput);
     furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionRise, display_jd9853_te_callback, display);
+    furi_hal_gpio_disable_int_callback(&gpio_display_te);
     furi_hal_gpio_init_simple(&gpio_display_cs, GpioModeOutputPushPull); 
     furi_hal_gpio_write(&gpio_display_cs, true);   
 
