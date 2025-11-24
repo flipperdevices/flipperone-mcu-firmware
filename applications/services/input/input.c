@@ -3,7 +3,7 @@
 #include <furi_hal_i2c_config.h>
 #include <furi.h>
 #include <drivers/tsa6416a/tsa6416a.h>
-
+#include <drivers/drv2605l/drv2605l.h>
 
 #define INPUT_DEBOUNCE_TICKS      4
 #define INPUT_DEBOUNCE_TICKS_HALF (INPUT_DEBOUNCE_TICKS / 2)
@@ -112,6 +112,8 @@ int32_t input_srv(void* p) {
 
     uint16_t input_state = tsa6416a_read_input(tsa6416a);
 
+    Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
+
     for(size_t i = 0; i < input_pins_count; i++) {
         pin_states[i].pin = &input_pins[i];
         pin_states[i].state = input_key_check_state(input_state, pin_states[i]);
@@ -138,6 +140,10 @@ int32_t input_srv(void* p) {
             } else if(pin_states[i].state != state) {
                 pin_states[i].state = state;
 
+                if(state) {
+                    drv2605l_trigger_set_effect_and_play(drv2605l, Drv2605lEffectSoftBump_100);
+                }
+               
                 // Common state info
                 InputEvent event;
                 event.sequence_source = INPUT_SEQUENCE_SOURCE_HARDWARE;

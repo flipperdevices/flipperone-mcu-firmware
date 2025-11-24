@@ -68,7 +68,7 @@ int32_t test_peref_srv(void* p) {
     uint8_t index_led = 0;
 
 
-    Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
+    //Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
     //drv2605l_test_all_effects(drv2605l);
 
     while(true) {
