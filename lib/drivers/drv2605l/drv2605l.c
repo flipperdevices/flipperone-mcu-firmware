@@ -5,7 +5,6 @@
 #include <furi.h>
 
 #include <furi_hal_i2c.h>
-#include <pico/types.h>
 
 #define TAG "Drv2605l"
 
@@ -27,7 +26,7 @@ static int drv2605l_write_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data
     furi_hal_i2c_release(instance->i2c_handle);
 
     if(ret != PICO_ERROR_GENERIC) {
-        FURI_LOG_D(TAG, "Wrote reg 0x%02X: %08b", reg, data[0]);
+        FURI_LOG_D(TAG, "Wrote reg 0x%02X: 0x%02X %08b", reg, data[0], data[0]);
     } else {
         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
     }
@@ -70,76 +69,83 @@ static int drv2605l_read_reg(Drv2605l* instance, Drv2605lReg reg, uint16_t* data
 // The default setup is closed-loop bidirectional mode. To use other modes and features, write Control1 (0x1B), Control2 (0x1C), and Control3 (0x1D) as required. Open-loop operation is recommended for ERM mode when using the ROM libraries.
 // Put the device in standby mode or deassert the EN pin, whichever is the most convenient. Both settings are low-power modes. The user can select the desired MODE (address 0x01) at the same time the STANDBY bit is set.
 
+static FURI_ALWAYS_INLINE void drv2605l_enable(Drv2605l* instance) {
+    furi_hal_gpio_write(instance->pin_en, true);
+}
 
-
-// Apply the supply voltage to the DRV2605L device, and pull the EN pin high. The supply voltage should allow for adequate drive voltage of the selected actuator.
-// Write a value of 0x07 to register 0x01. This value moves the DRV2605L device out of STANDBY and places the MODE[2:0] bits in auto-calibration mode.
-// Populate the input parameters required by the auto-calibration engine:
-// ERM_LRA — selection will depend on desired actuator.
-// FB_BRAKE_FACTOR[2:0] — A value of 2 is valid for most actuators.
-// LOOP_GAIN[1:0] — A value of 2 is valid for most actuators.
-// RATED_VOLTAGE[7:0] — See the Rated Voltage Programming section for calculating the correct register value.
-// OD_CLAMP[7:0] — See the Overdrive Voltage-Clamp Programming section for calculating the correct register value.
-// AUTO_CAL_TIME[1:0] — A value of 3 is valid for most actuators.
-// DRIVE_TIME[3:0] — See the Drive-Time Programming for calculating the correct register value.
-// SAMPLE_TIME[1:0] — A value of 3 is valid for most actuators.
-// BLANKING_TIME[3:0] — A value of 1 is valid for most actuators.
-// IDISS_TIME[3:0] — A value of 1 is valid for most actuators.
-// ZC_DET_TIME[1:0] — A value of 0 is valid for most actuators.
-// Set the GO bit (write 0x01 to register 0x0C) to start the auto-calibration process. When auto calibration is complete, the GO bit automatically clears. The auto-calibration results are written in the respective registers as shown in Figure 25.
-// Check the status of the DIAG_RESULT bit (in register 0x00) to ensure that the auto-calibration routine is complete without faults.
-// Evaluate system performance with the auto-calibrated settings. Note that the evaluation should occur during the final assembly of the device because the auto-calibration process can affect actuator performance and behavior. If any adjustment is required, the inputs can be modified and this sequence can be repeated. If the performance is satisfactory, the user can do any of the following:
-// Repeat the calibration process upon subsequent power ups.
-// Store the auto-calibration results in host processor memory and rewrite them to the DRV2605L device upon subsequent power ups. The device retains these settings when in STANDBY mode or when the EN pin is low.
-// Program the results permanently in nonvolatile, on-chip OTP memory. Even when a device power cycle occurs, the device retains the auto-calibration settings. See the Programming On-Chip OTP Memory section for additional information.
+static FURI_ALWAYS_INLINE void drv2605l_disable(Drv2605l* instance) {
+    furi_hal_gpio_write(instance->pin_en, false);
+}
 
 bool drv2605l_auto_calibrate(Drv2605l* instance) {
     furi_check(instance);
-    furi_hal_gpio_write(instance->pin_en, true);
+    drv2605l_enable(instance);
 
-    Drv2605lMode mode_reg;
-    mode_reg.mode_select = 0x07; // Auto-calibration mode
-    drv2605l_write_reg(instance, mode, (uint8_t*)&mode_reg);
+    uint8_t rated_voltage_reg = 0x53; //Vrms = 2 <--Setting
+    uint8_t overdrive_clamp_reg = 0xA0; //Vmax = 3 <--Setting
+    Drv2605lFeedback feedback_reg = {
+        .n_erm_lra = 1, //LRA
+        .brake_factor = 3, //4x
+        .loop_gain = 1, //Medium
+        .bemf_gain = 2, //1.365x
+    };
+    Drv2605lControl1 control1_reg = {
+        .startup_boost = 1, //enabled
+        .ac_couple = 0, //DC coupled
+        .drive_time = 19, // <--Setting
+    };
+    Drv2605lControl2 control2_reg = {
+        .bidir_input = 1, //Bidir input
+        .brake_stabilizer = 0, //disabled
+        .sample_time = 3, //300us
+        .blanking_time = 1,
+        .idiss_time = 1,
+    }; 
+    Drv2605lControl3 control3_reg = {
+        .ng_thresh = 2, //4%
+        .erm_open_loop = 0, //Closed loop
+        .supply_comp_dis = 0, //Enabled
+        .data_fomat_rtp = 0, //Signed
+        .lra_drive_mode = 0, //Once per cycle
+        .n_pwm_analog = 0, //PWM Input
+        .lra_open_loop = 0, //Auto-resonance mode
+    }; 
+    Drv2605lMode mode_reg = {
+        .device_reset = 0, //Normal operation
+        .standby = 0, //Active mode
+        .mode_select = 0b111, //Auto-calibration mode
+    };
+    Drv2605lControl4 control4_reg = {
+        .auto_cal_time = 2, //1000:1200 ms
+        .otp_status = 0,
+        .otp_program = 0, //OTP Memory has not been programmed
+        .zc_det_time = 0, //100us
+    };
+    Drv2605lGo go_reg = {
+        .go_bit = 1, //Start auto-calibration
+    };
 
-    // Populate input parameters
-    Drv2605lFeedback feedback_reg;
-    feedback_reg.n_erm_lra = 1; // LRA
-    feedback_reg.brake_factor = 2; // 2
-    feedback_reg.loop_gain = 2; // 2
+    drv2605l_write_reg(instance, rated_voltage, &rated_voltage_reg);
+    drv2605l_write_reg(instance, overdrive_clamp, &overdrive_clamp_reg);
     drv2605l_write_reg(instance, feedback, (uint8_t*)&feedback_reg);
-
-    uint8_t rated_voltage_reg = 80; // Example rated voltage !!!
-    drv2605l_write_reg(instance, rated_voltage, (uint8_t*)&rated_voltage_reg);  
-
-    uint8_t overdrive_clamp_reg = 200; // Example overdrive clamp !!!
-    drv2605l_write_reg(instance, overdrive_clamp, (uint8_t*)&overdrive_clamp_reg); // Rated voltage
-
-    Drv2605lControl4 control4_reg;
-    control4_reg.auto_cal_time = 3; // 1000:1200 ms
-    drv2605l_write_reg(instance, control4, (uint8_t*)&control4_reg);
-
-    Drv2605lControl1 control1_reg;
-    control1_reg.drive_time = 25; // Max drive time !!!
     drv2605l_write_reg(instance, control1, (uint8_t*)&control1_reg);
-
-    Drv2605lControl2 control2_reg;
-    control2_reg.sample_time = 3; // 300 us
-    control2_reg.blanking_time = 1; // 1
-    control2_reg.idiss_time = 1; // 1
     drv2605l_write_reg(instance, control2, (uint8_t*)&control2_reg);
-    
-
-    drv2605l_read_reg(instance, control4, (uint16_t*)&control4_reg);
-    control4_reg.zc_det_time = 0; // 0
+    drv2605l_write_reg(instance, control3, (uint8_t*)&control3_reg);
+    drv2605l_write_reg(instance, mode, (uint8_t*)&mode_reg);
     drv2605l_write_reg(instance, control4, (uint8_t*)&control4_reg);
-
-    // Start auto-calibration
-    Drv2605lGo go_reg;
-    go_reg.go_bit = 1; // Start
     drv2605l_write_reg(instance, go, (uint8_t*)&go_reg);
 
     // Wait for completion
-    furi_delay_ms(1500);
+    uint32_t timeout = furi_get_tick() + 2000;
+    while(furi_get_tick() < timeout) {
+        uint16_t go_status = 0;
+        drv2605l_read_reg(instance, go, &go_status);
+        Drv2605lGo* go_reg_status = (Drv2605lGo*)&go_status;
+        if(go_reg_status->go_bit == 0) {
+            break;
+        }
+        furi_delay_ms(10);
+    }
 
     uint16_t status = 0;
     drv2605l_read_reg(instance, status, &status);
@@ -147,17 +153,15 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
     
     if(status_reg->diagnostic_result) {
         FURI_LOG_E(TAG, "Auto-calibration failed");
+        drv2605l_disable(instance); 
         return false;
     }
 
     FURI_LOG_I(TAG, "Auto-calibration successful");
 
-    //calib reg 0x16 – 0x1A
+    //calib reg 0x18, 0x19, 0x1A (BEMFGain)
     uint8_t calib_data = 0;
-    drv2605l_read_reg(instance, rated_voltage, (uint16_t*)&calib_data);
-    FURI_LOG_I(TAG, "Rated Voltage: reg 0x%02X -> 0x%02X", rated_voltage, calib_data);
-    drv2605l_read_reg(instance, overdrive_clamp, (uint16_t*)&calib_data);
-    FURI_LOG_I(TAG, "Overdrive Clamp: reg 0x%02X -> 0x%02X", overdrive_clamp, calib_data);
+
     drv2605l_read_reg(instance, auto_cal_comp, (uint16_t*)&calib_data);
     FURI_LOG_I(TAG, "Auto Cal Compensation: reg 0x%02X -> 0x%02X", auto_cal_comp, calib_data);
     drv2605l_read_reg(instance, auto_cal_bemf, (uint16_t*)&calib_data);
@@ -165,6 +169,7 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
     drv2605l_read_reg(instance, feedback, (uint16_t*)&calib_data);
     FURI_LOG_I(TAG, "Feedback: reg 0x%02X -> 0x%02X", feedback, calib_data);
 
+    drv2605l_disable(instance); 
     return true;
 }
 
@@ -187,75 +192,7 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
 
     if(ret) {
         drv2605l_auto_calibrate(instance);
-        // // // Device is ready
-        // Drv2605lMode mode_reg;
-        // mode_reg.device_reset = 0; // Set reset bit
-        // mode_reg.standby = 0; // Set standby bit
-        // mode_reg.mode_select = 0x00; // Internal Trigger
-        // drv2605l_write_reg(instance, mode, (uint8_t*)&mode_reg);
 
-        // uint16_t status_reg = 0;
-        // drv2605l_read_reg(instance, status, &status_reg);
-        // FURI_LOG_D(TAG, "Read reg 0x%02X: %08b", status, status_reg);
-
-        // // Drv2605lLib lib_reg;
-        // // lib_reg.hi_z_mode = 0; // Normal mode
-        // // lib_reg.library_sel = 0x06; // LRA library
-        // // drv2605l_write_reg(instance, lib_select, (uint8_t*)&lib_reg);
-
-        // drv2605l_write_reg(instance, rtp_input, (uint8_t*)0x00);
-
-        // uint8_t wave_seq1_reg = 1;
-        // drv2605l_write_reg(instance, waveseq0, (uint8_t*)&wave_seq1_reg);
-        // uint8_t wave_seq2_reg = 0;
-        // drv2605l_write_reg(instance, waveseq1, (uint8_t*)&wave_seq2_reg);
-
-        // // writeRegister8(DRV2605_REG_OVERDRIVE, 0); // no overdrive
-
-        // // writeRegister8(DRV2605_REG_SUSTAINPOS, 0);
-        // // writeRegister8(DRV2605_REG_SUSTAINNEG, 0);
-        // // writeRegister8(DRV2605_REG_BREAK, 0);
-        // // writeRegister8(DRV2605_REG_AUDIOMAX, 0x64);
-
-        // // // ERM open loop
-
-        // // // turn off N_ERM_LRA
-        // // writeRegister8(DRV2605_REG_FEEDBACK,
-        // //                 readRegister8(DRV2605_REG_FEEDBACK) & 0x7F);
-        // // // turn on ERM_OPEN_LOOP
-        // // writeRegister8(DRV2605_REG_CONTROL3,
-        // //                 readRegister8(DRV2605_REG_CONTROL3) | 0x20);
-
-        // drv2605l_write_reg(instance, overdrive, (uint8_t*)0x00); // no overdrive
-        // drv2605l_write_reg(instance, sustain_time_pos, (uint8_t*)0x00);
-        // drv2605l_write_reg(instance, sustain_time_neg, (uint8_t*)0x00);
-        // drv2605l_write_reg(instance, break_time, (uint8_t*)0x00);
-        // drv2605l_write_reg(instance, aud_max_lvl, (uint8_t*)0x64);    
-        // // Set to ERM open loop
-        // Drv2605lFeedback feedback_reg;  
-        // drv2605l_read_reg(instance, feedback, (uint16_t*)&feedback_reg);
-        // feedback_reg.n_erm_lra = 0; // ERM  
-        // drv2605l_write_reg(instance, feedback, (uint8_t*)&feedback_reg);
-        // Drv2605lControl3 control3_reg;
-        // drv2605l_read_reg(instance, control3, (uint16_t*)&control3_reg);
-        // control3_reg.erm_open_loop = 1; // ERM open loop
-        // drv2605l_write_reg(instance, control3, (uint8_t*)&control3_reg);
-
-
-        // //writeRegister8(DRV2605_REG_LIBRARY, lib);
-        // drv2605l_write_reg(instance, lib_select, (uint8_t*)0x1);
-
-        // drv2605l_write_reg(instance, mode, (uint8_t*)0x00);
-        // drv2605l_write_reg(instance, waveseq0, (uint8_t*)0x01);
-        // drv2605l_write_reg(instance, waveseq1, (uint8_t*)0x00);
-        // // drv2605l_write_reg(instance, waveseq2, (uint8_t*)0x03);
-        // // drv2605l_write_reg(instance, waveseq3, (uint8_t*)0x04);
-        // // drv2605l_write_reg(instance, waveseq4, (uint8_t*)0x05);
-        // // drv2605l_write_reg(instance, waveseq5, (uint8_t*)0x00);
-
-        // Drv2605lGo go_reg;
-        // go_reg.go_bit = 1; // Clear GO bit
-        // drv2605l_write_reg(instance, go, (uint8_t*)&go_reg);
 
         uint8_t reg = 0x00; // Internal Trigger
         drv2605l_write_reg(instance, mode, (uint8_t*)&reg);
