@@ -15,7 +15,7 @@ typedef enum {
     *   - Bit 0 — Over-current flag (0 = normal).
     *   - Used to verify device identity and health/diagnostics.
     */
-    status = 0x00,
+    Drv2605lRegStatus = 0x00,
     /* 0x01 MODE
     *   - Selects operating mode and manages standby/go.
     *   - Bits 7 — Device reset (0 = normal operation, 1 = reset)
@@ -32,12 +32,12 @@ typedef enum {
     *       0x07 — Auto-calibration.
     *   - The register also contains standby/power-control bits.
     */
-    mode = 0x01,
+    Drv2605lRegMode = 0x01,
     /* 0x02 RTP (Real-Time Playback)
     *   - Holds the instantaneous RTP drive level used when MODE = 0x05.
     *   - Bits 7:0 — RTP drive level (0 to 255).
     */
-    rtp_input = 0x02,
+    Drv2605lRegRtpInput = 0x02,
     /* 0x03 LIB (Library Select)
     *   - Selects the effect library (predefined waveform sets for ERM/LRA).
     *   - Bits 7:5 — Reserved (set to 0).
@@ -53,47 +53,47 @@ typedef enum {
     *       0x06 — LRA Library,
     *       0x07 — TS2200 Library F
     */
-    lib_select = 0x03,
+    Drv2605lRegLibSelect = 0x03,
     /* 0x04–0x0B WAVESEQ1..WAVESEQ7
     *   - Waveform sequence slots (8 slots).
     *   - Bits 7 — Wait flag (1 = insert delay after this effect).
     *   - Bits 6:0 — Effect index (0 to 123) or 0x00 for 'end of sequence'.
     *   - if set bit 7 to bits 6:0 wait (0 to 123) * 10 ms.
     */
-    waveseq0 = 0x04,
-    waveseq1 = 0x05,
-    waveseq2 = 0x06,
-    waveseq3 = 0x07,
-    waveseq4 = 0x08,
-    waveseq5 = 0x09,
-    waveseq6 = 0x0A,
-    waveseq7 = 0x0B,
+    Drv2605lRegWaveSeq0 = 0x04,
+    Drv2605lRegWaveSeq1 = 0x05,
+    Drv2605lRegWaveSeq2 = 0x06,
+    Drv2605lRegWaveSeq3 = 0x07,
+    Drv2605lRegWaveSeq4 = 0x08,
+    Drv2605lRegWaveSeq5 = 0x09,
+    Drv2605lRegWaveSeq6 = 0x0A,
+    Drv2605lRegWaveSeq7 = 0x0B,
     /* 0x0C GO
     *   - Start/stop playback.
     *   - Bit 7:1 — Reserved (set to 0).
     *   - Bit 0 — GO bit (0 = stop, 1 = start).
     */
-    go = 0x0C,
+    Drv2605lRegGo = 0x0C,
     /* 0x0D OVERDRIVE
     *   - Overdrive time offset (used in ERM open-loop mode).
     *   - Bits 7:0 — Overdrive time offset (0 to 255).
     */
-    overdrive = 0x0D,
+    Drv2605lRegOverdrive = 0x0D,
     /* 0x0E SUSTAIN_TIME_POS
     *   - Positive sustain time offset.
     *   - Bits 7:0 — Positive sustain time offset (0 to 255).
     */
-    sustain_time_pos = 0x0E,
+    Drv2605lRegSustainTimePos = 0x0E,
     /* 0x0F SUSTAIN_TIME_NEG
     *   - Negative sustain time offset.
     *   - Bits 7:0 — Negative sustain time offset (0 to 255
     */
-    sustain_time_neg = 0x0F,
+    Drv2605lRegSustainTimeNeg = 0x0F,
     /* 0x10 BREAK_TIME
     *   - Break time / pause between signal phases (break time offset).
     *   - Bits 7:0 — Break time offset (0 to 255).
     */
-    break_time = 0x10,
+    Drv2605lRegBreakTime = 0x10,
     /* 0x11 ATH_CTRL
     *   - Audio-to-vibe settings: audio detector behavior, input mode,
     *     thresholds, and low/high-level handling.
@@ -101,47 +101,47 @@ typedef enum {
     *   - Bits 3:2 — This bit sets the peak detection time for the audio-to-vibe signal path: (0 = 10 ms, 1 = 20 ms, 2 = 30 ms, 3 = 40 ms).
     *   - Bit 1:0 — This bit sets the low-pass filter frequency for the audio-to-vibe signal path:(0 = 100Hz, 1 = 125Hz, 2 = 150Hz, 3 = 200Hz).
     */
-    audio_ctrl = 0x11,
+    Drv2605lRegAudioCtrl = 0x11,
     /* 0x12 ATH_MIN_LVL
     *   - Minimum audio input threshold for the audio detector.
     *   - Bits 7:0 — Minimum audio input threshold (0 to 255).
     */
-    aud_min_lvl = 0x12,
+    Drv2605lRegAudMinLvl = 0x12,
     /* 0x13 ATH_MAX_LVL
     *   - Maximum audio input threshold (for normalization/scaling).
     *   - Bits 7:0 — Maximum audio input threshold (0 to 255).
     */
-    aud_max_lvl = 0x13,
+    Drv2605lRegAudMaxLvl = 0x13,
     /* 0x14 ATH_MIN_DRIVE
     *   - Minimum output drive level corresponding to ATH_MIN_LVL.
     *   - Bits 7:0 — Minimum output drive level (0 to 255).
     */
-    aud_min_drive = 0x14,
+    Drv2605lRegAudMinDrive = 0x14,
     /* 0x15 ATH_MAX_DRIVE
     *   - Maximum output drive level corresponding to ATH_MAX_LVL.
     *   - Bits 7:0 — Maximum output drive level (0 to 255).
     */
-    aud_max_drive = 0x15,
+    Drv2605lRegAudMaxDrive = 0x15,
     /* 0x16 RATED_VOLTAGE
     *   - Rated actuator voltage (used to compute drive levels).
     *   - Bits 7:0 — Rated voltage in mV (0 to 255).
     */
-    rated_voltage = 0x16,
+    Drv2605lRegRatedVoltage = 0x16,
     /* 0x17 OD_CLAMP
     *   - Overdrive voltage clamp to protect the motor/device.
     *   - Bits 7:0 — Overdrive voltage clamp in mV (0 to 255).
     */
-    overdrive_clamp = 0x17,
+    Drv2605lRegOverdriveClamp = 0x17,
     /* 0x18 A_CAL_COMP
     *   - Auto-calibration compensation result (used to adjust drive profile).
     *   - Bits 7:0 — Compensation result (signed value).
     */
-    auto_cal_comp = 0x18,
+    Drv2605lRegAutoCalComp = 0x18,
     /* 0x19 A_CAL_BEMF
     *   - Back-EMF measurement result after calibration or diagnostics;
     *   - Bits 7:0 — Back-EMF measurement result (0 to 255).
     */
-    auto_cal_bemf = 0x19,
+    Drv2605lRegAutoCalBemf = 0x19,
     /* 0x1A FEEDBACK
     *   - Feedback and actuator-type parameters:
     *   - Bit 7 — Type: 0 = ERM, 1 = LRA.
@@ -149,7 +149,7 @@ typedef enum {
     *   - Bits 3:2 — Loop gain. (0- Low, 1- Medium(default), 2- High, 3- Very High).
     *   - Bits 1:0 — BEMF gain. ERM Mode(0- 0.255x, 1- 0.7875x, 2- 1.365x(default), 3- 3.0x), LRA Mode(0- 3.75x, 1- 7.5x, 2- 15x (default), 3- 22.5x).
     */
-    feedback = 0x1A,
+    Drv2605lRegFeedback = 0x1A,
     /* 0x1B CONTROL1
     *   - Additional control parameters (AC coupling, drive time, etc.).
     *   - Bits 7 — This bit applies higher loop gain during overdrive to enhance actuator transient response. (1- default).
@@ -157,7 +157,7 @@ typedef enum {
     *   - Bits 5 — This bit applies a 0.9-V common mode voltage to the IN/TRIG pin for AC-coupled analog input signals. (0- default).
     *   - Bits 4:0 — Drive time setting (0 to 31).
     */
-    control1 = 0x1B,
+    Drv2605lRegControl1 = 0x1B,
     /* 0x1C CONTROL2
     *   - Amplifier and timing-related control parameters (see datasheet).
     *   - Bits 7 — The BIDIR_INPUT bit selects how the engine interprets data.
@@ -166,7 +166,7 @@ typedef enum {
     *   - Bits 3:2 — Blanking time before the back-EMF AD makes a conversion. (Advanced use only).
     *   - Bits 1:0 — Current dissipation time. This bit is the time allowed for the current to dissipate from the actuator between PWM cycles for flyback mitigation. (Advanced use only).
     */
-    control2 = 0x1C,
+    Drv2605lRegControl2 = 0x1C,
     /* 0x1D CONTROL3
     *   - Additional control fields (refer to datasheet for bit meanings).
     *   - Bits 7:6 — This bit is the noise-gate threshold for PWM and analog inputs (0- Disabled, 1- 2%, 2- 4% (Default), 3-  8%).
@@ -177,7 +177,7 @@ typedef enum {
     *   - Bits 1 — This bit selects the input mode for the IN/TRIG pin when MODE[2:0] = 3 (0- PWM Input, 1- Analog Input).
     *   - Bits 0 — This bit selects an open-loop drive option for LRA Mode. (0- Auto-resonance mode(default), 1- LRA open-loop mode ).
     */
-    control3 = 0x1D,
+    Drv2605lRegControl3 = 0x1D,
     /* 0x1E CONTROL4    
     *   - Output gain/protection/phase settings (see datasheet).
     *   - Bits 7:6 — This bit sets the minimum length of time devoted for detecting a zero crossing (advanced use only) (0- 100 µs(default), 1- 200 µs, 2- 300 µs, 3- 390 µs).
@@ -187,7 +187,7 @@ typedef enum {
     *   - Bits 1 — Reserved.
     *   - Bits 0 — This bit launches the programming process for one-time programmable (OTP) memory.
     */
-    control4 = 0x1E,
+    Drv2605lRegControl4 = 0x1E,
     /* 0x1F CONTROL5
     *   - Further control parameters (see datasheet for details).
     *   - Bits 7:6 — This bit selects number of cycles required to attempt synchronization before transitioning to 
@@ -197,25 +197,25 @@ typedef enum {
     *   - Bits 3:2 — This bit sets the MSB for the BLANKING_TIME[3:0].
     *   - Bits 1:0 — This bit sets the MSB for IDISS_TIME[3:0].
     */
-    control5 = 0x1F,
+    Drv2605lRegControl5 = 0x1F,
     /* 0x20 OLP (LRA Open-Loop Period)
     *   - Period value (in counts/codes) for driving an LRA in open-loop.
     *   - Used when open-loop drive is selected for LRA (sets drive frequency).
     *   - Bits 7:0 — LRA open-loop period (0 to 255).
     */
-    lra_open_loop_period = 0x20,
+    Drv2605lRegLraOpenLoopPeriod = 0x20,
     /* 0x21 V_BAT_MONITOR
     *   - Supply voltage monitor (VDD/VBAT).
     *   - Register stores a scaled Vbatt reading; VDD (V) = VBAT[7:0] × 5.6V / 255 formula to convert to volts.         
     *   - Bits 7:0 — Scaled Vbatt reading (0 to 255).
     */
-    v_bat_monitor = 0x21,
+    Drv2605lRegVBatMonitor = 0x21,
     /* 0x22 LRA_RES_PERIOD
     *   - Measured LRA resonance period (result from measurement/calibration)
     *     used to tune drive frequency.
     *   - Bits 7:0 — Measured LRA resonance period (0 to 255).
     */
-    lra_res_period = 0x22,
+    Drv2605lRegLraResPeriod = 0x22,
 } Drv2605lReg;
 
 typedef struct {
@@ -239,7 +239,7 @@ typedef struct{
     uint8_t reserved_3: 1; // Bits 3 - Reserved (set to 0).
     uint8_t hi_z_mode: 1; // Bits 4 — HI_Z mode (0 = normal, 1 = 15k).
     uint8_t reserved_2: 3; // Bits 7:5 — Reserved (set to 0).
-} Drv2605lLib;
+} Drv2605lLibSelect;
 
 typedef struct{
     uint8_t effect_index : 7; // Bits 6:0 — Effect index (0 to 123) or 0x00 for 'end of sequence'.

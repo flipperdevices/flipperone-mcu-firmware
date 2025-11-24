@@ -13,7 +13,6 @@
 #include <furi_hal_power.h>
 #include <drivers/drv2605l/drv2605l.h>
 #include <furi_hal_i2c_config.h>
-#include <stdio.h>
 
 #define tag "TestPerefSrv"
 
@@ -70,7 +69,7 @@ int32_t test_peref_srv(void* p) {
 
 
     Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
-
+    //drv2605l_test_all_effects(drv2605l);
 
     while(true) {
         // furi_hal_gpio_write(&gpio_pico_led, true);
