@@ -9,7 +9,7 @@
 #include <drivers/ws2812/ws2812.h>
 
 #include <furi_hal_i2c.h>
-#include <drivers/tsa6416a/tsa6416a.h>
+#include <drivers/tca6416a/tca6416a.h>
 #include <furi_hal_power.h>
 #include <drivers/drv2605l/drv2605l.h>
 #include <furi_hal_i2c_config.h>
@@ -19,7 +19,7 @@
 uint8_t input_temp =0;
 
 // static void input_callback (void* ctx) {
-//     Tsa6416a* instance = (Tsa6416a*)ctx;
+//     Tca6416a* instance = (Tca6416a*)ctx;
 //     input_temp = 1;
 // }
 
@@ -164,8 +164,8 @@ int32_t test_peref_srv(void* p) {
         //furi_hal_i2c_acquire(&furi_hal_i2c_handle_internal);
         // furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);
         // furi_hal_i2c_release(&furi_hal_i2c_handle_internal);
-        // uint16_t input_state = tsa6416a_read_input(tsa6416a);
-        // FURI_LOG_I(tag, "TSA6416A input state bin: %016b", input_state);
+        // uint16_t input_state = tca6416a_read_input(tca6416a);
+        // FURI_LOG_I(tag, "TCA6416A input state bin: %016b", input_state);
         // furi_thread_yield();
 
     }

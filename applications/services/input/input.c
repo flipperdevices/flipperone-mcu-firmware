@@ -2,7 +2,7 @@
 
 #include <furi_hal_i2c_config.h>
 #include <furi.h>
-#include <drivers/tsa6416a/tsa6416a.h>
+#include <drivers/tca6416a/tca6416a.h>
 #include <drivers/drv2605l/drv2605l.h>
 
 #define INPUT_DEBOUNCE_TICKS      4
@@ -101,16 +101,16 @@ int32_t input_srv(void* p) {
 
     InputPinState pin_states[input_pins_count];
 
-    Tsa6416a* tsa6416a = tsa6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
-    uint16_t read_mode = tsa6416a_read_mode(tsa6416a);
+    Tca6416a* tca6416a = tca6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
+    uint16_t read_mode = tca6416a_read_mode(tca6416a);
     FURI_LOG_D("22", "Wrote : %016b", read_mode);
-    tsa6416a_write_mode(tsa6416a, InputKeyMask);
-    tsa6416a_set_input_callback(tsa6416a, input_isr, thread_id);
+    tca6416a_write_mode(tca6416a, InputKeyMask);
+    tca6416a_set_input_callback(tca6416a, input_isr, thread_id);
 
-    read_mode = tsa6416a_read_mode(tsa6416a);
+    read_mode = tca6416a_read_mode(tca6416a);
     FURI_LOG_D("22", "Wrote : %016b", read_mode);
 
-    uint16_t input_state = tsa6416a_read_input(tsa6416a);
+    uint16_t input_state = tca6416a_read_input(tca6416a);
 
     Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
 
@@ -125,7 +125,7 @@ int32_t input_srv(void* p) {
 
     while(1) {
         bool is_changing = false;
-        input_state = tsa6416a_read_input(tsa6416a);
+        input_state = tca6416a_read_input(tca6416a);
 
         for(size_t i = 0; i < input_pins_count; i++) {
             bool state = input_key_check_state(input_state, pin_states[i]);

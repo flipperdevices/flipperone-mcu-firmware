@@ -46,7 +46,7 @@ file(GLOB_RECURSE SOURCES
     "targets/f100/furi_hal/*.c*"
     "lib/drivers/display/*.c*"  
     "lib/drivers/tps62868x/*.c*"
-    "lib/drivers/tsa6416a/*.c*"
+    "lib/drivers/tca6416a/*.c*"
     "lib/drivers/drv2605l/*.c*"
     "applications/*.c"
     "applications/services/*.c"

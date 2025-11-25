@@ -11,4 +11,4 @@ typedef enum {
     polarity_inversion_port_1 = 0x05, /**< Polarity inversion port 1 */
     configuration_port_0 = 0x06, /**< Configuration port 0 */
     configuration_port_1 = 0x07, /**< Configuration port 1 */
-} Tsa6416aReg;
+} Tca6416aReg;
