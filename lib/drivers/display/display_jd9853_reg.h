@@ -1,4 +1,5 @@
 #pragma once
+/* clang-format off */
 
 #define JD9853_WIDTH        (258u)
 #define JD9853_HEIGHT       (144u)
@@ -198,3 +199,4 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_black[] = {
 
         
 };
+/* clang-format on */
