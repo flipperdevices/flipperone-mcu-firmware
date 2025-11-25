@@ -1,4 +1,4 @@
-#include "display_jd9853.h"
+#include "display_jd9853_spi.h"
 #include "display_jd9853_reg.h"
 
 #include <furi_hal_gpio.h>
@@ -8,58 +8,58 @@
 
 #define DISPLAY_BAUNDRATE (12 * 1000 * 1000)
 
-struct DisplayJd9853 {
+struct DisplayJd9853SPI {
     FuriHalSpiHandle* spi_handle;
-    
+
     const GpioPin* pin_dc;
     const GpioPin* pin_reset;
 };
 
-static FURI_ALWAYS_INLINE void display_jd9853_write_reg(DisplayJd9853* display, DisplayJd9853Reg reg) {
+static FURI_ALWAYS_INLINE void display_jd9853_spi_write_reg(DisplayJd9853SPI* display, DisplayJd9853Reg reg) {
     furi_hal_gpio_write(display->pin_dc, false); // DC = 0 for command
     furi_hal_spi_tx_blocking(display->spi_handle, &reg, 1);
     furi_hal_gpio_write(display->pin_dc, true); // DC = 1 for data
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853* display, uint8_t* data, size_t size) {
+static FURI_ALWAYS_INLINE void display_jd9853_spi_write_data(DisplayJd9853SPI* display, uint8_t* data, size_t size) {
     furi_hal_spi_tx_blocking(display->spi_handle, data, size);
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853* display, const uint8_t* config) {
+static FURI_ALWAYS_INLINE void display_jd9853_spi_load_config(DisplayJd9853SPI* display, const uint8_t* config) {
     while(*config) {
+        display_jd9853_spi_write_reg(display, (DisplayJd9853Reg)(*(config + 2)));
 
-        display_jd9853_write_reg(display, (DisplayJd9853Reg)(*(config + 2)));
-        
         if(*(config)) {
-            display_jd9853_write_data(display, (uint8_t*)(config + 3), *(config)-1);
+            display_jd9853_spi_write_data(display, (uint8_t*)(config + 3), *(config)-1);
         }
         furi_delay_ms(*(config + 1) * 5);
         config += *(config) + 2;
     }
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853* display, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
+static FURI_ALWAYS_INLINE void display_jd9853_spi_set_window(DisplayJd9853SPI* display, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     uint8_t caset_data[4] = {(uint8_t)(x0 >> 8), (uint8_t)(x0 & 0xFF), (uint8_t)(x1 >> 8), (uint8_t)(x1 & 0xFF)};
     uint8_t paset_data[4] = {(uint8_t)(y0 >> 8), (uint8_t)(y0 & 0xFF), (uint8_t)(y1 >> 8), (uint8_t)(y1 & 0xFF)};
 
-    display_jd9853_write_reg(display, caset); // Column address set
-    display_jd9853_write_data(display, caset_data, sizeof(caset_data));
+    display_jd9853_spi_write_reg(display, caset); // Column address set
+    display_jd9853_spi_write_data(display, caset_data, sizeof(caset_data));
 
-    display_jd9853_write_reg(display, paset); // Page address set
-    display_jd9853_write_data(display, paset_data, sizeof(paset_data));
+    display_jd9853_spi_write_reg(display, paset); // Page address set
+    display_jd9853_spi_write_data(display, paset_data, sizeof(paset_data));
 }
 
-FURI_ALWAYS_INLINE void display_jd9853_write_buffer_x_y(DisplayJd9853* display, uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size) {
-    display_jd9853_set_window(display, JD9853_OFF_X + x, JD9853_OFF_Y + y, JD9853_OFF_X + x + (w / 3)-1, JD9853_OFF_Y + y + h - 1);
-    display_jd9853_write_reg(display, ramwr);
-    display_jd9853_write_data(display, (uint8_t*)buffer, size);
+FURI_ALWAYS_INLINE void
+    display_jd9853_spi_write_buffer_x_y(DisplayJd9853SPI* display, uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size) {
+    display_jd9853_spi_set_window(display, JD9853_OFF_X0 + x, JD9853_OFF_Y0 + y, JD9853_OFF_X1 + x + (w / 3) - 1, JD9853_OFF_Y1 + y + h - 1);
+    display_jd9853_spi_write_reg(display, ramwr);
+    display_jd9853_spi_write_data(display, (uint8_t*)buffer, size);
 }
 
-FURI_ALWAYS_INLINE void display_jd9853_write_buffer(DisplayJd9853* display, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size) {
-    display_jd9853_write_buffer_x_y(display, 0, 0, w, h, buffer, size);
+FURI_ALWAYS_INLINE void display_jd9853_spi_write_buffer(DisplayJd9853SPI* display, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size) {
+    display_jd9853_spi_write_buffer_x_y(display, 0, 0, w, h, buffer, size);
 }
 
-void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
+void display_jd9853_spi_fill(DisplayJd9853SPI* display, uint8_t color) {
     const size_t width = JD9853_WIDTH; // 1 byte per pixel
     const size_t height = JD9853_HEIGHT;
 
@@ -68,12 +68,12 @@ void display_jd9853_fill(DisplayJd9853* display, uint8_t color) {
         data[i] = color;
     }
 
-    display_jd9853_write_buffer(display, width, height, data, width * height);
+    display_jd9853_spi_write_buffer(display, width, height, data, width * height);
     free(data);
 }
 
-DisplayJd9853* display_jd9853_init(void) {
-    DisplayJd9853* display = malloc(sizeof(DisplayJd9853));
+DisplayJd9853SPI* display_jd9853_spi_init(void) {
+    DisplayJd9853SPI* display = malloc(sizeof(DisplayJd9853SPI));
 
     display->spi_handle = malloc(sizeof(FuriHalSpiHandle));
     display->spi_handle->id = FuriHalSpiIdSPI0;
@@ -101,15 +101,15 @@ DisplayJd9853* display_jd9853_init(void) {
     furi_delay_ms(30);
 
     //Initialization sequence
-    //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
-    display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
+    //display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
+    display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
 
     return display;
 }
 
-void display_jd9853_deinit(DisplayJd9853* display) {
+void display_jd9853_spi_deinit(DisplayJd9853SPI* display) {
     furi_check(display);
-    display_jd9853_load_config(display, st7789_deinit_seq);
+    display_jd9853_spi_load_config(display, st7789_deinit_seq);
     furi_hal_gpio_init_ex(display->pin_dc, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(display->pin_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_spi_deinit(display->spi_handle);
