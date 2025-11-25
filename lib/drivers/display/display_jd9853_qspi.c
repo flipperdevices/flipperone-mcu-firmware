@@ -210,10 +210,10 @@ static void display_jd9853_hstx_clock_init(void) {
     clock_configure(clk_hstx, 0, CLOCKS_CLK_HSTX_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB, USB_CLK_HZ, USB_CLK_HZ);
 }
 
-void display_jd9853_qspi_sleep_enter(void) {
+void display_jd9853_qspi_on_sleep_enter(void) {
 }
 
-void display_jd9853_qspi_sleep_exit(void) {
+void display_jd9853_qspi_on_sleep_exit(void) {
     display_jd9853_hstx_clock_init();
 }
 

@@ -11,8 +11,8 @@ extern "C" {
 
 DisplayJd9853SPI* display_jd9853_spi_init(void);
 void display_jd9853_spi_deinit(DisplayJd9853SPI* display);
-void display_jd9853_spi_sleep_enter(void);
-void display_jd9853_spi_sleep_exit(void);
+void display_jd9853_spi_on_sleep_enter(void);
+void display_jd9853_spi_on_sleep_exit(void);
 void display_jd9853_spi_backlight_set_brightness(DisplayJd9853SPI* display, uint8_t brightness);
 uint8_t display_jd9853_spi_backlight_get_brightness(DisplayJd9853SPI* display);
 void display_jd9853_spi_write_buffer(DisplayJd9853SPI* display, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size);

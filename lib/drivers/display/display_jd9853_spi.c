@@ -3,16 +3,22 @@
 
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
+#include <furi_hal_pwm.h>
 #include <furi_hal_spi.h>
 #include <furi_hal_spi_types_i.h>
 
-#define DISPLAY_BAUNDRATE (12 * 1000 * 1000)
+#define DISPLAY_JD9853_BAUDRATE          (12 * 1000 * 1000)
+#define DISPLAY_JD9853_BACKLIGHT_BIT     8 //8-bit PWM for backlight
+#define DISPLAY_JD9853_BACKLIGHT_FREQ_HZ 40000 //25kHz PWM for backlight
 
 struct DisplayJd9853SPI {
     FuriHalSpiHandle* spi_handle;
 
     const GpioPin* pin_dc;
     const GpioPin* pin_reset;
+
+    FuriHalPwm* backlight_pwm;
+    uint8_t backlight;
 };
 
 static FURI_ALWAYS_INLINE void display_jd9853_spi_write_reg(DisplayJd9853SPI* display, DisplayJd9853Reg reg) {
@@ -81,7 +87,7 @@ DisplayJd9853SPI* display_jd9853_spi_init(void) {
     display->pin_dc = &gpio_display_dc;
     display->pin_reset = &gpio_display_reset;
 
-    furi_hal_spi_init(display->spi_handle, DISPLAY_BAUNDRATE, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
+    furi_hal_spi_init(display->spi_handle, DISPLAY_JD9853_BAUDRATE, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
 
     //Gpio init
     furi_hal_gpio_init_simple(display->pin_dc, GpioModeOutputPushPull);
@@ -104,6 +110,8 @@ DisplayJd9853SPI* display_jd9853_spi_init(void) {
     //display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
     display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
 
+    display_jd9853_spi_backlight_set_brightness(display, 2); // Set backlight to 50%
+
     return display;
 }
 
@@ -115,4 +123,52 @@ void display_jd9853_spi_deinit(DisplayJd9853SPI* display) {
     furi_hal_spi_deinit(display->spi_handle);
     free(display->spi_handle);
     free(display);
+}
+
+void display_jd9853_spi_eco_mode(DisplayJd9853SPI* display, bool enable) {
+    furi_check(display);
+    if(enable) {
+        display_jd9853_spi_write_reg(display, idmon);
+    } else {
+        display_jd9853_spi_write_reg(display, idmoff);
+    }
+}
+
+void display_jd9853_spi_on_sleep_enter(void) {
+}
+
+void display_jd9853_spi_on_sleep_exit(void) {
+}
+
+void display_jd9853_spi_backlight_set_brightness(DisplayJd9853SPI* display, uint8_t brightness) {
+    furi_check(display);
+    display->backlight = brightness;
+    if(!display->backlight) {
+        if(display->backlight_pwm) {
+            furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 0);
+            furi_hal_pwm_deinit(display->backlight_pwm);
+            display->backlight_pwm = NULL;
+        }
+    } else {
+        uint32_t max_value = (1 << DISPLAY_JD9853_BACKLIGHT_BIT) - 1;
+        uint32_t duty_cycle = (brightness * max_value) / 100;
+        if(!display->backlight_pwm) {
+            //To enable the device, the CTRL signal must be high for 500 µs.
+            // The PWM signal can then be applied with a pulse width (tp)
+            // greater or smaller than tON. To force the device into shutdown mode,
+            // the CTRL signal must be low for at least 32 ms.
+            // Requiring the CTRL pin to be low for 32 mS before the device enters
+            // shutdown allows for PWM dimming frequencies as low as 100 Hz.
+            // The device is enabled again when a CTRL signal is high for a period of 500 µs minimum.
+            display->backlight_pwm = furi_hal_pwm_init(&gpio_display_ctrl, DISPLAY_JD9853_BACKLIGHT_BIT, DISPLAY_JD9853_BACKLIGHT_FREQ_HZ, false);
+            furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 140);
+            furi_delay_us(2400);
+        }
+        furi_hal_pwm_set_duty_cycle(display->backlight_pwm, duty_cycle);
+    }
+}
+
+uint8_t display_jd9853_spi_backlight_get_brightness(DisplayJd9853SPI* display) {
+    furi_check(display);
+    return display->backlight;
 }
