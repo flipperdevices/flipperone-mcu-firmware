@@ -2,8 +2,8 @@
 /* clang-format off */
 // http://azoteq.com/images/stories/pdf/iqs7211e_datasheet.pdf
 
-#include "iqs7211e.h"
-#include <complex.h>
+#include <stdint.h>
+
 typedef enum {
     /** 0x00 PRODUCT_NUM
      *   - Product ID Register
@@ -805,5 +805,499 @@ typedef enum {
      */
     Iqs7211eRegProxbCycle20     = 0x7C,
 } Iqs7211eReg;
+
+
+typedef struct {
+    uint8_t single_tap          : 1; //Indicates a single tap gesture (0: no detected, 1: detected)
+    uint8_t double_tap          : 1; //Indicates a double tap gesture (0: no detected, 1: detected)
+    uint8_t triple_tap          : 1; //Indicates a triple tap gesture (0: no detected, 1: detected)
+    uint8_t press_and_hold      : 1; //Indicates a press-and-hold gesture (0: no detected, 1: detected)
+    uint8_t palm_gesture        : 1; //Indicates a palm gesture (0: no detected, 1: detected)
+    uint8_t unused              : 3; //Unused bits 
+    uint8_t swipe_x_positive    : 1; //Indicates a swipe in positive X direction (0: no detected, 1: detected)
+    uint8_t swipe_x_negative    : 1; //Indicates a swipe in negative X direction (0: no detected, 1: detected)
+    uint8_t swipe_y_positive    : 1; //Indicates a swipe in positive Y direction (0: no detected, 1: detected)
+    uint8_t swipe_y_negative    : 1; //Indicates a swipe in negative Y direction (0: no detected, 1: detected)
+    uint8_t hold_x_positive     : 1; //Indicates a swipe and hold in positive X direction (0: no detected, 1: detected)
+    uint8_t hold_x_negative     : 1; //Indicates a swipe and hold in negative X direction (0: no detected, 1: detected)
+    uint8_t hold_y_positive     : 1; //Indicates a swipe and hold in positive Y direction (0: no detected, 1: detected)
+    uint8_t hold_y_negative     : 1; //Indicates a swipe and hold in negative Y direction (0: no detected, 1: detected)
+} Iqs7211eGestures;
+
+typedef struct {
+    uint8_t charging_mode       : 3; //Indicates current mode ( 0b000: Active, 0b001: Idle-touch, 0b010: Idle, 0b011: LP1, 0b100: LP2)
+    uint8_t ati_error           : 1; //Error condition seen on latest trackpad ATI procedure (0: no error, 1: error detected)
+    uint8_t re_ati_occurred     : 1; //Trackpad re-ATI status (0: no re-ATI occurred, 1: re-ATI occurred)
+    uint8_t alp_ati_error       : 1; //Alternate Low Power ATI error status (0: no error, 1: error detected)
+    uint8_t alp_re_ati_occurred : 1; //Alternate Low Power re-ATI status (0: no re-ATI occurred, 1: re-ATI occurred)
+    uint8_t show_reset          : 1; //Indicates a software reset has occurred (0: no reset, 1: reset occurred)
+    uint8_t no_of_fingers       : 2; //Number of fingers detected on trackpad 
+    uint8_t tp_movement         : 1; //Trackpad finger movement detected (0: no movement, 1: movement detected)
+    uint8_t reserved_1          : 1;
+    uint8_t too_many_fingers    : 1; //Indicates more than allowed fingers detected (0: within limit, 1: too many fingers)
+    uint8_t reserved_2          : 1;
+    uint8_t alp_output          : 1; //Prox/Touch detection status of ALP channel (0: no detection, 1: detection)
+    uint8_t reserved_3          : 1;
+} Iqs7211eInfoFlags;
+
+typedef struct {
+    uint8_t channel_0           : 1; //Touch status flag for channel 0 (0 = no touch, 1 = touch detected)
+    uint8_t channel_1           : 1; //Touch status flag for channel 1 (0 = no touch, 1 = touch detected)
+    uint8_t channel_2           : 1; //Touch status flag for channel 2 (0 = no touch, 1 = touch detected)
+    uint8_t channel_3           : 1; //Touch status flag for channel 3 (0 = no touch, 1 = touch detected)
+    uint8_t channel_4           : 1; //Touch status flag for channel 4 (0 = no touch, 1 = touch detected)
+    uint8_t channel_5           : 1; //Touch status flag for channel 5 (0 = no touch, 1 = touch detected)
+    uint8_t channel_6           : 1; //Touch status flag for channel 6 (0 = no touch, 1 = touch detected)
+    uint8_t channel_7           : 1; //Touch status flag for channel 7 (0 = no touch, 1 = touch detected)
+    uint8_t channel_8           : 1; //Touch status flag for channel 8 (0 = no touch, 1 = touch detected)
+    uint8_t channel_9           : 1; //Touch status flag for channel 9 (0 = no touch, 1 = touch detected)
+    uint8_t channel_10          : 1; //Touch status flag for channel 10 (0 = no touch, 1 = touch detected)
+    uint8_t channel_11          : 1; //Touch status flag for channel 11 (0 = no touch, 1 = touch detected)
+    uint8_t channel_12          : 1; //Touch status flag for channel 12 (0 = no touch, 1 = touch detected)
+    uint8_t channel_13          : 1; //Touch status flag for channel 13 (0 = no touch, 1 = touch detected)
+    uint8_t channel_14          : 1; //Touch status flag for channel 14 (0 = no touch, 1 = touch detected)
+    uint8_t channel_15          : 1; //Touch status flag for channel 15 (0 = no touch, 1 = touch detected)    
+} Iqs7211eTouchState0;
+
+typedef struct {
+    uint8_t channel_16          : 1; //Touch status flag for channel 16 (0 = no touch, 1 = touch detected)
+    uint8_t channel_17          : 1; //Touch status flag for channel 17 (0 = no touch, 1 = touch detected)
+    uint8_t channel_18          : 1; //Touch status flag for channel 18 (0 = no touch, 1 = touch detected)
+    uint8_t channel_19          : 1; //Touch status flag for channel 19 (0 = no touch, 1 = touch detected)
+    uint8_t channel_20          : 1; //Touch status flag for channel 20 (0 = no touch, 1 = touch detected)
+    uint8_t channel_21          : 1; //Touch status flag for channel 21 (0 = no touch, 1 = touch detected)
+    uint8_t channel_22          : 1; //Touch status flag for channel 22 (0 = no touch, 1 = touch detected)
+    uint8_t channel_23          : 1; //Touch status flag for channel 23 (0 = no touch, 1 = touch detected)
+    uint8_t channel_24          : 1; //Touch status flag for channel 24 (0 = no touch, 1 = touch detected)
+    uint8_t channel_25          : 1; //Touch status flag for channel 25 (0 = no touch, 1 = touch detected)
+    uint8_t channel_26          : 1; //Touch status flag for channel 26 (0 = no touch, 1 = touch detected)
+    uint8_t channel_27          : 1; //Touch status flag for channel 27 (0 = no touch, 1 = touch detected)
+    uint8_t channel_28          : 1; //Touch status flag for channel 28 (0 = no touch, 1 = touch detected)
+    uint8_t channel_29          : 1; //Touch status flag for channel 29 (0 = no touch, 1 = touch detected)
+    uint8_t channel_30          : 1; //Touch status flag for channel 30 (0 = no touch, 1 = touch detected)
+    uint8_t channel_31          : 1; //Touch status flag for channel 31 (0 = no touch, 1 = touch detected)
+} Iqs7211eTouchState1;
+
+typedef struct {
+    uint8_t channel_32          : 1; //Touch status flag for channel 32 (0 = no touch, 1 = touch detected)
+    uint8_t channel_33          : 1; //Touch status flag for channel 33 (0 = no touch, 1 = touch detected)
+    uint8_t channel_34          : 1; //Touch status flag for channel 34 (0 = no touch, 1 = touch detected)
+    uint8_t channel_35          : 1; //Touch status flag for channel 35 (0 = no touch, 1 = touch detected)
+    uint8_t channel_36          : 1; //Touch status flag for channel 36 (0 = no touch, 1 = touch detected)
+    uint8_t channel_37          : 1; //Touch status flag for channel 37 (0 = no touch, 1 = touch detected)
+    uint8_t channel_38          : 1; //Touch status flag for channel 38 (0 = no touch, 1 = touch detected)
+    uint8_t channel_39          : 1; //Touch status flag for channel 39 (0 = no touch, 1 = touch detected)
+    uint8_t channel_40          : 1; //Touch status flag for channel 40 (0 = no touch, 1 = touch detected)
+    uint8_t channel_41          : 1; //Touch status flag for channel 41 (0 = no touch, 1 = touch detected)
+    uint8_t reserved_1          : 6; //Unused bits
+} Iqs7211eTouchState2;
+
+typedef struct {
+    uint8_t coarse_fractional_divider : 5; //Coarse Fractional Divider (5 bit value between 1 and 31)
+    uint8_t coarse_multiplier         : 4; //Coarse Multiplier (4 bit value between 1 and 15)
+    uint8_t fine_fractional_divider   : 5; //Fine Fractional Divider (5-bit value between 1 and 31)
+    uint8_t reserved_1                : 2; //Unused bits
+} Iqs7211eTpGlobalMirrors;
+
+typedef struct {
+    uint8_t ati_compensation_divider  : 8; //Trackpad ATI compensation divider (Global)
+    uint8_t reference_drift_limit     : 8; //Trackpad reference drift limit
+} Iqs7211eTpRefDrift;
+
+typedef struct {
+    uint8_t coarse_fractional_divider : 5; //Coarse Fractional Divider (5 bit value between 1 and 31)
+    uint8_t coarse_multiplier         : 4; //Coarse Multiplier (4 bit value between 1 and 15)
+    uint8_t fine_fractional_divider   : 5; //Fine Fractional Divider (5-bit value between 1 and 31)
+    uint8_t reserved_1                : 2; //Unused bits
+} Iqs7211eAlpMirrors;
+
+typedef struct {
+    uint8_t ati_compensation_divider  : 8; //ALP ATI compensation divider
+    uint8_t lta_drift_limit           : 8; //ALP LTA drift limit
+} Iqs7211eAlpRefDrift;
+
+typedef struct {
+    uint8_t re_ati_retry_time        : 8; //Re-ATI retry time (s)
+    uint8_t reference_update_time    : 8; //Reference update time (s)
+} Iqs7211eRefUpdateReatiTime;
+
+typedef struct {
+    uint8_t mode_select           : 3; //Mode Select - Select mode (only applicable in Manual Mode) (0b000: Active mode, 0b001: Idle-Touch mode, 0b010: Idle mode, 0b011: LP1 mode, 0b100: LP2 mode)
+    uint8_t tp_reseed             : 1; //TP Reseed - Reseed trackpad channels (0: no action, 1: reseed reference values of trackpad)
+    uint8_t alp_reseed            : 1; //ALP Reseed - Reseed alternate low power channel (0: no action, 1: reseed the LTA of the alternate LP channel)
+    uint8_t tp_re_ati             : 1; //TP Re-ATI - Queue a re-ATI on trackpad channels (0: no action, 1: perform re-ATI when trackpad channels are sensed again)
+    uint8_t alp_re_ati            : 1; //ALP Re-ATI - Queue a re-ATI on ALP channel (0: no action, 1: perform re-ATI when ALP channel is sensed again)
+    uint8_t ack_reset             : 1; //Ack Reset - Acknowledge a reset (0: no action, 1: acknowledge the reset by clearing Show Reset flag)
+    uint8_t reserved_1            : 1; //Unused bit
+    uint8_t sw_reset              : 1; //SW Reset - Reset the device (0: no action, 1: reset device after communication window terminates)
+    uint8_t reserved_2            : 1; //Unused bit
+    uint8_t suspend               : 1; //Suspend - Suspend IQS7211E (0: no action, 1: place IQS7211E into suspend after the communication window terminates)
+    uint8_t reserved_3            : 3; //Unused bits
+    uint8_t tx_test               : 1; //Tx test - Tx short test (0: normal operation, 1: enable Tx short test configuration)
+} Iqs7211eSysControl;
+
+typedef struct {
+    uint8_t reserved_1            : 2; //Unused bit
+    uint8_t tp_re_ati_en          : 1; //TP Re-ATI EN- Automatic Re-ATI on trackpad (0: disabled, 1: enabled)
+    uint8_t alp_re_ati_en         : 1; //ALP Re-ATI EN- Automatic Re-ATI on alternate LP channel (0: disabled, 1: enabled)
+    uint8_t comms_request_en      : 1; //Comms Request EN- Alternative polling method (while RDY not LOW) (0: forcing comms will clock stretch until a comms window, 1: A comms window must be requested with a command (no stretching))
+    uint8_t wdt                   : 1; //WDT- Watchdog timer (0: disabled, 1: enabled)
+    uint8_t comms_end_cmd         : 1; //Comms End Cmd- Alternative method to terminate comms (0: I2C stop, 1: Write one or two bytes (any data) to the address 0xFF followed by a STOP to end comms)
+    uint8_t manual_control        : 1; //Manual Control- Override automatic mode switching (0: auto, 1: manual)
+    uint8_t event_mode            : 1; //Event Mode- Enable event mode communication (0: disabled, 1: enabled)
+    uint8_t gesture_event         : 1; //Gesture Event- Enable gesture events (0: no event, 1: event)
+    uint8_t tp_event              : 1; //TP Event- Enable trackpad events (0: no event, 1: event)
+    uint8_t re_ati_event          : 1; //Re-ATI Event- Enable Re-ATI generating an event (0: no event, 1: event)
+    uint8_t reserved_2            : 1; //Unused bit 
+    uint8_t alp_event             : 1; //ALP Event- Enable alternate LP channel detection triggering event (0: no event, 1: event)
+    uint8_t tp_touch_event        : 1; //TP Touch Event- Enable trackpad touch triggering event (0: no event, 1: event) 
+    uint8_t reserved_3            : 1; //Unused bit
+} Iqs7211eConfigSettings;
+
+typedef struct {
+    uint8_t main_osc_adj          : 4; //Main Osc Adj- Small main oscillator adjustment setting (0-15: 0 = No adjustment .. 15 = Maximum adjustment)
+    uint8_t fourteen_mhz_18mhz    : 1; //14MHz/18MHz- Main oscillator selection (0: Main oscillator is 14MHz, 1: Main oscillator is 18MHz)
+    uint16_t reserved_1           : 11; //Unused bits
+} Iqs7211eOtherSettings;
+
+typedef struct {
+    uint8_t rx0_en                : 1; //Rx0_EN- ALP Rx0 electrode (0: disabled, 1: enabled)
+    uint8_t rx1_en                : 1; //Rx1_EN- ALP Rx1 electrode (0: disabled, 1: enabled)
+    uint8_t rx2_en                : 1; //Rx2_EN- ALP Rx2 electrode (0: disabled, 1: enabled)
+    uint8_t rx3_en                : 1; //Rx3_EN- ALP Rx3 electrode (0: disabled, 1: enabled)
+    uint8_t rx4_en                : 1; //Rx4_EN- ALP Rx4 electrode (0: disabled, 1: enabled)
+    uint8_t rx5_en                : 1; //Rx5_EN- ALP Rx5 electrode (0: disabled, 1: enabled)
+    uint8_t rx6_en                : 1; //Rx6_EN- ALP Rx6 electrode (0: disabled, 1: enabled)
+    uint8_t rx7_en                : 1; //Rx7_EN- ALP Rx7 electrode (0: disabled, 1: enabled)
+    uint8_t sensing_method        : 1; //Sensing Method- ALP sensing method
+    uint8_t count_filter          : 1; //Count Filter- ALP count filter
+    uint16_t reserved_1           : 6; //Unused bits
+} Iqs7211eAlpSetup;    
+
+typedef struct {
+    uint8_t tx0_en                : 1; //TX0_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx1_en                : 1; //TX1_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx2_en                : 1; //TX2_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx3_en                : 1; //TX3_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx4_en                : 1; //TX4_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx5_en                : 1; //TX5_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx6_en                : 1; //TX6_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx7_en                : 1; //TX7_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx8_en                : 1; //TX8_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx9_en                : 1; //TX9_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx10_en               : 1; //TX10_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx11_en               : 1; //TX11_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint8_t tx12_en               : 1; //TX12_EN - ALP Tx electrodes (0: Tx disabled , 1: Tx enabled)
+    uint16_t reserved_1           : 3; //Unused bits
+} Iqs7211eAlpTxEnable;
+
+typedef struct {
+    uint8_t touch_set_multiplier   : 8; //Touch Set Multiplier (multiplier for touch set threshold)
+    uint8_t touch_clear_multiplier : 8; //Touch Clear Multiplier (multiplier for touch clear threshold)
+} Iqs7211eTpTouchSetClearThr;
+
+typedef struct {
+    uint8_t alp_set_debounce       : 8; //ALP Set Debounce
+    uint8_t alp_clear_debounce     : 8; //ALP Clear Debounce
+} Iqs7211eAlpSetClearDebounce;
+
+typedef struct {
+    uint8_t alp_count_filter_beta  : 8; //ALP Count Filter Beta - LP1 Mode
+    uint8_t alp_lta_filter_beta    : 8; //ALP LTA Filter Beta - LP1 Mode
+} Iqs7211eLp1Filters;
+
+typedef struct {
+    uint8_t alp_count_filter_beta  : 8; //ALP Count Filter Beta - LP2 Mode
+    uint8_t alp_lta_filter_beta    : 8; //ALP LTA Filter Beta - LP2 Mode
+} Iqs7211eLp2Filters;
+
+typedef struct {
+    uint8_t tp_conversion_period   : 8; //Trackpad Conversion Period ( 128 / (FrequencyFraction − 2) , if Frequency fraction is fixed at 127, the following values of the conversion period will result
+                                        //in the corresponding charge transfer frequencies: 1: 2MHz, 5: 1MHz, 12: 500kHz, 17: 350kHz, 26: 250kHz, 53: 125kHz)
+    uint8_t tp_frequency_fraction  : 8; //Trackpad Frequency Fraction ( 256 * f_conv / f_clk , Range: 0 - 255)
+} Iqs7211eTpConvFreq;
+
+typedef struct {
+    uint8_t alp_conversion_period  : 8; //ALP Conversion Period ( 128 / (FrequencyFraction − 2) , if Frequency fraction is fixed at 127, the following values of the conversion period will result
+                                       //in the corresponding charge transfer frequencies: 1: 2MHz, 5: 1MHz, 12: 500kHz, 17: 350kHz, 26: 250kHz, 53: 125kHz)
+    uint8_t alp_frequency_fraction : 8; //ALP Frequency Fraction ( 256 * f_conv / f_clk , Range: 0 - 255)
+} Iqs7211eAlpConvFreq;
+
+typedef struct {
+    uint8_t init_delay              : 2; //Initial cycles delay (0b00: 4, 0b01: 16, 0b10: 32, 0b11: 64)
+    uint8_t lp1_auto_prox_cycles    : 3; //Number of LP1 auto-prox cycles (0b000: 4, 0b001: 8, 0b010: 16, 0b011: 32, 0b1xx: Auto-prox disabled)
+    uint8_t lp2_auto_prox_cycles    : 3; //Number of LP2 auto-prox cycles (0b000: 4, 0b001: 8, 0b010: 16, 0b011: 32, 0b1xx: Auto-prox disabled)
+    uint8_t max_count               : 2; //Count upper limit (count value stops conversion after reaching this) (0b00: 1023, 0b01: 2047, 0b10: 4095, 0b11: 16384)
+    uint8_t opamp_bias              : 2; //Projected opamp bias (0b00: 2µA, 0b01: 5µA, 0b10: 7µA, 0b11: 10µA)
+    uint8_t cs_cap_select           : 1; //Internal pool capacitor size (0: Internal capacitor is 40pF, 1: Internal capacitor is 80pF (recommended))
+    uint8_t rf_filter               : 1; //Internal RF filters (0: RF filters disabled, 1: RF filters enabled)
+    uint8_t cs_0v5_discharge        : 1; //Select internal Cs discharge voltage (0: Discharge to 0V (recommended for most cases), 1: Discharge to 0.5V)
+    uint8_t nm_in_static            : 1; //NM In Static (0: Disabled, 1: Enabled (recommended))
+} Iqs7211eTpHardware;
+
+typedef struct {
+    uint8_t init_delay              : 2; //Initial cycles delay (0b00: 4, 0b01: 16, 0b10: 32, 0b11: 64)
+    uint8_t lp1_auto_prox_cycles    : 3; //Number of LP1 auto-prox cycles (0b000: 4, 0b001: 8, 0b010: 16, 0b011: 32, 0b1xx: Auto-prox disabled)
+    uint8_t lp2_auto_prox_cycles    : 3; //Number of LP2 auto-prox cycles (0b000: 4, 0b001: 8, 0b010: 16, 0b011: 32, 0b1xx: Auto-prox disabled)
+    uint8_t max_count               : 2; //Count upper limit (count value stops conversion after reaching this) (0b00: 1023, 0b01: 2047, 0b10: 4095, 0b11: 16384)
+    uint8_t opamp_bias              : 2; //Projected opamp bias (0b00: 2µA, 0b01: 5µA, 0b10: 7µA, 0b11: 10µA)
+    uint8_t cs_cap_select           : 1; //Internal pool capacitor size (0: Internal capacitor is 40pF, 1: Internal capacitor is 80pF (recommended))
+    uint8_t rf_filter               : 1; //Internal RF filters (0: RF filters disabled, 1: RF filters enabled)
+    uint8_t cs_0v5_discharge        : 1; //Select internal Cs discharge voltage (0: Discharge to 0V (recommended for most cases), 1: Discharge to 0.5V)
+    uint8_t nm_in_static            : 1; //NM In Static (0: Disabled, 1: Enabled (recommended))
+} Iqs7211eAlpHardware;
+
+typedef struct {
+    uint8_t flip_x                  : 1; //Invert X output values (0: Keep default X values, 1: Invert X output values)
+    uint8_t flip_y                  : 1; //Invert Y output values (0: Keep default Y values, 1: Invert Y output values)
+    uint8_t switch_xy_axis          : 1; //Switch X and Y axes (0: Rxs are arranged in trackpad columns (X), and Txs in rows (Y), 1: Txs are arranged in trackpad columns (X), and Rxs in rows (Y))
+    uint8_t iir_filter              : 1; //IIR filter (0: disabled, 1: enabled (recommended)
+    uint8_t iir_static              : 1; //IIR filtering method for the XY data points (0: dynamically adjusted (recommended), 1: fixed)
+    uint8_t mav_filter              : 1; //Moving averaging filter (0: disabled, 1: enabled (recommended)
+    uint8_t reserved_1              : 2; //Unused bits
+    uint8_t total_rxs               : 8; //Total Rxs- used for trackpad
+} Iqs7211eTpRxSettings;
+
+typedef struct {
+    uint8_t total_txs               : 8; //Total Txs- used for trackpad
+    uint8_t max_multi_touches       : 8; //Max Multi-Touches
+} Iqs7211eTpTxSettings;
+
+typedef struct {
+    uint8_t dynamic_filter_bottom   : 8; //Dynamic filter bottom beta
+    uint8_t static_filter_beta      : 8; //Static filter beta value
+} Iqs7211eStaticFilter;
+
+typedef struct {
+    uint8_t stationary_touch_movement_threshold : 8; //Stationary touch movement threshold
+    uint8_t finger_split_factor     : 8; //Finger split factor
+} Iqs7211eFingerSplitMovement;
+
+typedef struct {
+    uint8_t x_trim_value            : 8; //X trim value
+    uint8_t y_trim_value            : 8; //Y trim value
+} Iqs7211eTrimValues;
+
+typedef struct {
+    uint8_t settings_minor_version  : 8; //Settings minor version
+    uint8_t settings_major_version  : 8; //Settings major version
+} Iqs7211eSettingsVersion;
+
+typedef struct {
+    uint8_t single_tap              : 1; //Single Tap - Single tap gesture (0: disabled, 1: enabled)
+    uint8_t double_tap              : 1; //Double Tap - Double tap gesture (0: disabled, 1: enabled)
+    uint8_t triple_tap              : 1; //Triple Tap - Triple tap gesture (0: disabled, 1: enabled)
+    uint8_t press_and_hold          : 1; //Press-and-Hold - Press-and-hold gesture (0: disabled, 1: enabled)
+    uint8_t palm_gesture            : 1; //Palm Gesture - Palm gesture (0: disabled, 1: enabled)
+    uint8_t reserved_1              : 3; //Unused bits  
+    uint8_t swipe_x_positive        : 1; //Swipe X+ - Swipe in positive X direction (0: disabled, 1: enabled)
+    uint8_t swipe_x_negative        : 1; //Swipe X- - Swipe in negative X direction (0: disabled, 1: enabled)
+    uint8_t swipe_y_positive        : 1; //Swipe Y+ - Swipe in positive Y direction (0: disabled, 1: enabled)
+    uint8_t swipe_y_negative        : 1; //Swipe Y- - Swipe in negative Y direction (0: disabled, 1: enabled)
+    uint8_t hold_x_positive         : 1; //Swipe and Hold X+ - Swipe and hold in positive X direction (0: disabled, 1: enabled)
+    uint8_t hold_x_negative         : 1; //Swipe and Hold X- - Swipe and hold in negative X direction (0: disabled, 1: enabled)
+    uint8_t hold_y_positive         : 1; //Swipe and Hold Y+ - Swipe and hold in positive Y direction (0: disabled, 1: enabled)
+    uint8_t hold_y_negative         : 1; //Swipe and Hold Y- - Swipe and hold in negative Y direction (0: disabled, 1: enabled)
+} Iqs7211eGestureEnable;
+
+typedef struct {
+    uint8_t swipe_angle             : 8; //Swipe Angle (64tan(deg))
+    uint8_t palm_threshold          : 8; //Palm Threshold
+} Iqs7211eThresholdAngle;
+
+typedef struct {
+    uint8_t rx_tx_mapping_0         : 8; //RxTx Mapping 0 line
+    uint8_t rx_tx_mapping_1         : 8; //RxTx Mapping 1 line
+} Iqs7211eRxTxMapping0_1;
+
+typedef struct {
+    uint8_t rx_tx_mapping_2         : 8; //RxTx Mapping 2 line
+    uint8_t rx_tx_mapping_3         : 8; //RxTx Mapping 3 line
+} Iqs7211eRxTxMapping2_3;
+
+typedef struct {
+    uint8_t rx_tx_mapping_4         : 8; //RxTx Mapping 4 line
+    uint8_t rx_tx_mapping_5         : 8; //RxTx Mapping 5 line
+} Iqs7211eRxTxMapping4_5;
+
+typedef struct {
+    uint8_t rx_tx_mapping_6         : 8; //RxTx Mapping 6 line
+    uint8_t rx_tx_mapping_7         : 8; //RxTx Mapping 7 line
+} Iqs7211eRxTxMapping6_7;
+
+typedef struct {
+    uint8_t rx_tx_mapping_8         : 8; //RxTx Mapping 8 line
+    uint8_t rx_tx_mapping_9         : 8; //RxTx Mapping 9 line
+} Iqs7211eRxTxMapping8_9;
+
+typedef struct {
+    uint8_t rx_tx_mapping_10        : 8; //RxTx Mapping 10 line
+    uint8_t rx_tx_mapping_11        : 8; //RxTx Mapping 11 line
+} Iqs7211eRxTxMapping10_11;
+
+typedef struct {
+    uint8_t rx_tx_mapping_12        : 8; //RxTx Mapping 12 line
+    uint8_t reserved_1              : 8; //Unused bits
+}Iqs7211eRxTxMapping12;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-0
+} Iqs7211eProxaCycle0;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-0
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle0;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-1
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-1
+} Iqs7211eProxCycle1;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-2
+} Iqs7211eProxaCycle2;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-2
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle2;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-3
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-3
+} Iqs7211eProxCycle3;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-4
+} Iqs7211eProxaCycle4;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-4
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle4;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-5
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-5
+} Iqs7211eProxCycle5;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-6
+} Iqs7211eProxaCycle6;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-6
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle6;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-7
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-7
+} Iqs7211eProxCycle7;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-8
+} Iqs7211eProxaCycle8;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-8
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle8;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-9
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-9
+} Iqs7211eProxCycle9;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-10
+} Iqs7211eProxaCycle10;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-10
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle10;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-11
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-11
+} Iqs7211eProxCycle11;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-12
+} Iqs7211eProxaCycle12;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-12
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle12;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-13
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-13
+} Iqs7211eProxCycle13;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-14
+} Iqs7211eProxaCycle14;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-14
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle14;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-15
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-15
+} Iqs7211eProxCycle15;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-16
+} Iqs7211eProxaCycle16;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-16
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle16;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-17
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-17
+} Iqs7211eProxCycle17;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-18
+} Iqs7211eProxaCycle18;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-18
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+} Iqs7211eProxbCycle18;
+
+typedef struct {
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-19
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-19
+} Iqs7211eProxCycle19;
+
+typedef struct {
+    uint8_t fixed_0_5              : 8; //Fixed value 0x05
+    uint8_t prox_a_channel         : 8; //ProxA channel for cycle-20
+} Iqs7211eProxaCycle20;
+
+typedef struct {
+    uint8_t prox_b_channel         : 8; //ProxB channel for cycle-20
+    uint8_t fixed_0_1              : 8; //Fixed value 0x01 (NOTE not 0x05) 
+} Iqs7211eProxbCycle20;
 
 /* clang-format on */
