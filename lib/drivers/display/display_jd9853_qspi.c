@@ -5,10 +5,9 @@
 #include <furi_hal_resources.h>
 #include <furi_hal_pwm.h>
 
-#include "hardware/structs/clocks.h"
-#include "hardware/structs/hstx_ctrl.h"
-#include "hardware/structs/hstx_fifo.h"
-#include <hardware/structs/io_bank0.h>
+#include <hardware/structs/clocks.h>
+#include <hardware/structs/hstx_ctrl.h>
+#include <hardware/structs/hstx_fifo.h>
 #include <pico/types.h>
 #include <hardware/dma.h>
 
@@ -322,7 +321,7 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     furi_check(display);
 
     furi_hal_gpio_remove_int_callback(&gpio_display_te);
-    display_jd9853_load_config(display, st7789_deinit_seq);
+    display_jd9853_load_config(display, jd9853_deinit_seq);
     furi_hal_gpio_init_ex(&gpio_display_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_sda, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
