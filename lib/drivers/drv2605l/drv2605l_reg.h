@@ -1,8 +1,11 @@
 #pragma once
 
 #include <stdint.h>
-
+/* clang-format off */
 //https://www.ti.com/lit/ds/symlink/drv2605l.pdf?ts=1763803821733&ref_url=https%253A%252F%252Fwww.ti.com%252Fproduct%252FDRV2605L%253Futm_source%253Dgoogle%2526utm_medium%253Dcpc%2526utm_campaign%253Dasc-null-null-GPN_EN-cpc-pf-google-eu_en_cons%2526utm_content%253DDRV2605L%2526ds_k%253DDRV2605L%2526DCM%253Dyes%2526gclsrc%253Daw.ds%2526gad_source%253D1%2526gad_campaignid%253D8752110670%2526gbraid%253D0AAAAAC068F1DNu-L2iP4S8o2M0XHmBTQT%2526gclid%253DCjwKCAiA24XJBhBXEiwAXElO38zRQot2y5ghyUHtV3rc_ENHblKwa4acWh9cJWM8MZWGArRetKJSMBoCsQkQAvD_BwE
+//https://www.ti.com/lit/an/sloa209/sloa209.pdf?ts=1763983489254
+//https://www.ti.com/lit/an/sloa207a/sloa207a.pdf?ts=1763983570776
+//https://www.ti.com/lit/an/sloa194a/sloa194a.pdf?ts=1763983625523
 
 typedef enum {
     /* 0x00 STATUS
@@ -219,89 +222,90 @@ typedef enum {
 } Drv2605lReg;
 
 typedef struct {
-    uint8_t over_current_flag : 1; // Bit 0 — Over-current flag (0 = normal).
+    uint8_t over_current_flag     : 1; // Bit 0 — Over-current flag (0 = normal).
     uint8_t over_temperature_flag : 1; // Bit 1 — Over-temperature flag (0 = normal).
-    uint8_t reserved_2 : 1; // Bit 2 — Reserved.
-    uint8_t diagnostic_result : 1; // Bit 3 — Diagnostic result (0 = OK).
-    uint8_t reserved_1 : 1; // Bit 4 — Reserved.
-    uint8_t device_id : 3; // Bits 7:5 — Device ID (expected 0b111 for DRV2605L).
+    uint8_t reserved_2            : 1; // Bit 2 — Reserved.
+    uint8_t diagnostic_result     : 1; // Bit 3 — Diagnostic result (0 = OK).
+    uint8_t reserved_1            : 1; // Bit 4 — Reserved.
+    uint8_t device_id             : 3; // Bits 7:5 — Device ID (expected 0b111 for DRV2605L).
 } Drv2605lStatus;
 
-typedef struct{
-    uint8_t mode_select : 3; // Bits 2:0 — Mode select (trigger/source/mode)
-    uint8_t reserved_1 : 3; // Bits 5:3 — Reserved (set to 0)
-    uint8_t standby : 1; // Bit 6 — Standby (0 = active, 1 = standby)
+typedef struct {
+    uint8_t mode_select  : 3; // Bits 2:0 — Mode select (trigger/source/mode)
+    uint8_t reserved_1   : 3; // Bits 5:3 — Reserved (set to 0)
+    uint8_t standby      : 1; // Bit 6 — Standby (0 = active, 1 = standby)
     uint8_t device_reset : 1; // Bit 7 — Device reset (0 = normal operation, 1 = reset)
-}Drv2605lMode;
+} Drv2605lMode;
 
-typedef struct{
-    uint8_t library_sel: 3; // Bits 2:0 — Library select (0 to 7).
-    uint8_t reserved_3: 1; // Bits 3 - Reserved (set to 0).
-    uint8_t hi_z_mode: 1; // Bits 4 — HI_Z mode (0 = normal, 1 = 15k).
-    uint8_t reserved_2: 3; // Bits 7:5 — Reserved (set to 0).
+typedef struct {
+    uint8_t library_sel : 3; // Bits 2:0 — Library select (0 to 7).
+    uint8_t reserved_3  : 1; // Bits 3 - Reserved (set to 0).
+    uint8_t hi_z_mode   : 1; // Bits 4 — HI_Z mode (0 = normal, 1 = 15k).
+    uint8_t reserved_2  : 3; // Bits 7:5 — Reserved (set to 0).
 } Drv2605lLibSelect;
 
-typedef struct{
+typedef struct {
     uint8_t effect_index : 7; // Bits 6:0 — Effect index (0 to 123) or 0x00 for 'end of sequence'.
-    uint8_t wait_flag : 1; // Bits 7 — Wait flag (1 = insert delay after this effect).
+    uint8_t wait_flag    : 1; // Bits 7 — Wait flag (1 = insert delay after this effect).
 } Drv2605lWaveSeq;
 
-typedef struct{
-    uint8_t go_bit : 1; // Bit 0 — GO bit (0 = stop, 1 = start).
+typedef struct {
+    uint8_t go_bit     : 1; // Bit 0 — GO bit (0 = stop, 1 = start).
     uint8_t reserved_1 : 7; // Bit 7:1 — Reserved (set to 0).
 } Drv2605lGo;
 
-typedef struct{
-    uint8_t ath_filter : 2; // Bits 1:0 — This bit sets the low-pass filter frequency for the audio-to-vibe signal path:(0 = 100Hz, 1 = 125Hz, 2 = 150Hz, 3 = 200Hz).
-    uint8_t ath_peek_time : 2; // Bits 3:2 — This bit sets the peak detection time for the audio-to-vibe signal path: (0 = 10 ms, 1 = 20 ms, 2 = 30 ms, 3 = 40 ms).
-    uint8_t reserved_1 : 4; // Bits 7:4 — Reserved
+typedef struct {
+    uint8_t ath_filter      : 2; // Bits 1:0 — This bit sets the low-pass filter frequency for the audio-to-vibe signal path:(0 = 100Hz, 1 = 125Hz, 2 = 150Hz, 3 = 200Hz).
+    uint8_t ath_peek_time   : 2; // Bits 3:2 — This bit sets the peak detection time for the audio-to-vibe signal path: (0 = 10 ms, 1 = 20 ms, 2 = 30 ms, 3 = 40 ms).
+    uint8_t reserved_1      : 4; // Bits 7:4 — Reserved
 } Drv2605lAudioCtrl;
 
-typedef struct{
-    uint8_t bemf_gain : 2; // Bits 1:0 — BEMF gain. ERM Mode(0- 0.255x, 1- 0.7875x, 2- 1.365x(default), 3- 3.0x), LRA Mode(0- 3.75x, 1- 7.5x, 2- 15x (default), 3- 22.5x).
-    uint8_t loop_gain : 2; // Bits 3:2 — Loop gain. (0- Low, 1- Medium(default), 2- High, 3- Very High).
+typedef struct {
+    uint8_t bemf_gain    : 2; // Bits 1:0 — BEMF gain. ERM Mode(0- 0.255x, 1- 0.7875x, 2- 1.365x(default), 3- 3.0x), LRA Mode(0- 3.75x, 1- 7.5x, 2- 15x (default), 3- 22.5x).
+    uint8_t loop_gain    : 2; // Bits 3:2 — Loop gain. (0- Low, 1- Medium(default), 2- High, 3- Very High).
     uint8_t brake_factor : 3; // Bits 6:4 — Brake factor. (0- 1x, 1- 2x, 2- 3x, 3- 4x, 4- 6x, 5- 8x, 6- 16x, 7- Braking disabled).
-    uint8_t n_erm_lra : 1; // Bit 7 — Type: 0 = ERM, 1 = LRA.
-}Drv2605lFeedback;
+    uint8_t n_erm_lra    : 1; // Bit 7 — Type: 0 = ERM, 1 = LRA.
+} Drv2605lFeedback;
 
-typedef struct{
-    uint8_t drive_time : 5; // Bits 4:0 — Drive time setting (0 to 31).
-    uint8_t ac_couple : 1; // Bits 5 — This bit applies a 0.9-V common mode voltage to the IN/TRIG pin for AC-coupled analog input signals. (0- default).
-    uint8_t reserved_1 : 1; // Bits 6 — Reserved.
+typedef struct {
+    uint8_t drive_time    : 5; // Bits 4:0 — Drive time setting (0 to 31).
+    uint8_t ac_couple     : 1; // Bits 5 — This bit applies a 0.9-V common mode voltage to the IN/TRIG pin for AC-coupled analog input signals. (0- default).
+    uint8_t reserved_1    : 1; // Bits 6 — Reserved.
     uint8_t startup_boost : 1; // Bits 7 — This bit applies higher loop gain during overdrive to enhance actuator transient response. (1- default).
 } Drv2605lControl1;
 
-typedef struct{
-    uint8_t idiss_time : 2; // Bits 1:0 — Current dissipation time. This bit is the time allowed for the current to dissipate from the actuator between PWM cycles for fly
-    uint8_t blanking_time : 2; // Bits 3:2 — Blanking time before the back-EMF AD makes a conversion. (Advanced use only).
-    uint8_t sample_time : 2; // Bits 5:4 — LRA auto-resonance sampling time (Advanced use only) (0- 150 µs, 1- 200 µs, 2- 250 µs, 3- 300 µs(default)).
+typedef struct {
+    uint8_t idiss_time       : 2; // Bits 1:0 — Current dissipation time. This bit is the time allowed for the current to dissipate from the actuator between PWM cycles for fly
+    uint8_t blanking_time    : 2; // Bits 3:2 — Blanking time before the back-EMF AD makes a conversion. (Advanced use only).
+    uint8_t sample_time      : 2; // Bits 5:4 — LRA auto-resonance sampling time (Advanced use only) (0- 150 µs, 1- 200 µs, 2- 250 µs, 3- 300 µs(default)).
     uint8_t brake_stabilizer : 1; // Bit 6 — When this bit is set, loop gain is reduced when braking is almost complete to improve loop stability.
-    uint8_t bidir_input : 1; // Bit 7 — The BIDIR_INPUT bit selects how the engine interprets data.
+    uint8_t bidir_input      : 1; // Bit 7 — The BIDIR_INPUT bit selects how the engine interprets data.
 } Drv2605lControl2;
 
-typedef struct{
-    uint8_t lra_open_loop : 1; // Bits 0 — This bit selects an open-loop drive option for LRA Mode. (0- Auto-resonance mode(default), 1- LRA open-loop mode ).
-    uint8_t n_pwm_analog : 1; // Bits 1 — This bit selects the input mode for the IN/TRIG pin when MODE[2:0] = 3 (0- PWM Input, 1- Analog Input).
-    uint8_t lra_drive_mode : 1; // Bits 2 — This bit selects the drive mode for the LRA algorithm (0- Once per cycle, 1- Twice per cycle).
-    uint8_t data_fomat_rtp : 1; // Bits 3 — This bit selects the input data interpretation for RTP (Real-Time Playback) mode (0- Signed, 1- Unsigned).
+typedef struct {
+    uint8_t lra_open_loop   : 1; // Bits 0 — This bit selects an open-loop drive option for LRA Mode. (0- Auto-resonance mode(default), 1- LRA open-loop mode ).
+    uint8_t n_pwm_analog    : 1; // Bits 1 — This bit selects the input mode for the IN/TRIG pin when MODE[2:0] = 3 (0- PWM Input, 1- Analog Input).
+    uint8_t lra_drive_mode  : 1; // Bits 2 — This bit selects the drive mode for the LRA algorithm (0- Once per cycle, 1- Twice per cycle).
+    uint8_t data_fomat_rtp  : 1; // Bits 3 — This bit selects the input data interpretation for RTP (Real-Time Playback) mode (0- Signed, 1- Unsigned).
     uint8_t supply_comp_dis : 1; // Bits 4 — This bit disables supply compensation. (0- Enabled(default), 1- Disabled).
-    uint8_t erm_open_loop : 1; // Bits 5 — This bit selects mode of operation while in ERM mode. (0- Closed Loop, 1- Open Loop(default)).
-    uint8_t ng_thresh : 2; // Bits 7:6 — This bit is the noise-gate threshold for PWM and analog inputs (0- Disabled, 1- 2%, 2- 4% (Default), 3-  8%).
+    uint8_t erm_open_loop   : 1; // Bits 5 — This bit selects mode of operation while in ERM mode. (0- Closed Loop, 1- Open Loop(default)).
+    uint8_t ng_thresh       : 2; // Bits 7:6 — This bit is the noise-gate threshold for PWM and analog inputs (0- Disabled, 1- 2%, 2- 4% (Default), 3-  8%).
 } Drv2605lControl3;
 
-typedef struct{
-    uint8_t otp_program : 1; // Bits 0 — This bit launches the programming process for one-time programmable (OTP) memory.
-    uint8_t reserved_1 : 1; // Bits 1 — Reserved.
-    uint8_t otp_status : 1; // Bits 2 — OTP Memory status (0- OTP Memory has not been programmed, 1- OTP Memory has been programmed).
-    uint8_t reserved_2 : 1; // Bits 3 — Reserved.
+typedef struct {
+    uint8_t otp_program   : 1; // Bits 0 — This bit launches the programming process for one-time programmable (OTP) memory.
+    uint8_t reserved_1    : 1; // Bits 1 — Reserved.
+    uint8_t otp_status    : 1; // Bits 2 — OTP Memory status (0- OTP Memory has not been programmed, 1- OTP Memory has been programmed).
+    uint8_t reserved_2    : 1; // Bits 3 — Reserved.
     uint8_t auto_cal_time : 2; // Bits 5:4 — This bit sets the length of the auto calibration time.  (0- 150:350 ms, 1-  250:450 ms, 2- 500:700 ms(default), 3- 1000:1200 ms).
-    uint8_t zc_det_time : 2; // Bits 7:6 — This bit sets the minimum length of time devoted for detecting a zero crossing (advanced use only) (0- 100 µs(default), 1- 200 µs, 2- 300 µs, 3- 390 µs).
+    uint8_t zc_det_time   : 2; // Bits 7:6 — This bit sets the minimum length of time devoted for detecting a zero crossing (advanced use only) (0- 100 µs(default), 1- 200 µs, 2- 300 µs, 3- 390 µs).
 } Drv2605lControl4;
 
-typedef struct{
-    uint8_t idiss_time : 2; // Bits 1:0 — This bit sets the MSB for IDISS_TIME[3:0].
-    uint8_t blanking_time : 2; // Bits 3:2 — This bit sets the MSB for the BLANKING_TIME[3:0].
-    uint8_t playback_interval : 1; // Bits 4 — This bit selects the memory playback interval. (0- 5 ms(default), 1- 1 ms).
-    uint8_t lra_auto_open_loop : 1; // Bits 5 — This bit selects the automatic transition to open-loop drive when a back-EMF signal is not detected (LRA only). (0- Never transitions to open loop(default), 1- Automatically transitions to open loop).
-    uint8_t auto_ol_cnt : 2; // Bits 7:6 — This bit selects number of cycles required to attempt synchronization before transitioning to open loop when the LRA_AUTO_OPEN_LOOP bit is asserted (0- 3 attempts, 1- 4 attempts, 2- 5 attempts(default), 3- 6 attempts).
+typedef struct {
+    uint8_t idiss_time          : 2; // Bits 1:0 — This bit sets the MSB for IDISS_TIME[3:0].
+    uint8_t blanking_time       : 2; // Bits 3:2 — This bit sets the MSB for the BLANKING_TIME[3:0].
+    uint8_t playback_interval   : 1; // Bits 4 — This bit selects the memory playback interval. (0- 5 ms(default), 1- 1 ms).
+    uint8_t lra_auto_open_loop  : 1; // Bits 5 — This bit selects the automatic transition to open-loop drive when a back-EMF signal is not detected (LRA only). (0- Never transitions to open loop(default), 1- Automatically transitions to open loop).
+    uint8_t auto_ol_cnt         : 2; // Bits 7:6 — This bit selects number of cycles required to attempt synchronization before transitioning to open loop when the LRA_AUTO_OPEN_LOOP bit is asserted (0- 3 attempts, 1- 4 attempts, 2- 5 attempts(default), 3- 6 attempts).
 } Drv2605lControl5;
+/* clang-format on */

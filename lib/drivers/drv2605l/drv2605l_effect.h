@@ -1,5 +1,5 @@
 #pragma once
-
+/* clang-format off */
 typedef enum{
     Drv2605lEffectNone                                   = 0,
     Drv2605lEffectStrongClick_100                        = 1,
@@ -103,3 +103,5 @@ typedef enum{
     Drv2605lEffectSmoothHum5_10                          = 123,
     Drv2605lEffectCountMax                               = 123
 }Drv2605lEffect;
+
+/* clang-format on */
