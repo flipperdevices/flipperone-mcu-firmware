@@ -34,8 +34,13 @@ project(one-rp2350-control C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-# Add executable. Default name is the project name, version 0.1
+set(TARGET_NAME f100)
+add_subdirectory("targets/${TARGET_NAME}")
 
+message( "Target sources: ${TARGET_SOURCES}")
+message( "Target includes: ${TARGET_INCLUDES}")
+
+# Add executable. Default name is the project name, version 0.1
 file(GLOB_RECURSE SOURCES
     "lib/furi/*.c*" 
     "lib/furi/version/*.c*" 
@@ -43,7 +48,7 @@ file(GLOB_RECURSE SOURCES
     "app/*.c"
     "app/theme/*.c"
     "app/fs/*.c"
-    "targets/f100/furi_hal/*.c*"
+    ${TARGET_SOURCES}
     "lib/drivers/display/*.c*"  
     "lib/drivers/tps62868x/*.c*"
     "lib/drivers/tca6416a/*.c*"
@@ -51,8 +56,6 @@ file(GLOB_RECURSE SOURCES
     "applications/*.c"
     "applications/services/*.c"
     "applications/main/*.c"
-    "targets/f100/src/*.c*" 
-   
 )
 
 add_executable(one-rp2350-control 
@@ -70,8 +73,6 @@ target_compile_definitions(one-rp2350-control PRIVATE
     #PICO_USE_SW_SPIN_LOCKS=0
     )
 
-
-
 pico_set_program_name(one-rp2350-control "one-rp2350-control")
 pico_set_program_version(one-rp2350-control "0.1")
 
@@ -83,13 +84,11 @@ pico_enable_stdio_usb(one-rp2350-control 1)
 target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_hal
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/config
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
+    ${TARGET_INCLUDES}
 )
 
 add_subdirectory(lib/mlib)

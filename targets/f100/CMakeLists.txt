@@ -1,0 +1,15 @@
+cmake_minimum_required(VERSION 3.13)
+
+file(GLOB_RECURSE TARGET_LIST_SOURCES
+    src/*.c*
+    furi_hal/*.c*
+)
+
+set(TARGET_SOURCES ${TARGET_LIST_SOURCES} PARENT_SCOPE)
+
+set(TARGET_INCLUDES
+    ${CMAKE_CURRENT_LIST_DIR}/src
+    ${CMAKE_CURRENT_LIST_DIR}/furi_hal
+    ${CMAKE_CURRENT_LIST_DIR}/config
+    PARENT_SCOPE
+)
