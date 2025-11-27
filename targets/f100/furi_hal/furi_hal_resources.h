@@ -93,6 +93,7 @@ extern const GpioPin gpio_i2c0_scl;
 extern const GpioPin gpio_i2c1_sda;
 extern const GpioPin gpio_i2c1_scl;
 
+extern const GpioPin gpio_touchpad_rdy;
 extern const GpioPin gpio_expander_reset;
 extern const GpioPin gpio_expander_int;
 

@@ -1,3 +1,4 @@
+#include "core/log.h"
 #include "furi_hal_gpio.h"
 #include "iqs7211e_reg.h"
 #include "iqs7211e.h"
@@ -9,8 +10,7 @@
 
 struct Iqs7211e {
     const FuriHalI2cBusHandle* i2c_handle;
-    const GpioPin* pin_reset;
-    const GpioPin* pin_interrupt;
+    const GpioPin* pin_rdy;
     uint8_t address;
     Iqs7211eCallbackInput input_callback;
     void* callback_context;
@@ -23,29 +23,23 @@ static __isr __not_in_flash_func(void) iqs7211e_interrupt_handler(void* ctx) {
     }
 }
 
-Iqs7211e* iqs7211e_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pin_reset, const GpioPin* pin_interrupt, uint8_t address) {
+Iqs7211e* iqs7211e_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pin_rdy, uint8_t address) {
     Iqs7211e* instance = (Iqs7211e*)malloc(sizeof(Iqs7211e));
     instance->i2c_handle = i2c_handle;
-    instance->pin_reset = pin_reset;
-    instance->pin_interrupt = pin_interrupt;
+    instance->pin_rdy = pin_rdy;
     instance->address = address;
-    furi_hal_gpio_init_simple(instance->pin_reset, GpioModeOutputOpenDrain);
-    furi_hal_gpio_write_open_drain(instance->pin_reset, false);
-    furi_delay_ms(10);
-    furi_hal_gpio_write_open_drain(instance->pin_reset, true);
-    furi_delay_ms(10);
+    furi_hal_gpio_init_simple(instance->pin_rdy, GpioModeInput);
+
 
     furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
     if(ret) {
-        iqs7211e_write_output(instance, 0x0000); // All low
-        furi_hal_gpio_init_simple(instance->pin_interrupt, GpioModeInput);
-        furi_hal_gpio_add_int_callback(instance->pin_interrupt, GpioConditionFall, iqs7211e_interrupt_handler, instance);
+        FURI_LOG_I(TAG, "IQS7211E device ready at address 0x%02X", instance->address);
     } else {
         FURI_LOG_E(TAG, "IQS7211E device not ready at address 0x%02X", instance->address);
-        furi_hal_gpio_init_ex(instance->pin_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+        furi_hal_gpio_init_ex(instance->pin_rdy, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
         free(instance);
         return NULL;
     }
@@ -55,16 +49,16 @@ Iqs7211e* iqs7211e_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
 
 void iqs7211e_deinit(Iqs7211e* instance) {
     furi_check(instance);
-    furi_hal_gpio_remove_int_callback(instance->pin_interrupt);
-    furi_hal_gpio_init_ex(instance->pin_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    //furi_hal_gpio_remove_int_callback(instance->pin_rdy);
+    furi_hal_gpio_init_ex(instance->pin_rdy, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     free(instance);
 }
 
-void iqs7211e_set_input_callback(Iqs7211e* instance, Iqs7211eCallbackInput callback, void* context) {
-    furi_check(instance);
-    instance->input_callback = callback;
-    instance->callback_context = context;
-}
+// void iqs7211e_set_input_callback(Iqs7211e* instance, Iqs7211eCallbackInput callback, void* context) {
+//     furi_check(instance);
+//     instance->input_callback = callback;
+//     instance->callback_context = context;
+// }
 
 static FURI_ALWAYS_INLINE int iqs7211e_write_reg(Iqs7211e* instance, Iqs7211eReg reg, uint16_t data) {
     furi_check(instance);
@@ -104,32 +98,4 @@ static FURI_ALWAYS_INLINE int iqs7211e_read_reg(Iqs7211e* instance, Iqs7211eReg 
     furi_hal_i2c_release(instance->i2c_handle);
 
     return ret;
-}
-
-bool iqs7211e_write_mode(Iqs7211e* instance, uint16_t port_mask) {
-    furi_check(instance);
-    return iqs7211e_write_reg(instance, configuration_port_0, port_mask) != PICO_ERROR_GENERIC;
-}
-
-uint16_t iqs7211e_read_mode(Iqs7211e* instance) {
-    furi_check(instance);
-    uint16_t port_mask = 0;
-    if(iqs7211e_read_reg(instance, configuration_port_0, &port_mask) != PICO_ERROR_GENERIC) {
-        return port_mask;
-    }
-    return 0xFFFF; // Indicate error
-}
-
-bool iqs7211e_write_output(Iqs7211e* instance, uint16_t output_mask) {
-    furi_check(instance);
-    return iqs7211e_write_reg(instance, output_port_0, output_mask) != PICO_ERROR_GENERIC;
-}
-
-uint16_t iqs7211e_read_input(Iqs7211e* instance) {
-    furi_check(instance);
-    uint16_t input_mask = 0;
-    if(iqs7211e_read_reg(instance, input_port_0, &input_mask) != PICO_ERROR_GENERIC) {
-        return input_mask;
-    }
-    return 0xFFFF; // Indicate error
 }

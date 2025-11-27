@@ -48,6 +48,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/tps62868x/*.c*"
     "lib/drivers/tca6416a/*.c*"
     "lib/drivers/drv2605l/*.c*"
+    "lib/drivers/iqs7211e/*.c*"
     "applications/*.c"
     "applications/services/*.c"
     "applications/main/*.c"

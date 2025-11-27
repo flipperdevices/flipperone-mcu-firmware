@@ -47,6 +47,7 @@ const GpioPin gpio_i2c0_scl = {.pin = 21};
 const GpioPin gpio_i2c1_sda = {.pin = 22};
 const GpioPin gpio_i2c1_scl = {.pin = 23};
 
+const GpioPin gpio_touchpad_rdy = {.pin = 10};
 const GpioPin gpio_expander_reset = {.pin = 10};
 const GpioPin gpio_expander_int = {.pin = 9};
 
