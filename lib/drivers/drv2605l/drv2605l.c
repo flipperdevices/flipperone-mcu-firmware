@@ -8,6 +8,12 @@
 
 #define TAG "Drv2605l"
 
+#ifdef DRV2605L_DEBUG_ENABLE
+#define DRV2605L_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
+#else
+#define DRV2605L_DEBUG(...)
+#endif
+
 struct Drv2605l {
     const FuriHalI2cBusHandle* i2c_handle;
     const GpioPin* pin_en;
@@ -25,7 +31,7 @@ static int drv2605l_write_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data
     furi_hal_i2c_release(instance->i2c_handle);
 
     if(ret != PICO_ERROR_GENERIC) {
-        FURI_LOG_D(TAG, "Wrote reg 0x%02X: 0x%02X %08b", reg, data[0], data[0]);
+        DRV2605L_DEBUG(TAG, "Wrote reg 0x%02X: 0x%02X %08b", reg, data[0], data[0]);
     } else {
         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
     }
@@ -44,7 +50,7 @@ static int drv2605l_read_reg(Drv2605l* instance, Drv2605lReg reg, uint16_t* data
         ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
         if(ret != PICO_ERROR_GENERIC) {
             *data = buffer[0];
-            FURI_LOG_D(TAG, "Read reg 0x%02X: %08b", reg, buffer[0]);
+            DRV2605L_DEBUG(TAG, "Read reg 0x%02X: %08b", reg, buffer[0]);
         } else {
             FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
         }

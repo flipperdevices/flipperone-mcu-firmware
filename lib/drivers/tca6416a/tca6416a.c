@@ -7,6 +7,13 @@
 
 #define TAG "Tca6416a"
 
+#ifdef TCA6416A_DEBUG_ENABLE
+#define TCA6416A_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
+#else
+#define TCA6416A_DEBUG(...)
+#endif
+
+
 struct Tca6416a {
     const FuriHalI2cBusHandle* i2c_handle;
     const GpioPin* pin_reset;
@@ -76,7 +83,7 @@ static FURI_ALWAYS_INLINE int tca6416a_write_reg(Tca6416a* instance, Tca6416aReg
     furi_hal_i2c_release(instance->i2c_handle);
 
     if(ret != PICO_ERROR_GENERIC) {
-        FURI_LOG_D(TAG, "Wrote reg 0x%02X: %016b", reg, data);
+        TCA6416A_DEBUG(TAG, "Wrote reg 0x%02X: %016b", reg, data);
     } else {
         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
     }

@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+#define IQS7211E_PRODUCT_NUM 0x0458 /**< IQS7211E Product Number */
+
 typedef enum {
     /** 0x00 PRODUCT_NUM
      *   - Product ID Register
