@@ -36,6 +36,8 @@ void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle) {
 }
 
 void furi_hal_i2c_release(const FuriHalI2cBusHandle* handle) {
+    //TODO: TIME IS NEEDED TO COMPLETE THE TRANSACTION, Something needs to be done about this
+    furi_delay_us(10);
     // Ensure that current handle is our handle
     furi_check(handle->bus->current_handle == handle);
     // Deactivate handle
