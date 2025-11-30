@@ -216,7 +216,7 @@ void display_jd9853_qspi_on_sleep_exit(void) {
     display_jd9853_hstx_clock_init();
 }
 
-void display_jd9853_qspi_backlight_set_brightness(DisplayJd9853QSPI* display, uint8_t brightness) {
+void display_jd9853_qspi_set_brightness(DisplayJd9853QSPI* display, uint8_t brightness) {
     furi_check(display);
     display->backlight = brightness;
     if(!display->backlight) {
@@ -244,7 +244,7 @@ void display_jd9853_qspi_backlight_set_brightness(DisplayJd9853QSPI* display, ui
     }
 }
 
-uint8_t display_jd9853_qspi_backlight_get_brightness(DisplayJd9853QSPI* display) {
+uint8_t display_jd9853_qspi_get_brightness(DisplayJd9853QSPI* display) {
     furi_check(display);
     return display->backlight;
 }
@@ -312,7 +312,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     display_jd9853_qspi_fill(display, 0); // Fill white
 
-    display_jd9853_qspi_backlight_set_brightness(display, 2); // Set backlight to 50%
+    display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 50%
 
     return display;
 }

@@ -1,19 +1,11 @@
 #include "input_touch.h"
 
-#include "core/check.h"
-#include "core/log.h"
-#include <complex.h>
 #include <furi_hal_i2c_config.h>
 #include <furi.h>
 #include <drivers/iqs7211e/iqs7211e.h>
-#include <stdint.h>
 
 #define TAG "InputTouch"
 
-// #define INPUT_DEBOUNCE_TICKS      4
-// #define INPUT_DEBOUNCE_TICKS_HALF (INPUT_DEBOUNCE_TICKS / 2)
-// #define INPUT_PRESS_TICKS         150
-// #define INPUT_LONG_PRESS_COUNTS   2
 #define INPUT_THREAD_FLAG_ISR 0x00000001
 
 typedef struct {

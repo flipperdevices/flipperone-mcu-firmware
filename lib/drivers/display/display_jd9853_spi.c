@@ -110,7 +110,7 @@ DisplayJd9853SPI* display_jd9853_spi_init(void) {
     //display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
     display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
 
-    display_jd9853_spi_backlight_set_brightness(display, 2); // Set backlight to 50%
+    display_jd9853_spi_set_brightness(display, 2); // Set backlight to 50%
 
     return display;
 }
@@ -140,7 +140,7 @@ void display_jd9853_spi_on_sleep_enter(void) {
 void display_jd9853_spi_on_sleep_exit(void) {
 }
 
-void display_jd9853_spi_backlight_set_brightness(DisplayJd9853SPI* display, uint8_t brightness) {
+void display_jd9853_spi_set_brightness(DisplayJd9853SPI* display, uint8_t brightness) {
     furi_check(display);
     display->backlight = brightness;
     if(!display->backlight) {
@@ -168,7 +168,7 @@ void display_jd9853_spi_backlight_set_brightness(DisplayJd9853SPI* display, uint
     }
 }
 
-uint8_t display_jd9853_spi_backlight_get_brightness(DisplayJd9853SPI* display) {
+uint8_t display_jd9853_spi_get_brightness(DisplayJd9853SPI* display) {
     furi_check(display);
     return display->backlight;
 }

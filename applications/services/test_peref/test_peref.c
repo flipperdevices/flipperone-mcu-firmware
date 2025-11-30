@@ -52,25 +52,8 @@ int32_t test_peref_srv(void* p) {
     free(ws2812_pins);
 
     DisplayJd9853QSPI* display = display_jd9853_qspi_init();
-    furi_delay_ms(500);
-    // display_jd9853_qspi_deinit(display);
-    // furi_delay_ms(500);
-    // display = display_jd9853_qspi_init();
 
-    // display_jd9853_qspi_backlight_set_brightness(display, 1);
-    // furi_delay_ms(500);
-    // display_jd9853_qspi_backlight_set_brightness(display, 50);
-    // furi_delay_ms(500);
-    // display_jd9853_qspi_backlight_set_brightness(display, 100);
-    // furi_delay_ms(500);
-    // display_jd9853_qspi_backlight_set_brightness(display, 1);
-    // furi_delay_ms(500);
-    // display_jd9853_qspi_backlight_set_brightness(display, 10);
     uint8_t index_led = 0;
-
-    //Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
-    //drv2605l_test_all_effects(drv2605l);
-    //Iqs7211e* iqs7211e = iqs7211e_init(&furi_hal_i2c_handle_internal, &gpio_touchpad_rdy, IQS7211E_ADDRESS);
 
     while(true) {
         // furi_hal_gpio_write(&gpio_pico_led, true);

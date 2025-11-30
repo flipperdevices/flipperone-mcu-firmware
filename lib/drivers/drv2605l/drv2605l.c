@@ -30,10 +30,10 @@ static int drv2605l_write_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
-    if(ret != PICO_ERROR_GENERIC) {
-        DRV2605L_DEBUG(TAG, "Wrote reg 0x%02X: 0x%02X %08b", reg, data[0], data[0]);
-    } else {
+    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
+    } else {
+        DRV2605L_DEBUG(TAG, "Wrote reg 0x%02X: 0x%02X %08b", reg, data[0], data[0]);
     }
 
     return ret;
@@ -45,14 +45,14 @@ static int drv2605l_read_reg(Drv2605l* instance, Drv2605lReg reg, uint16_t* data
 
     furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
-    if(ret != PICO_ERROR_GENERIC) {
+    if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         uint8_t buffer[1] = {0};
         ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
-        if(ret != PICO_ERROR_GENERIC) {
+        if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+            FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
+        } else {
             *data = buffer[0];
             DRV2605L_DEBUG(TAG, "Read reg 0x%02X: %08b", reg, buffer[0]);
-        } else {
-            FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
         }
     } else {
         FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
@@ -175,6 +175,7 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     instance->address = address;
 
     furi_hal_gpio_init_simple(instance->pin_en, GpioModeOutputPushPull);
+    //Todo: GpioModeOutputPushPull
     //furi_hal_gpio_init_simple(instance->pin_trigger, GpioModeOutputPushPull);
     furi_hal_gpio_write(instance->pin_en, false);
 

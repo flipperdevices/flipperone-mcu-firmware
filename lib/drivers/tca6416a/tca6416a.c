@@ -82,10 +82,10 @@ static FURI_ALWAYS_INLINE int tca6416a_write_reg(Tca6416a* instance, Tca6416aReg
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
-    if(ret != PICO_ERROR_GENERIC) {
-        TCA6416A_DEBUG(TAG, "Wrote reg 0x%02X: %016b", reg, data);
-    } else {
+    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)  {
         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
+    } else {
+        TCA6416A_DEBUG(TAG, "Wrote reg 0x%02X: %016b", reg, data);
     }
 
     return ret;
@@ -97,13 +97,13 @@ static FURI_ALWAYS_INLINE int tca6416a_read_reg(Tca6416a* instance, Tca6416aReg 
 
     furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
-    if(ret != PICO_ERROR_GENERIC) {
+    if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         uint8_t buffer[2] = {0};
         ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
-        if(ret != PICO_ERROR_GENERIC) {
-            *data = buffer[0] | (buffer[1] << 8);
-        } else {
+        if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
             FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
+        } else {
+            *data = buffer[0] | (buffer[1] << 8);
         }
     } else {
         FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
