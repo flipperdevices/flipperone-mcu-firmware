@@ -9,13 +9,15 @@
 
 #define TAG "Iqs7211e"
 
-#define IQS7211E_DEBUG_ENABLE
+//#define IQS7211E_DEBUG_ENABLE
 
 #ifdef IQS7211E_DEBUG_ENABLE
 #define IQS7211E_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
 #define IQS7211E_DEBUG(...)
 #endif
+
+#define IQS7211E_EVENT_MODE_ENABLE 1 // Enable event mode (1) or stream mode (0)
 
 typedef enum {
     Iqs7211eI2cTransferTypeNext,
@@ -34,7 +36,6 @@ typedef enum {
     Iqs7211eInitStateWaitForAti,
     Iqs7211eInitStateReadData,
     Iqs7211eInitStateActivateEventMode,
-    Iqs7211eInitStateActivateStreamMode,
     Iqs7211eInitStateDone,
 } Iqs7211eInitState;
 
@@ -71,6 +72,7 @@ struct Iqs7211e {
     Iqs7211eInitState init_state;
     Iqs7211eData data;
     Iqs7211eCallbackInput input_callback;
+    Iqs7211eCallbackEvent event_callback;
     void* callback_context;
 };
 
@@ -574,10 +576,9 @@ static bool iqs7211e_initialization(Iqs7211e* instance) {
         instance->init_state = Iqs7211eInitStateActivateEventMode;
         break;
     case Iqs7211eInitStateActivateEventMode:
-    case Iqs7211eInitStateActivateStreamMode: //Todo: EventMode ?==? StreamMode
         Iqs7211eConfigSettings config_settings;
         iqs7211e_read_reg(instance, Iqs7211eRegConfigSettings, (uint16_t*)&config_settings, Iqs7211eI2cTransferTypeNext);
-        config_settings.event_mode = 1;
+        config_settings.event_mode = IQS7211E_EVENT_MODE_ENABLE;
         iqs7211e_write_reg(instance, Iqs7211eRegConfigSettings, *(uint16_t*)&config_settings, Iqs7211eI2cTransferTypeStop);
         IQS7211E_DEBUG(TAG, "Init activate event mode");
         instance->init_state = Iqs7211eInitStateDone;
@@ -626,9 +627,9 @@ void iqs7211e_run(Iqs7211e* instance) {
         if(instance->ready) {
             if(iqs7211e_read_data(instance)) {
                 IQS7211E_DEBUG(TAG, "Data read successfully");
-                // if(instance->input_callback) {
-                //     instance->input_callback(instance->callback_context);
-                // }
+                if(instance->event_callback) {
+                    instance->event_callback(instance->callback_context);
+                }
                 instance->ready = false;
                 instance->state = Iqs7211eStateCheckReset;
             }
@@ -637,7 +638,7 @@ void iqs7211e_run(Iqs7211e* instance) {
     }
 }
 
-void iqs7211e_force_I2C_communication(Iqs7211e* instance) {
+void iqs7211e_force_i2c_communication(Iqs7211e* instance) {
     furi_check(instance);
     uint8_t reg = 0xFF;
     uint8_t buffer[1] = {0};
@@ -646,7 +647,7 @@ void iqs7211e_force_I2C_communication(Iqs7211e* instance) {
 void iqs7211e_reset(Iqs7211e* instance) {
     furi_check(instance);
     furi_hal_gpio_remove_int_callback(instance->pin_rdy);
-    furi_hal_gpio_write_open_drain(instance->pin_rdy, false);\
+    furi_hal_gpio_write_open_drain(instance->pin_rdy, false);
     furi_delay_ms(20);
     furi_hal_gpio_write_open_drain(instance->pin_rdy, true);
     furi_delay_ms(20);
@@ -670,10 +671,6 @@ Iqs7211e* iqs7211e_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     if(ret) {
         FURI_LOG_I(TAG, "IQS7211E device ready at address 0x%02X", instance->address);
         instance->ready = false;
-        while(1) {
-            iqs7211e_run(instance);
-        }
-
     } else {
         FURI_LOG_E(TAG, "IQS7211E device not ready at address 0x%02X", instance->address);
         furi_hal_gpio_remove_int_callback(instance->pin_rdy);
@@ -695,8 +692,57 @@ void iqs7211e_deinit(Iqs7211e* instance) {
     free(instance);
 }
 
-void iqs7211e_set_input_callback(Iqs7211e* instance, Iqs7211eCallbackInput callback, void* context) {
+void iqs7211e_set_input_callback(Iqs7211e* instance, Iqs7211eCallbackInput callback, Iqs7211eCallbackEvent event_callback, void* context) {
     furi_check(instance);
     instance->input_callback = callback;
+    instance->event_callback = event_callback;
     instance->callback_context = context;
+}
+
+Iqs7211eChargingMode iqs7211e_get_charging_mode(Iqs7211e* instance) {
+    furi_check(instance);
+    if(instance->data.info_flags.charging_mode > Iqs7211eChargingModeLP2) {
+        FURI_LOG_E(TAG, "Invalid charging mode value: %03b", instance->data.info_flags.charging_mode);
+        return Iqs7211eChargingUnknown;
+    }
+    return instance->data.info_flags.charging_mode;
+}
+
+uint16_t iqs7211e_get_abs_x_fingers_num(Iqs7211e* instance, uint8_t finger_num) {
+    furi_check(instance);
+    furi_check(finger_num && finger_num <= IQS7211E_MAX_FINGERS);
+    if(finger_num == 2) {
+        return instance->data.f2_x_position;
+    }
+    return instance->data.f1_x_position;
+}
+
+uint16_t iqs7211e_get_abs_y_fingers_num(Iqs7211e* instance, uint8_t finger_num) {
+    furi_check(instance);
+    furi_check(finger_num && finger_num <= IQS7211E_MAX_FINGERS);
+    if(finger_num == 2) {
+        return instance->data.f2_y_position;
+    }
+    return instance->data.f1_y_position;
+}
+
+bool iqs7211e_get_touchpad_event_occurred(Iqs7211e* instance) {
+    furi_check(instance);
+    return instance->data.info_flags.tp_movement;
+}
+
+Iqs7211eEvent iqs7211e_get_event(Iqs7211e* instance) {
+    furi_check(instance);
+    uint16_t gesture = *(uint16_t*)&instance->data.gesture;
+    return (Iqs7211eEvent)(gesture & IQS7211E_EVENT_MASK);
+}
+
+uint8_t iqs7211e_get_fingers_num(Iqs7211e* instance) {
+    furi_check(instance);
+    return instance->data.info_flags.num_of_fingers;
+}
+
+bool iqs7211e_get_ready(Iqs7211e* instance) {
+    furi_check(instance);
+    return instance->ready;
 }

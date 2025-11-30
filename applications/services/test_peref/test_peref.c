@@ -70,7 +70,7 @@ int32_t test_peref_srv(void* p) {
 
     //Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
     //drv2605l_test_all_effects(drv2605l);
-    Iqs7211e* iqs7211e = iqs7211e_init(&furi_hal_i2c_handle_internal, &gpio_touchpad_rdy, IQS7211E_ADDRESS);
+    //Iqs7211e* iqs7211e = iqs7211e_init(&furi_hal_i2c_handle_internal, &gpio_touchpad_rdy, IQS7211E_ADDRESS);
 
     while(true) {
         // furi_hal_gpio_write(&gpio_pico_led, true);

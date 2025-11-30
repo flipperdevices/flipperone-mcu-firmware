@@ -5,6 +5,8 @@
 #include <stdint.h>
 
 #define IQS7211E_PRODUCT_NUM 0x0458 /**< IQS7211E Product Number */
+#define IQS7211E_MAX_FINGERS 2 /**< Maximum number of fingers supported by IQS7211E */
+#define IQS7211E_EVENT_MASK 0xFF1F /**< Mask to extract valid event bits from gesture register */
 
 typedef enum {
     /** 0x00 PRODUCT_NUM
@@ -833,7 +835,7 @@ typedef struct {
     uint8_t alp_ati_error       : 1; //Alternate Low Power ATI error status (0: no error, 1: error detected)
     uint8_t alp_re_ati_occurred : 1; //Alternate Low Power re-ATI status (0: no re-ATI occurred, 1: re-ATI occurred)
     uint8_t show_reset          : 1; //Indicates a software reset has occurred (0: no reset, 1: reset occurred)
-    uint8_t no_of_fingers       : 2; //Number of fingers detected on trackpad 
+    uint8_t num_of_fingers      : 2; //Number of fingers detected on trackpad 
     uint8_t tp_movement         : 1; //Trackpad finger movement detected (0: no movement, 1: movement detected)
     uint8_t reserved_1          : 1;
     uint8_t too_many_fingers    : 1; //Indicates more than allowed fingers detected (0: within limit, 1: too many fingers)
