@@ -52,7 +52,7 @@ int32_t test_peref_srv(void* p) {
     free(ws2812_pins);
 
     DisplayJd9853QSPI* display = display_jd9853_qspi_init();
-
+    //furi_delay_ms(100);
     uint8_t index_led = 0;
 
     while(true) {
@@ -61,30 +61,30 @@ int32_t test_peref_srv(void* p) {
         // furi_hal_gpio_write(&gpio_pico_led, false);
         // furi_delay_ms(10);
 
-        //bw display test
-        display_jd9853_qspi_fill(display, 0); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 50); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 100); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 150); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 200); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 255); // Fill white
-        furi_delay_ms(500);
+        // //bw display test
+        // display_jd9853_qspi_fill(display, 0); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 50); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 100); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 150); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 200); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 255); // Fill white
+        // furi_delay_ms(500);
 
-        // for(size_t i = 0; i < 64; i++) {
-        //     //furi_hal_gpio_write(&gpio_display_ctrl, true);
-        //     display_jd9853_qspi_fill(display, i<<2); // Fill white
-        //     //furi_delay_ms(100); //10FPS
-        //     //furi_delay_ms(66);  //15FPS
-        //     //furi_delay_ms(50);  //20FPS
-        //     // furi_delay_ms(33); //30FPS
-        //     // furi_delay_ms(16); //60FPS
-        //      furi_delay_ms(5); //120FPS
-        // }
+        for(size_t i = 0; i < 64; i++) {
+            //furi_hal_gpio_write(&gpio_display_ctrl, true);
+            display_jd9853_qspi_fill(display, i<<2); // Fill white
+            //furi_delay_ms(100); //10FPS
+            //furi_delay_ms(66);  //15FPS
+            //furi_delay_ms(50);  //20FPS
+            // furi_delay_ms(33); //30FPS
+             furi_delay_ms(16); //60FPS
+            //furi_delay_ms(5); //120FPS
+        }
         // furi_delay_ms(200);
 
         //     // //random SQUARE

@@ -127,6 +127,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* disp
     for(size_t i = 0; i < size; i++) {
         display_jd9853_hstx_put_word(data[i]);
     }
+    display_jd9853_cs_up();
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* config) {
@@ -280,7 +281,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display_jd9853_hstx_clock_init();
 
     //Gpio init
-    //furi_hal_gpio_init_simple(display->pin_reset, GpioModeOutputOpenDrain);
+    //furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputOpenDrain);
     furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputPushPull);
     furi_hal_gpio_init_simple(&gpio_display_te, GpioModeInput);
     furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionRise, display_jd9853_te_callback, display);
@@ -290,9 +291,9 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
 
     //Reset display
     //ToDo return to open drain after testing
-    // furi_hal_gpio_write_open_drain(display->pin_reset, false);
+    // furi_hal_gpio_write_open_drain(&gpio_display_reset, false);
     // furi_delay_ms(30);
-    // furi_hal_gpio_write_open_drain(display->pin_reset, true);
+    // furi_hal_gpio_write_open_drain(&gpio_display_reset, true);
     // furi_delay_ms(30);
     furi_hal_gpio_write(&gpio_display_reset, false);
     furi_delay_ms(30);
@@ -312,7 +313,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     display_jd9853_qspi_fill(display, 0); // Fill white
 
-    display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 50%
+    display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 2%
 
     return display;
 }
