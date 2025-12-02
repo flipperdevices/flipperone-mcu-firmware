@@ -105,7 +105,7 @@
 #define TRACKPAD_SETTINGS_0_0                    0x28
 #define TRACKPAD_SETTINGS_0_1                    0x07
 #define TRACKPAD_SETTINGS_1_0                    0x05
-#define TRACKPAD_SETTINGS_1_1                    0x02
+#define TRACKPAD_SETTINGS_1_1                    0x01
 #define X_RESOLUTION_0                           0xE8
 #define X_RESOLUTION_1                           0x03
 #define Y_RESOLUTION_0                           0x20
