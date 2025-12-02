@@ -49,6 +49,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/tca6416a/*.c*"
     "lib/drivers/drv2605l/*.c*"
     "lib/drivers/iqs7211e/*.c*"
+    "lib/drivers/spi_get_frame/*.c*"
     "applications/*.c"
     "applications/services/*.c"
     "applications/main/*.c"

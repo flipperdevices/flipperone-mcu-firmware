@@ -1,3 +1,4 @@
+#include "furi_hal_resources.h"
 #include <furi.h>
 #include <furi_hal_spi.h>
 #include <furi_hal_spi_types_i.h>
@@ -43,10 +44,10 @@ static const FuriHalSpiResources furi_hal_spi_resources[FuriHalSpiIdMax] = {
         .alt_fn = GpioAltFn1Spi,
         .gpio =
             {
-                NULL, // SCK
-                NULL, // MOSI
+                &gpio_cpu_spi_sck, // SCK
+                &gpio_cpu_spi_mosi, // MOSI
                 NULL, // MISO
-                NULL, // CS
+                &gpio_cpu_spi_cs, // CS
             },
     },
 };

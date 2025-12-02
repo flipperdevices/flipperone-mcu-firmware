@@ -56,7 +56,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853QSPI
     //We have packed 8-bit fields, so shift left 1 bit/cycle, 8 times.
     hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EN_BITS | (31u << HSTX_CTRL_CSR_SHIFT_LSB) | (8u << HSTX_CTRL_CSR_N_SHIFTS_LSB) | (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
 
-    gpio_set_function(gpio_display_cs.pin, GPIO_FUNC_HSTX);
+    furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn0Hstx);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI* display) {
@@ -74,7 +74,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI
     //We have packed 32-bit fields, so shift left 4 bit/cycle, 8 times.
     hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EN_BITS | (28u << HSTX_CTRL_CSR_SHIFT_LSB) | (8u << HSTX_CTRL_CSR_N_SHIFTS_LSB) | (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
 
-    gpio_set_function(gpio_display_cs.pin, GPIO_FUNC_SIO);
+    furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn0Hstx);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
@@ -301,12 +301,12 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_delay_ms(30);
 
     //todo set gpio functions add implement furi hal gpio
-    gpio_set_function(gpio_display_scl.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_sda.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_cs.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_d0.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_d1.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_d2.pin, GPIO_FUNC_HSTX);
+    furi_hal_gpio_set_function(&gpio_display_scl, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_sda, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_d0, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_d1, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_d2, GpioAltFn0Hstx);
 
     //Initialization sequence
     display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
