@@ -49,7 +49,7 @@ int32_t test_peref_srv(void* p) {
     free(ws2812_pins);
 
     DisplayJd9853QSPI* display = display_jd9853_qspi_init();
-    display_jd9853_qspi_set_brightness(display, 0);
+    display_jd9853_qspi_set_brightness(display, 10);
     uint8_t index_led = 0;
 
     // SpiGetFrame* spi_get_frame = spi_get_frame_init();
@@ -75,12 +75,12 @@ int32_t test_peref_srv(void* p) {
         // }
 
         // furi_hal_gpio_write(&gpio_pico_led, true);
-         furi_delay_ms(500);
+         furi_delay_ms(100);
         float bus_v = ina219_get_bus_voltage_v(ina219);
         float current_a = ina219_get_current_a(ina219);
         float power_w = ina219_get_power_w(ina219);
         float shunt_mv = ina219_get_shunt_voltage_mv(ina219);
-        FURI_LOG_I("INA219", "Bus Voltage: %.3f V | Shunt Voltage: %.6f mV | Current: %.6f A | Power: %.6f W",
+        FURI_LOG_I("Ina219", "Bus Voltage: %.3f V | Shunt Voltage: %.6f mV | Current: %.6f A | Power: %.6f W",
             bus_v,
             shunt_mv,
             current_a,
@@ -104,17 +104,17 @@ int32_t test_peref_srv(void* p) {
         // display_jd9853_qspi_fill(display, 255); // Fill white
         // furi_delay_ms(500);
 
-        for(size_t i = 0; i < 64; i++) {
-            //furi_hal_gpio_write(&gpio_display_ctrl, true);
-            display_jd9853_qspi_fill(display, i<<2); // Fill white
-            //furi_delay_ms(100); //10FPS
-            //furi_delay_ms(66);  //15FPS
-            //furi_delay_ms(50);  //20FPS
-            // furi_delay_ms(33); //30FPS
-             furi_delay_ms(16); //60FPS
-            //furi_delay_ms(5); //120FPS
-        }
-       furi_delay_ms(200);
+    //     for(size_t i = 0; i < 64; i++) {
+    //         //furi_hal_gpio_write(&gpio_display_ctrl, true);
+    //         display_jd9853_qspi_fill(display, i<<2); // Fill white
+    //         //furi_delay_ms(100); //10FPS
+    //         //furi_delay_ms(66);  //15FPS
+    //         //furi_delay_ms(50);  //20FPS
+    //         // furi_delay_ms(33); //30FPS
+    //          furi_delay_ms(16); //60FPS
+    //         //furi_delay_ms(5); //120FPS
+    //     }
+    //    furi_delay_ms(200);
 
         //     // //random SQUARE
         //     uint16_t x0 = rand() % 257;

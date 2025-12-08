@@ -7,23 +7,20 @@
 
 #define TAG "Ina219"
 
-#define INA219_DEBUG_ENABLE
-
 #ifdef INA219_DEBUG_ENABLE
 #define INA219_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
 #define INA219_DEBUG(...)
 #endif
 
-#define INA219_CONFIG_MODE_SHUNT_BUS Ina219ModeShuntBusCont // Shunt and Bus Voltage, continuous
-
 struct Ina219 {
     const FuriHalI2cBusHandle* i2c_handle;
     uint8_t address;
-    uint16_t calibration_value;
     float current_lsb;
     float power_lsb;
     Ina219Gain v_shunt_max;
+    Ina219Mode mode;
+    Ina219ConfigRegBits config;
 };
 
 static FURI_ALWAYS_INLINE int ina219_write_reg(Ina219* instance, Ina219Reg reg, uint16_t data) {
@@ -66,37 +63,38 @@ static FURI_ALWAYS_INLINE int ina219_read_reg(Ina219* instance, Ina219Reg reg, u
     return ret;
 }
 
-static uint16_t ina219_get_calibration_register_value(Ina219* instance, float shunt_resistance_om, float max_expected_current_a) {
-    // Calibration register value calculation based on INA219 datasheet
-    // Calibration = 0.04096 / (Current_LSB * Rshunt)
-    // Where Current_LSB = MaxExpectedCurrent / 32768
+static void ina219_calculate_gain(Ina219* instance, float shunt_resistance_om, float max_expected_current_a) {
+    // Calculate the maximum shunt voltage based on expected current and shunt resistance
+    float v_shunt = max_expected_current_a * shunt_resistance_om;
+    INA219_DEBUG(TAG, "Calculated shunt voltage: %.6f V", v_shunt);
 
-    uint16_t calibration_value;
-
-    //float vShuntMax = 0.32f; // Max shunt voltage for Gain /8
-    float iMaxPossible, minimumLSB;
-
-   // iMaxPossible = vShuntMax / shunt_resistance_om;
-    float vShunt = max_expected_current_a * shunt_resistance_om; 
-    FURI_LOG_D(TAG, "Calculated shunt voltage: %.6f V", vShunt);
-
-    if(vShunt < 0.04f) {
+    if(v_shunt < 0.04f) {
         INA219_DEBUG(TAG, "Using Gain /1 (40mV)");
         instance->v_shunt_max = Ina219Gain40mV;
-    } else if(vShunt < 0.08f) {
+    } else if(v_shunt < 0.08f) {
         INA219_DEBUG(TAG, "Using Gain /2 (80mV)");
         instance->v_shunt_max = Ina219Gain80mV;
-    } else if(vShunt < 0.16f) {
+    } else if(v_shunt < 0.16f) {
         INA219_DEBUG(TAG, "Using Gain /4 (160mV)");
         instance->v_shunt_max = Ina219Gain160mV;
-    } else {
+    } else if(v_shunt <= 0.32f) {
         INA219_DEBUG(TAG, "Using Gain /8 (320mV)");
         instance->v_shunt_max = Ina219Gain320mV;
+    } else {
+        FURI_LOG_E(TAG, "Calculated shunt voltage %.6f V exceeds maximum for INA219!", v_shunt);
+        furi_crash();
     }
+}
 
-    minimumLSB = max_expected_current_a / (1 << 15);
+static uint16_t ina219_calculate_calibration(Ina219* instance, float shunt_resistance_om, float max_expected_current_a) {
+    // Calibration register value calculation based on INA219 datasheet
+    // Calibration = 0.04096 / (Current_LSB * Rshunt)
+    // Where Current_LSB = MaxExpectedCurrent / 2^15
 
-    instance->current_lsb = (uint16_t)(minimumLSB * 100000000);
+    uint16_t calibration_value;
+    float minimum_lbs = max_expected_current_a / (1 << 15);
+
+    instance->current_lsb = (uint16_t)(minimum_lbs * 100000000);
     instance->current_lsb /= 100000000;
     instance->current_lsb /= 0.0001;
     instance->current_lsb = ceilf(instance->current_lsb);
@@ -105,9 +103,22 @@ static uint16_t ina219_get_calibration_register_value(Ina219* instance, float sh
     instance->power_lsb = instance->current_lsb * 20;
 
     calibration_value = (uint16_t)((0.04096) / (instance->current_lsb * shunt_resistance_om));
-    INA219_DEBUG(TAG, "current_lsb value: %.8f, calibration: %u Power multiplier: %.2f mW", instance->current_lsb, calibration_value, instance->power_lsb);
+    INA219_DEBUG(TAG, "current_lsb value: %.8f, calibration: %u power multiplier: %.6f W", instance->current_lsb, calibration_value, instance->power_lsb);
 
     return (uint16_t)calibration_value;
+}
+
+void ina219_set_config(Ina219* instance, Ina219Range range, Ina219BusRes bus_res, Ina219ShuntRes shunt_res, Ina219Mode mode) {
+    furi_check(instance);
+    Ina219ConfigRegBits config = {0};
+
+    config.brng = range;
+    config.pg = instance->v_shunt_max;
+    config.badc = bus_res;
+    config.sadc = shunt_res;
+    config.mode = mode;
+    instance->mode = mode;
+    ina219_write_reg(instance, Ina219RegConfig, *(uint16_t*)&config);
 }
 
 Ina219* ina219_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, float shunt_resistance_om, float max_expected_current_a) {
@@ -121,17 +132,19 @@ Ina219* ina219_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, floa
 
     if(ret) {
         FURI_LOG_I(TAG, "INA219 device ready at address 0x%02X", instance->address);
-        instance->calibration_value = ina219_get_calibration_register_value(instance, shunt_resistance_om, max_expected_current_a);
-        ina219_write_reg(instance, Ina219RegCalibration, instance->calibration_value);
-        INA219_DEBUG(TAG, "Calibration value set to: 0x%04X", instance->calibration_value);
+        ina219_calculate_gain(instance, shunt_resistance_om, max_expected_current_a);
+
+        uint16_t calibration_value = ina219_calculate_calibration(instance, shunt_resistance_om, max_expected_current_a);
+        ina219_write_reg(instance, Ina219RegCalibration, calibration_value);
+        INA219_DEBUG(TAG, "Calibration value set to: 0x%04X", calibration_value);
 
         // Configure the INA219 with default settings
         Ina219ConfigRegBits config = {0};
-        config.brng = Ina219Range16V; // 16V range
-        config.pg = instance->v_shunt_max; // Set gain based on calculated max shunt voltage
-        config.badc = 0b0011; // 12-bit, 532us
-        config.sadc = 0b0011; // 12-bit, 532us
-        config.mode = INA219_CONFIG_MODE_SHUNT_BUS;
+        config.brng = Ina219Range32V;
+        config.pg = instance->v_shunt_max;
+        config.badc = Ina219BusRes12bit;
+        config.sadc = Ina219ShuntRes12bit8S4260ms;
+        config.mode = Ina219ModeShuntBusCont;
         ina219_write_reg(instance, Ina219RegConfig, *(uint16_t*)&config);
 
     } else {
@@ -150,12 +163,12 @@ void ina219_deinit(Ina219* instance) {
 
 void ina219_set_power_down(Ina219* instance, bool power_down) {
     furi_check(instance);
-    Ina219ConfigRegBits config;
+    Ina219ConfigRegBits config = {0};
     ina219_read_reg(instance, Ina219RegConfig, (uint16_t*)&config);
     if(power_down) {
         config.mode = Ina219ModePowerDown;
     } else {
-        config.mode = INA219_CONFIG_MODE_SHUNT_BUS;
+        config.mode = instance->mode;
     }
     ina219_write_reg(instance, Ina219RegConfig, *(uint16_t*)&config);
 }
@@ -169,11 +182,12 @@ float ina219_get_power_w(Ina219* instance) {
 
 float ina219_get_bus_voltage_v(Ina219* instance) {
     furi_check(instance);
-    uint16_t raw_bus_voltage = 0;
-    ina219_read_reg(instance, Ina219RegBusVoltage, &raw_bus_voltage);
-    // Shift to remove status bits
-    raw_bus_voltage >>= 3;
-    return raw_bus_voltage * 0.004f; // LSB = 4mV
+    Ina219BusVoltageRegBits raw_bus_voltage = {0};
+    ina219_read_reg(instance, Ina219RegBusVoltage, (uint16_t*)&raw_bus_voltage);
+    if(raw_bus_voltage.ovf) {
+        FURI_LOG_W(TAG, "Bus voltage overflow detected!");
+    }
+    return raw_bus_voltage.bus_voltage * 0.004f; // LSB = 4mV
 }
 
 float ina219_get_shunt_voltage_mv(Ina219* instance) {

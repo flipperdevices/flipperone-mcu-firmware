@@ -219,6 +219,7 @@ void display_jd9853_qspi_on_sleep_exit(void) {
 
 void display_jd9853_qspi_set_brightness(DisplayJd9853QSPI* display, uint8_t brightness) {
     furi_check(display);
+    furi_check(brightness <= 100);
     display->backlight = brightness;
     if(!display->backlight) {
         if(display->backlight_pwm) {

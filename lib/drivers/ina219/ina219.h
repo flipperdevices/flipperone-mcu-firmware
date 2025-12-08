@@ -59,6 +59,7 @@ extern "C" {
 
 Ina219* ina219_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, float shunt_resistance_om, float max_expected_current_a);
 void ina219_deinit(Ina219* instance);
+void ina219_set_config(Ina219* instance, Ina219Range range, Ina219BusRes bus_res, Ina219ShuntRes shunt_res, Ina219Mode mode);
 void ina219_set_power_down(Ina219* instance, bool power_down);
 float ina219_get_power_w(Ina219* instance);
 float ina219_get_bus_voltage_v(Ina219* instance);
