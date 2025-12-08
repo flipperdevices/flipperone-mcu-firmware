@@ -1,6 +1,4 @@
 #include "test_peref.h"
-#include "core/kernel.h"
-#include "furi_hal_spi_types.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -17,6 +15,7 @@
 #include <furi_hal_i2c_config.h>
 #include <drivers/iqs7211e/iqs7211e.h>
 #include <drivers/spi_get_frame/spi_get_frame.h>
+#include <drivers/ina219/ina219.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -50,24 +49,44 @@ int32_t test_peref_srv(void* p) {
     free(ws2812_pins);
 
     DisplayJd9853QSPI* display = display_jd9853_qspi_init();
+    display_jd9853_qspi_set_brightness(display, 0);
     uint8_t index_led = 0;
 
-    SpiGetFrame* spi_get_frame = spi_get_frame_init();
-    spi_get_frame_set_callback_rx(spi_get_frame, rx_ok, NULL);
+    // SpiGetFrame* spi_get_frame = spi_get_frame_init();
+    // spi_get_frame_set_callback_rx(spi_get_frame, rx_ok, NULL);
+
+    Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_internal, INA219_ADDRESS, 0.1f, 0.4f); // 0.1 Ohm shunt, 2A max
 
     while(true) {
 
 
-        if(input_ok) {
-            // for(size_t i = 0; i < input_size; i++) {
-            //     FURI_LOG_I("SPI1", "Received byte %d: %c 0x%02X", i, input_data_ptr[i], input_data_ptr[i]);
-            // }
-            FURI_LOG_I("SPI1", "Received byte %c%c%c%c%c%c%c%c%c", input_data_ptr[0], input_data_ptr[1], input_data_ptr[2], input_data_ptr[3], input_data_ptr[4], input_data_ptr[5], input_data_ptr[6], input_data_ptr[7], input_data_ptr[8]);
-            input_ok = 0;
-        }
+        // if(input_ok) {
+        //     FURI_LOG_RAW_I("size = %d || data:", input_size);
+        //     for(size_t i = 0; i < 32; i+=2) {
+        //         FURI_LOG_RAW_I( " %02X%02X", input_data_ptr[i+1], input_data_ptr[i]);
+        //     }
+        //     FURI_LOG_RAW_I( "   ||   ");
+        //     for(size_t i = input_size-32; i < input_size; i+=2) {
+        //         FURI_LOG_RAW_I( " %02X%02X", input_data_ptr[i+1], input_data_ptr[i]);
+        //     }
+        //      FURI_LOG_RAW_I( "\r\n");
+        //     //FURI_LOG_I("SPI1", "Received byte %c%c%c%c%c%c%c%c%c", input_data_ptr[0], input_data_ptr[1], input_data_ptr[2], input_data_ptr[3], input_data_ptr[4], input_data_ptr[5], input_data_ptr[6], input_data_ptr[7], input_data_ptr[8]);
+        //     input_ok = 0;
+        // }
 
         // furi_hal_gpio_write(&gpio_pico_led, true);
-         furi_delay_ms(10);
+         furi_delay_ms(500);
+        float bus_v = ina219_get_bus_voltage_v(ina219);
+        float current_a = ina219_get_current_a(ina219);
+        float power_w = ina219_get_power_w(ina219);
+        float shunt_mv = ina219_get_shunt_voltage_mv(ina219);
+        FURI_LOG_I("INA219", "Bus Voltage: %.3f V | Shunt Voltage: %.6f mV | Current: %.6f A | Power: %.6f W",
+            bus_v,
+            shunt_mv,
+            current_a,
+            power_w);
+
+
         // furi_hal_gpio_write(&gpio_pico_led, false);
         // furi_delay_ms(10);
 
@@ -85,17 +104,17 @@ int32_t test_peref_srv(void* p) {
         // display_jd9853_qspi_fill(display, 255); // Fill white
         // furi_delay_ms(500);
 
-        // for(size_t i = 0; i < 64; i++) {
-        //     //furi_hal_gpio_write(&gpio_display_ctrl, true);
-        //     display_jd9853_qspi_fill(display, i<<2); // Fill white
-        //     //furi_delay_ms(100); //10FPS
-        //     //furi_delay_ms(66);  //15FPS
-        //     //furi_delay_ms(50);  //20FPS
-        //     // furi_delay_ms(33); //30FPS
-        //      furi_delay_ms(16); //60FPS
-        //     //furi_delay_ms(5); //120FPS
-        // }
-       // furi_delay_ms(200);
+        for(size_t i = 0; i < 64; i++) {
+            //furi_hal_gpio_write(&gpio_display_ctrl, true);
+            display_jd9853_qspi_fill(display, i<<2); // Fill white
+            //furi_delay_ms(100); //10FPS
+            //furi_delay_ms(66);  //15FPS
+            //furi_delay_ms(50);  //20FPS
+            // furi_delay_ms(33); //30FPS
+             furi_delay_ms(16); //60FPS
+            //furi_delay_ms(5); //120FPS
+        }
+       furi_delay_ms(200);
 
         //     // //random SQUARE
         //     uint16_t x0 = rand() % 257;
