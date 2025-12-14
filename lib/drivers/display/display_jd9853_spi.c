@@ -1,16 +1,17 @@
 #include "display_jd9853_spi.h"
 #include "display_jd9853_reg.h"
 
+#include <furi.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
 #include <furi_hal_pwm.h>
 #include <furi_hal_spi.h>
 #include <furi_hal_spi_types_i.h>
 
-#define DISPLAY_JD9853_BAUDRATE          (12 * 1000 * 1000)
+#define DISPLAY_JD9853_BAUDRATE          (32 * 1000 * 1000)
 #define DISPLAY_JD9853_BACKLIGHT_BIT     8 //8-bit PWM for backlight
 #define DISPLAY_JD9853_BACKLIGHT_FREQ_HZ 40000 //25kHz PWM for backlight
-
+#define DISPLAY_JD9853_TE_FLAG           (1 << 0)
 struct DisplayJd9853SPI {
     FuriHalSpiHandle* spi_handle;
 
@@ -19,6 +20,7 @@ struct DisplayJd9853SPI {
 
     FuriHalPwm* backlight_pwm;
     uint8_t backlight;
+    FuriEventFlag* te_flag;
 };
 
 static FURI_ALWAYS_INLINE void display_jd9853_spi_write_reg(DisplayJd9853SPI* display, DisplayJd9853Reg reg) {
@@ -54,10 +56,21 @@ static FURI_ALWAYS_INLINE void display_jd9853_spi_set_window(DisplayJd9853SPI* d
     display_jd9853_spi_write_data(display, paset_data, sizeof(paset_data));
 }
 
+static void display_jd9853_spi_te_callback(void* ctx) {
+    DisplayJd9853SPI* display = (DisplayJd9853SPI*)ctx;
+    furi_event_flag_set(display->te_flag, DISPLAY_JD9853_TE_FLAG);
+}
+
 FURI_ALWAYS_INLINE void
     display_jd9853_spi_write_buffer_x_y(DisplayJd9853SPI* display, uint16_t x, uint16_t y, uint16_t w, uint16_t h, const uint8_t* buffer, size_t size) {
     display_jd9853_spi_set_window(display, JD9853_OFF_X0 + x, JD9853_OFF_Y0 + y, JD9853_OFF_X1 + x + (w / 3) - 1, JD9853_OFF_Y1 + y + h - 1);
     display_jd9853_spi_write_reg(display, ramwr);
+
+    // wait for te high
+    furi_hal_gpio_enable_int_callback(&gpio_display_te);
+    furi_event_flag_wait(display->te_flag, DISPLAY_JD9853_TE_FLAG, FuriFlagWaitAll, FuriWaitForever);
+    furi_hal_gpio_disable_int_callback(&gpio_display_te);
+
     display_jd9853_spi_write_data(display, (uint8_t*)buffer, size);
 }
 
@@ -86,28 +99,27 @@ DisplayJd9853SPI* display_jd9853_spi_init(void) {
     display->spi_handle->in_use = true;
     display->pin_dc = &gpio_display_dc;
     display->pin_reset = &gpio_display_reset;
+    display->te_flag = furi_event_flag_alloc();
 
     furi_hal_spi_init(display->spi_handle, DISPLAY_JD9853_BAUDRATE, FuriHalSpiTransferMode0, FuriHalSpiTransferBitOrderMsbFirst, FuriHalSpiModeMaster);
 
-    //Gpio init
+    // Gpio init
     furi_hal_gpio_init_simple(display->pin_dc, GpioModeOutputPushPull);
-    //furi_hal_gpio_init_simple(display->pin_reset, GpioModeOutputOpenDrain);
     furi_hal_gpio_init_simple(display->pin_reset, GpioModeOutputPushPull);
     furi_hal_gpio_write(display->pin_dc, true);
+    furi_hal_gpio_init_simple(&gpio_display_te, GpioModeInput);
 
-    //Reset display
-    //ToDo return to open drain after testing
-    // furi_hal_gpio_write_open_drain(display->pin_reset, false);
-    // furi_delay_ms(30);
-    // furi_hal_gpio_write_open_drain(display->pin_reset, true);
-    // furi_delay_ms(30);
+    furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionRise, display_jd9853_spi_te_callback, display);
+    furi_hal_gpio_disable_int_callback(&gpio_display_te);
+
+    // Reset display
     furi_hal_gpio_write(display->pin_reset, false);
     furi_delay_ms(30);
     furi_hal_gpio_write(display->pin_reset, true);
     furi_delay_ms(30);
 
-    //Initialization sequence
-    //display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
+    // Initialization sequence
+    // display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
     display_jd9853_spi_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
 
     display_jd9853_spi_backlight_set_brightness(display, 2); // Set backlight to 50%

@@ -4,7 +4,7 @@
 #define JD9853_WIDTH        (258u)
 #define JD9853_HEIGHT       (144u)
 #define JD9853_OFF_X0       (77u)
-#define JD9853_OFF_Y0       (320u - JD9853_HEIGHT) // was 0 without mirroring and rotation
+#define JD9853_OFF_Y0       (0) // was 0 without mirroring and rotation
 #define JD9853_OFF_X1       (JD9853_OFF_X0 + (JD9853_WIDTH / 3) - 1)
 #define JD9853_OFF_Y1       (JD9853_OFF_Y0 + JD9853_HEIGHT - 1)
 
@@ -192,7 +192,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_black[] = {
         5, 0, 0x2B, JD9853_OFF_Y0 >> 8, JD9853_OFF_Y0 & 0xff,             // RASET: row addresses
             JD9853_OFF_Y1 >> 8, JD9853_OFF_Y1 & 0xff,
         
-        2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
+        2, 0, 0x36, 0b11011000,                 // Set MADCTL: row then column, refresh is bottom to top ????
         1, 20, 0x11,                            // Exit sleep mode
         1, 2, 0x29,                             // Main screen turn on
         0,                                      // Terminate list
