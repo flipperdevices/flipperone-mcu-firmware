@@ -1,0 +1,21 @@
+set(BASE_TARGET "f100")
+set(BASE_TARGET_PATH "${CMAKE_SOURCE_DIR}/targets/${BASE_TARGET}")
+
+add_subdirectory(${BASE_TARGET_PATH} target_${BASE_TARGET})
+
+file(GLOB SOURCES_TO_REMOVE
+    "${BASE_TARGET_PATH}/furi_hal/furi_hal.c"
+    "${BASE_TARGET_PATH}/furi_hal/furi_hal_resources_pins.c"
+)
+
+list(REMOVE_ITEM TARGET_SOURCES ${SOURCES_TO_REMOVE})
+
+file(GLOB_RECURSE ADDITIONAL_SOURCES
+    "${CMAKE_CURRENT_LIST_DIR}/furi_hal/furi_hal.c"
+    "${CMAKE_CURRENT_LIST_DIR}/furi_hal/furi_hal_resources_pins.c"
+)
+
+list(APPEND TARGET_SOURCES ${ADDITIONAL_SOURCES})
+
+set(TARGET_SOURCES ${TARGET_SOURCES} PARENT_SCOPE)
+set(TARGET_INCLUDES ${TARGET_INCLUDES} PARENT_SCOPE)

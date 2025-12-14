@@ -1,5 +1,3 @@
-cmake_minimum_required(VERSION 3.13)
-
 file(GLOB_RECURSE TARGET_LIST_SOURCES
     src/*.c*
     furi_hal/*.c*

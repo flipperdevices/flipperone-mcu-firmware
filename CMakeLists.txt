@@ -34,7 +34,7 @@ project(one-rp2350-control C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-set(TARGET_NAME f100)
+set(TARGET_NAME f110)
 add_subdirectory("targets/${TARGET_NAME}")
 
 message( "Target sources: ${TARGET_SOURCES}")
@@ -49,7 +49,7 @@ file(GLOB_RECURSE SOURCES
     "app/theme/*.c"
     "app/fs/*.c"
     ${TARGET_SOURCES}
-    "lib/drivers/display/*.c*"  
+    "lib/drivers/display/*.c*"
     "lib/drivers/tps62868x/*.c*"
     "lib/drivers/tca6416a/*.c*"
     "lib/drivers/drv2605l/*.c*"
@@ -82,6 +82,7 @@ pico_enable_stdio_usb(one-rp2350-control 1)
 
 # Add the standard include files to the build
 target_include_directories(one-rp2350-control PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/applications
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/lib
