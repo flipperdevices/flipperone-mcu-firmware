@@ -19,25 +19,12 @@ const GpioPin gpio_display_d1 = {.pin = 15};
 const GpioPin gpio_display_d2 = {.pin = 14};
 const GpioPin gpio_display_te = {.pin = 5};
 
-// const GpioPin gpio_key1 = {.pin = 15};
-// const GpioPin gpio_key2 = {.pin = 14};
-// const GpioPin gpio_key3 = {.pin = 8};
-// const GpioPin gpio_key4 = {.pin = 7};
-// const GpioPin gpio_key5 = {.pin = 11};
-// const GpioPin gpio_key_sw = {.pin = 10};
-// const GpioPin gpio_key_up = {.pin = 9};
-// const GpioPin gpio_key_left = {.pin = 16};
-// const GpioPin gpio_key_center = {.pin = 6};
-// const GpioPin gpio_key_right = {.pin = 5};
-// const GpioPin gpio_key_down = {.pin = 4};
-// const GpioPin gpio_key_back = {.pin = 22};
+const GpioPin gpio_cpu_spi_cs = {.pin = 13};
+const GpioPin gpio_cpu_spi_sck = {.pin = 26};
+const GpioPin gpio_cpu_spi_miso = {.pin = 27}; //DC
+const GpioPin gpio_cpu_spi_mosi = {.pin = 28};
 
-//const GpioPin gpio_normal_black = {.pin = 21};
-// const GpioPin gpio_bat_charging = {.pin = 24};
-// const GpioPin gpio_bat_charge_adc = {.pin = 29};
-// const GpioPin gpio_pico_first_adc = {.pin = 26};
-
-const GpioPin gpio_pico_led = {.pin = 25};
+const GpioPin gpio_pico_led = {.pin = -1};
 const GpioPin gpio_status_led_line1 = {.pin = 2};
 // const GpioPin gpio_status_led_line2 = {.pin = 2};
 // const GpioPin gpio_status_led_line3 = {.pin = 2};
@@ -47,6 +34,7 @@ const GpioPin gpio_i2c0_scl = {.pin = 21};
 const GpioPin gpio_i2c1_sda = {.pin = 22};
 const GpioPin gpio_i2c1_scl = {.pin = 23};
 
+const GpioPin gpio_touchpad_rdy = {.pin = 11};
 const GpioPin gpio_expander_reset = {.pin = 10};
 const GpioPin gpio_expander_int = {.pin = 9};
 

@@ -5,10 +5,9 @@
 #include <furi_hal_resources.h>
 #include <furi_hal_pwm.h>
 
-#include "hardware/structs/clocks.h"
-#include "hardware/structs/hstx_ctrl.h"
-#include "hardware/structs/hstx_fifo.h"
-#include <hardware/structs/io_bank0.h>
+#include <hardware/structs/clocks.h>
+#include <hardware/structs/hstx_ctrl.h>
+#include <hardware/structs/hstx_fifo.h>
 #include <pico/types.h>
 #include <hardware/dma.h>
 
@@ -57,7 +56,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853QSPI
     //We have packed 8-bit fields, so shift left 1 bit/cycle, 8 times.
     hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EN_BITS | (31u << HSTX_CTRL_CSR_SHIFT_LSB) | (8u << HSTX_CTRL_CSR_N_SHIFTS_LSB) | (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
 
-    gpio_set_function(gpio_display_cs.pin, GPIO_FUNC_HSTX);
+    furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn0Hstx);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI* display) {
@@ -75,7 +74,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI
     //We have packed 32-bit fields, so shift left 4 bit/cycle, 8 times.
     hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EN_BITS | (28u << HSTX_CTRL_CSR_SHIFT_LSB) | (8u << HSTX_CTRL_CSR_N_SHIFTS_LSB) | (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
 
-    gpio_set_function(gpio_display_cs.pin, GPIO_FUNC_SIO);
+    furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn0Hstx);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
@@ -128,6 +127,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* disp
     for(size_t i = 0; i < size; i++) {
         display_jd9853_hstx_put_word(data[i]);
     }
+    display_jd9853_cs_up();
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* config) {
@@ -217,8 +217,9 @@ void display_jd9853_qspi_on_sleep_exit(void) {
     display_jd9853_hstx_clock_init();
 }
 
-void display_jd9853_qspi_backlight_set_brightness(DisplayJd9853QSPI* display, uint8_t brightness) {
+void display_jd9853_qspi_set_brightness(DisplayJd9853QSPI* display, uint8_t brightness) {
     furi_check(display);
+    furi_check(brightness <= 100);
     display->backlight = brightness;
     if(!display->backlight) {
         if(display->backlight_pwm) {
@@ -245,7 +246,7 @@ void display_jd9853_qspi_backlight_set_brightness(DisplayJd9853QSPI* display, ui
     }
 }
 
-uint8_t display_jd9853_qspi_backlight_get_brightness(DisplayJd9853QSPI* display) {
+uint8_t display_jd9853_qspi_get_brightness(DisplayJd9853QSPI* display) {
     furi_check(display);
     return display->backlight;
 }
@@ -281,7 +282,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display_jd9853_hstx_clock_init();
 
     //Gpio init
-    //furi_hal_gpio_init_simple(display->pin_reset, GpioModeOutputOpenDrain);
+    //furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputOpenDrain);
     furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputPushPull);
     furi_hal_gpio_init_simple(&gpio_display_te, GpioModeInput);
     furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionRise, display_jd9853_te_callback, display);
@@ -291,9 +292,9 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
 
     //Reset display
     //ToDo return to open drain after testing
-    // furi_hal_gpio_write_open_drain(display->pin_reset, false);
+    // furi_hal_gpio_write_open_drain(&gpio_display_reset, false);
     // furi_delay_ms(30);
-    // furi_hal_gpio_write_open_drain(display->pin_reset, true);
+    // furi_hal_gpio_write_open_drain(&gpio_display_reset, true);
     // furi_delay_ms(30);
     furi_hal_gpio_write(&gpio_display_reset, false);
     furi_delay_ms(30);
@@ -301,19 +302,19 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_delay_ms(30);
 
     //todo set gpio functions add implement furi hal gpio
-    gpio_set_function(gpio_display_scl.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_sda.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_cs.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_d0.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_d1.pin, GPIO_FUNC_HSTX);
-    gpio_set_function(gpio_display_d2.pin, GPIO_FUNC_HSTX);
+    furi_hal_gpio_set_function(&gpio_display_scl, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_sda, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_d0, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_d1, GpioAltFn0Hstx);
+    furi_hal_gpio_set_function(&gpio_display_d2, GpioAltFn0Hstx);
 
     //Initialization sequence
     display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
     display_jd9853_qspi_fill(display, 0); // Fill white
 
-    display_jd9853_qspi_backlight_set_brightness(display, 2); // Set backlight to 50%
+    display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 2%
 
     return display;
 }
@@ -322,7 +323,7 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     furi_check(display);
 
     furi_hal_gpio_remove_int_callback(&gpio_display_te);
-    display_jd9853_load_config(display, st7789_deinit_seq);
+    display_jd9853_load_config(display, jd9853_deinit_seq);
     furi_hal_gpio_init_ex(&gpio_display_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_sda, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);

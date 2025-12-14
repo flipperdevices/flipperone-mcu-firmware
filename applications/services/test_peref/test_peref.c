@@ -13,21 +13,23 @@
 #include <furi_hal_power.h>
 #include <drivers/drv2605l/drv2605l.h>
 #include <furi_hal_i2c_config.h>
+#include <drivers/iqs7211e/iqs7211e.h>
+#include <drivers/spi_get_frame/spi_get_frame.h>
+#include <drivers/ina219/ina219.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #define tag "TestPerefSrv"
 
-uint8_t input_temp = 0;
+uint8_t input_ok = 0;
+uint8_t* input_data_ptr = 0;
+size_t input_size = 0;
 
-// static void input_callback (void* ctx) {
-//     Tca6416a* instance = (Tca6416a*)ctx;
-//     input_temp = 1;
-// }
-
-// static void key3_callback(void* ctx) {
-//     //printf("Key1 pressed!");
-//     furi_hal_gpio_write(&gpio_pico_led, true);
-//     furi_hal_gpio_write(&gpio_pico_led, false);
-// }
+static void __isr __not_in_flash_func(rx_ok)(uint8_t* data, size_t size, void* context) {
+    input_data_ptr = data;
+    input_size = size;
+    input_ok = 1;
+}
 
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
@@ -39,10 +41,6 @@ int32_t test_peref_srv(void* p) {
     FURI_LOG_W("tag", "Warning");
     FURI_LOG_E("tag", "Error");
 
-    //furi_hal_gpio_init_simple(&gpio_key_right, GpioModeOutputPushPull);
-    // furi_hal_gpio_init_simple(&gpio_key3, GpioModeInput);
-    // furi_hal_gpio_add_int_callback(&gpio_key3, GpioConditionFall, key3_callback, NULL);
-
     uint8_t duty = 0;
 
     GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 1);
@@ -51,56 +49,72 @@ int32_t test_peref_srv(void* p) {
     free(ws2812_pins);
 
     DisplayJd9853QSPI* display = display_jd9853_qspi_init();
-    furi_delay_ms(500);
-    // display_jd9853_qspi_deinit(display);
-    // furi_delay_ms(500);
-    // display = display_jd9853_qspi_init();
-
-    // display_jd9853_qspi_backlight_set_brightness(display, 1);
-    // furi_delay_ms(500);
-    // display_jd9853_qspi_backlight_set_brightness(display, 50);
-    // furi_delay_ms(500);
-    // display_jd9853_qspi_backlight_set_brightness(display, 100);
-    // furi_delay_ms(500);
-    // display_jd9853_qspi_backlight_set_brightness(display, 1);
-    // furi_delay_ms(500);
-    // display_jd9853_qspi_backlight_set_brightness(display, 10);
+    display_jd9853_qspi_set_brightness(display, 10);
     uint8_t index_led = 0;
 
-    //Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
-    //drv2605l_test_all_effects(drv2605l);
+    // SpiGetFrame* spi_get_frame = spi_get_frame_init();
+    // spi_get_frame_set_callback_rx(spi_get_frame, rx_ok, NULL);
+
+    Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_internal, INA219_ADDRESS, 0.1f, 0.4f); // 0.1 Ohm shunt, 2A max
 
     while(true) {
+
+
+        // if(input_ok) {
+        //     FURI_LOG_RAW_I("size = %d || data:", input_size);
+        //     for(size_t i = 0; i < 32; i+=2) {
+        //         FURI_LOG_RAW_I( " %02X%02X", input_data_ptr[i+1], input_data_ptr[i]);
+        //     }
+        //     FURI_LOG_RAW_I( "   ||   ");
+        //     for(size_t i = input_size-32; i < input_size; i+=2) {
+        //         FURI_LOG_RAW_I( " %02X%02X", input_data_ptr[i+1], input_data_ptr[i]);
+        //     }
+        //      FURI_LOG_RAW_I( "\r\n");
+        //     //FURI_LOG_I("SPI1", "Received byte %c%c%c%c%c%c%c%c%c", input_data_ptr[0], input_data_ptr[1], input_data_ptr[2], input_data_ptr[3], input_data_ptr[4], input_data_ptr[5], input_data_ptr[6], input_data_ptr[7], input_data_ptr[8]);
+        //     input_ok = 0;
+        // }
+
         // furi_hal_gpio_write(&gpio_pico_led, true);
-        // furi_delay_ms(10);
+         furi_delay_ms(100);
+        float bus_v = ina219_get_bus_voltage_v(ina219);
+        float current_a = ina219_get_current_a(ina219);
+        float power_w = ina219_get_power_w(ina219);
+        float shunt_mv = ina219_get_shunt_voltage_mv(ina219);
+        FURI_LOG_I("Ina219", "Bus Voltage: %.3f V | Shunt Voltage: %.6f mV | Current: %.6f A | Power: %.6f W",
+            bus_v,
+            shunt_mv,
+            current_a,
+            power_w);
+
+
         // furi_hal_gpio_write(&gpio_pico_led, false);
         // furi_delay_ms(10);
 
-        //bw display test
-        display_jd9853_qspi_fill(display, 0); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 50); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 100); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 150); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 200); // Fill white
-        furi_delay_ms(200);
-        display_jd9853_qspi_fill(display, 255); // Fill white
-        furi_delay_ms(500);
-
-        // for(size_t i = 0; i < 64; i++) {
-        //     //furi_hal_gpio_write(&gpio_display_ctrl, true);
-        //     display_jd9853_qspi_fill(display, i<<2); // Fill white
-        //     //furi_delay_ms(100); //10FPS
-        //     //furi_delay_ms(66);  //15FPS
-        //     //furi_delay_ms(50);  //20FPS
-        //     // furi_delay_ms(33); //30FPS
-        //     // furi_delay_ms(16); //60FPS
-        //      furi_delay_ms(5); //120FPS
-        // }
+        // //bw display test
+        // display_jd9853_qspi_fill(display, 0); // Fill white
         // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 50); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 100); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 150); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 200); // Fill white
+        // furi_delay_ms(200);
+        // display_jd9853_qspi_fill(display, 255); // Fill white
+        // furi_delay_ms(500);
+
+    //     for(size_t i = 0; i < 64; i++) {
+    //         //furi_hal_gpio_write(&gpio_display_ctrl, true);
+    //         display_jd9853_qspi_fill(display, i<<2); // Fill white
+    //         //furi_delay_ms(100); //10FPS
+    //         //furi_delay_ms(66);  //15FPS
+    //         //furi_delay_ms(50);  //20FPS
+    //         // furi_delay_ms(33); //30FPS
+    //          furi_delay_ms(16); //60FPS
+    //         //furi_delay_ms(5); //120FPS
+    //     }
+    //    furi_delay_ms(200);
 
         //     // //random SQUARE
         //     uint16_t x0 = rand() % 257;

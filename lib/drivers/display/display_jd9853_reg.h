@@ -1,6 +1,5 @@
 #pragma once
 /* clang-format off */
-
 #define JD9853_WIDTH        (258u)
 #define JD9853_HEIGHT       (144u)
 #define JD9853_OFF_X0       (77u)
@@ -13,6 +12,7 @@
 #define JD9853_QSPI_CMD_4_LINE_RAMWR (0x00111000u) // Quad SPI data 0x2C
 
 //https://github.com/flipperdevices/one-rp2350-control/blob/main/docs/GWT-2.39-256144-AWMN-04-FS-1.1.pdf
+
 typedef enum {
     nop = 0x00, /* No Operation */
     swreset = 0x01, /* Software Reset */
@@ -55,22 +55,7 @@ typedef enum {
     rdid3 = 0xDC, /* Read ID3 Value */
 } DisplayJd9853Reg;
 
-static const uint8_t st7789_init_seq[] = {
-        1, 20, 0x01,                        // Software reset
-        1, 10, 0x11,                        // Exit sleep mode
-        2, 2, 0x3a, 0x55,                   // Set colour mode to 16 bit
-        2, 0, 0x36, 0x00,                   // Set MADCTL: row then column, refresh is bottom to top ????
-        5, 0, 0x2a, 0x00, 0x00,             // CASET: column addresses
-            JD9853_WIDTH >> 8, JD9853_WIDTH & 0xff,
-        5, 0, 0x2b, 0x00, 0x00,             // RASET: row addresses
-            JD9853_HEIGHT >> 8, JD9853_HEIGHT & 0xff,
-        1, 2, 0x21,                         // Inversion on, then 10 ms delay (supposedly a hack?)
-        1, 2, 0x13,                         // Normal display on, then 10 ms delay
-        1, 2, 0x29,                         // Main screen turn on, then wait 500 ms
-        0                                   // Terminate list
-};
-
-static const uint8_t st7789_deinit_seq[] = {
+static const uint8_t jd9853_deinit_seq[] = {
         1, 20, 0x28,                        // Display off
         1, 20, 0x10,                        // Enter sleep mode
         0                                   // Terminate list

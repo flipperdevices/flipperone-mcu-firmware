@@ -140,9 +140,9 @@ int32_t input_srv(void* p) {
             } else if(pin_states[i].state != state) {
                 pin_states[i].state = state;
 
-                if(state) {
-                    drv2605l_trigger_set_effect_and_play(drv2605l, Drv2605lEffectSoftBump_100);
-                }
+                // if(state) {
+                //     drv2605l_trigger_set_effect_and_play(drv2605l, Drv2605lEffectSoftBump_100);
+                // }
                
                 // Common state info
                 InputEvent event;

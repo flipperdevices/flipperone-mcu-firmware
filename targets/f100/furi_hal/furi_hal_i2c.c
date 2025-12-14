@@ -36,6 +36,8 @@ void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle) {
 }
 
 void furi_hal_i2c_release(const FuriHalI2cBusHandle* handle) {
+    //TODO: TIME IS NEEDED TO COMPLETE THE TRANSACTION, Something needs to be done about this
+    furi_delay_us(10);
     // Ensure that current handle is our handle
     furi_check(handle->bus->current_handle == handle);
     // Deactivate handle
@@ -55,10 +57,22 @@ int furi_hal_i2c_master_tx_blocking(const FuriHalI2cBusHandle* handle, uint8_t d
     return i2c_write_blocking_until(handle->bus->i2c, device_address, tx_buffer, size, false, make_timeout_time_us(timeout_us));
 }
 
+int furi_hal_i2c_master_tx_blocking_nostop(const FuriHalI2cBusHandle* handle, uint8_t device_address, const uint8_t* tx_buffer, size_t size, uint32_t timeout_us) {
+    furi_check(handle);
+
+    return i2c_write_blocking_until(handle->bus->i2c, device_address, tx_buffer, size, true, make_timeout_time_us(timeout_us));
+}
+
 int furi_hal_i2c_master_rx_blocking(const FuriHalI2cBusHandle* handle, uint8_t device_address, uint8_t* rx_buffer, size_t size, uint32_t timeout_us) {
     furi_check(handle);
 
     return i2c_read_blocking_until(handle->bus->i2c, device_address, rx_buffer, size, false, make_timeout_time_us(timeout_us));
+}
+
+int furi_hal_i2c_master_rx_blocking_nostop(const FuriHalI2cBusHandle* handle, uint8_t device_address, uint8_t* rx_buffer, size_t size, uint32_t timeout_us) {
+    furi_check(handle);
+
+    return i2c_read_blocking_until(handle->bus->i2c, device_address, rx_buffer, size, true, make_timeout_time_us(timeout_us));
 }
 
 int furi_hal_i2c_master_trx_blocking(

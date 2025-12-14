@@ -85,6 +85,10 @@ extern const GpioPin gpio_key_back;
 // extern const GpioPin gpio_bat_charging;
 // extern const GpioPin gpio_bat_charge_adc;
 // extern const GpioPin gpio_pico_first_adc;
+extern const GpioPin gpio_cpu_spi_cs;
+extern const GpioPin gpio_cpu_spi_sck;
+extern const GpioPin gpio_cpu_spi_miso;
+extern const GpioPin gpio_cpu_spi_mosi;
 
 extern const GpioPin gpio_pico_led;
 extern const GpioPin gpio_status_led_line1;
@@ -95,6 +99,7 @@ extern const GpioPin gpio_i2c0_scl;
 extern const GpioPin gpio_i2c1_sda;
 extern const GpioPin gpio_i2c1_scl;
 
+extern const GpioPin gpio_touchpad_rdy;
 extern const GpioPin gpio_expander_reset;
 extern const GpioPin gpio_expander_int;
 
