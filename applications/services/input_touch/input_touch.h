@@ -10,6 +10,8 @@ extern "C" {
 
 typedef enum {
     InputTouchTypeMove,
+    InputTouchTypeStart,
+    InputTouchTypeEnd,
     InputTouchTypeMAX, /**< Special value for exceptional */
 } InputTouchType;
 

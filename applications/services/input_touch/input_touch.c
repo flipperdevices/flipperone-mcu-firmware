@@ -20,15 +20,24 @@ typedef struct {
     FuriPubSub* event_pubsub;
     FuriThreadId thread_id;
     Iqs7211e* iqs7211e;
+    bool touch;
 } InputTouch;
 
-void input_touch_isr(void* context) {
+static void input_touch_isr(void* context) {
     furi_assert(context);
     InputTouch* instance = (InputTouch*)context;
     furi_thread_flags_set(instance->thread_id, INPUT_THREAD_FLAG_ISR);
 }
 
-void input_touch_event_isr(void* context) {
+static void input_touch_send_event(InputTouch* instance, InputTouchType type) {
+    InputTouchEvent event;
+    event.type = type;
+    event.x = iqs7211e_get_abs_x_fingers_num(instance->iqs7211e, 1);
+    event.y = iqs7211e_get_abs_y_fingers_num(instance->iqs7211e, 1);
+    furi_pubsub_publish(instance->event_pubsub, &event);
+}
+
+static void input_touch_event_isr(void* context) {
     furi_assert(context);
     InputTouch* instance = (InputTouch*)context;
     Iqs7211eEvent event = iqs7211e_get_event(instance->iqs7211e);
@@ -103,13 +112,25 @@ void input_touch_event_isr(void* context) {
         }
     }
 
-    if(iqs7211e_get_fingers_num(instance->iqs7211e)) {
-        INPUT_TOUCH_DEBUG("X=%d, Y=%d;", iqs7211e_get_abs_x_fingers_num(instance->iqs7211e, 1), iqs7211e_get_abs_y_fingers_num(instance->iqs7211e, 1));
-        InputTouchEvent event;
-        event.type = InputTouchTypeMove;
-        event.x = iqs7211e_get_abs_x_fingers_num(instance->iqs7211e, 1);
-        event.y = iqs7211e_get_abs_y_fingers_num(instance->iqs7211e, 1);
-        furi_pubsub_publish(instance->event_pubsub, &event);
+    {
+        uint8_t finger_present = iqs7211e_get_fingers_num(instance->iqs7211e);
+
+        if(instance->touch) {
+            if(finger_present) {
+                input_touch_send_event(instance, InputTouchTypeMove);
+                INPUT_TOUCH_DEBUG("Touch Move");
+            } else {
+                input_touch_send_event(instance, InputTouchTypeEnd);
+                INPUT_TOUCH_DEBUG("Touch End");
+                instance->touch = false;
+            }
+        } else {
+            if(finger_present) {
+                input_touch_send_event(instance, InputTouchTypeStart);
+                INPUT_TOUCH_DEBUG("Touch Start");
+                instance->touch = true;
+            }
+        }
     }
 }
 
