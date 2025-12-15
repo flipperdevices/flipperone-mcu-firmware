@@ -5,6 +5,7 @@
 typedef struct {
     uint32_t x;
     uint32_t y;
+    bool pressed;
 } TouchpadState;
 
 static void test_touchpad_layout(App* app) {
@@ -79,7 +80,7 @@ static void test_touchpad_layout(App* app) {
                         },
                 }) {
                 CLAY_AUTO_ID({
-                    .border = {.color = COLOR_BLACK, .width = {1, 1, 1, 1}},
+                    .border = {.color = state->pressed ? COLOR_WHITE : COLOR_BLACK, .width = {1, 1, 1, 1}},
                     .floating =
                         {
                             .offset = {.x = touch_x, .y = touch_y},
@@ -90,14 +91,14 @@ static void test_touchpad_layout(App* app) {
                             .padding = {8, 8, 4, 4},
                             .sizing = {.width = CLAY_SIZING_FIXED(0), .height = CLAY_SIZING_FIXED(15)},
                         },
-                    .backgroundColor = COLOR_WHITE,
+                    .backgroundColor = state->pressed ? COLOR_BLACK : COLOR_WHITE,
                     .cornerRadius = CLAY_CORNER_RADIUS(4),
                 }) {
                     CLAY_TEXT(
                         CLAY_STRING(""),
                         CLAY_TEXT_CONFIG({
                             .fontId = FontButton,
-                            .textColor = COLOR_BLACK,
+                            .textColor = state->pressed ? COLOR_WHITE : COLOR_BLACK,
                         }));
                 }
             }
@@ -117,10 +118,21 @@ static bool test_touchpad_input(App* app, const GuiTestMessage* message) {
     } break;
     case GuiTestMessageTypeInputTouchEvent: {
         InputTouchEvent event = message->input_touch_event;
-        if(event.type == InputTouchTypeMove) {
-            state->x = event.x;
-            state->y = event.y;
+        state->x = event.x;
+        state->y = event.y;
+
+        switch(event.type) {
+        case InputTouchTypeStart:
+            state->pressed = true;
             handled = true;
+            break;
+        case InputTouchTypeMove:
+            handled = true;
+            break;
+        case InputTouchTypeEnd:
+            state->pressed = false;
+            handled = true;
+            break;
         }
     } break;
     }

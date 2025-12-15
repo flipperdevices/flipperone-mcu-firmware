@@ -71,6 +71,32 @@ App* apps[] = {
     &app_playdate,
 };
 
+static void app_call_render(App* app) {
+    if(app) {
+        if(app->render) {
+            app->render(app);
+        }
+    }
+}
+
+static bool app_call_input(App* app, const GuiTestMessage* message) {
+    bool handled = false;
+    if(app) {
+        if(app->input) {
+            handled = app->input(app, message);
+        }
+    }
+    return handled;
+}
+
+static void app_call_scroll(App* app) {
+    if(app) {
+        if(app->scroll) {
+            app->scroll(app);
+        }
+    }
+}
+
 int32_t gui_test_app(void* p) {
     FURI_LOG_I(TAG, "Starting GUI Test App");
 
@@ -105,26 +131,14 @@ int32_t gui_test_app(void* p) {
         int32_t last_app_index = app_index;
 
         Clay_ResetMeasureTextCache();
-
-        // Will be different for each renderer / environment
-        // Optional: Update internal layout dimensions to support resizing
-        Clay_SetLayoutDimensions((Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT});
-
-        // All clay layouts are declared between Clay_BeginLayout and Clay_EndLayout
         Clay_BeginLayout();
 
-        if(app) {
-            if(app->render) {
-                app->render(app);
-            }
-        }
+        app_call_render(app);
 
-        // All clay layouts are declared between Clay_BeginLayout and Clay_EndLayout
         Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
         render_clear_buffer(0x00);
 
-        // More comprehensive rendering examples can be found in the renderers/ directory
         for(int i = 0; i < renderCommands.length; i++) {
             Clay_RenderCommand* renderCommand = &renderCommands.internalArray[i];
             Clay_BoundingBox boundingBox = renderCommand->boundingBox;
@@ -161,13 +175,7 @@ int32_t gui_test_app(void* p) {
             bool message_present = true;
 
             while(message_present) {
-                bool handled = false;
-
-                if(app) {
-                    if(app->input) {
-                        handled = app->input(app, &message);
-                    }
-                }
+                bool handled = app_call_input(app, &message);
 
                 if(!handled) {
                     switch(message.type) {
@@ -205,11 +213,7 @@ int32_t gui_test_app(void* p) {
         }
 
         if(last_app_index == app_index) {
-            if(app) {
-                if(app->scroll) {
-                    app->scroll(app);
-                }
-            }
+            app_call_scroll(app);
         }
     }
 

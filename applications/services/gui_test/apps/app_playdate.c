@@ -29,15 +29,13 @@ typedef struct {
     uint32_t length;
 } DocumentArray;
 
-// #define MAX_DOCUMENTS 3
-// Document documentsRaw[MAX_DOCUMENTS];
-
-// DocumentArray documents = {.length = MAX_DOCUMENTS, .documents = documentsRaw};
-
 typedef struct {
     DocumentArray documents;
     int32_t selected_document_index;
     int32_t scroll_offset;
+
+    float touch_y_start;
+    float touch_y_current;
 } PlaydateAppState;
 
 static void playdate_layout(App* app) {
@@ -221,6 +219,22 @@ static bool playdate_input(App* app, const GuiTestMessage* message) {
         }
     } break;
     case GuiTestMessageTypeInputTouchEvent: {
+        switch(message->input_touch_event.type) {
+        case InputTouchTypeStart:
+            state->touch_y_start = message->input_touch_event.y;
+            state->touch_y_current = state->touch_y_start;
+            handled = true;
+            break;
+        case InputTouchTypeMove:
+            state->touch_y_current = message->input_touch_event.y;
+            handled = true;
+            break;
+        case InputTouchTypeEnd:
+            state->touch_y_start = -1;
+            state->touch_y_current = state->touch_y_start;
+            handled = true;
+            break;
+        }
     } break;
     }
 
@@ -230,9 +244,16 @@ static bool playdate_input(App* app, const GuiTestMessage* message) {
 static void playdate_scroll(App* app) {
     furi_assert(app);
     PlaydateAppState* state = (PlaydateAppState*)app->state;
+    Clay_Vector2 scroll = {0, 1.0f * state->scroll_offset};
+
+    if(state->touch_y_start >= 0) {
+        float delta = state->touch_y_current - state->touch_y_start;
+        scroll.y -= delta * 0.03f;
+        state->touch_y_start = state->touch_y_current;
+    }
 
     Clay_SetPointerState((Clay_Vector2){.x = JD9853_WIDTH / 2.0f, .y = JD9853_HEIGHT / 2.0f}, false);
-    Clay_UpdateScrollContainers(false, (Clay_Vector2){0, 1.0f * state->scroll_offset}, 1 / 60.f);
+    Clay_UpdateScrollContainers(false, scroll, 1 / 60.f);
 }
 
 App app_playdate = {
