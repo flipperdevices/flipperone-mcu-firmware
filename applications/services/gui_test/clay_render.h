@@ -6,6 +6,8 @@ typedef enum {
     FontButton,
 } Font;
 
+typedef struct RenderBuffer RenderBuffer;
+
 void render_clear_buffer(uint8_t color);
 
 Clay_Dimensions render_measure_text(Clay_StringSlice text, Clay_TextElementConfig* config, void* userData);
@@ -22,4 +24,8 @@ void render_scissor_start(Clay_BoundingBox* bb);
 
 void render_scissor_end(void);
 
-uint8_t* render_get_buffer(void);
+RenderBuffer* render_alloc_buffer(void);
+
+uint8_t* render_get_buffer_data(RenderBuffer* buffer);
+
+void render_set_current_buffer(RenderBuffer* buffer);

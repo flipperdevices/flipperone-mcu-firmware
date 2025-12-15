@@ -21,10 +21,10 @@ static const Clay_Color COLOR_BLACK = {0, 0, 0, 255};
 typedef struct App App;
 
 struct App {
-    const void* state;
-    const bool (*input)(App* app, const GuiTestMessage* message);
-    const void (*render)(App* app);
-    const void (*scroll)(App* app);
+    const void* const state;
+    const bool (*const input)(App* app, const GuiTestMessage* message);
+    const void (*const render)(App* app);
+    const void (*const scroll)(App* app);
 };
 
 #define CLAY_APP_ID(x) CLAY_ID(TAG x)

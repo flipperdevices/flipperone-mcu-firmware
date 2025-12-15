@@ -7,13 +7,18 @@
 #define TAG "render"
 
 #define CANARY_VALUE 0xDEADBEEF
+#define DATA_SIZE    (JD9853_WIDTH * JD9853_HEIGHT)
 
 typedef uint8_t Color;
 
-typedef struct {
+struct RenderBuffer {
     uint32_t canary_pre;
-    uint8_t buffer[JD9853_WIDTH * JD9853_HEIGHT];
+    uint8_t data[DATA_SIZE];
     uint32_t canary_post;
+};
+
+typedef struct {
+    RenderBuffer* current_buffer;
     int32_t scissors_x0;
     int32_t scissors_y0;
     int32_t scissors_x1;
@@ -21,9 +26,7 @@ typedef struct {
 } RenderData;
 
 static RenderData render_data = {
-    .canary_pre = CANARY_VALUE,
-    .buffer = {0},
-    .canary_post = CANARY_VALUE,
+    .current_buffer = NULL,
     .scissors_x0 = 0,
     .scissors_y0 = 0,
     .scissors_x1 = JD9853_WIDTH,
@@ -49,7 +52,7 @@ static inline void render_set_pixel(int32_t x, int32_t y, Color color) {
     if(x < render_data.scissors_x0 || x >= render_data.scissors_x1 || y < render_data.scissors_y0 || y >= render_data.scissors_y1) {
         return;
     }
-    render_data.buffer[y * JD9853_WIDTH + x] = color;
+    render_data.current_buffer->data[y * JD9853_WIDTH + x] = color;
 }
 
 static inline void render_draw_hline(int32_t x0, int32_t y, int32_t x1, uint8_t color) {
@@ -62,7 +65,7 @@ static inline void render_draw_hline(int32_t x0, int32_t y, int32_t x1, uint8_t 
     if(x1 > render_data.scissors_x1) x1 = render_data.scissors_x1;
     if(x0 > x1) M_SWAP(int32_t, x0, x1);
 
-    memset(&render_data.buffer[y * JD9853_WIDTH + x0], color, x1 - x0);
+    memset(&render_data.current_buffer->data[y * JD9853_WIDTH + x0], color, x1 - x0);
 }
 
 static inline void render_draw_vline(int32_t x, int32_t y0, int32_t y1, uint8_t color) {
@@ -76,7 +79,7 @@ static inline void render_draw_vline(int32_t x, int32_t y0, int32_t y1, uint8_t 
     if(y0 > y1) M_SWAP(int32_t, y0, y1);
 
     for(int32_t y = y0; y < y1; y++) {
-        render_data.buffer[y * JD9853_WIDTH + x] = color;
+        render_data.current_buffer->data[y * JD9853_WIDTH + x] = color;
     }
 }
 
@@ -221,9 +224,7 @@ static inline void render_fill_rectangle(int32_t x, int32_t y, int32_t width, in
 }
 
 void render_clear_buffer(uint8_t color) {
-    memset(render_data.buffer, color, sizeof(render_data.buffer));
-    furi_check(render_data.canary_pre == CANARY_VALUE, "RenderData pre-canary corrupted");
-    furi_check(render_data.canary_post == CANARY_VALUE, "RenderData post-canary corrupted");
+    memset(render_data.current_buffer->data, color, DATA_SIZE);
 }
 
 static void render_draw_pixel_fg(int32_t x, int32_t y, void* context) {
@@ -388,6 +389,19 @@ void render_scissor_end(void) {
     render_data.scissors_y1 = JD9853_HEIGHT;
 }
 
-uint8_t* render_get_buffer(void) {
-    return render_data.buffer;
+RenderBuffer* render_alloc_buffer(void) {
+    RenderBuffer* buffer = malloc(sizeof(RenderBuffer));
+    buffer->canary_pre = CANARY_VALUE;
+    buffer->canary_post = CANARY_VALUE;
+    return buffer;
+}
+
+uint8_t* render_get_buffer_data(RenderBuffer* buffer) {
+    furi_check(buffer->canary_pre == CANARY_VALUE, "RenderBuffer pre-canary corrupted");
+    furi_check(buffer->canary_post == CANARY_VALUE, "RenderBuffer post-canary corrupted");
+    return buffer->data;
+}
+
+void render_set_current_buffer(RenderBuffer* buffer) {
+    render_data.current_buffer = buffer;
 }

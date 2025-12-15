@@ -65,7 +65,7 @@ extern App app_test_keypad;
 extern App app_test_touchpad;
 extern App app_playdate;
 
-App* apps[] = {
+App* const apps[] = {
     &app_test_keypad,
     &app_test_touchpad,
     &app_playdate,
@@ -104,7 +104,7 @@ int32_t gui_test_app(void* p) {
     ws2812_put_pixel_rgb(ws2812, 0, 10, 0, 0);
 
     DisplayJd9853SPI* display = display_jd9853_spi_init();
-    display_jd9853_spi_set_brightness(display, 10);
+    display_jd9853_spi_set_brightness(display, 40);
 
     FuriMessageQueue* queue = furi_message_queue_alloc(32, sizeof(GuiTestMessage));
 
@@ -125,6 +125,9 @@ int32_t gui_test_app(void* p) {
     Clay_SetMeasureTextFunction(render_measure_text, NULL);
 
     int32_t app_index = 0;
+
+    RenderBuffer* buffer = render_alloc_buffer();
+    render_set_current_buffer(buffer);
 
     while(1) {
         App* app = apps[app_index];
@@ -168,7 +171,7 @@ int32_t gui_test_app(void* p) {
             }
         }
 
-        display_jd9853_spi_write_buffer(display, JD9853_WIDTH, JD9853_HEIGHT, render_get_buffer(), JD9853_WIDTH * JD9853_HEIGHT);
+        display_jd9853_spi_write_buffer(display, JD9853_WIDTH, JD9853_HEIGHT, render_get_buffer_data(buffer), JD9853_WIDTH * JD9853_HEIGHT);
 
         GuiTestMessage message;
         if(furi_message_queue_get(queue, &message, 1000 / 100) == FuriStatusOk) {
