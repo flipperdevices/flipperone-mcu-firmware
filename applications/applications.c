@@ -6,12 +6,12 @@ extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
 extern int32_t test_input_srv(void* p);
 extern int32_t uart_echo_app(void* p);
+extern int32_t input_touch_srv(void* p);
 
 extern int32_t gui_test_app(void* p);
 extern int32_t input_test_srv(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
-
     // {
     //     .app = test_srv,
     //     .name = "TestSrv",
@@ -47,6 +47,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     //     .stack_size = 2048,
     //     .flags = FlipperInternalApplicationFlagDefault,
     // },
+    {
+        .app = input_touch_srv,
+        .name = "InputTouchSrv",
+        .appid = "input_touch",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
     {
         .app = gui_test_app,
         .name = "GuiTest",

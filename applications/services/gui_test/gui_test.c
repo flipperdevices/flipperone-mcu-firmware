@@ -6,6 +6,7 @@
 #include <furi_hal_resources.h>
 #include <drivers/ws2812/ws2812.h>
 #include <input/input.h>
+#include <input_touch/input_touch.h>
 
 #include "clay_render.h"
 
@@ -368,13 +369,15 @@ void ClayVideoDemoPlaydate_CreateLayout(int selectedDocumentIndex) {
 }
 
 typedef enum {
-    GuiTestMessageTypeInputEvent = 0,
+    GuiTestMessageTypeInputEvent,
+    GuiTestMessageTypeInputTouchEvent,
 } GuiTestMessageType;
 
 typedef struct {
     GuiTestMessageType type;
     union {
         InputEvent input_event;
+        InputTouchEvent input_touch_event;
     };
 } GuiTestMessage;
 
@@ -388,6 +391,20 @@ static void gui_test_input_events_callback(const void* value, void* context) {
     GuiTestMessage message;
     message.type = GuiTestMessageTypeInputEvent;
     message.input_event = *event;
+
+    furi_message_queue_put(queue, &message, FuriWaitForever);
+}
+
+static void gui_test_input_touch_events_callback(const void* value, void* context) {
+    furi_check(value);
+    furi_check(context);
+
+    FuriMessageQueue* queue = context;
+    const InputTouchEvent* event = value;
+
+    GuiTestMessage message;
+    message.type = GuiTestMessageTypeInputTouchEvent;
+    message.input_touch_event = *event;
 
     furi_message_queue_put(queue, &message, FuriWaitForever);
 }
@@ -424,35 +441,42 @@ typedef struct {
     bool ok;
 } KeypadState;
 
+typedef struct {
+    uint32_t x;
+    uint32_t y;
+} TouchpadState;
+
 static void gui_test_create_keypad_layout(KeypadState state) {
     Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
     Clay_BorderElementConfig contentBorders = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}};
 
     CLAY(
         CLAY_ID("OuterContainer"),
-        {.backgroundColor = COLOR_WHITE,
-         .layout = {
-             .layoutDirection = CLAY_TOP_TO_BOTTOM,
-             .sizing = layoutExpand,
-             .padding = {4, 4, 4, 3},
-             .childGap = 4,
-         }}) {
+        {
+            .backgroundColor = COLOR_WHITE,
+            .layout =
+                {
+                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                    .sizing = layoutExpand,
+                    .padding = {4, 4, 4, 3},
+                    .childGap = 4,
+                },
+        }) {
         // Child elements go inside braces
         CLAY(
             CLAY_ID("HeaderBar"),
             {
                 .layout =
-                    {.sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
-                     .childGap = 8,
-                     .childAlignment =
-                         {
-                             .y = CLAY_ALIGN_Y_CENTER,
-                         }},
+                    {
+                        .sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
+                        .childGap = 8,
+                        .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                    },
             }) {
             // Header buttons go here
             CLAY_AUTO_ID({.layout = {.padding = {8, 8, 4, 4}}, .backgroundColor = COLOR_BLACK, .cornerRadius = CLAY_CORNER_RADIUS(4)}) {
                 CLAY_TEXT(
-                    CLAY_STRING("KeypadTest"),
+                    CLAY_STRING("Keypad Test"),
                     CLAY_TEXT_CONFIG({
                         .fontId = FontButton,
                         .textColor = COLOR_WHITE,
@@ -538,10 +562,107 @@ static void gui_test_create_keypad_layout(KeypadState state) {
     }
 }
 
-static void gui_test_create_layout(int32_t layout_index, int32_t selected_document_index, KeypadState state) {
+static void gui_test_create_touchpad_layout(TouchpadState touchpad_state) {
+    Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
+    Clay_BorderElementConfig contentBorders = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}};
+
+    float touch_x = (1024.f - touchpad_state.x - 180.f) / 2.8f;
+    float touch_y = (1024.f - touchpad_state.y - 380.f) / 5.f;
+
+    CLAY(
+        CLAY_ID("OuterContainer"),
+        {.backgroundColor = COLOR_WHITE,
+         .layout = {
+             .layoutDirection = CLAY_TOP_TO_BOTTOM,
+             .sizing = layoutExpand,
+             .padding = {4, 4, 4, 3},
+             .childGap = 4,
+         }}) {
+        // Child elements go inside braces
+        CLAY(
+            CLAY_ID("HeaderBar"),
+            {
+                .layout =
+                    {.sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
+                     .childGap = 8,
+                     .childAlignment =
+                         {
+                             .y = CLAY_ALIGN_Y_CENTER,
+                         }},
+            }) {
+            // Header buttons go here
+            CLAY_AUTO_ID({.layout = {.padding = {8, 8, 4, 4}}, .backgroundColor = COLOR_BLACK, .cornerRadius = CLAY_CORNER_RADIUS(4)}) {
+                CLAY_TEXT(
+                    CLAY_STRING("Touchpad Test"),
+                    CLAY_TEXT_CONFIG({
+                        .fontId = FontButton,
+                        .textColor = COLOR_WHITE,
+                    }));
+            }
+        }
+        // CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0)}}}) {
+        //             }
+        CLAY(
+            CLAY_ID("LowerContent"),
+            {
+                .layout =
+                    {
+                        .sizing = layoutExpand,
+                        .childGap = 4,
+                    },
+            }) {
+            CLAY(
+                CLAY_ID("MainContent"),
+                {
+                    .border = contentBorders,
+                    .cornerRadius = CLAY_CORNER_RADIUS(60),
+                    .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
+                    .layout =
+                        {
+                            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                            .childGap = 8,
+                            .padding = {6, 6, 6, 6},
+                            .sizing = layoutExpand,
+                            .childAlignment =
+                                {
+                                    .y = CLAY_ALIGN_Y_TOP,
+                                    .x = CLAY_ALIGN_X_LEFT,
+                                },
+                        },
+                }) {
+                CLAY_AUTO_ID({
+                    .border = {.color = COLOR_BLACK, .width = {1, 1, 1, 1}},
+                    .floating =
+                        {
+                            .offset = {.x = touch_x, .y = touch_y},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                    .layout =
+                        {
+                            .padding = {8, 8, 4, 4},
+                            .sizing = {.width = CLAY_SIZING_FIXED(0), .height = CLAY_SIZING_FIXED(15)},
+                        },
+                    .backgroundColor = COLOR_WHITE,
+                    .cornerRadius = CLAY_CORNER_RADIUS(4),
+                }) {
+                    CLAY_TEXT(
+                        CLAY_STRING(""),
+                        CLAY_TEXT_CONFIG({
+                            .fontId = FontButton,
+                            .textColor = COLOR_BLACK,
+                        }));
+                }
+            }
+        }
+    }
+}
+
+static void gui_test_create_layout(int32_t layout_index, int32_t selected_document_index, KeypadState state, TouchpadState touchpad_state) {
     if(layout_index == 0) {
         gui_test_create_keypad_layout(state);
     } else if(layout_index == 1) {
+        gui_test_create_touchpad_layout(touchpad_state);
+    } else if(layout_index == 4) {
         ClayVideoDemoPlaydate_CreateLayout(selected_document_index);
     }
 }
@@ -553,12 +674,15 @@ int32_t gui_test_app(void* p) {
     ws2812_put_pixel_rgb(ws2812, 0, 10, 0, 0);
 
     DisplayJd9853SPI* display = display_jd9853_spi_init();
-    display_jd9853_spi_backlight_set_brightness(display, 10);
+    display_jd9853_spi_set_brightness(display, 10);
 
     FuriMessageQueue* queue = furi_message_queue_alloc(32, sizeof(GuiTestMessage));
 
     FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
     FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, gui_test_input_events_callback, queue);
+
+    FuriPubSub* input_touch = furi_record_open(RECORD_INPUT_TOUCH_EVENTS);
+    FuriPubSubSubscription* input_touch_subscription = furi_pubsub_subscribe(input_touch, gui_test_input_touch_events_callback, queue);
 
     Clay_SetMaxElementCount(256);
     Clay_SetMaxMeasureTextCacheWordCount(1024);
@@ -576,6 +700,7 @@ int32_t gui_test_app(void* p) {
     int32_t scroll_offset = 0;
 
     KeypadState keypad_state = {0};
+    TouchpadState touchpad_state = {0};
 
     while(1) {
         Clay_ResetMeasureTextCache();
@@ -591,7 +716,7 @@ int32_t gui_test_app(void* p) {
         // All clay layouts are declared between Clay_BeginLayout and Clay_EndLayout
         Clay_BeginLayout();
 
-        gui_test_create_layout(layout_index, selected_document_index, keypad_state);
+        gui_test_create_layout(layout_index, selected_document_index, keypad_state, touchpad_state);
 
         // All clay layouts are declared between Clay_BeginLayout and Clay_EndLayout
         Clay_RenderCommandArray renderCommands = Clay_EndLayout();
@@ -631,49 +756,73 @@ int32_t gui_test_app(void* p) {
         display_jd9853_spi_write_buffer(display, JD9853_WIDTH, JD9853_HEIGHT, render_get_buffer(), JD9853_WIDTH * JD9853_HEIGHT);
 
         GuiTestMessage message;
-        if(furi_message_queue_get(queue, &message, 1000 / 60) == FuriStatusOk) {
-            switch(message.type) {
-            case GuiTestMessageTypeInputEvent: {
-                InputEvent event = message.input_event;
-                if(event.key == InputKeyDown) {
-                    if(event.type == InputTypePress) scroll_offset = -1;
-                    if(event.type == InputTypeRelease) scroll_offset = 0;
-                }
-                if(event.key == InputKeyUp) {
-                    if(event.type == InputTypePress) scroll_offset = 1;
-                    if(event.type == InputTypeRelease) scroll_offset = 0;
-                }
-                if(event.type == InputTypePress && event.key == InputKeyOk) {
-                    selected_document_index++;
-                    if(selected_document_index >= documents.length) {
-                        selected_document_index = 0;
+        if(furi_message_queue_get(queue, &message, 1000 / 100) == FuriStatusOk) {
+            bool message_present = true;
+
+            while(message_present) {
+                switch(message.type) {
+                case GuiTestMessageTypeInputEvent: {
+                    InputEvent event = message.input_event;
+                    if(event.key == InputKeyDown) {
+                        if(event.type == InputTypePress) scroll_offset = -1;
+                        if(event.type == InputTypeRelease) scroll_offset = 0;
                     }
-                }
-                if(event.key == InputKey1 && event.type == InputTypePress) {
-                    layout_index = 0;
-                }
-                if(event.key == InputKey2 && event.type == InputTypePress) {
-                    layout_index = 1;
+                    if(event.key == InputKeyUp) {
+                        if(event.type == InputTypePress) scroll_offset = 1;
+                        if(event.type == InputTypeRelease) scroll_offset = 0;
+                    }
+                    if(event.type == InputTypePress && event.key == InputKeyOk) {
+                        selected_document_index++;
+                        if(selected_document_index >= documents.length) {
+                            selected_document_index = 0;
+                        }
+                    }
+                    if(event.key == InputKey1 && event.type == InputTypePress) {
+                        layout_index = 0;
+                    }
+                    if(event.key == InputKey2 && event.type == InputTypePress) {
+                        layout_index = 1;
+                    }
+                    if(event.key == InputKey3 && event.type == InputTypePress) {
+                        layout_index = 2;
+                    }
+                    if(event.key == InputKey4 && event.type == InputTypePress) {
+                        layout_index = 3;
+                    }
+                    if(event.key == InputKey5 && event.type == InputTypePress) {
+                        layout_index = 4;
+                    }
+
+                    if(event.type == InputTypePress || event.type == InputTypeRelease) {
+                        if(event.key == InputKeyUp) {
+                            keypad_state.up = event.type == InputTypePress;
+                        }
+                        if(event.key == InputKeyDown) {
+                            keypad_state.down = event.type == InputTypePress;
+                        }
+                        if(event.key == InputKeyLeft) {
+                            keypad_state.left = event.type == InputTypePress;
+                        }
+                        if(event.key == InputKeyRight) {
+                            keypad_state.right = event.type == InputTypePress;
+                        }
+                        if(event.key == InputKeyOk) {
+                            keypad_state.ok = event.type == InputTypePress;
+                        }
+                    }
+                } break;
+                case GuiTestMessageTypeInputTouchEvent: {
+                    InputTouchEvent event = message.input_touch_event;
+                    if(event.type == InputTouchTypeMove) {
+                        touchpad_state.x = event.x;
+                        touchpad_state.y = event.y;
+                    }
+                } break;
                 }
 
-                if(event.type == InputTypePress || event.type == InputTypeRelease) {
-                    if(event.key == InputKeyUp) {
-                        keypad_state.up = event.type == InputTypePress;
-                    }
-                    if(event.key == InputKeyDown) {
-                        keypad_state.down = event.type == InputTypePress;
-                    }
-                    if(event.key == InputKeyLeft) {
-                        keypad_state.left = event.type == InputTypePress;
-                    }
-                    if(event.key == InputKeyRight) {
-                        keypad_state.right = event.type == InputTypePress;
-                    }
-                    if(event.key == InputKeyOk) {
-                        keypad_state.ok = event.type == InputTypePress;
-                    }
+                if(furi_message_queue_get(queue, &message, 0) != FuriStatusOk) {
+                    message_present = false;
                 }
-            } break;
             }
         }
 
