@@ -80,7 +80,7 @@ static void test_touchpad_layout(App* app) {
                         },
                 }) {
                 CLAY_AUTO_ID({
-                    .border = {.color = state->pressed ? COLOR_WHITE : COLOR_BLACK, .width = {1, 1, 1, 1}},
+                    .border = {.color = COLOR_BLACK, .width = {1, 1, 1, 1}},
                     .floating =
                         {
                             .offset = {.x = touch_x, .y = touch_y},
@@ -94,12 +94,6 @@ static void test_touchpad_layout(App* app) {
                     .backgroundColor = state->pressed ? COLOR_BLACK : COLOR_WHITE,
                     .cornerRadius = CLAY_CORNER_RADIUS(4),
                 }) {
-                    CLAY_TEXT(
-                        CLAY_STRING(""),
-                        CLAY_TEXT_CONFIG({
-                            .fontId = FontButton,
-                            .textColor = state->pressed ? COLOR_WHITE : COLOR_BLACK,
-                        }));
                 }
             }
         }
@@ -118,15 +112,17 @@ static bool test_touchpad_input(App* app, const GuiTestMessage* message) {
     } break;
     case GuiTestMessageTypeInputTouchEvent: {
         InputTouchEvent event = message->input_touch_event;
-        state->x = event.x;
-        state->y = event.y;
 
         switch(event.type) {
         case InputTouchTypeStart:
             state->pressed = true;
+            state->x = event.x;
+            state->y = event.y;
             handled = true;
             break;
         case InputTouchTypeMove:
+            state->x = event.x;
+            state->y = event.y;
             handled = true;
             break;
         case InputTouchTypeEnd:
