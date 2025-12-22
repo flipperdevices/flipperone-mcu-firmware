@@ -124,14 +124,12 @@ extern "C" {
 #define configUSE_CO_ROUTINES           0
 #define configMAX_CO_ROUTINE_PRIORITIES 1
 
-
-
 /* Software timer related definitions. */
-#define configUSE_TIMERS             1
+#define configUSE_TIMERS          1
 //#define configTIMER_TASK_PRIORITY    (configMAX_PRIORITIES - 1)
-#define configTIMER_TASK_PRIORITY     (2)
+#define configTIMER_TASK_PRIORITY (2)
 //#define configTIMER_QUEUE_LENGTH     10
-#define configTIMER_QUEUE_LENGTH      32
+#define configTIMER_QUEUE_LENGTH  32
 
 //#define configTIMER_TASK_STACK_DEPTH 512
 #define configTIMER_TASK_STACK_DEPTH  256
@@ -140,8 +138,6 @@ extern "C" {
 #define configIDLE_TASK_NAME        "(-_-)"
 //#define configIDLE_TASK_STACK_DEPTH  512
 #define configIDLE_TASK_STACK_DEPTH 256
-
-
 
 /* Interrupt nesting behaviour configuration. */
 /*  The Cortex-M0+ implements the two most significant bits of an 8-bit priority field, 
@@ -182,7 +178,7 @@ extern "C" {
 #ifdef NDEBUG /* required by ANSI standard */
 #define configASSERT(__e) ((void)0)
 #else
-#define configASSERT(__e) ((__e) ? (void)0 : my_assert_func(__FILE__, __LINE__, __func__, #__e))
+#define configASSERT(__e) ((__e) ? (void)0 : assert(#__e))
 #endif
 
 /* Set the following definitions to 1 to include the API function, or zero
@@ -209,14 +205,14 @@ to exclude the API function. */
 #define INCLUDE_xQueueGetMutexHolder        1
 #define INCLUDE_xSemaphoreGetMutexHolder    1
 
-#define INCLUDE_vTaskCleanUpResources       0
+#define INCLUDE_vTaskCleanUpResources 0
 
 #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
 extern uint64_t time_us_64(void); // "hardware/timer.h"
 #define portGET_RUN_TIME_COUNTER_VALUE() (time_us_64() / 100)
 
 /* A header file that defines trace macro can be included here. */
-#define configRECORD_STACK_HIGH_ADDRESS         1
+#define configRECORD_STACK_HIGH_ADDRESS 1
 
 /* The lowest interrupt priority that can be used in a call to a "set priority"
 function. */
