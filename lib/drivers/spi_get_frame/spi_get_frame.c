@@ -81,7 +81,7 @@ SpiGetFrame* spi_get_frame_init(void) {
     // hw_set_bits(&spi_get_hw(SPI_GET_FRAME_SPI1_HANDLE)->cr1, enable_mask);
 
     
-    spi_set_format(instance->spi_periph, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    spi_set_format(instance->spi_periph, 16, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
 
     FURI_LOG_I(TAG, "SPI initialized with baudrate: %d", baundrate);
 
