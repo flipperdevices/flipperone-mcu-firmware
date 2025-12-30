@@ -11,8 +11,6 @@
 #define INPUT_LONG_PRESS_COUNTS   2
 #define INPUT_THREAD_FLAG_ISR     0x00000001
 
-// #define INPUT_DEBUG
-
 /** Input pin state */
 typedef struct {
     const InputPin* pin;
@@ -102,13 +100,9 @@ int32_t input_srv(void* p) {
     InputPinState pin_states[input_pins_count];
 
     Tca6416a* tca6416a = tca6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
-    // uint16_t read_mode = tca6416a_read_mode(tca6416a);
-    // FURI_LOG_D("22", "Wrote : %016b", read_mode);
+
     tca6416a_write_mode(tca6416a, InputKeyMask);
     tca6416a_set_input_callback(tca6416a, input_isr, thread_id);
-
-    // read_mode = tca6416a_read_mode(tca6416a);
-    // FURI_LOG_D("22", "Wrote : %016b", read_mode);
 
     uint16_t input_state = tca6416a_read_input(tca6416a);
 

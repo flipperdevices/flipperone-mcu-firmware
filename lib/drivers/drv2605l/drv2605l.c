@@ -172,9 +172,10 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     instance->address = address;
 
     furi_hal_gpio_init_simple(instance->pin_en, GpioModeOutputPushPull);
+    furi_hal_gpio_write(instance->pin_en, true);
+
     //Todo: GpioModeOutputPushPull
     //furi_hal_gpio_init_simple(instance->pin_trigger, GpioModeOutputPushPull);
-    furi_hal_gpio_write(instance->pin_en, true);
 
     furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
@@ -260,11 +261,10 @@ void drv2605l_trigger_set_effect_and_play(Drv2605l* instance, Drv2605lEffect eff
 
 void drv2605l_test_all_effects(Drv2605l* instance) {
     furi_check(instance);
-    drv2605l_enable(instance);
+
     for(uint8_t i = Drv2605lEffectStrongClick_100; i <= Drv2605lEffectCountMax; i++) {
         FURI_LOG_I(TAG, "Playing effect %d", i);
         drv2605l_trigger_set_effect_and_play(instance, (Drv2605lEffect)(i));
         furi_delay_ms(1000);
     }
-    drv2605l_disable(instance);
 }
