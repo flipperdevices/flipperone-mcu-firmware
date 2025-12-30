@@ -1,11 +1,9 @@
 #include "tps62868x.h"
-#include "core/check.h"
 #include "tps62868x_reg.h"
 #include <furi_hal_i2c.h>
 #include <furi_hal_resources.h>
 #include <pico/error.h>
 #include <furi_hal_i2c_config.h>
-#include <stdint.h>
 
 #define TAG "TPS62868x"
 
