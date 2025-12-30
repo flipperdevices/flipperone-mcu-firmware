@@ -73,7 +73,6 @@ FURI_ALWAYS_INLINE void drv2605l_disable(Drv2605l* instance) {
 //https://www.ti.com/lit/an/sloa189/sloa189.pdf?ts=1763909348509&ref_url=https%253A%252F%252Fwww.google.com%252F
 bool drv2605l_auto_calibrate(Drv2605l* instance) {
     furi_check(instance);
-    drv2605l_enable(instance);
 
     uint8_t rated_voltage_reg = 0x53; //Vrms = 2 <--Setting
     uint8_t overdrive_clamp_reg = 0xA0; //Vmax = 3 <--Setting
@@ -147,7 +146,6 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
 
     if(status_reg->diagnostic_result) {
         FURI_LOG_E(TAG, "Auto-calibration failed");
-        drv2605l_disable(instance);
         return false;
     }
 
@@ -163,7 +161,6 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
     drv2605l_read_reg(instance, Drv2605lRegFeedback, (uint16_t*)&calib_data);
     FURI_LOG_I(TAG, "Feedback: reg 0x%02X -> 0x%02X", Drv2605lRegFeedback, calib_data);
 
-    drv2605l_disable(instance);
     return true;
 }
 
@@ -177,14 +174,14 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     furi_hal_gpio_init_simple(instance->pin_en, GpioModeOutputPushPull);
     //Todo: GpioModeOutputPushPull
     //furi_hal_gpio_init_simple(instance->pin_trigger, GpioModeOutputPushPull);
-    furi_hal_gpio_write(instance->pin_en, false);
+    furi_hal_gpio_write(instance->pin_en, true);
 
     furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
     if(ret) {
-        drv2605l_auto_calibrate(instance);
+        drv2605l_enable(instance);
 
         //Set LNA library
         Drv2605lLibSelect lib_select_reg = {
@@ -193,8 +190,13 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
         };
         drv2605l_write_reg(instance, Drv2605lRegLibSelect, (uint8_t*)&lib_select_reg);
 
+        drv2605l_auto_calibrate(instance);
+
+        //todo: implement drv2605l_enable / drv2605l_disable used
+        // drv2605l_disable(instance);
     } else {
         FURI_LOG_E(TAG, "DRV2605L device not ready at address 0x%02X", instance->address);
+        drv2605l_disable(instance);
         furi_hal_gpio_init_ex(instance->pin_en, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
         furi_hal_gpio_init_ex(instance->pin_trigger, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
         free(instance);
@@ -206,6 +208,7 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
 
 void drv2605l_deinit(Drv2605l* instance) {
     furi_check(instance);
+    drv2605l_disable(instance);
     furi_hal_gpio_init_ex(instance->pin_en, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(instance->pin_trigger, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     free(instance);
@@ -257,10 +260,11 @@ void drv2605l_trigger_set_effect_and_play(Drv2605l* instance, Drv2605lEffect eff
 
 void drv2605l_test_all_effects(Drv2605l* instance) {
     furi_check(instance);
-
+    drv2605l_enable(instance);
     for(uint8_t i = Drv2605lEffectStrongClick_100; i <= Drv2605lEffectCountMax; i++) {
         FURI_LOG_I(TAG, "Playing effect %d", i);
         drv2605l_trigger_set_effect_and_play(instance, (Drv2605lEffect)(i));
         furi_delay_ms(1000);
     }
+    drv2605l_disable(instance);
 }
