@@ -86,7 +86,7 @@ int furi_hal_i2c_master_trx_blocking(
     furi_check(handle);
 
     int status = i2c_write_blocking_until(handle->bus->i2c, device_address, tx_buffer, tx_size, true, make_timeout_time_us(timeout_us));
-    if(status != PICO_OK) {
+    if(status <= 0) {
         return status;
     }
     return i2c_read_blocking_until(handle->bus->i2c, device_address, rx_buffer, rx_size, false, make_timeout_time_us(timeout_us));
@@ -123,8 +123,10 @@ void furi_hal_i2c_bus_scan_print(const FuriHalI2cBusHandle* handle) {
         // -1.
 
         // Skip over any reserved addresses.
+        furi_hal_i2c_acquire(handle);
         bool ret = furi_hal_i2c_device_ready(handle, addr, FURI_HAL_I2C_TIMEOUT_US);
+        furi_hal_i2c_release(handle);
         FURI_LOG_RAW_I(ret ? "@" : ".");
-        FURI_LOG_RAW_I(addr % 16 == 15 ? "\n" : "  ");
+        FURI_LOG_RAW_I(addr % 16 == 15 ? "\r\n" : "  ");
     }
 }

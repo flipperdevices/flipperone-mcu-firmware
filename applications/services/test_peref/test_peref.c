@@ -18,6 +18,7 @@
 #include <drivers/ina219/ina219.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <drivers/tps62868x/tps62868x.h>
 
 #define tag "TestPerefSrv"
 
@@ -47,9 +48,12 @@ int32_t test_peref_srv(void* p) {
     ws2812_pins[0] = gpio_status_led_line1;
     Ws2812* ws2812 = ws2812_init(ws2812_pins, 1);
     free(ws2812_pins);
+    
+    //furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);
+
 
     DisplayJd9853QSPI* display = display_jd9853_qspi_init();
-    display_jd9853_qspi_set_brightness(display, 0);
+    display_jd9853_qspi_set_brightness(display, 10);
     uint8_t index_led = 0;
 
     SpiGetFrame* spi_get_frame = spi_get_frame_init();

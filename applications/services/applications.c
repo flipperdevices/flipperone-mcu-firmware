@@ -10,11 +10,11 @@ extern int32_t input_touch_srv(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
 
-    {.app = test_srv,
-     .name = "TestSrv",
-     .appid = "test", 
-     .stack_size = 1024,
-     .flags = FlipperInternalApplicationFlagDefault },
+    // {.app = test_srv,
+    //  .name = "TestSrv",
+    //  .appid = "test", 
+    //  .stack_size = 1024,
+    //  .flags = FlipperInternalApplicationFlagDefault },
     {.app = test_peref_srv,
      .name = "TestPerefSrv",
      .appid = "test_peref",
