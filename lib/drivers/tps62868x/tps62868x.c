@@ -102,16 +102,12 @@ int tps62868x_write_reg(Tps62868x* instance, uint8_t reg, uint8_t* data) {
 }
 
 int tps62868x_set_voltage(Tps62868x* instance, float volt) {
-    //furi_check((volt < TPS62868X_VOLTAGE_MIN) || (volt > TPS62868X_VOLTAGE_MAX));
+    furi_check((volt >= TPS62868X_VOLTAGE_MIN) || (volt <= TPS62868X_VOLTAGE_MAX));
     
     //Vout = TPS62868X_VOLTAGE_FACTOR * (0.4v + (VOx_SET*0.005v))
     uint8_t volt_data_reg = (uint8_t)(((volt / TPS62868X_VOLTAGE_FACTOR) - 0.4f) / 0.005f);
-    //uint8_t volt_data_reg = 250;
     TPS62868X_DEBUG(TAG, "Setting voltage to %.2f V , 0x%02X", volt, volt_data_reg);
-    //volatile int ret = tps62868x_write_reg(instance, TPS62868X_REG_1, &volt_data_reg);
-    tps62868x_write_reg(instance, TPS62868X_REG_1, &volt_data_reg);
-    int ret = 0;
-    return ret;
+    return tps62868x_write_reg(instance, TPS62868X_REG_1, &volt_data_reg);
 }
 
 float tps62868x_get_voltage(Tps62868x* instance) {
