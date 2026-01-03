@@ -86,15 +86,11 @@ void ws2812_deinit(Ws2812* instance) {
 
 static FURI_ALWAYS_INLINE void ws2812_put_pixel(Ws2812* instance, size_t line_index, uint32_t pixel_grb) {
     furi_check(line_index <= instance->line_count);
-    pio_sm_put_blocking(instance->lines[line_index].pio, instance->lines[line_index].sm, pixel_grb << 8u);
+    pio_sm_put_blocking(instance->lines[line_index].pio, instance->lines[line_index].sm, pixel_grb);
 }
 
-static FURI_ALWAYS_INLINE uint32_t ws2812_urgb_u32(uint8_t r, uint8_t g, uint8_t b) {
-    return ((uint32_t)(r) << 8) | ((uint32_t)(g) << 16) | (uint32_t)(b);
-}
-
-FURI_ALWAYS_INLINE uint32_t ws2812_urgb_u32_dma(uint8_t r, uint8_t g, uint8_t b) {
-    return (((uint32_t)(r) << 8) | ((uint32_t)(g) << 16) | (uint32_t)(b)) << 8u;
+FURI_ALWAYS_INLINE uint32_t ws2812_urgb_u32(uint8_t r, uint8_t g, uint8_t b) {
+    return ((uint32_t)(r) << 16) | ((uint32_t)(g) << 24) | (uint32_t)(b << 8);
 }
 
 void ws2812_put_pixel_rgb(Ws2812* instance, size_t line_index, uint8_t r, uint8_t g, uint8_t b) {
