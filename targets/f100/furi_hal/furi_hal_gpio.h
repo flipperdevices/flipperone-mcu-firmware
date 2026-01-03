@@ -16,7 +16,6 @@ extern "C" {
  * Interrupt callback prototype
  */
 typedef void (*GpioExtiCallback)(void* ctx);
-//typedef void (*GpioExtiCallback)(uint gpio, uint32_t event_mask);
 
 typedef enum {
     GpioConditionRise,
@@ -127,7 +126,7 @@ void furi_hal_gpio_init_ex(const GpioPin* gpio, const GpioMode mode, const GpioP
 * @param gpio GpioPin
 * @param strength GpioDriveStrength
 */
-static inline void furi_hal_gpio_set_drive_strength(const GpioPin* gpio, GpioDriveStrength strength) {
+static FURI_ALWAYS_INLINE void furi_hal_gpio_set_drive_strength(const GpioPin* gpio, GpioDriveStrength strength) {
     furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     const enum gpio_drive_strength drive_strength = (strength == GpioDriveStrengthLow)      ? GPIO_DRIVE_STRENGTH_2MA :
@@ -139,7 +138,7 @@ static inline void furi_hal_gpio_set_drive_strength(const GpioPin* gpio, GpioDri
     gpio_set_drive_strength(gpio->pin, drive_strength);
 }
 
-static inline void furi_hal_gpio_set_function(const GpioPin* gpio, GpioAltFn alt_fn) {
+static FURI_ALWAYS_INLINE void furi_hal_gpio_set_function(const GpioPin* gpio, GpioAltFn alt_fn) {
     furi_check(gpio->pin <= NUM_BANK0_GPIOS);
     gpio_set_function(gpio->pin, (gpio_function_t)alt_fn);
 }
@@ -176,7 +175,7 @@ void furi_hal_gpio_remove_int_callback(const GpioPin* gpio);
  * @param gpio  GpioPin
  * @param state true / false
  */
-static inline void furi_hal_gpio_write(const GpioPin* gpio, const bool state) {
+static FURI_ALWAYS_INLINE void furi_hal_gpio_write(const GpioPin* gpio, const bool state) {
     gpio_put(gpio->pin, state);
 }
 
@@ -185,7 +184,7 @@ static inline void furi_hal_gpio_write(const GpioPin* gpio, const bool state) {
  * @param gpio  GpioPin
  * @param state true (high level) / false (low level)
  */
-static inline void furi_hal_gpio_write_open_drain(const GpioPin* gpio, const bool state) {
+static FURI_ALWAYS_INLINE void furi_hal_gpio_write_open_drain(const GpioPin* gpio, const bool state) {
     gpio_set_dir(gpio->pin, state);
 }
 
@@ -194,7 +193,7 @@ static inline void furi_hal_gpio_write_open_drain(const GpioPin* gpio, const boo
  * @param gpio GpioPin
  * @return true / false
  */
-static inline bool furi_hal_gpio_read(const GpioPin* gpio) {
+static FURI_ALWAYS_INLINE bool furi_hal_gpio_read(const GpioPin* gpio) {
     return gpio_get(gpio->pin);
 }
 
