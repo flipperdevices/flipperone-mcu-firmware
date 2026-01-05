@@ -1,4 +1,5 @@
 #include "test_peref.h"
+#include "core/kernel.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -17,6 +18,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <drivers/tps62868x/tps62868x.h>
+#include <display/display.h>
 
 #define tag "TestPerefSrv"
 
@@ -40,12 +42,22 @@ int32_t test_peref_srv(void* p) {
     free(ws2812_pins);
     
     //furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);
-
+    furi_delay_ms(1000);
     uint8_t index_led[3] = {0};
 
     //Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_internal, INA219_ADDRESS, 0.1f, 0.4f); // 0.1 Ohm shunt, 2A max
 
+    Display* display_h = furi_record_open(RECORD_DISPLAY);
+
     while(true) {
+
+        // display_set_brightness(display_h, 10);
+        // furi_delay_ms(5000);
+        // display_set_brightness(display_h, 0);
+        // furi_delay_ms(5000);
+
+
+
 
         // furi_hal_gpio_write(&gpio_pico_led, true);
         //  furi_delay_ms(100);

@@ -3,18 +3,17 @@
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/spi_get_frame/spi_get_frame.h>
 #include <api_lock.h>
- #include <pico.h>
+#include <pico.h>
 
 #define TAG "Display"
 
-#define DISPLAY_MAX_MESSAGES (8)
-#define DISPLAY_BRIGHTNESS_MIN     (0)
-#define DISPLAY_BRIGHTNESS_MAX     (100)
+#define DISPLAY_MAX_MESSAGES   (8)
+#define DISPLAY_BRIGHTNESS_MIN (0)
+#define DISPLAY_BRIGHTNESS_MAX (100)
 
 typedef enum {
     DisplayEventTypeSpiFrameReady = (1 << 0),
-    //DisplayEventTypeSwitchMode = (1 << 1),
-    DisplayEventTypeAll = (DisplayEventTypeSpiFrameReady /*| DisplayEventTypeSwitchMode*/),
+    DisplayEventTypeAll = (DisplayEventTypeSpiFrameReady),
 } DisplayEventType;
 
 struct Display {
@@ -61,38 +60,39 @@ void display_event_isr(void* context) {
 
 static void display_message_queue_callback(FuriEventLoopObject* object, void* context) {
     furi_assert(context);
-    // Audio* instance = context;
-    // furi_assert(object == instance->message_queue);
+    Display* instance = context;
+    furi_assert(object == instance->message_queue);
 
-    // AudioMessage msg;
-    // furi_check(furi_message_queue_get(instance->message_queue, &msg, 0) == FuriStatusOk);
+    DisplayMessage msg;
+    furi_check(furi_message_queue_get(instance->message_queue, &msg, 0) == FuriStatusOk);
 
-    // bool result = false;
+    bool result = false;
 
-    // if(msg.type == AudioMessageTypePlayFile) {
-    //     result = audio_handle_play_file(instance, &msg);
-    // } else if(msg.type == AudioMessageTypeStop) {
-    //     instance->should_stop = true;
-    // } else if(msg.type == AudioMessageTypeSetVolume) {
-    //     instance->volume = msg.set_volume;
+    switch(msg.type) {
+    case DisplayMessageTypeSetBrightness:
+        display_jd9853_qspi_set_brightness(instance->display_header, msg.set_brightness);
+        break;
+    case DisplayMessageTypeGetBrightness:
+        *(msg.get_brightness) = display_jd9853_qspi_get_brightness(instance->display_header);
+        break;
+    case DisplayMessageTypeSetMode:
+        instance->mode = msg.set_mode;
+        break;
+    case DisplayMessageTypeGetMode:
+        *(msg.get_mode) = instance->mode;
+        break;
+    default:
+        furi_crash("Invalid message type");
+        break;
+    }
 
-    //     json_config_write_single_number(AUDIO_CONFIG_FILE, "volume", instance->volume);
+    if(msg.result) {
+        *msg.result = result;
+    }
 
-    //     AudioEvent pub_event = {.type = AudioEventVolumeUpdate};
-    //     furi_pubsub_publish(instance->event_pubsub, &pub_event);
-    // } else if(msg.type == AudioMessageTypeGetVolume) {
-    //     furi_assert(msg.get_volume);
-    //     memcpy(msg.get_volume, &(instance->volume), sizeof(instance->volume));
-    // } else {
-    //     furi_crash("Invalid message type");
-    // }
-
-    // if(msg.result) {
-    //     *msg.result = result;
-    // }
-    // if(msg.lock) {
-    //     api_lock_unlock(msg.lock);
-    // }
+    if(msg.lock) {
+        api_lock_unlock(msg.lock);
+    }
 }
 
 static void display_custom_event_callback(uint32_t events, void* context) {
@@ -104,10 +104,8 @@ static void display_custom_event_callback(uint32_t events, void* context) {
     }
 }
 
-
 static void display_send_message(Display* instance, const DisplayMessage* message) {
-    furi_check(
-        furi_message_queue_put(instance->message_queue, message, FuriWaitForever) == FuriStatusOk);
+    furi_check(furi_message_queue_put(instance->message_queue, message, FuriWaitForever) == FuriStatusOk);
 
     if(message->lock) {
         api_lock_wait_unlock_and_free(message->lock);
@@ -130,7 +128,7 @@ static Display* display_alloc(void) {
     spi_get_frame_set_callback_rx(instance->spi_get_frame, display_spi_get_frame_isr, instance);
 
     instance->event_pubsub = furi_pubsub_alloc();
-    furi_record_create(RECORD_DISPLAY, instance->event_pubsub);
+    furi_record_create(RECORD_DISPLAY, instance);
 
     return instance;
 }
@@ -139,7 +137,6 @@ int32_t display_srv(void* p) {
     UNUSED(p);
 
     Display* instance = display_alloc();
-
     furi_event_loop_run(instance->event_loop);
 
     return 0;
