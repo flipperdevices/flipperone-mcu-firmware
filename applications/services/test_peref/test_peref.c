@@ -3,7 +3,6 @@
 
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
-#include <drivers/display/display_jd9853_qspi.h>
 
 #include <furi_hal_pwm.h>
 #include <drivers/ws2812/ws2812.h>
@@ -14,23 +13,12 @@
 #include <drivers/drv2605l/drv2605l.h>
 #include <furi_hal_i2c_config.h>
 #include <drivers/iqs7211e/iqs7211e.h>
-#include <drivers/spi_get_frame/spi_get_frame.h>
 #include <drivers/ina219/ina219.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <drivers/tps62868x/tps62868x.h>
 
 #define tag "TestPerefSrv"
-
-uint8_t input_ok = 0;
-uint8_t* input_data_ptr = 0;
-size_t input_size = 0;
-
-static void __isr __not_in_flash_func(rx_ok)(uint8_t* data, size_t size, void* context) {
-    input_data_ptr = data;
-    input_size = size;
-    input_ok = 1;
-}
 
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
@@ -53,34 +41,11 @@ int32_t test_peref_srv(void* p) {
     
     //furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);
 
-
-    DisplayJd9853QSPI* display = display_jd9853_qspi_init();
-    display_jd9853_qspi_set_brightness(display, 10);
     uint8_t index_led[3] = {0};
-
-    SpiGetFrame* spi_get_frame = spi_get_frame_init();
-    spi_get_frame_set_callback_rx(spi_get_frame, rx_ok, NULL);
 
     //Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_internal, INA219_ADDRESS, 0.1f, 0.4f); // 0.1 Ohm shunt, 2A max
 
     while(true) {
-
-        furi_delay_ms(5);
-        if(input_ok) {
-            // FURI_LOG_RAW_I("size = %d || data:", input_size);
-            // for(size_t i = 0; i < 32; i+=2) {
-            //     FURI_LOG_RAW_I( " %02X%02X", input_data_ptr[i+1], input_data_ptr[i]);
-            // }
-            // FURI_LOG_RAW_I( "   ||   ");
-            // for(size_t i = input_size-32; i < input_size; i+=2) {
-            //     FURI_LOG_RAW_I( " %02X%02X", input_data_ptr[i+1], input_data_ptr[i]);
-            // }
-            //  FURI_LOG_RAW_I( "\r\n");
-            //FURI_LOG_I("SPI1", "Received byte %c%c%c%c%c%c%c%c%c", input_data_ptr[0], input_data_ptr[1], input_data_ptr[2], input_data_ptr[3], input_data_ptr[4], input_data_ptr[5], input_data_ptr[6], input_data_ptr[7], input_data_ptr[8]);
-            display_jd9853_qspi_write_buffer(display, input_data_ptr, input_size);
-            input_ok = 0;
-
-        }
 
         // furi_hal_gpio_write(&gpio_pico_led, true);
         //  furi_delay_ms(100);
@@ -93,36 +58,6 @@ int32_t test_peref_srv(void* p) {
         //     shunt_mv,
         //     current_a,
         //     power_w);
-
-
-        // furi_hal_gpio_write(&gpio_pico_led, false);
-        // furi_delay_ms(10);
-
-    //     //bw display test
-    //     display_jd9853_qspi_fill(display, 0); // Fill white
-    //     furi_delay_ms(200);
-    //     // display_jd9853_qspi_fill(display, 50); // Fill white
-    //     // furi_delay_ms(200);
-    //     // display_jd9853_qspi_fill(display, 100); // Fill white
-    //     // furi_delay_ms(200);
-    //     // display_jd9853_qspi_fill(display, 150); // Fill white
-    //     // furi_delay_ms(200);
-    //     // display_jd9853_qspi_fill(display, 200); // Fill white
-    //     // furi_delay_ms(200);
-    //     display_jd9853_qspi_fill(display, 255); // Fill white
-    // //    furi_delay_ms(500);
-
-    //     for(size_t i = 0; i < 64; i++) {
-    //         //furi_hal_gpio_write(&gpio_display_ctrl, true);
-    //         display_jd9853_qspi_fill(display, i<<2); // Fill white
-    //         //furi_delay_ms(100); //10FPS
-    //         //furi_delay_ms(66);  //15FPS
-    //         //furi_delay_ms(50);  //20FPS
-    //         // furi_delay_ms(33); //30FPS
-    //          furi_delay_ms(16); //60FPS
-    //         //furi_delay_ms(5); //120FPS
-    //     }
-    //    furi_delay_ms(200);
 
         //     // //random SQUARE
         //     uint16_t x0 = rand() % 257;
@@ -153,54 +88,54 @@ int32_t test_peref_srv(void* p) {
         //     duty = 0;
         // }
         //   //  furi_hal_power_insomnia_enter();
+        furi_delay_ms(500);
+            //test line 1
+            uint32_t line_buffer_1[4];
+            for(size_t i = 0; i < sizeof(line_buffer_1)/4; i++) {
+                if(index_led[0] == i) {
+                    line_buffer_1[i] = ws2812_urgb_u32(127,   30, 30);
+                } else {
+                    line_buffer_1[i] = ws2812_urgb_u32(0, 0, 0);
+                }
+            }
 
-            // //test line 1
-            // uint32_t line_buffer_1[4];
-            // for(size_t i = 0; i < sizeof(line_buffer_1)/4; i++) {
-            //     if(index_led[0] == i) {
-            //         line_buffer_1[i] = ws2812_urgb_u32_dma(127,   30, 30);
-            //     } else {
-            //         line_buffer_1[i] = ws2812_urgb_u32_dma(0, 0, 0);
-            //     }
-            // }
+            ws2812_write_buffer_dma(ws2812, 0, line_buffer_1, 4);
+            index_led[0]++;
+            if(index_led[0] >= sizeof(line_buffer_1)/4) {
+                index_led[0] = 0;
+            }
 
-            // ws2812_write_buffer_dma(ws2812, 0, line_buffer_1, 4);
-            // index_led[0]++;
-            // if(index_led[0] >= sizeof(line_buffer_1)/4) {
-            //     index_led[0] = 0;
-            // }
+            //test line 2
+            uint32_t line_buffer_2[7];
+            for(size_t i = 0; i < sizeof(line_buffer_2)/4; i++) {
+                if(index_led[1] == i) {
+                    line_buffer_2[i] = ws2812_urgb_u32(127,   30, 30);
+                } else {
+                    line_buffer_2[i] = ws2812_urgb_u32(0, 0, 0);
+                }
+            }
 
-            // //test line 2
-            // uint32_t line_buffer_2[7];
-            // for(size_t i = 0; i < sizeof(line_buffer_2)/4; i++) {
-            //     if(index_led[1] == i) {
-            //         line_buffer_2[i] = ws2812_urgb_u32_dma(127,   30, 30);
-            //     } else {
-            //         line_buffer_2[i] = ws2812_urgb_u32_dma(0, 0, 0);
-            //     }
-            // }
+            ws2812_write_buffer_dma(ws2812, 1, line_buffer_2, 7);
+            index_led[1]++;
+            if(index_led[1] >= sizeof(line_buffer_2)/4) {
+                index_led[1] = 0;
+            }
 
-            // ws2812_write_buffer_dma(ws2812, 1, line_buffer_2, 7);
-            // index_led[1]++;
-            // if(index_led[1] >= sizeof(line_buffer_2)/4) {
-            //     index_led[1] = 0;
-            // }
+            //test line 3
+            uint32_t line_buffer_3[6];
+            for(size_t i = 0; i < sizeof(line_buffer_3)/4; i++) {
+                if(index_led[2] == i) {
+                    line_buffer_3[i] = ws2812_urgb_u32(127,   30, 30);
+                } else {
+                    line_buffer_3[i] = ws2812_urgb_u32(0, 0, 0);
+                }
+            }
 
-            // //test line 3
-            // uint32_t line_buffer_3[6];
-            // for(size_t i = 0; i < sizeof(line_buffer_3)/4; i++) {
-            //     if(index_led[2] == i) {
-            //         line_buffer_3[i] = ws2812_urgb_u32_dma(127,   30, 30);
-            //     } else {
-            //         line_buffer_3[i] = ws2812_urgb_u32_dma(0, 0, 0);
-            //     }
-            // }
-
-            // ws2812_write_buffer_dma(ws2812, 2, line_buffer_3, 6);
-            // index_led[2]++;
-            // if(index_led[2] >= sizeof(line_buffer_3)/4) {
-            //     index_led[2] = 0;
-            // }
+            ws2812_write_buffer_dma(ws2812, 2, line_buffer_3, 6);
+            index_led[2]++;
+            if(index_led[2] >= sizeof(line_buffer_3)/4) {
+                index_led[2] = 0;
+            }
 
         //furi_hal_i2c_acquire(&furi_hal_i2c_handle_internal);
         // furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);

@@ -313,7 +313,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     //Initialization sequence
     display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
     //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
-    display_jd9853_qspi_fill(display, 0); // Fill white
+    display_jd9853_qspi_fill(display, 0); // Fill black
 
     display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 2%
 
