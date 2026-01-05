@@ -1,27 +1,57 @@
 #include "display.h"
-
 #include <furi.h>
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/spi_get_frame/spi_get_frame.h>
+#include <api_lock.h>
+ #include <pico.h>
 
 #define TAG "Display"
 
-#define DISPLAY_THREAD_FLAG_SPI_FRAME_ISR 0x00000001
+#define DISPLAY_MAX_MESSAGES (8)
+#define DISPLAY_BRIGHTNESS_MIN     (0)
+#define DISPLAY_BRIGHTNESS_MAX     (100)
 
-typedef struct {
+typedef enum {
+    DisplayEventTypeSpiFrameReady = (1 << 0),
+    //DisplayEventTypeSwitchMode = (1 << 1),
+    DisplayEventTypeAll = (DisplayEventTypeSpiFrameReady /*| DisplayEventTypeSwitchMode*/),
+} DisplayEventType;
+
+struct Display {
+    FuriEventLoop* event_loop;
     FuriPubSub* event_pubsub;
-    FuriThreadId thread_id;
     DisplayJd9853QSPI* display_header;
     SpiGetFrame* spi_get_frame;
     uint8_t* spi_get_frame_data_ptr;
     size_t spi_get_frame_data_size;
-} Display;
+    DisplayMode mode;
+    FuriMessageQueue* message_queue;
+};
 
-static void __isr __not_in_flash_func(display_pi_get_frame_isr)(uint8_t* data, size_t size, void* context) {
+typedef enum {
+    DisplayMessageTypeSetBrightness,
+    DisplayMessageTypeGetBrightness,
+    DisplayMessageTypeSetMode,
+    DisplayMessageTypeGetMode,
+} DisplayMessageType;
+
+typedef struct {
+    DisplayMessageType type;
+    FuriApiLock lock;
+    bool* result;
+    union {
+        uint8_t* get_brightness;
+        uint8_t set_brightness;
+        DisplayMode* get_mode;
+        DisplayMode set_mode;
+    };
+} DisplayMessage;
+
+static void __isr __not_in_flash_func(display_spi_get_frame_isr)(uint8_t* data, size_t size, void* context) {
     Display* instance = (Display*)context;
     instance->spi_get_frame_data_ptr = data;
     instance->spi_get_frame_data_size = size;
-    furi_thread_flags_set(instance->thread_id, DISPLAY_THREAD_FLAG_SPI_FRAME_ISR);
+    furi_event_loop_set_custom_event(instance->event_loop, DisplayEventTypeSpiFrameReady);
 }
 
 void display_event_isr(void* context) {
@@ -29,31 +59,146 @@ void display_event_isr(void* context) {
     Display* instance = (Display*)context;
 }
 
+static void display_message_queue_callback(FuriEventLoopObject* object, void* context) {
+    furi_assert(context);
+    // Audio* instance = context;
+    // furi_assert(object == instance->message_queue);
+
+    // AudioMessage msg;
+    // furi_check(furi_message_queue_get(instance->message_queue, &msg, 0) == FuriStatusOk);
+
+    // bool result = false;
+
+    // if(msg.type == AudioMessageTypePlayFile) {
+    //     result = audio_handle_play_file(instance, &msg);
+    // } else if(msg.type == AudioMessageTypeStop) {
+    //     instance->should_stop = true;
+    // } else if(msg.type == AudioMessageTypeSetVolume) {
+    //     instance->volume = msg.set_volume;
+
+    //     json_config_write_single_number(AUDIO_CONFIG_FILE, "volume", instance->volume);
+
+    //     AudioEvent pub_event = {.type = AudioEventVolumeUpdate};
+    //     furi_pubsub_publish(instance->event_pubsub, &pub_event);
+    // } else if(msg.type == AudioMessageTypeGetVolume) {
+    //     furi_assert(msg.get_volume);
+    //     memcpy(msg.get_volume, &(instance->volume), sizeof(instance->volume));
+    // } else {
+    //     furi_crash("Invalid message type");
+    // }
+
+    // if(msg.result) {
+    //     *msg.result = result;
+    // }
+    // if(msg.lock) {
+    //     api_lock_unlock(msg.lock);
+    // }
+}
+
+static void display_custom_event_callback(uint32_t events, void* context) {
+    furi_assert(context);
+    Display* instance = (Display*)context;
+
+    if(events & DisplayEventTypeSpiFrameReady) {
+        display_jd9853_qspi_write_buffer(instance->display_header, instance->spi_get_frame_data_ptr, instance->spi_get_frame_data_size);
+    }
+}
+
+
+static void display_send_message(Display* instance, const DisplayMessage* message) {
+    furi_check(
+        furi_message_queue_put(instance->message_queue, message, FuriWaitForever) == FuriStatusOk);
+
+    if(message->lock) {
+        api_lock_wait_unlock_and_free(message->lock);
+    }
+}
+
+static Display* display_alloc(void) {
+    Display* instance = (Display*)malloc(sizeof(Display));
+    instance->event_loop = furi_event_loop_alloc();
+    instance->message_queue = furi_message_queue_alloc(DISPLAY_MAX_MESSAGES, sizeof(DisplayMessage));
+    instance->mode = DisplayModeCpu;
+    instance->display_header = display_jd9853_qspi_init();
+    instance->spi_get_frame = spi_get_frame_init();
+
+    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, display_message_queue_callback, instance);
+
+    furi_event_loop_set_custom_event_callback(instance->event_loop, display_custom_event_callback, instance);
+
+    display_jd9853_qspi_set_brightness(instance->display_header, 5); // Set backlight to 10%
+    spi_get_frame_set_callback_rx(instance->spi_get_frame, display_spi_get_frame_isr, instance);
+
+    instance->event_pubsub = furi_pubsub_alloc();
+    furi_record_create(RECORD_DISPLAY, instance->event_pubsub);
+
+    return instance;
+}
+
 int32_t display_srv(void* p) {
     UNUSED(p);
 
-    Display* instance = (Display*)malloc(sizeof(Display));
-    instance->display_header = display_jd9853_qspi_init();
-    instance->spi_get_frame = spi_get_frame_init();
-    instance->thread_id = furi_thread_get_current_id();
-    instance->event_pubsub = furi_pubsub_alloc();
+    Display* instance = display_alloc();
 
-    display_jd9853_qspi_set_brightness(instance->display_header, 5); // Set backlight to 10%
-    spi_get_frame_set_callback_rx(instance->spi_get_frame, display_pi_get_frame_isr, instance);
-    furi_record_create(RECORD_DISPLAY, instance->event_pubsub);
-#ifdef SRV_CLI
-    CliRegistry* registry = furi_record_open(RECORD_CLI);
-    cli_registry_add_command(registry, "display", CliCommandFlagParallelSafe, display_cli, instance->event_pubsub);
-    furi_record_close(RECORD_CLI);
-#endif
-
-    while(1) {
-        furi_thread_flags_wait(DISPLAY_THREAD_FLAG_SPI_FRAME_ISR, FuriFlagWaitAny, FuriWaitForever);
-        display_jd9853_qspi_write_buffer(instance->display_header, instance->spi_get_frame_data_ptr, instance->spi_get_frame_data_size);
-        // display_jd9853_qspi_fill(instance->display_header, 0); // Fill white
-        // furi_delay_ms(200);
-        // display_jd9853_qspi_fill(instance->display_header, 255); // Fill white
-    }
+    furi_event_loop_run(instance->event_loop);
 
     return 0;
+}
+
+void display_set_brightness(Display* instance, uint8_t brightness) {
+    furi_check(instance);
+    furi_check(brightness >= DISPLAY_BRIGHTNESS_MIN && brightness <= DISPLAY_BRIGHTNESS_MAX);
+
+    const DisplayMessage msg = {
+        .type = DisplayMessageTypeSetBrightness,
+        .set_brightness = brightness,
+    };
+
+    display_send_message(instance, &msg);
+}
+
+uint8_t display_get_brightness(Display* instance) {
+    furi_check(instance);
+
+    uint8_t brightness;
+    DisplayMessage msg = {
+        .type = DisplayMessageTypeGetBrightness,
+        .get_brightness = &brightness,
+        .lock = api_lock_alloc_locked(),
+    };
+
+    display_send_message(instance, &msg);
+
+    return brightness;
+}
+
+void display_set_mode(Display* instance, DisplayMode mode) {
+    furi_check(instance);
+    furi_check(mode < DisplayModeCount);
+    const DisplayMessage msg = {
+        .type = DisplayMessageTypeSetMode,
+        .set_mode = mode,
+    };
+
+    display_send_message(instance, &msg);
+}
+
+DisplayMode display_get_mode(Display* instance) {
+    furi_check(instance);
+
+    DisplayMode mode;
+    DisplayMessage msg = {
+        .type = DisplayMessageTypeGetMode,
+        .get_mode = &mode,
+        .lock = api_lock_alloc_locked(),
+    };
+
+    display_send_message(instance, &msg);
+
+    return mode;
+}
+
+FuriPubSub* display_get_pubsub(Display* display) {
+    furi_check(display);
+    return display->event_pubsub;
 }
