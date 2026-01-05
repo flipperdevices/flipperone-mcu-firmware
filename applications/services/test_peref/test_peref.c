@@ -40,9 +40,9 @@ int32_t test_peref_srv(void* p) {
     ws2812_pins[2] = gpio_status_led_line3;
     Ws2812* ws2812 = ws2812_init(ws2812_pins, 3);
     free(ws2812_pins);
-    
+
     //furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);
-    furi_delay_ms(1000);
+    //furi_delay_ms(1000);
     uint8_t index_led[3] = {0};
 
     //Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_internal, INA219_ADDRESS, 0.1f, 0.4f); // 0.1 Ohm shunt, 2A max
@@ -50,14 +50,10 @@ int32_t test_peref_srv(void* p) {
     Display* display_h = furi_record_open(RECORD_DISPLAY);
 
     while(true) {
-
         // display_set_brightness(display_h, 10);
         // furi_delay_ms(5000);
         // display_set_brightness(display_h, 0);
         // furi_delay_ms(5000);
-
-
-
 
         // furi_hal_gpio_write(&gpio_pico_led, true);
         //  furi_delay_ms(100);
@@ -101,53 +97,53 @@ int32_t test_peref_srv(void* p) {
         // }
         //   //  furi_hal_power_insomnia_enter();
         furi_delay_ms(500);
-            //test line 1
-            uint32_t line_buffer_1[4];
-            for(size_t i = 0; i < sizeof(line_buffer_1)/4; i++) {
-                if(index_led[0] == i) {
-                    line_buffer_1[i] = ws2812_urgb_u32(127,   30, 30);
-                } else {
-                    line_buffer_1[i] = ws2812_urgb_u32(0, 0, 0);
-                }
+        //test line 1
+        uint32_t line_buffer_1[4];
+        for(size_t i = 0; i < sizeof(line_buffer_1) / 4; i++) {
+            if(index_led[0] == i) {
+                line_buffer_1[i] = ws2812_urgb_u32(127, 30, 30);
+            } else {
+                line_buffer_1[i] = ws2812_urgb_u32(0, 0, 0);
             }
+        }
 
-            ws2812_write_buffer_dma(ws2812, 0, line_buffer_1, 4);
-            index_led[0]++;
-            if(index_led[0] >= sizeof(line_buffer_1)/4) {
-                index_led[0] = 0;
-            }
+        ws2812_write_buffer_dma(ws2812, 0, line_buffer_1, 4);
+        index_led[0]++;
+        if(index_led[0] >= sizeof(line_buffer_1) / 4) {
+            index_led[0] = 0;
+        }
 
-            //test line 2
-            uint32_t line_buffer_2[7];
-            for(size_t i = 0; i < sizeof(line_buffer_2)/4; i++) {
-                if(index_led[1] == i) {
-                    line_buffer_2[i] = ws2812_urgb_u32(127,   30, 30);
-                } else {
-                    line_buffer_2[i] = ws2812_urgb_u32(0, 0, 0);
-                }
+        //test line 2
+        uint32_t line_buffer_2[7];
+        for(size_t i = 0; i < sizeof(line_buffer_2) / 4; i++) {
+            if(index_led[1] == i) {
+                line_buffer_2[i] = ws2812_urgb_u32(127, 30, 30);
+            } else {
+                line_buffer_2[i] = ws2812_urgb_u32(0, 0, 0);
             }
+        }
 
-            ws2812_write_buffer_dma(ws2812, 1, line_buffer_2, 7);
-            index_led[1]++;
-            if(index_led[1] >= sizeof(line_buffer_2)/4) {
-                index_led[1] = 0;
-            }
+        ws2812_write_buffer_dma(ws2812, 1, line_buffer_2, 7);
+        index_led[1]++;
+        if(index_led[1] >= sizeof(line_buffer_2) / 4) {
+            index_led[1] = 0;
+        }
 
-            //test line 3
-            uint32_t line_buffer_3[6];
-            for(size_t i = 0; i < sizeof(line_buffer_3)/4; i++) {
-                if(index_led[2] == i) {
-                    line_buffer_3[i] = ws2812_urgb_u32(127,   30, 30);
-                } else {
-                    line_buffer_3[i] = ws2812_urgb_u32(0, 0, 0);
-                }
+        //test line 3
+        uint32_t line_buffer_3[6];
+        for(size_t i = 0; i < sizeof(line_buffer_3) / 4; i++) {
+            if(index_led[2] == i) {
+                line_buffer_3[i] = ws2812_urgb_u32(127, 30, 30);
+            } else {
+                line_buffer_3[i] = ws2812_urgb_u32(0, 0, 0);
             }
+        }
 
-            ws2812_write_buffer_dma(ws2812, 2, line_buffer_3, 6);
-            index_led[2]++;
-            if(index_led[2] >= sizeof(line_buffer_3)/4) {
-                index_led[2] = 0;
-            }
+        ws2812_write_buffer_dma(ws2812, 2, line_buffer_3, 6);
+        index_led[2]++;
+        if(index_led[2] >= sizeof(line_buffer_3) / 4) {
+            index_led[2] = 0;
+        }
 
         //furi_hal_i2c_acquire(&furi_hal_i2c_handle_internal);
         // furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);

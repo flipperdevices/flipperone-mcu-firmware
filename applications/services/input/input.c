@@ -48,7 +48,7 @@ void input_press_timer_callback(void* arg) {
     }
 }
 
-void input_isr(void* _ctx) {
+void __isr __not_in_flash_func(input_isr)(void* _ctx) {
     FuriThreadId thread_id = (FuriThreadId)_ctx;
     furi_thread_flags_set(thread_id, INPUT_THREAD_FLAG_ISR);
 }

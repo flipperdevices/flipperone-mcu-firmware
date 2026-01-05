@@ -14,7 +14,7 @@ typedef struct {
     Iqs7211e* iqs7211e;
 } InputTouch;
 
-void input_touch_isr(void* context) {
+void __isr __not_in_flash_func(input_touch_isr)(void* context) {
     furi_assert(context);
     InputTouch* instance = (InputTouch*)context;
     furi_thread_flags_set(instance->thread_id, INPUT_THREAD_FLAG_ISR);

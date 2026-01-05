@@ -1,7 +1,7 @@
 #pragma once
 #include <furi.h>
 
-#define RECORD_DISPLAY            "display"
+#define RECORD_DISPLAY "display"
 typedef struct Display Display;
 
 typedef enum {
