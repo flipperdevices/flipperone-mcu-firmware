@@ -5,12 +5,17 @@
 #include <FreeRTOS.h>
 #include <task.h>
 #include <furi_hal_debug.h>
+#include <furi_hal_gpio.h>
+#include <furi_hal_resources.h>
 
 #define TAG "FuriHalOs"
 
 extern void SysTick_Handler(void);
 
 void furi_hal_os_init(void) {
+    // Disable NBOOT control with the RTT button
+    furi_hal_gpio_init_simple(&gpio_nboot_disable, GpioModeOutputPushPull);
+    furi_hal_gpio_write(&gpio_nboot_disable, true);
     FURI_LOG_I(TAG, "Init OK");
 }
 

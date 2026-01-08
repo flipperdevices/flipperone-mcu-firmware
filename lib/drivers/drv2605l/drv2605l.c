@@ -1,7 +1,6 @@
-
-#include "furi_hal_gpio.h"
 #include "drv2605l_reg.h"
 #include "drv2605l.h"
+#include <furi_hal_gpio.h>
 #include <furi.h>
 
 #include <furi_hal_i2c.h>
