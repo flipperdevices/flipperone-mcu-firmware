@@ -193,8 +193,7 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
 
         drv2605l_auto_calibrate(instance);
 
-        //todo: implement drv2605l_enable / drv2605l_disable used
-        // drv2605l_disable(instance);
+        drv2605l_disable(instance);
     } else {
         FURI_LOG_E(TAG, "DRV2605L device not ready at address 0x%02X", instance->address);
         drv2605l_disable(instance);
@@ -261,10 +260,11 @@ void drv2605l_trigger_set_effect_and_play(Drv2605l* instance, Drv2605lEffect eff
 
 void drv2605l_test_all_effects(Drv2605l* instance) {
     furi_check(instance);
-
+    drv2605l_enable(instance);
     for(uint8_t i = Drv2605lEffectStrongClick_100; i <= Drv2605lEffectCountMax; i++) {
         FURI_LOG_I(TAG, "Playing effect %d", i);
         drv2605l_trigger_set_effect_and_play(instance, (Drv2605lEffect)(i));
         furi_delay_ms(1000);
     }
+    drv2605l_disable(instance);
 }

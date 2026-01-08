@@ -3,7 +3,7 @@
 #include <furi_hal_i2c_config.h>
 #include <furi.h>
 #include <drivers/tca6416a/tca6416a.h>
-#include <drivers/drv2605l/drv2605l.h>
+#include <haptic/haptic.h>
 
 #define INPUT_DEBOUNCE_TICKS      4
 #define INPUT_DEBOUNCE_TICKS_HALF (INPUT_DEBOUNCE_TICKS / 2)
@@ -14,7 +14,7 @@
 /** Input pin state */
 typedef struct {
     const InputPin* pin;
-    // State
+
     volatile bool state;
     volatile uint8_t debounce;
     FuriTimer* press_timer;
@@ -107,7 +107,7 @@ int32_t input_srv(void* p) {
 
     uint16_t input_state = tca6416a_read_input(tca6416a);
 
-    Drv2605l* drv2605l = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
+    Haptic* haptic = furi_record_open(RECORD_HAPTIC);
 
     for(size_t i = 0; i < input_pins_count; i++) {
         pin_states[i].pin = &input_pins[i];
@@ -136,7 +136,7 @@ int32_t input_srv(void* p) {
                 pin_states[i].state = state;
 
                 if(state) {
-                    drv2605l_trigger_set_effect_and_play(drv2605l, Drv2605lEffectSoftBump_100);
+                    haptic_notification(haptic, Drv2605lEffectSoftBump_100);
                 }
                
                 // Common state info

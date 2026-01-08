@@ -7,7 +7,6 @@
 #define DRV2605L_ADDRESS (0x5Au)
 
 typedef struct Drv2605l Drv2605l;
-typedef void (*Drv2605lCallbackInput)(void* context);
 
 typedef enum {
     Drv2605lModeTriggerGo = 0b000,

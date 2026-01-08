@@ -1,6 +1,7 @@
 #include "furi.h"
 #include "applications.h"
 const char* FLIPPER_AUTORUN_APP_NAME = "";
+extern int32_t haptic_srv(void* p);
 extern int32_t test_srv(void* p);
 extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
@@ -10,7 +11,11 @@ extern int32_t input_touch_srv(void* p);
 extern int32_t display_srv(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
-
+    {.app = haptic_srv,
+     .name = "HapticSrv",
+     .appid = "haptic",
+     .stack_size = 1024,
+     .flags = FlipperInternalApplicationFlagDefault },
     // {.app = test_srv,
     //  .name = "TestSrv",
     //  .appid = "test", 
