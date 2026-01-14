@@ -8,6 +8,12 @@ typedef struct {
     bool left;
     bool right;
     bool ok;
+    bool back;
+    bool key1;
+    bool key2;
+    bool key3;
+    bool key4;
+    bool key5;
 } KeypadState;
 
 static void test_create_keypad_button(Clay_String text, bool inverted) {
@@ -148,6 +154,39 @@ static void test_keypad_layout(App* app) {
                 }) {
                     test_create_keypad_button(CLAY_STRING("Down"), state.down);
                 }
+                CLAY_AUTO_ID({
+                    .layout =
+                        {
+                            .sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
+                            .childGap = 8,
+                            .childAlignment =
+                                {
+                                    .y = CLAY_ALIGN_Y_CENTER,
+                                    .x = CLAY_ALIGN_X_RIGHT,
+                                },
+                            .padding = {0, 3, 0, 0},
+                        },
+                }) {
+                    test_create_keypad_button(CLAY_STRING("Back"), state.back);
+                }
+                CLAY_AUTO_ID({
+                    .layout =
+                        {
+                            .sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
+                            .childGap = 8,
+                            .childAlignment =
+                                {
+                                    .y = CLAY_ALIGN_Y_CENTER,
+                                    .x = CLAY_ALIGN_X_CENTER,
+                                },
+                        },
+                }) {
+                    test_create_keypad_button(CLAY_STRING("1"), state.key1);
+                    test_create_keypad_button(CLAY_STRING("2"), state.key2);
+                    test_create_keypad_button(CLAY_STRING("P"), state.key3);
+                    test_create_keypad_button(CLAY_STRING("4"), state.key4);
+                    test_create_keypad_button(CLAY_STRING("5"), state.key5);
+                }
             }
         }
     }
@@ -184,10 +223,34 @@ static bool test_keypad_input(App* app, const GuiTestMessage* message) {
                 state->ok = event.type == InputTypePress;
                 handled = true;
             }
+            if(event.key == InputKeyBack) {
+                state->back = event.type == InputTypePress;
+                handled = true;
+            }
+            if(event.key == InputKey1) {
+                state->key1 = event.type == InputTypePress;
+                handled = true;
+            }
+            if(event.key == InputKey2) {
+                state->key2 = event.type == InputTypePress;
+                handled = true;
+            }
+            if(event.key == InputKey3) {
+                state->key3 = event.type == InputTypePress;
+                handled = true;
+            }
+            if(event.key == InputKey4) {
+                state->key4 = event.type == InputTypePress;
+                handled = true;
+            }
+            if(event.key == InputKey5) {
+                state->key5 = event.type == InputTypePress;
+                handled = true;
+            }
         }
     } break;
-    case GuiTestMessageTypeInputTouchEvent: {
-    } break;
+    case GuiTestMessageTypeInputTouchEvent:
+        break;
     }
 
     return handled;
