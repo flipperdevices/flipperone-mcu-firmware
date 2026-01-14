@@ -1,0 +1,116 @@
+/**
+ * -------------------------------------------------------------------------------
+ * 
+ * Copyright (c) 2022, Daniel Gorbea
+ * All rights reserved.
+ *
+ * This source code is licensed under the MIT-style license found in the
+ * LICENSE file in the root directory of this source tree. 
+ * 
+ * -------------------------------------------------------------------------------
+ * 
+ *  I2C slave multi - answer to multiple addresses
+ * 
+ *  SDA = pin
+ *  SCL = pin + 1
+ *
+ *  Add external pull ups, 1k - 3.3k
+ *
+ *  Define handlers and write buffer
+ * 
+ * -------------------------------------------------------------------------------
+ */
+ 
+ // sda 0, scl 1
+
+.program start_condition  // 5
+do_irq:
+    irq 1 // Ensure a stop has been handled, in case this is a repeat start
+    irq 4
+public start:
+.wrap_target
+    wait 1 pin 0
+    wait 0 pin 0
+    jmp pin do_irq
+.wrap
+
+.program stop_condition  // 4
+do_irq:
+    irq 1
+public start:
+.wrap_target
+    wait 0 pin 0
+    wait 1 pin 0
+    jmp pin do_irq
+.wrap
+
+.program read_byte  // 10
+.side_set 2 opt pindirs
+    wait irq 4
+read:
+    set x 7 side 0
+bit_loop:
+    wait 0 pin 1
+    wait 1 pin 1
+    in pins 1
+    jmp x-- bit_loop
+    push noblock
+do_ack:
+    out exec 16
+    jmp do_ack
+do_irq:
+    irq 5
+
+.program do_ack
+.side_set 2 opt pindirs
+    wait 0 pin 1
+    set pins 0 side 3
+    nop
+    irq wait 0
+
+    set pins 0 side 1
+    wait 1 pin 1
+    wait 0 pin 1
+
+    // read (receive request)
+    jmp 1 
+
+    // write (write request)
+    jmp 9
+
+    // address not enabled
+    set pindirs 0
+    jmp 0
+
+.program write_byte  // 9
+.side_set 2 opt pindirs
+    wait irq 5
+write:
+    set x 7 side 1
+bit_loop:
+    wait 0 pin 1
+    out pins 1
+    wait 1 pin 1
+    jmp x-- bit_loop
+    out null 32
+wait_ack:
+    out exec 16
+    jmp wait_ack
+
+.program wait_ack
+.side_set 2 opt pindirs
+    // clk stretch
+    wait 0 pin 1
+    nop //set pindirs 2
+    set pins 0 side 2
+    irq wait 0
+    
+    // check ack
+    nop
+    wait 1 pin 1 side 0
+    jmp pin 0
+    jmp 1
+
+    // stop
+    out null 32 side 0
+    jmp 0

@@ -51,6 +51,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/iqs7211e/*.c*"
     "lib/drivers/spi_get_frame/*.c*"
     "lib/drivers/ina219/*.c*"
+    "lib/drivers/i2c_multi_slave/*.c*"
     "applications/*.c"
     "applications/services/*.c"
     "applications/main/*.c"
@@ -97,6 +98,7 @@ target_include_directories(one-rp2350-control PRIVATE
 
 add_subdirectory(lib/mlib)
 add_subdirectory(lib/drivers/ws2812)
+add_subdirectory(lib/drivers/i2c_multi_slave)
 add_subdirectory(lib/freertos)
 add_subdirectory(lib/lvgl)
 add_subdirectory(assets)
@@ -115,6 +117,7 @@ target_link_libraries(one-rp2350-control
     hardware_clocks
     pico_unique_id
     ws2812
+    i2c_multi
     freertos
     lvgl_lib
     assets

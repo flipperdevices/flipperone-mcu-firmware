@@ -1,0 +1,64 @@
+#include "core/log.h"
+#include <stdio.h>
+
+#include "i2c_multi.h"
+#include "pico/stdlib.h"
+
+#define TAG "I2cMultiSlave"
+
+PIO pio = pio2;
+uint pin = 2;
+uint8_t buffer[64] = {0};
+
+void i2c_receive_handler(uint8_t data, bool is_address) {
+    if (is_address)
+    FURI_LOG_I(TAG, "Received data: %X", data);
+    else
+        FURI_LOG_I(TAG, "Data: %X", data);
+}
+
+void i2c_request_handler(uint8_t address) {
+    //FURI_LOG_I(TAG, "Address: %X, request...", address);
+    
+    switch (address) {
+        case 0x70:
+            buffer[0] = 0x10;
+            buffer[1] = 0x11;
+            buffer[2] = 0x12;
+            break;
+        case 0x71:
+            sprintf((char *)buffer, "Hello, I'm %X", address);
+            break;
+        case 0x20:
+            buffer[0] = 0xFF;
+            buffer[1] = 0xFF;
+            buffer[2] = 0xFF;
+            break;
+        case 0x14:
+            buffer[0] = 0xAA;
+            buffer[1] = 0xAA;
+            buffer[2] = 0xAA;
+            break;
+    }
+}
+
+void i2c_stop_handler(uint8_t length) { 
+    //FURI_LOG_I(TAG, "Stop condition detected, length: %u", length);
+}
+
+int main() {
+    stdio_init_all();
+    FURI_LOG_I(TAG, "I2C Multi Slave Example");
+    i2c_multi_init(pio, pin);
+    i2c_multi_enable_address(0x70);
+    i2c_multi_enable_address(0x71);
+    i2c_multi_enable_address(0x20);
+    i2c_multi_enable_address(0x14);
+    i2c_multi_set_receive_handler(i2c_receive_handler);
+    i2c_multi_set_request_handler(i2c_request_handler);
+    i2c_multi_set_stop_handler(i2c_stop_handler);
+    i2c_multi_set_write_buffer(buffer);
+
+    while (1)
+        ;
+}
