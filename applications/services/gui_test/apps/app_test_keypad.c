@@ -96,7 +96,7 @@ static void test_keypad_layout(App* app) {
                 {
                     .border = contentBorders,
                     .cornerRadius = CLAY_CORNER_RADIUS(4),
-                    .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
+                    .clip = {.vertical = true},
                     .layout =
                         {
                             .layoutDirection = CLAY_TOP_TO_BOTTOM,

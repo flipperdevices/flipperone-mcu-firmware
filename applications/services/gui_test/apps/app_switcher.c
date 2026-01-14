@@ -8,6 +8,7 @@ typedef struct {
     RenderBuffer** apps_buffers;
     Image** images;
     int* heights;
+    uint8_t* tints;
 
     float current_app_index;
 
@@ -18,10 +19,12 @@ typedef struct {
     int app_index;
 } SwitcherState;
 
-static void switcher_calculate_app_heights(float selected_app_index_animated, int* heights, size_t app_count) {
-    const int TOTAL_HEIGHT = 144;
+static void switcher_calculate_apps_state(float selected_app_index_animated, int* heights, uint8_t* tints, size_t app_count) {
+    const int TOTAL_HEIGHT = JD9853_HEIGHT;
     const int HEIGHT_SELECTED = 102;
     const int HEIGHT_ADJACENT = 21;
+    const uint8_t tinted = 180;
+    const uint8_t normal = 0;
 
     float frac = selected_app_index_animated - floorf(selected_app_index_animated);
     int base_index = (int)floorf(selected_app_index_animated);
@@ -40,16 +43,31 @@ static void switcher_calculate_app_heights(float selected_app_index_animated, in
     for(size_t i = 0; i < app_count; i++) {
         int h_a = 0;
         int h_b = 0;
+        uint8_t tint_a = normal;
+        uint8_t tint_b = normal;
 
         // Height in state A
-        if((int)i == prev_a || (int)i == next_a) h_a = HEIGHT_ADJACENT;
-        if((int)i == sel_a) h_a = HEIGHT_SELECTED;
+        if((int)i == prev_a || (int)i == next_a) {
+            h_a = HEIGHT_ADJACENT;
+            tint_a = tinted;
+        }
+        if((int)i == sel_a) {
+            h_a = HEIGHT_SELECTED;
+            tint_a = normal;
+        }
 
         // Height in state B
-        if((int)i == prev_b || (int)i == next_b) h_b = HEIGHT_ADJACENT;
-        if((int)i == sel_b) h_b = HEIGHT_SELECTED;
+        if((int)i == prev_b || (int)i == next_b) {
+            h_b = HEIGHT_ADJACENT;
+            tint_b = tinted;
+        }
+        if((int)i == sel_b) {
+            h_b = HEIGHT_SELECTED;
+            tint_b = normal;
+        }
 
         heights[i] = (int)(h_a * (1.0f - frac) + h_b * frac);
+        tints[i] = (uint8_t)(tint_a * (1.0f - frac) + tint_b * frac);
     }
 
     // Correct rounding error
@@ -66,7 +84,7 @@ static void switcher_calculate_app_heights(float selected_app_index_animated, in
     }
 }
 
-static void switcher_apps_layout(Image** images, size_t* heights, size_t apps_count) {
+static void switcher_apps_layout(Image** images, size_t* heights, uint8_t* tints, size_t apps_count) {
     Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
 
     CLAY(
@@ -97,6 +115,7 @@ static void switcher_apps_layout(Image** images, size_t* heights, size_t apps_co
                     .layout = {.sizing = {.width = JD9853_WIDTH, .height = heights[i]}},
                     .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 0, .right = 0, .bottom = 0}},
                     .image = {.imageData = images[i]},
+                    .backgroundColor = {tints[i], tints[i], tints[i], 255},
                 }) {
                 }
             }
@@ -108,9 +127,9 @@ static void switcher_layout(App* app) {
     furi_assert(app);
     SwitcherState* state = (SwitcherState*)app->state;
 
-    switcher_calculate_app_heights(state->current_app_index, state->heights, app_count);
+    switcher_calculate_apps_state(state->current_app_index, state->heights, state->tints, app_count);
 
-    switcher_apps_layout(state->images, state->heights, app_count);
+    switcher_apps_layout(state->images, state->heights, state->tints, app_count);
 
     if(!state->touch_active) {
         if(state->current_app_index < state->app_index) {
@@ -222,6 +241,7 @@ void app_switcher_init(App* app) {
         render_set_current_buffer(current_buffer);
 
         state->heights = malloc(sizeof(int) * app_count);
+        state->tints = malloc(sizeof(uint8_t) * app_count);
         state->images = malloc(sizeof(Image*) * app_count);
 
         for(int i = 0; i < app_count; i++) {

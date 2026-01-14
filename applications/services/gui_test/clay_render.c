@@ -374,7 +374,8 @@ void render_image(Clay_BoundingBox* bb, Clay_ImageRenderData* image_data) {
     case ImageFormatRawGray8: {
         for(uint32_t y = 0; y < MIN(image->height, bb->height); y++) {
             for(uint32_t x = 0; x < MIN(image->width, bb->width); x++) {
-                uint8_t pixel = data[y * image->width + x];
+                uint32_t pixel = data[y * image->width + x] + image_data->backgroundColor.r;
+                if(pixel > 255) pixel = 255;
                 render_set_pixel(bb->x + x, bb->y + y, pixel);
             }
         }

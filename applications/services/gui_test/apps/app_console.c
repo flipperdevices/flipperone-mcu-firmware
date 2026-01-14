@@ -42,7 +42,8 @@ May 14 20:51:32 ls-debian-11 systemd-journald[198]: Journal stopped \n
 ));
 
 typedef struct {
-    int32_t scroll_offset;
+    int32_t scroll_x_offset;
+    int32_t scroll_y_offset;
     float touch_y_start;
     float touch_y_current;
     float touch_x_start;
@@ -144,21 +145,41 @@ static bool console_input(App* app, const GuiTestMessage* message) {
         InputEvent event = message->input_event;
         if(event.key == InputKeyDown) {
             if(event.type == InputTypePress) {
-                state->scroll_offset = -1;
+                state->scroll_y_offset = -1;
                 handled = true;
             }
             if(event.type == InputTypeRelease) {
-                state->scroll_offset = 0;
+                state->scroll_y_offset = 0;
                 handled = true;
             }
         }
         if(event.key == InputKeyUp) {
             if(event.type == InputTypePress) {
-                state->scroll_offset = 1;
+                state->scroll_y_offset = 1;
                 handled = true;
             }
             if(event.type == InputTypeRelease) {
-                state->scroll_offset = 0;
+                state->scroll_y_offset = 0;
+                handled = true;
+            }
+        }
+        if(event.key == InputKeyRight) {
+            if(event.type == InputTypePress) {
+                state->scroll_x_offset = -1;
+                handled = true;
+            }
+            if(event.type == InputTypeRelease) {
+                state->scroll_x_offset = 0;
+                handled = true;
+            }
+        }
+        if(event.key == InputKeyLeft) {
+            if(event.type == InputTypePress) {
+                state->scroll_x_offset = 1;
+                handled = true;
+            }
+            if(event.type == InputTypeRelease) {
+                state->scroll_x_offset = 0;
                 handled = true;
             }
         }
@@ -194,7 +215,7 @@ static bool console_input(App* app, const GuiTestMessage* message) {
 static void console_scroll(App* app) {
     furi_assert(app);
     ConsoleAppState* state = (ConsoleAppState*)app->state;
-    Clay_Vector2 scroll = {0, 1.0f * state->scroll_offset};
+    Clay_Vector2 scroll = {1.0f * state->scroll_x_offset, 1.0f * state->scroll_y_offset};
 
     if(state->touch_y_start >= 0) {
         float delta = state->touch_y_current - state->touch_y_start;
@@ -215,7 +236,8 @@ static void console_scroll(App* app) {
 App app_console = {
     .state =
         &(ConsoleAppState){
-            .scroll_offset = 0,
+            .scroll_x_offset = 0,
+            .scroll_y_offset = 0,
         },
     .input = console_input,
     .render = console_layout,
