@@ -12,7 +12,11 @@ extern "C" {
 
 #define I2C_MULTI_COUNT_ADDRESS 4
 
-typedef enum i2c_multi_status_t { I2C_IDLE, I2C_READ, I2C_WRITE } i2c_multi_status_t;
+typedef enum i2c_multi_status_t {
+    I2C_IDLE,
+    I2C_READ,
+    I2C_WRITE
+} i2c_multi_status_t;
 
 typedef void (*i2c_multi_receive_handler_t)(uint8_t data, bool is_address);
 typedef void (*i2c_multi_request_handler_t)(uint8_t address);
@@ -29,7 +33,7 @@ typedef struct i2c_multi_t {
 } i2c_multi_t;
 
 void i2c_multi_init(PIO pio, uint pin);
-void i2c_multi_set_write_buffer(uint8_t *buffer);
+void i2c_multi_set_write_buffer(uint8_t* buffer);
 void i2c_multi_set_receive_handler(i2c_multi_receive_handler_t handler);
 void i2c_multi_set_request_handler(i2c_multi_request_handler_t handler);
 void i2c_multi_set_stop_handler(i2c_multi_stop_handler_t handler);
