@@ -1,3 +1,4 @@
+#pragma once
 #include <input/input.h>
 #include <input_touch/input_touch.h>
 #include <gui_test/clay_render.h>

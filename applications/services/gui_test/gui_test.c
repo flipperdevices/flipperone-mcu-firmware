@@ -5,9 +5,15 @@
 #include <drivers/display/display_jd9853_reg.h>
 #include <furi_hal_resources.h>
 #include <drivers/ws2812/ws2812.h>
-#include <gui_test/app_common.h>
+
+#include "apps/apps.h"
 
 #define TAG "GuiTest"
+
+extern App app_switcher;
+extern void app_switcher_set_app_index(int index);
+extern int app_switcher_get_app_index();
+extern void app_switcher_init(App* app);
 
 typedef enum {
     Power,
@@ -61,42 +67,6 @@ static void gui_test_input_touch_events_callback(const void* value, void* contex
     furi_message_queue_put(queue, &message, FuriWaitForever);
 }
 
-extern App app_test_keypad;
-extern App app_test_touchpad;
-extern App app_playdate;
-
-App* const apps[] = {
-    &app_test_keypad,
-    &app_test_touchpad,
-    &app_playdate,
-};
-
-static void app_call_render(App* app) {
-    if(app) {
-        if(app->render) {
-            app->render(app);
-        }
-    }
-}
-
-static bool app_call_input(App* app, const GuiTestMessage* message) {
-    bool handled = false;
-    if(app) {
-        if(app->input) {
-            handled = app->input(app, message);
-        }
-    }
-    return handled;
-}
-
-static void app_call_scroll(App* app) {
-    if(app) {
-        if(app->scroll) {
-            app->scroll(app);
-        }
-    }
-}
-
 int32_t gui_test_app(void* p) {
     FURI_LOG_I(TAG, "Starting GUI Test App");
 
@@ -127,7 +97,11 @@ int32_t gui_test_app(void* p) {
     int32_t app_index = 0;
 
     RenderBuffer* buffer = render_alloc_buffer();
+
     render_set_current_buffer(buffer);
+
+    app_switcher_init(&app_switcher);
+    bool switching = false;
 
     while(1) {
         App* app = apps[app_index];
@@ -136,76 +110,59 @@ int32_t gui_test_app(void* p) {
         Clay_ResetMeasureTextCache();
         Clay_BeginLayout();
 
-        app_call_render(app);
+        if(switching) {
+            apps_call_render(&app_switcher);
+        } else {
+            apps_call_render(app);
+        }
 
         Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
         render_clear_buffer(0x00);
+        render_do_render(&renderCommands);
 
-        for(int i = 0; i < renderCommands.length; i++) {
-            Clay_RenderCommand* renderCommand = &renderCommands.internalArray[i];
-            Clay_BoundingBox boundingBox = renderCommand->boundingBox;
-
-            switch(renderCommand->commandType) {
-            case CLAY_RENDER_COMMAND_TYPE_RECTANGLE: {
-                render_rectangle(&boundingBox, &renderCommand->renderData.rectangle);
-            } break;
-            case CLAY_RENDER_COMMAND_TYPE_BORDER: {
-                render_border(&boundingBox, &renderCommand->renderData.border);
-            } break;
-            case CLAY_RENDER_COMMAND_TYPE_TEXT: {
-                render_text(&boundingBox, &renderCommand->renderData.text);
-            } break;
-            case CLAY_RENDER_COMMAND_TYPE_IMAGE: {
-                render_image(&boundingBox, &renderCommand->renderData.image);
-            } break;
-            case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START: {
-                render_scissor_start(&boundingBox);
-            } break;
-            case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END: {
-                render_scissor_end();
-            } break;
-            case CLAY_RENDER_COMMAND_TYPE_CUSTOM: {
-                furi_crash("Custom render commands are not supported");
-            } break;
-            }
-        }
-
-        display_jd9853_spi_write_buffer(display, JD9853_WIDTH, JD9853_HEIGHT, render_get_buffer_data(buffer), JD9853_WIDTH * JD9853_HEIGHT);
+        size_t width = render_get_buffer_width(buffer);
+        size_t height = render_get_buffer_height(buffer);
+        display_jd9853_spi_write_buffer(display, width, height, render_get_buffer_data(buffer), width * height);
 
         GuiTestMessage message;
-        if(furi_message_queue_get(queue, &message, 1000 / 100) == FuriStatusOk) {
+        if(furi_message_queue_get(queue, &message, 1000 / 60) == FuriStatusOk) {
             bool message_present = true;
 
             while(message_present) {
-                bool handled = app_call_input(app, &message);
+                bool handled = false;
+
+                if(switching) {
+                    handled = apps_call_input(&app_switcher, &message);
+                } else {
+                    handled = apps_call_input(app, &message);
+                }
 
                 if(!handled) {
                     switch(message.type) {
                     case GuiTestMessageTypeInputEvent: {
                         InputEvent event = message.input_event;
                         if(event.type == InputTypePress) {
-                            if(event.key == InputKey1) {
-                                app_index = 0;
-                            }
-                            if(event.key == InputKey2) {
-                                app_index = 1;
-                            }
-                            if(event.key == InputKey3) {
-                                app_index = 2;
-                            }
-                            if(event.key == InputKey4) {
-                                app_index = 3;
-                            }
-                            if(event.key == InputKey5) {
-                                app_index = 4;
+                            if(event.key == InputKeySw) {
+                                if(!switching) {
+                                    app_switcher_set_app_index(app_index);
+                                    switching = true;
+                                } else if(switching) {
+                                    switching = false;
+                                }
                             }
 
-                            if(app_index >= COUNT_OF(apps)) {
-                                app_index = last_app_index;
+                            if(event.key == InputKeyOk) {
+                                if(switching) {
+                                    app_index = app_switcher_get_app_index();
+                                    switching = false;
+                                }
                             }
                         }
                     } break;
+                    case GuiTestMessageTypeInputTouchEvent:
+
+                        break;
                     }
                 }
 
@@ -215,8 +172,8 @@ int32_t gui_test_app(void* p) {
             }
         }
 
-        if(last_app_index == app_index) {
-            app_call_scroll(app);
+        if(!switching && (last_app_index == app_index)) {
+            apps_call_scroll(app);
         }
     }
 

@@ -355,15 +355,34 @@ void render_text(Clay_BoundingBox* bb, Clay_TextRenderData* text_data) {
 }
 
 void render_image(Clay_BoundingBox* bb, Clay_ImageRenderData* image_data) {
-    FURI_LOG_E(TAG, "Image");
-    FURI_LOG_E(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(image_data->backgroundColor));
-    FURI_LOG_E(
+    Image* image = (Image*)image_data->imageData;
+    furi_check(image);
+
+    FURI_LOG_D(TAG, "Image");
+    FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(image_data->backgroundColor));
+    FURI_LOG_D(
         TAG,
         "    [%.1f, %.1f, %.1f, %.1f]",
         image_data->cornerRadius.topLeft,
         image_data->cornerRadius.topRight,
         image_data->cornerRadius.bottomRight,
         image_data->cornerRadius.bottomLeft);
+    FURI_LOG_D(TAG, "    [img w: %d, h: %d]", image->width, image->height);
+
+    uint8_t* data = image->data;
+    switch(image->format) {
+    case ImageFormatRawGray8: {
+        for(uint32_t y = 0; y < MIN(image->height, bb->height); y++) {
+            for(uint32_t x = 0; x < MIN(image->width, bb->width); x++) {
+                uint8_t pixel = data[y * image->width + x];
+                render_set_pixel(bb->x + x, bb->y + y, pixel);
+            }
+        }
+        break;
+    }
+    default:
+        FURI_LOG_E(TAG, "Unsupported image format: %d", image->format);
+    }
 }
 
 void render_scissor_start(Clay_BoundingBox* bb) {
@@ -391,6 +410,7 @@ void render_scissor_end(void) {
 
 RenderBuffer* render_alloc_buffer(void) {
     RenderBuffer* buffer = malloc(sizeof(RenderBuffer));
+    furi_check(buffer);
     buffer->canary_pre = CANARY_VALUE;
     buffer->canary_post = CANARY_VALUE;
     return buffer;
@@ -402,6 +422,20 @@ uint8_t* render_get_buffer_data(RenderBuffer* buffer) {
     return buffer->data;
 }
 
+RenderBuffer* render_get_current_buffer(void) {
+    return render_data.current_buffer;
+}
+
 void render_set_current_buffer(RenderBuffer* buffer) {
     render_data.current_buffer = buffer;
+}
+
+size_t render_get_buffer_width(RenderBuffer* buffer) {
+    UNUSED(buffer);
+    return JD9853_WIDTH;
+}
+
+size_t render_get_buffer_height(RenderBuffer* buffer) {
+    UNUSED(buffer);
+    return JD9853_HEIGHT;
 }
