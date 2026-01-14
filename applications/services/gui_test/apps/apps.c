@@ -3,14 +3,13 @@
 extern App app_test_keypad;
 extern App app_test_touchpad;
 extern App app_playdate;
+extern App app_console;
 
 App* const apps[] = {
     &app_test_keypad,
     &app_test_touchpad,
     &app_playdate,
-    &app_test_keypad,
-    &app_test_touchpad,
-    &app_playdate,
+    &app_console,
 };
 
 const size_t app_count = COUNT_OF(apps);

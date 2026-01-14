@@ -148,6 +148,7 @@ int32_t gui_test_app(void* p) {
                                     app_switcher_set_app_index(app_index);
                                     switching = true;
                                 } else if(switching) {
+                                    app_index = app_switcher_get_app_index();
                                     switching = false;
                                 }
                             }
