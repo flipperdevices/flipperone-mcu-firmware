@@ -10,6 +10,7 @@
 #include <hardware/structs/clocks.h>
 #include <hardware/structs/hstx_ctrl.h>
 #include <hardware/structs/hstx_fifo.h>
+#include <math.h>
 #include <pico/types.h>
 #include <hardware/dma.h>
 
@@ -133,7 +134,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* disp
     display_jd9853_cs_up();
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* config) {
+void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* config) {
     display_jd9853_hstx_init_1_line(display);
     while(*config) {
         display_jd9853_write_reg(display, (DisplayJd9853Reg)(*(config + 2)));
@@ -220,9 +221,11 @@ void display_jd9853_qspi_on_sleep_exit(void) {
     display_jd9853_hstx_clock_init();
 }
 
-void display_jd9853_qspi_set_brightness(DisplayJd9853QSPI* display, uint8_t brightness) {
+void display_jd9853_qspi_set_brightness(DisplayJd9853QSPI* display, int8_t brightness) {
     furi_check(display);
-    display->backlight = brightness;
+    if(brightness > 100) brightness = 100;
+    if(brightness < 0) brightness = 0;
+    display->backlight = (uint8_t)brightness;
     if(!display->backlight) {
         if(display->backlight_pwm) {
             furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 0);
@@ -248,9 +251,9 @@ void display_jd9853_qspi_set_brightness(DisplayJd9853QSPI* display, uint8_t brig
     }
 }
 
-uint8_t display_jd9853_qspi_get_brightness(DisplayJd9853QSPI* display) {
+int8_t display_jd9853_qspi_get_brightness(DisplayJd9853QSPI* display) {
     furi_check(display);
-    return display->backlight;
+    return (int8_t)display->backlight;
 }
 
 DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
@@ -311,8 +314,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_hal_gpio_set_function(&gpio_display_d2, GpioAltFn0Hstx);
 
     //Initialization sequence
-    display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_white);
-    //display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_black);
+    display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_white_mod);
     display_jd9853_qspi_fill(display, 0); // Fill black
 
     display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 2%
@@ -357,4 +359,14 @@ void display_jd9853_qspi_eco_mode(DisplayJd9853QSPI* display, bool enable) {
         display_jd9853_write_reg(display, idmoff);
     }
     display_jd9853_hstx_init_4_line(display);
+}
+
+void display_jd9853_qspi_set_vci(DisplayJd9853QSPI* display, float_t voltage) {
+    furi_check(display);
+    tps62868x_set_voltage(display->power_supply, voltage);
+}
+
+float_t display_jd9853_qspi_get_vci(DisplayJd9853QSPI* display) {
+    furi_check(display);
+    return tps62868x_get_voltage(display->power_supply);
 }

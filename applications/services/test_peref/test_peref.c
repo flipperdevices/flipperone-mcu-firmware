@@ -15,10 +15,65 @@
 #include <furi_hal_i2c_config.h>
 #include <drivers/iqs7211e/iqs7211e.h>
 #include <drivers/ina219/ina219.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <drivers/tps62868x/tps62868x.h>
 #include <display/display.h>
+#include <input/input.h>
+#include <drivers/display/display_jd9853_qspi.h>
+#include <drivers/display/display_jd9853_reg.h>
+#include <drivers/display/jd9853_reg.h>
+
+#define TAG "PerefTest"
+DisplayJd9853QSPI* display_h = NULL;
+int mod = 1;
+bool eco = false;
+
+static void input_events_callback(const void* value, void* ctx) {
+    furi_assert(value);
+    furi_assert(ctx);
+
+    const InputEvent* event = value;
+    if(event->type == InputTypePress) {
+        if(event->key == InputKeyUp) {
+            display_jd9853_qspi_set_brightness(display_h, display_jd9853_qspi_get_brightness(display_h) + 2);
+        } else if(event->key == InputKeyRight) {
+            float vci = display_jd9853_qspi_get_vci(display_h);
+            vci += 0.1f * mod;
+            if(vci < 2.0f) vci = 2.0f;
+            if(vci > 3.3f) vci = 3.3f;
+            display_jd9853_qspi_set_vci(display_h, vci);
+            FURI_LOG_I(TAG, "Display VCI set to %.2f V", vci);
+
+        } else if(event->key == InputKeyDown) {
+            display_jd9853_qspi_set_brightness(display_h, display_jd9853_qspi_get_brightness(display_h) - 2);
+        } else if(event->key == InputKeyLeft) {
+            float vci = display_jd9853_qspi_get_vci(display_h);
+            vci -= 0.1f * mod;
+            if(vci < 2.0f) vci = 2.0f;
+            if(vci > 3.3f) vci = 3.3f;
+            display_jd9853_qspi_set_vci(display_h, vci);
+            FURI_LOG_I(TAG, "Display VCI set to %.2f V", vci);
+        } else if(event->key == InputKeyOk) {
+            eco = !eco;
+            display_jd9853_qspi_eco_mode(display_h, eco);
+        }
+
+        if(event->key == InputKey1) {
+            display_jd9853_load_config((DisplayJd9853QSPI*)display_h, jd9853_init_seq_2025_04_01_normal_white_no_reset);
+            FURI_LOG_I(TAG, "Display set to white mode");
+        } else if(event->key == InputKey5) {
+            display_jd9853_load_config((DisplayJd9853QSPI*)display_h, jd9853_init_seq_2025_04_01_normal_white_mod_no_reset);
+            FURI_LOG_I(TAG, "Display set to white mode");
+        } else if(event->key == InputKey2) {
+            if(mod == 1)
+                mod = -1;
+            else
+                mod = 1;
+        }
+    }
+}
 
 #define tag "TestPerefSrv"
 
@@ -47,7 +102,11 @@ int32_t test_peref_srv(void* p) {
 
     //Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_internal, INA219_ADDRESS, 0.1f, 0.4f); // 0.1 Ohm shunt, 2A max
 
-    Display* display_h = furi_record_open(RECORD_DISPLAY);
+    //display_h = furi_record_open(RECORD_DISPLAY);
+    display_h = display_jd9853_qspi_init();
+    display_jd9853_qspi_set_brightness(display_h, 20);
+    FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
+    FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
 
     while(true) {
         // display_set_brightness(display_h, 10);
@@ -84,6 +143,65 @@ int32_t test_peref_srv(void* p) {
         //     free(buf);
         //     furi_delay_ms(10);
 
+        // uint8_t* buf = (uint8_t*)malloc( JD9853_WIDTH * JD9853_HEIGHT);
+        // display_jd9853_qspi_write_buffer((DisplayJd9853QSPI*)display_h, buf, sizeof(buf)); // Update display with current buffer
+
+        // free(buf);
+
+        const size_t width = JD9853_WIDTH; // 1 byte per pixel
+        const size_t height = JD9853_HEIGHT;
+        uint8_t ton[18] = {0xFC, 0x0, 0x11, 0x22, 0x32, 0x43, 0x54, 0x65, 0x76, 0x86, 0x97, 0xA8, 0xB9, 0xCA, 0xDA, 0xEB, 0xFC, 0x0};
+        uint8_t ton8[10] = {0xFC, 0x0, 36, 72, 108, 144, 180, 216, 252, 0x0};
+        uint8_t* data = (uint8_t*)malloc(width * height);
+        uint8_t val = 1;
+        for(size_t w = 0; w < width; w += 1) {
+            for(size_t h = 0; h < height - 40; h += 1) {
+                data[w + h * width] = ton[val];
+            }
+            if(w % 16 == 10) {
+                val++;
+            }
+        }
+        val = 16;
+        for(size_t w = 0; w < width; w += 1) {
+            for(size_t h = 40; h < height - 70; h += 1) {
+                data[w + h * width] = ton[val];
+            }
+            if(w % 16 == 10) {
+                val--;
+            }
+        }
+
+        val = 1;
+        for(size_t w = 0; w < width; w += 1) {
+            for(size_t h = 70; h < height - 35; h += 1) {
+                data[w + h * width] = ton8[val];
+            }
+            if(w % 32 == 26) {
+                val += 1;
+            }
+        }
+
+        val = 8;
+        for(size_t w = 0; w < width; w += 1) {
+            for(size_t h = 70 + 35; h < height; h += 1) {
+                data[w + h * width] = ton8[val];
+            }
+            if(w % 32 == 26) {
+                val -= 1;
+            }
+        }
+
+        for(size_t i = (width) * (height - 10); i < width * height; i += 1) {
+            data[i] = 0x0;
+        }
+
+        for(size_t i = 0; i < (width * 10); i += 1) {
+            data[i] = 0xff;
+        }
+        display_jd9853_qspi_write_buffer((DisplayJd9853QSPI*)display_h, data, width * height);
+        free(data);
+
         // duty += 1;
         // if(duty % 2){
         //     display_jd9853_qspi_eco_mode(display, true);
@@ -96,54 +214,54 @@ int32_t test_peref_srv(void* p) {
         //     duty = 0;
         // }
         //   //  furi_hal_power_insomnia_enter();
-        furi_delay_ms(500);
+        furi_delay_ms(5000);
         //test line 1
-        uint32_t line_buffer_1[4];
-        for(size_t i = 0; i < sizeof(line_buffer_1) / 4; i++) {
-            if(index_led[0] == i) {
-                line_buffer_1[i] = ws2812_urgb_u32(127, 30, 30);
-            } else {
-                line_buffer_1[i] = ws2812_urgb_u32(0, 0, 0);
-            }
-        }
+        // uint32_t line_buffer_1[4];
+        // for(size_t i = 0; i < sizeof(line_buffer_1) / 4; i++) {
+        //     if(index_led[0] == i) {
+        //         line_buffer_1[i] = ws2812_urgb_u32(127, 30, 30);
+        //     } else {
+        //         line_buffer_1[i] = ws2812_urgb_u32(0, 0, 0);
+        //     }
+        // }
 
-        ws2812_write_buffer_dma(ws2812, 0, line_buffer_1, 4);
-        index_led[0]++;
-        if(index_led[0] >= sizeof(line_buffer_1) / 4) {
-            index_led[0] = 0;
-        }
+        // ws2812_write_buffer_dma(ws2812, 0, line_buffer_1, 4);
+        // index_led[0]++;
+        // if(index_led[0] >= sizeof(line_buffer_1) / 4) {
+        //     index_led[0] = 0;
+        // }
 
-        //test line 2
-        uint32_t line_buffer_2[7];
-        for(size_t i = 0; i < sizeof(line_buffer_2) / 4; i++) {
-            if(index_led[1] == i) {
-                line_buffer_2[i] = ws2812_urgb_u32(127, 30, 30);
-            } else {
-                line_buffer_2[i] = ws2812_urgb_u32(0, 0, 0);
-            }
-        }
+        // //test line 2
+        // uint32_t line_buffer_2[7];
+        // for(size_t i = 0; i < sizeof(line_buffer_2) / 4; i++) {
+        //     if(index_led[1] == i) {
+        //         line_buffer_2[i] = ws2812_urgb_u32(127, 30, 30);
+        //     } else {
+        //         line_buffer_2[i] = ws2812_urgb_u32(0, 0, 0);
+        //     }
+        // }
 
-        ws2812_write_buffer_dma(ws2812, 1, line_buffer_2, 7);
-        index_led[1]++;
-        if(index_led[1] >= sizeof(line_buffer_2) / 4) {
-            index_led[1] = 0;
-        }
+        // ws2812_write_buffer_dma(ws2812, 1, line_buffer_2, 7);
+        // index_led[1]++;
+        // if(index_led[1] >= sizeof(line_buffer_2) / 4) {
+        //     index_led[1] = 0;
+        // }
 
-        //test line 3
-        uint32_t line_buffer_3[6];
-        for(size_t i = 0; i < sizeof(line_buffer_3) / 4; i++) {
-            if(index_led[2] == i) {
-                line_buffer_3[i] = ws2812_urgb_u32(127, 30, 30);
-            } else {
-                line_buffer_3[i] = ws2812_urgb_u32(0, 0, 0);
-            }
-        }
+        // //test line 3
+        // uint32_t line_buffer_3[6];
+        // for(size_t i = 0; i < sizeof(line_buffer_3) / 4; i++) {
+        //     if(index_led[2] == i) {
+        //         line_buffer_3[i] = ws2812_urgb_u32(127, 30, 30);
+        //     } else {
+        //         line_buffer_3[i] = ws2812_urgb_u32(0, 0, 0);
+        //     }
+        // }
 
-        ws2812_write_buffer_dma(ws2812, 2, line_buffer_3, 6);
-        index_led[2]++;
-        if(index_led[2] >= sizeof(line_buffer_3) / 4) {
-            index_led[2] = 0;
-        }
+        // ws2812_write_buffer_dma(ws2812, 2, line_buffer_3, 6);
+        // index_led[2]++;
+        // if(index_led[2] >= sizeof(line_buffer_3) / 4) {
+        //     index_led[2] = 0;
+        // }
 
         //furi_hal_i2c_acquire(&furi_hal_i2c_handle_internal);
         // furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);

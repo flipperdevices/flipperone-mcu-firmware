@@ -39,8 +39,8 @@ typedef struct {
     FuriApiLock lock;
     bool* result;
     union {
-        uint8_t* get_brightness;
-        uint8_t set_brightness;
+        int8_t* get_brightness;
+        int8_t set_brightness;
         DisplayMode* get_mode;
         DisplayMode set_mode;
     };
@@ -124,7 +124,7 @@ static Display* display_alloc(void) {
 
     furi_event_loop_set_custom_event_callback(instance->event_loop, display_custom_event_callback, instance);
 
-    display_jd9853_qspi_set_brightness(instance->display_header, 5); // Set backlight to 10%
+    display_jd9853_qspi_set_brightness(instance->display_header, 5); // Set backlight to 5%
     spi_get_frame_set_callback_rx(instance->spi_get_frame, display_spi_get_frame_isr, instance);
 
     instance->event_pubsub = furi_pubsub_alloc();
@@ -142,10 +142,12 @@ int32_t display_srv(void* p) {
     return 0;
 }
 
-void display_set_brightness(Display* instance, uint8_t brightness) {
+void display_set_brightness(Display* instance, int8_t brightness) {
     furi_check(instance);
-    furi_check(brightness >= DISPLAY_BRIGHTNESS_MIN && brightness <= DISPLAY_BRIGHTNESS_MAX);
 
+    if(brightness < DISPLAY_BRIGHTNESS_MIN) brightness = DISPLAY_BRIGHTNESS_MIN;
+    if(brightness > DISPLAY_BRIGHTNESS_MAX) brightness = DISPLAY_BRIGHTNESS_MAX;
+    
     const DisplayMessage msg = {
         .type = DisplayMessageTypeSetBrightness,
         .set_brightness = brightness,
@@ -154,10 +156,10 @@ void display_set_brightness(Display* instance, uint8_t brightness) {
     display_send_message(instance, &msg);
 }
 
-uint8_t display_get_brightness(Display* instance) {
+int8_t display_get_brightness(Display* instance) {
     furi_check(instance);
 
-    uint8_t brightness;
+    int8_t brightness;
     DisplayMessage msg = {
         .type = DisplayMessageTypeGetBrightness,
         .get_brightness = &brightness,
