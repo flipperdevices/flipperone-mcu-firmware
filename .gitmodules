@@ -7,3 +7,4 @@
 [submodule "lib/mlib/mlib"]
 	path = lib/mlib/mlib
 	url = https://github.com/P-p-H-d/mlib.git
+	branch = master
