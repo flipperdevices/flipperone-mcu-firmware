@@ -6,7 +6,7 @@
 
 #include <FreeRTOS.h>
 
-#include "applications.h"
+#include <applications.h>
 
 #define TAG "Flipper"
 
@@ -41,14 +41,10 @@ void flipper_init(void) {
 
     flipper_init_services();
 
-     for(size_t i = 0; i < FLIPPER_SERVICES_COUNT; i++) {
+    for(size_t i = 0; i < FLIPPER_SERVICES_COUNT; i++) {
         FURI_LOG_D(TAG, "Starting service %s", FLIPPER_SERVICES[i].name);
 
-        FuriThread* thread = furi_thread_alloc_service(
-            FLIPPER_SERVICES[i].name,
-            FLIPPER_SERVICES[i].stack_size,
-            FLIPPER_SERVICES[i].app,
-            NULL);
+        FuriThread* thread = furi_thread_alloc_service(FLIPPER_SERVICES[i].name, FLIPPER_SERVICES[i].stack_size, FLIPPER_SERVICES[i].app, NULL);
         furi_thread_set_appid(thread, FLIPPER_SERVICES[i].appid);
 
         furi_thread_start(thread);

@@ -85,6 +85,7 @@ pico_enable_stdio_usb(one-rp2350-control 1)
 
 # Add the standard include files to the build
 target_include_directories(one-rp2350-control PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/applications
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
