@@ -206,7 +206,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
         2, 0, 0xC1, 0x16,                           // SETPANEL
         // 9, 0, 0xC3, 0x7E, 0x07, 0x16, 0x0B,         // SETRGBCYC !!!!!!!!!!!!!!!!!
         //             0xCB, 0x71, 0x72, 0x7F, 
-        9, 0, 0xC3, 0b01111100, 0x07, 0x0F, 0x0F,         // SETRGBCYC !!!!!!!!!!!!!!!!! 0b01111111 -> 0b01111100 RGB_INV_NP (1-dot ) check values FPS 0x16, 0x0B, (-0.3ma)
+        9, 0, 0xC3, 0b01111100, 0x07, 0x16, 0x0B,         // SETRGBCYC !!!!!!!!!!!!!!!!! 0b01111111 -> 0b01111100 RGB_INV_NP (1-dot ) +0,5ма, 0b01111110 RGB_INV_NP (2-dot ) +0,25ма  check values FPS 0x16, 0x0B, (-0.3ma)
                     0xCB, 0x71, 0x72, 0x00, 
         13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79,        // SET_TCON
                     0x14, 0x12, 0x16, 0x79,
@@ -270,7 +270,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod_no_reset[] = {
         2, 0, 0xC1, 0x16,                           // SETPANEL
         // 9, 0, 0xC3, 0x7E, 0x07, 0x16, 0x0B,         // SETRGBCYC !!!!!!!!!!!!!!!!!
         //             0xCB, 0x71, 0x72, 0x7F, 
-        9, 0, 0xC3, 0b01111100, 0x07, 0x0F, 0x0F,         // SETRGBCYC !!!!!!!!!!!!!!!!! 0b01111111 -> 0b01111100 RGB_INV_NP (1-dot ) check values FPS 0x16, 0x0B, (-0.3ma)
+        9, 0, 0xC3, 0b01111100, 0x07, 0x16, 0x0B,         // SETRGBCYC !!!!!!!!!!!!!!!!! 0b01111111 -> 0b01111100 RGB_INV_NP (1-dot ) +0,5ма, 0b01111110 RGB_INV_NP (2-dot ) +0,25ма  check values FPS 0x16, 0x0B, (-0.3ma)
                     0xCB, 0x71, 0x72, 0x00, 
         13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79,        // SET_TCON
                     0x14, 0x12, 0x16, 0x79,
