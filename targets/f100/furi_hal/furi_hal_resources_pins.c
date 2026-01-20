@@ -83,7 +83,7 @@ const InputPin input_pins[] = {
     {.key = InputKeyRight, .inverted = true, .name = "Right"},
     {.key = InputKeyLeft, .inverted = true, .name = "Left"},
     {.key = InputKeyOk, .inverted = true, .name = "OK"},
-    {.key = InputKeyRtt, .inverted = true, .name = "RTT"},
+    {.key = InputKeyPtt, .inverted = true, .name = "PTT"},
     {.key = InputKeySw, .inverted = true, .name = "Sw"},
 };
 

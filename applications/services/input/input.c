@@ -138,7 +138,7 @@ int32_t input_srv(void* p) {
                 if(state) {
                     haptic_notification(haptic, Drv2605lEffectSoftBump_100);
                 }
-               
+
                 // Common state info
                 InputEvent event;
                 event.sequence_source = INPUT_SEQUENCE_SOURCE_HARDWARE;
