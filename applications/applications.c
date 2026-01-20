@@ -9,6 +9,7 @@ extern int32_t test_input_srv(void* p);
 extern int32_t uart_echo_app(void* p);
 extern int32_t input_touch_srv(void* p);
 extern int32_t display_srv(void* p);
+extern int32_t gui_test_app(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -60,11 +61,18 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     //     .stack_size = 1024,
     //     .flags = FlipperInternalApplicationFlagDefault,
     // },
+    // {
+    //     .app = test_peref_srv,
+    //     .name = "TestPerefSrv",
+    //     .appid = "test_peref",
+    //     .stack_size = 1024,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    // },
     {
-        .app = test_peref_srv,
-        .name = "TestPerefSrv",
-        .appid = "test_peref",
-        .stack_size = 1024,
+        .app = gui_test_app,
+        .name = "GuiTest",
+        .appid = "gui_test",
+        .stack_size = 1024 * 16,
         .flags = FlipperInternalApplicationFlagDefault,
     },
 };
