@@ -97,5 +97,6 @@
         "cinttypes": "cpp",
         "typeinfo": "cpp",
         "variant": "cpp"
-    }
+    },
+    "cortex-debug.variableUseNaturalFormat": true
 }

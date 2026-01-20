@@ -9,17 +9,20 @@
 template <unsigned int N>
 struct STOP_EXTERNING_ME {};
 #endif
-
 // #include <furi_hal_rtc.h>
 // #include <furi_hal_flash.h>
-// #include <furi_hal_version.h>
-// #include <furi_hal_memory.h>
+#include <furi_hal_version.h>
+#include <furi_hal_memory.h>
 // #include <furi_hal_debug.h>
-// #include <furi_hal_interrupt.h>
-// #include <furi_hal_os.h>
+#include <furi_hal_interrupt.h>
+#include <furi_hal_os.h>
 // #include <furi_hal_cortex.h>
 // #include <furi_hal_bus.h>
 // #include <furi_hal_target.h>
+#include <furi_hal_i2c.h>
+#include <furi_hal_serial_control.h>
+#include <furi_hal_serial.h>
+#include <furi_hal_serial_types.h>
 
 #ifdef __cplusplus
 extern "C" {

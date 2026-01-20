@@ -1,5 +1,4 @@
 #include <furi_hal_resources.h>
-//#include <furi_hal_bus.h>
 
 void furi_hal_resources_init(void){
     

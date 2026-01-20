@@ -1,4 +1,3 @@
-#include <furi.h>
 #include <furi_hal_gpio.h>
 #include <hardware/exception.h>
 #include <hardware/adc.h>
@@ -11,25 +10,11 @@ void furi_hal_gpio_init_simple(const GpioPin* gpio, const GpioMode mode) {
     furi_hal_gpio_init(gpio, mode, GpioPullNo, GpioSpeedLow);
 }
 
-void furi_hal_gpio_init(
-    const GpioPin* gpio,
-    const GpioMode mode,
-    const GpioPull pull,
-    const GpioSpeed speed) {
-    // // we cannot set alternate mode in this function
-    // furi_check(mode != GpioModeAltFunctionPushPull);
-    // furi_check(mode != GpioModeAltFunctionOpenDrain);
-
+void furi_hal_gpio_init(const GpioPin* gpio, const GpioMode mode, const GpioPull pull, const GpioSpeed speed) {
     furi_hal_gpio_init_ex(gpio, mode, pull, speed, GpioAltFn5Sio);
 }
 
-void furi_hal_gpio_init_ex(
-    const GpioPin* gpio,
-    const GpioMode mode,
-    const GpioPull pull,
-    const GpioSpeed speed,
-    const GpioAltFn alt_fn) {
-    
+void furi_hal_gpio_init_ex(const GpioPin* gpio, const GpioMode mode, const GpioPull pull, const GpioSpeed speed, const GpioAltFn alt_fn) {
     // Configure gpio with interrupts disabled
     FURI_CRITICAL_ENTER();
 
@@ -39,12 +24,12 @@ void furi_hal_gpio_init_ex(
     switch(speed) {
     case GpioSpeedLow:
         gpio_set_slew_rate(gpio->pin, GPIO_SLEW_RATE_SLOW);
-        break; 
+        break;
     case GpioSpeedFast:
-        gpio_set_slew_rate(gpio->pin, GPIO_SLEW_RATE_FAST);   
+        gpio_set_slew_rate(gpio->pin, GPIO_SLEW_RATE_FAST);
         break;
     default:
-        //furi_crash("Incorrect GpioSpeed");
+        furi_crash("Incorrect GpioSpeed");
         break;
     }
 
@@ -60,7 +45,7 @@ void furi_hal_gpio_init_ex(
         gpio_set_pulls(gpio->pin, false, true);
         break;
     default:
-        //furi_crash("Incorrect GpioPull");
+        furi_crash("Incorrect GpioPull");
         break;
     }
 
@@ -68,40 +53,46 @@ void furi_hal_gpio_init_ex(
     switch(mode) {
     case GpioModeInput:
         gpio_set_dir(gpio->pin, GPIO_IN);
+        gpio_set_input_hysteresis_enabled(gpio->pin, true);
         break;
     case GpioModeOutputPushPull:
         gpio_set_dir(gpio->pin, GPIO_OUT);
+        gpio_set_input_hysteresis_enabled(gpio->pin, false);
         break;
     case GpioModeOutputOpenDrain:
-        // Open drain not supported directly, set as output for now
-        //Todo: implement open drain using GPIO registers directly
-        gpio_set_dir(gpio->pin, GPIO_OUT);
+        gpio_set_dir(gpio->pin, GPIO_IN);
+        gpio_set_oeover(gpio->pin, GPIO_OVERRIDE_INVERT);
+        gpio_set_outover(gpio->pin, GPIO_OVERRIDE_LOW);
+        gpio_set_input_hysteresis_enabled(gpio->pin, true);
         break;
     case GpioModeAnalog:
         adc_gpio_init(gpio->pin);
+        gpio_set_input_hysteresis_enabled(gpio->pin, false);
         break;
     default:
-        //furi_crash("Incorrect GpioMode");
-        break;    
+        furi_crash("Incorrect GpioMode");
+        break;
     }
-    
+
     FURI_CRITICAL_EXIT();
 }
 
 void furi_hal_gpio_add_int_callback(const GpioPin* gpio, GpioCondition condition, GpioExtiCallback cb, void* ctx) {
-    // furi_check(gpio->pin <= NUM_BANK0_GPIOS);
-    // furi_check(cb);
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(cb);
 
     FURI_CRITICAL_ENTER();
-    //furi_check(gpio_interrupt[gpio->pin].callback == NULL);
+    furi_check(gpio_interrupt[gpio->pin].callback == NULL);
     gpio_interrupt[gpio->pin].callback = cb;
     gpio_interrupt[gpio->pin].context = ctx;
+    gpio_interrupt[gpio->pin].condition = condition;
 
     gpio_set_irq_enabled_with_callback(
         gpio->pin,
-        (condition == GpioConditionRise) ? GPIO_IRQ_EDGE_RISE :
-        (condition == GpioConditionFall) ? GPIO_IRQ_EDGE_FALL :
-        (condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL : 0,
+        (condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
+        (condition == GpioConditionFall)     ? GPIO_IRQ_EDGE_FALL :
+        (condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL :
+                                               0,
         true,
         furi_hal_gpio_callback);
 
@@ -109,30 +100,50 @@ void furi_hal_gpio_add_int_callback(const GpioPin* gpio, GpioCondition condition
 }
 
 void furi_hal_gpio_enable_int_callback(const GpioPin* gpio) {
-    // furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     FURI_CRITICAL_ENTER();
 
-    irq_set_enabled(gpio->pin, true);
+    //gpio_interrupt[gpio->pin].enabled = true;
+    gpio_set_irq_enabled(
+        gpio->pin,
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionFall)     ? GPIO_IRQ_EDGE_FALL :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL :
+                                                                         0,
+        true);
 
     FURI_CRITICAL_EXIT();
 }
 
 void furi_hal_gpio_disable_int_callback(const GpioPin* gpio) {
-    //furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     FURI_CRITICAL_ENTER();
 
-    irq_set_enabled(gpio->pin, false);
+    gpio_set_irq_enabled(
+        gpio->pin,
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionFall)     ? GPIO_IRQ_EDGE_FALL :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL :
+                                                                         0,
+        false);
 
     FURI_CRITICAL_EXIT();
 }
 
 void furi_hal_gpio_remove_int_callback(const GpioPin* gpio) {
-    //furi_check(gpio->pin <= NUM_BANK0_GPIOS);
+    furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     FURI_CRITICAL_ENTER();
-    gpio_set_irq_enabled_with_callback(gpio->pin, 0, false, NULL);
+    gpio_set_irq_enabled_with_callback(
+        gpio->pin,
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionFall)     ? GPIO_IRQ_EDGE_FALL :
+        (gpio_interrupt[gpio->pin].condition == GpioConditionRiseFall) ? GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL :
+                                                                         0,
+        false,
+        NULL);
     gpio_interrupt[gpio->pin].callback = NULL;
     gpio_interrupt[gpio->pin].context = NULL;
 
@@ -145,6 +156,6 @@ FURI_ALWAYS_INLINE static void furi_hal_gpio_int_call(uint16_t pin_num) {
     }
 }
 
-void furi_hal_gpio_callback(uint gpio, uint32_t event_mask) {
+void __isr __not_in_flash_func(furi_hal_gpio_callback)(uint gpio, uint32_t event_mask) {
     furi_hal_gpio_int_call(gpio);
 }

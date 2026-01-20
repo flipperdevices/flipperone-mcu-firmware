@@ -1,9 +1,9 @@
 project("assets")
 
-file(GLOB_RECURSE IMAGE_SOURCES
+file(GLOB IMAGE_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/*.png
-    ${CMAKE_CURRENT_SOURCE_DIR}/phrase/*.png
-    ${CMAKE_CURRENT_SOURCE_DIR}/screensaver/*.png
+    # ${CMAKE_CURRENT_SOURCE_DIR}/phrase/*.png
+    # ${CMAKE_CURRENT_SOURCE_DIR}/screensaver/*.png
 )
 
 if(CMAKE_HOST_WIN32)
