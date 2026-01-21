@@ -56,7 +56,6 @@ file(GLOB_RECURSE SOURCES
     "applications/services/*.c"
     "applications/main/*.c"
     "targets/f100/src/*.c*" 
-   
 )
 
 add_executable(one-rp2350-control 
@@ -101,7 +100,6 @@ add_subdirectory(lib/mlib)
 add_subdirectory(lib/drivers/ws2812)
 add_subdirectory(lib/drivers/i2c_multi_slave)
 add_subdirectory(lib/freertos)
-add_subdirectory(lib/lvgl)
 add_subdirectory(assets)
 
 # Add the standard library to the build
@@ -120,7 +118,6 @@ target_link_libraries(one-rp2350-control
     ws2812
     i2c_multi
     freertos
-    lvgl_lib
     assets
     mlib
 )

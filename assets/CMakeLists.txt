@@ -1,7 +1,7 @@
 project("assets")
 
 file(GLOB IMAGE_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/*.png
+    # ${CMAKE_CURRENT_SOURCE_DIR}/*.png
     # ${CMAKE_CURRENT_SOURCE_DIR}/phrase/*.png
     # ${CMAKE_CURRENT_SOURCE_DIR}/screensaver/*.png
 )
@@ -12,7 +12,7 @@ else()
     set(ASSETS_COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/python/build.sh)
 endif()
 
-set(ASSETS_SOURCES)
+set(ASSETS_SOURCES "assets.c")
 
 foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
     get_filename_component(IMAGE_NAME ${IMAGE_SOURCE} NAME_WE)
@@ -32,5 +32,3 @@ endforeach()
 add_library(assets STATIC ${ASSETS_SOURCES})
 
 target_include_directories(assets PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
-
-target_link_libraries(assets lvgl)

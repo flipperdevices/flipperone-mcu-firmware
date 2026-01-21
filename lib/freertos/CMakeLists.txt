@@ -4,6 +4,7 @@ add_library(${PROJECT_NAME} INTERFACE)
 
 set(INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS-Kernel/include
 )
 
 target_sources(${PROJECT_NAME} INTERFACE

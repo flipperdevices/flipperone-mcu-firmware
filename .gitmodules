@@ -1,9 +1,6 @@
 [submodule "lib/freertos/FreeRTOS-Kernel"]
 	path = lib/freertos/FreeRTOS-Kernel
 	url = https://github.com/raspberrypi/FreeRTOS-Kernel.git
-[submodule "lib/lvgl/lvgl"]
-	path = lib/lvgl/lvgl
-	url = https://github.com/lvgl/lvgl.git
 [submodule "lib/mlib/mlib"]
 	path = lib/mlib/mlib
 	url = https://github.com/P-p-H-d/mlib.git
