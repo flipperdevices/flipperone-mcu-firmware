@@ -1,4 +1,3 @@
-#include "core/kernel.h"
 #include "status_lights.h"
 
 #include <input/input.h>
@@ -61,6 +60,21 @@ static bool status_lights_check_need_power(uint32_t* line_buffer, size_t led_cou
     return need_power;
 }
 
+static FURI_ALWAYS_INLINE bool status_lights_start_off_timer(StatusLights* instance, bool check_line, StatusLedPower line_power) {
+    furi_assert(instance);
+    if(check_line != (instance->status_lights_stat.mask_power & line_power)) {
+        if(check_line) {
+            instance->status_lights_stat.mask_power |= line_power;
+            input_srv_led_power(instance->status_lights_stat.mask_power);
+            furi_delay_ms(5);
+        } else {
+            instance->status_lights_stat.mask_power &= ~line_power;
+            input_srv_led_power(instance->status_lights_stat.mask_power);
+        }
+    }
+    return instance->status_lights_stat.mask_power & line_power;
+}
+
 static void status_lights_message_queue_callback(FuriEventLoopObject* object, void* context) {
     furi_assert(context);
     StatusLights* instance = context;
@@ -70,7 +84,6 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
     furi_check(furi_message_queue_get(instance->message_queue, &msg, 0) == FuriStatusOk);
 
     bool result = false;
-    bool check_line = 0;
 
     switch(msg.type) {
     case StatusLightsMessageTypeSetColor:
@@ -78,17 +91,9 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
             instance->status_lights_stat.line1[msg.set_color.status_lights_type] =
                 ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
 
-            check_line = status_lights_check_need_power(instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT);
-            if(check_line != (instance->status_lights_stat.mask_power & StatusLedPowerLine1)) {
-                if(check_line)
-                    instance->status_lights_stat.mask_power |= StatusLedPowerLine1;
-                else
-                    instance->status_lights_stat.mask_power &= ~StatusLedPowerLine1;
-
-                input_srv_led_power(instance->status_lights_stat.mask_power);
-                furi_delay_ms(5);
-            }
-            if(check_line) ws2812_write_buffer_dma(instance->ws2812, 0, instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT);
+            if(status_lights_start_off_timer(
+                   instance, status_lights_check_need_power(instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT), StatusLedPowerLine1))
+                ws2812_write_buffer_dma(instance->ws2812, 0, instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT);
 
         } else if(msg.set_color.status_lights_type < StatusLightsTypeUsbCharging) { //line 2
             instance->status_lights_stat.line2[msg.set_color.status_lights_type - StatusLightsTypePower] =
@@ -99,31 +104,16 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
                     ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
             }
 
-            check_line = status_lights_check_need_power(instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT);
-            if(check_line != (instance->status_lights_stat.mask_power & StatusLedPowerLine2)) {
-                if(check_line)
-                    instance->status_lights_stat.mask_power |= StatusLedPowerLine2;
-                else
-                    instance->status_lights_stat.mask_power &= ~StatusLedPowerLine2;
-                input_srv_led_power(instance->status_lights_stat.mask_power);
-                furi_delay_ms(5);
-            }
-            if(check_line) ws2812_write_buffer_dma(instance->ws2812, 1, instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT);
+            if(status_lights_start_off_timer(
+                   instance, status_lights_check_need_power(instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT), StatusLedPowerLine2))
+                ws2812_write_buffer_dma(instance->ws2812, 1, instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT);
         } else { //line 3
             instance->status_lights_stat.line3[msg.set_color.status_lights_type - StatusLightsTypeUsbCharging] =
                 ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
 
-            check_line = status_lights_check_need_power(instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
-            if(check_line != (instance->status_lights_stat.mask_power & StatusLedPowerLine3)) {
-                if(check_line)
-                    instance->status_lights_stat.mask_power |= StatusLedPowerLine3;
-                else
-                    instance->status_lights_stat.mask_power &= ~StatusLedPowerLine3;
-
-                input_srv_led_power(instance->status_lights_stat.mask_power);
-                furi_delay_ms(5);
-            }
-            if(check_line) ws2812_write_buffer_dma(instance->ws2812, 2, instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
+            if(status_lights_start_off_timer(
+                   instance, status_lights_check_need_power(instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT), StatusLedPowerLine3))
+                ws2812_write_buffer_dma(instance->ws2812, 2, instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
         }
         result = true;
         break;

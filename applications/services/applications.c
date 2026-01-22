@@ -55,7 +55,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {.app = status_lights_srv,
      .name = "StatusLightsSrv",
      .appid = "status_lights",
-     .stack_size = 4024,
+     .stack_size = 1024,
      .flags = FlipperInternalApplicationFlagDefault },
 };
 const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);
