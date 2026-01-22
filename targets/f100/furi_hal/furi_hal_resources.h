@@ -33,9 +33,9 @@ typedef enum {
 } InputKey;
 
 typedef enum {
-    StatusLedPowerLine1 = (1 << 13),
+    StatusLedPowerLine3 = (1 << 13),
     StatusLedPowerLine2 = (1 << 14),
-    StatusLedPowerLine3 = (1 << 15),
+    StatusLedPowerLine1 = (1 << 15),
     StatusLedPowerMask = (0xE000),
 } StatusLedPower;
 

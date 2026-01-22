@@ -9,6 +9,7 @@ extern int32_t test_input_srv(void* p);
 extern int32_t uart_echo_app(void* p);
 extern int32_t input_touch_srv(void* p);
 extern int32_t display_srv(void* p);
+extern int32_t status_lights_srv(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {.app = haptic_srv,
@@ -50,6 +51,11 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
      .name = "TestPerefSrv",
      .appid = "test_peref",
      .stack_size = 1024,
+     .flags = FlipperInternalApplicationFlagDefault },
+    {.app = status_lights_srv,
+     .name = "StatusLightsSrv",
+     .appid = "status_lights",
+     .stack_size = 4024,
      .flags = FlipperInternalApplicationFlagDefault },
 };
 const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);

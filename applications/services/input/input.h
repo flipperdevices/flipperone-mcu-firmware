@@ -47,6 +47,11 @@ const char* input_get_key_name(InputKey key);
  */
 const char* input_get_type_name(InputType type);
 
+/** Set the power state of the LED strip
+ * @param output_mask - bitmask of ~StatusLedPowerMask size, 1 - strip led on, 0 - strip led off
+ */
+void input_srv_led_power(uint16_t output_mask);
+
 #ifdef __cplusplus
 }
 #endif
