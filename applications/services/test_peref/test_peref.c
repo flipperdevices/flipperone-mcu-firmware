@@ -1,5 +1,4 @@
 #include "test_peref.h"
-#include "core/kernel.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -217,22 +216,45 @@ int32_t test_peref_srv(void* p) {
         //     duty = 0;
         // }
         //   //  furi_hal_power_insomnia_enter();
-        furi_delay_ms(100);
- 
+        furi_delay_ms(500);
+
         StatusLightsColor color = {.r = 127, .g = 30, .b = 30};
-        
+
         status_lights_notification(status_lights, StatusLightsTypeNet, color);
         status_lights_notification(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
         status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
-        status_lights_notification(status_lights, StatusLightsTypeUsbWatt4, color);    
+        status_lights_notification(status_lights, StatusLightsTypeUsbWatt4, color);
 
-        furi_delay_ms(100);
+        furi_delay_ms(500);
         status_lights_notification(status_lights, StatusLightsTypeNet, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(100);
         status_lights_notification(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(100);
         status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(100);
         status_lights_notification(status_lights, StatusLightsTypeUsbWatt4, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
 
+        furi_delay_ms(500);
 
+        status_lights_notification(status_lights, StatusLightsTypeNet, color);
+        status_lights_notification(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
+        status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
+        status_lights_notification(status_lights, StatusLightsTypeUsbWatt3, color);
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeLine1Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeLine2Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeLine3Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(500);
+
+        status_lights_notification(status_lights, StatusLightsTypeEth2, color);
+        status_lights_notification(status_lights, StatusLightsTypeBatteryWatt4, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
+        status_lights_notification(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
+        status_lights_notification(status_lights, StatusLightsTypeUsbWatt2, color);
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeLineAllOff, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(500);
 
         //test line 1
         // uint32_t line_buffer_1[4];

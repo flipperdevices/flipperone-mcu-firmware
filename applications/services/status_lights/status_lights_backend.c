@@ -7,7 +7,6 @@
 
 #define TAG "StatusLights"
 
-#define STATUS_LIGHTS_LINES_COUNT       (3)
 #define STATUS_LIGHTS_LINES_1_LED_COUNT (4)
 #define STATUS_LIGHTS_LINES_2_LED_COUNT (7)
 #define STATUS_LIGHTS_LINES_3_LED_COUNT (6)
@@ -107,13 +106,42 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
             if(status_lights_start_off_timer(
                    instance, status_lights_check_need_power(instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT), StatusLedPowerLine2))
                 ws2812_write_buffer_dma(instance->ws2812, 1, instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT);
-        } else { //line 3
+        } else if(msg.set_color.status_lights_type < StatusLightsTypeLine1Off) { //line 3
             instance->status_lights_stat.line3[msg.set_color.status_lights_type - StatusLightsTypeUsbCharging] =
                 ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
 
             if(status_lights_start_off_timer(
                    instance, status_lights_check_need_power(instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT), StatusLedPowerLine3))
                 ws2812_write_buffer_dma(instance->ws2812, 2, instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
+        } else {
+            switch(msg.set_color.status_lights_type) {
+            case StatusLightsTypeLine1Off:
+                //turn off line 1
+                memset(&instance->status_lights_stat.line1, 0, sizeof(instance->status_lights_stat.line1));
+                instance->status_lights_stat.mask_power &= ~StatusLedPowerLine1;
+                break;
+            case StatusLightsTypeLine2Off:
+                //turn off line 2
+                memset(&instance->status_lights_stat.line2, 0, sizeof(instance->status_lights_stat.line2));
+                instance->status_lights_stat.mask_power &= ~StatusLedPowerLine2;
+                break;
+            case StatusLightsTypeLine3Off:
+                //turn off line 3
+                memset(&instance->status_lights_stat.line3, 0, sizeof(instance->status_lights_stat.line3));
+                instance->status_lights_stat.mask_power &= ~StatusLedPowerLine3;
+                break;
+            case StatusLightsTypeLineAllOff:
+                //turn off all lines
+                memset(&instance->status_lights_stat.line1, 0, sizeof(instance->status_lights_stat.line1));
+                memset(&instance->status_lights_stat.line2, 0, sizeof(instance->status_lights_stat.line2));
+                memset(&instance->status_lights_stat.line3, 0, sizeof(instance->status_lights_stat.line3));
+                instance->status_lights_stat.mask_power &= ~(StatusLedPowerLine1 | StatusLedPowerLine2 | StatusLedPowerLine3);
+                break;
+            default:
+                furi_crash();
+                break;
+            }
+            input_srv_led_power(instance->status_lights_stat.mask_power);
         }
         result = true;
         break;

@@ -28,7 +28,7 @@ typedef enum {
     //line 2
     StatusLightsTypePower,
     StatusLightsTypeBatteryOutline, //2 status_lightss
-    StatusLightsTypeBatteryWatt1,
+    StatusLightsTypeBatteryWatt1 = StatusLightsTypeBatteryOutline + 2,
     StatusLightsTypeBatteryWatt2,
     StatusLightsTypeBatteryWatt3,
     StatusLightsTypeBatteryWatt4,
@@ -40,6 +40,11 @@ typedef enum {
     StatusLightsTypeUsbWatt3,
     StatusLightsTypeUsbWatt4,
     StatusLightsTypeBatteryCenter,
+
+    StatusLightsTypeLine1Off,
+    StatusLightsTypeLine2Off,
+    StatusLightsTypeLine3Off,
+    StatusLightsTypeLineAllOff,
 } StatusLightsType;
 
 #ifdef __cplusplus
