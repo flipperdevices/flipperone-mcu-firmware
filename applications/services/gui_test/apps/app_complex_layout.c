@@ -161,14 +161,6 @@ static void complex_layout(App* app) {
                      .sizing = layoutExpand,
                  }}) {
                 Document selectedDocument = documents.documents[selected_document_index];
-                // CLAY_AUTO_ID(
-                //     {.layout = {.layoutDirection = CLAY_LEFT_TO_RIGHT, .childGap = 4, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_BOTTOM,}}}) {
-                //     CLAY_TEXT(selectedDocument.title, CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK,}));
-                //     // CLAY_AUTO_ID(
-                //     //     {.layout = {.sizing = {.width = CLAY_SIZING_FIXED(32), .height = CLAY_SIZING_FIXED(30)}},
-                //     //      .image = {.imageData = selectedDocument.image, .sourceDimensions = {32, 30}}}) {
-                //     // }
-                // }
                 CLAY_TEXT(
                     selectedDocument.contents,
                     CLAY_TEXT_CONFIG({
@@ -248,7 +240,7 @@ static void complex_scroll(App* app) {
 
     if(state->touch_y_start >= 0) {
         float delta = state->touch_y_current - state->touch_y_start;
-        scroll.y -= delta * 0.03f;
+        scroll.y += delta * 0.03f;
         state->touch_y_start = state->touch_y_current;
     }
 

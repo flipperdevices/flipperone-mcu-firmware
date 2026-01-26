@@ -219,13 +219,13 @@ static void console_scroll(App* app) {
 
     if(state->touch_y_start >= 0) {
         float delta = state->touch_y_current - state->touch_y_start;
-        scroll.y -= delta * 0.05f;
+        scroll.y += delta * 0.05f;
         state->touch_y_start = state->touch_y_current;
     }
 
     if(state->touch_x_start >= 0) {
         float delta = state->touch_x_current - state->touch_x_start;
-        scroll.x -= delta * 0.05f;
+        scroll.x += delta * 0.05f;
         state->touch_x_start = state->touch_x_current;
     }
 

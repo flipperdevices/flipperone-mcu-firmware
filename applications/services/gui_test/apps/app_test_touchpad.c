@@ -15,8 +15,8 @@ static void test_touchpad_layout(App* app) {
     Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
     Clay_BorderElementConfig contentBorders = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}};
 
-    float touch_x = (1024.f - state->x - 180.f) / 2.8f;
-    float touch_y = (1024.f - state->y - 380.f) / 5.f;
+    float touch_x = (state->x - 180.f) / 2.8f;
+    float touch_y = (state->y - 180.f) / 5.f;
 
     CLAY(
         CLAY_APP_ID("OuterContainer"),
