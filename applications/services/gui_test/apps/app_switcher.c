@@ -168,8 +168,8 @@ static bool switcher_input(App* app, const GuiTestMessage* message) {
         } else if(event.type == InputTouchTypeMove) {
             if(state->touch_active) {
                 float delta_y = (float)(event.y - state->touch_last_y);
-                float sensitivity = 0.008f;
-                state->current_app_index += delta_y * sensitivity;
+                float sensitivity = 0.006f;
+                state->current_app_index -= delta_y * sensitivity;
                 if(state->current_app_index < 0.0f) state->current_app_index = 0.0f;
                 if(state->current_app_index > (float)(state->app_count - 1)) state->current_app_index = (float)(state->app_count - 1);
                 state->touch_last_x = event.x;
