@@ -235,7 +235,7 @@ static bool test_keypad_input(App* app, const GuiTestMessage* message) {
     return handled;
 }
 
-App app_test_keypad = {
+const App app_test_keypad = {
     .state = &(KeypadState){0},
     .input = test_keypad_input,
     .render = test_keypad_layout,

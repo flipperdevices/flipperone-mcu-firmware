@@ -17,6 +17,9 @@ typedef struct {
     float touch_last_y;
 
     int app_index;
+
+    App* const* apps;
+    size_t app_count;
 } SwitcherState;
 
 static void switcher_calculate_apps_state(float selected_app_index_animated, int* heights, uint8_t* tints, size_t app_count) {
@@ -127,9 +130,9 @@ static void switcher_layout(App* app) {
     furi_assert(app);
     SwitcherState* state = (SwitcherState*)app->state;
 
-    switcher_calculate_apps_state(state->current_app_index, state->heights, state->tints, app_count);
+    switcher_calculate_apps_state(state->current_app_index, state->heights, state->tints, state->app_count);
 
-    switcher_apps_layout(state->images, state->heights, state->tints, app_count);
+    switcher_apps_layout(state->images, state->heights, state->tints, state->app_count);
 
     if(!state->touch_active) {
         if(state->current_app_index < state->app_index) {
@@ -168,7 +171,7 @@ static bool switcher_input(App* app, const GuiTestMessage* message) {
                 float sensitivity = 0.008f;
                 state->current_app_index += delta_y * sensitivity;
                 if(state->current_app_index < 0.0f) state->current_app_index = 0.0f;
-                if(state->current_app_index > (float)(app_count - 1)) state->current_app_index = (float)(app_count - 1);
+                if(state->current_app_index > (float)(state->app_count - 1)) state->current_app_index = (float)(state->app_count - 1);
                 state->touch_last_x = event.x;
                 state->touch_last_y = event.y;
             }
@@ -181,7 +184,7 @@ static bool switcher_input(App* app, const GuiTestMessage* message) {
             if(event.key == InputKeyUp) {
                 if(state->app_index > 0) state->app_index -= 1;
             } else if(event.key == InputKeyDown) {
-                if(state->app_index < (app_count - 1)) state->app_index += 1;
+                if(state->app_index < (state->app_count - 1)) state->app_index += 1;
             }
         }
     } break;
@@ -189,7 +192,7 @@ static bool switcher_input(App* app, const GuiTestMessage* message) {
     return handled;
 }
 
-App app_switcher = {
+const App app_switcher = {
     .state = &(SwitcherState){0},
     .input = switcher_input,
     .render = switcher_layout,
@@ -198,7 +201,7 @@ App app_switcher = {
 void app_switcher_set_app_index(int index) {
     SwitcherState* state = (SwitcherState*)app_switcher.state;
     if(index < 0) index = 0;
-    if(index >= (int)app_count) index = (int)app_count - 1;
+    if(index >= (int)state->app_count) index = (int)state->app_count - 1;
     state->app_index = index;
     state->current_app_index = (float)index;
 
@@ -207,7 +210,7 @@ void app_switcher_set_app_index(int index) {
 
     Clay_ResetMeasureTextCache();
     Clay_BeginLayout();
-    apps_call_render(apps[state->app_index]);
+    apps_call_render(state->apps[state->app_index]);
     Clay_RenderCommandArray renderCommands = Clay_EndLayout();
     render_clear_buffer(0x00);
     render_do_render(&renderCommands);
@@ -220,31 +223,34 @@ int app_switcher_get_app_index() {
     return state->app_index;
 }
 
-void app_switcher_init(App* app) {
+void app_switcher_init(App* app, App* const _apps[], size_t _app_count) {
     furi_assert(app);
     SwitcherState* state = (SwitcherState*)app->state;
 
     if(!state->apps_buffers) {
         RenderBuffer* current_buffer = render_get_current_buffer();
-        state->apps_buffers = malloc(sizeof(RenderBuffer*) * app_count);
-        for(int i = 0; i < app_count; i++) {
+        state->apps = _apps;
+        state->app_count = _app_count;
+
+        state->apps_buffers = malloc(sizeof(RenderBuffer*) * state->app_count);
+        for(int i = 0; i < state->app_count; i++) {
             state->apps_buffers[i] = render_alloc_buffer();
             render_set_current_buffer(state->apps_buffers[i]);
 
             Clay_ResetMeasureTextCache();
             Clay_BeginLayout();
-            apps_call_render(apps[i]);
+            apps_call_render(state->apps[i]);
             Clay_RenderCommandArray renderCommands = Clay_EndLayout();
             render_clear_buffer(0x00);
             render_do_render(&renderCommands);
         }
         render_set_current_buffer(current_buffer);
 
-        state->heights = malloc(sizeof(int) * app_count);
-        state->tints = malloc(sizeof(uint8_t) * app_count);
-        state->images = malloc(sizeof(Image*) * app_count);
+        state->heights = malloc(sizeof(int) * state->app_count);
+        state->tints = malloc(sizeof(uint8_t) * state->app_count);
+        state->images = malloc(sizeof(Image*) * state->app_count);
 
-        for(int i = 0; i < app_count; i++) {
+        for(int i = 0; i < state->app_count; i++) {
             state->images[i] = malloc(sizeof(Image));
             state->images[i]->format = ImageFormatRawGray8;
             state->images[i]->width = render_get_buffer_width(state->apps_buffers[i]);

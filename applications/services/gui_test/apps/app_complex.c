@@ -3,7 +3,7 @@
 
 #define TAG "ComplexApp"
 
-static void remder_header_button(Clay_String text) {
+static void complex_header_button(Clay_String text) {
     CLAY_AUTO_ID({
         .layout = {.padding = {8, 8, 4, 4}},
         .backgroundColor = COLOR_BLACK,
@@ -21,7 +21,6 @@ static void remder_header_button(Clay_String text) {
 typedef struct {
     Clay_String title;
     Clay_String contents;
-    // LCDBitmap* image;
 } Document;
 
 typedef struct {
@@ -70,12 +69,14 @@ static void complex_layout(App* app) {
             CLAY_APP_ID("HeaderBar"),
             {
                 .layout =
-                    {.sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
-                     .childGap = 8,
-                     .childAlignment =
-                         {
-                             .y = CLAY_ALIGN_Y_CENTER,
-                         }},
+                    {
+                        .sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
+                        .childGap = 8,
+                        .childAlignment =
+                            {
+                                .y = CLAY_ALIGN_Y_CENTER,
+                            },
+                    },
             }) {
             // Header buttons go here
             CLAY(
@@ -85,51 +86,41 @@ static void complex_layout(App* app) {
                     .backgroundColor = COLOR_BLACK,
                     .cornerRadius = CLAY_CORNER_RADIUS(4),
                 }) {
-                CLAY_TEXT(
-                    CLAY_STRING("File"),
-                    CLAY_TEXT_CONFIG({
-                        .fontId = FontButton,
-                        .textColor = COLOR_WHITE,
-                    }));
+                CLAY_TEXT(CLAY_STRING("File"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_WHITE}));
             }
-            remder_header_button(CLAY_STRING("Edit"));
+            complex_header_button(CLAY_STRING("Edit"));
             CLAY_AUTO_ID({.layout = {.sizing = {CLAY_SIZING_GROW(0)}}}) {
             }
-            remder_header_button(CLAY_STRING("Upload"));
-            remder_header_button(CLAY_STRING("Media"));
-            remder_header_button(CLAY_STRING("Close"));
+            complex_header_button(CLAY_STRING("Upload"));
+            complex_header_button(CLAY_STRING("Media"));
+            complex_header_button(CLAY_STRING("Close"));
         }
 
-        CLAY(
-            CLAY_APP_ID("LowerContent"),
-            {
-                .layout =
-                    {
-                        .sizing = layoutExpand,
-                        .childGap = 4,
-                    },
-            }) {
+        CLAY(CLAY_APP_ID("LowerContent"), {.layout = {.sizing = layoutExpand, .childGap = 4}}) {
             CLAY(
                 CLAY_APP_ID("Sidebar"),
-                {.border = contentBorders,
-                 .cornerRadius = CLAY_CORNER_RADIUS(4),
-                 .layout = {
-                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                     .padding = CLAY_PADDING_ALL(4),
-                     .childGap = 4,
-                     .sizing = {.width = CLAY_SIZING_FIXED(100), .height = CLAY_SIZING_GROW(0)}}}) {
+                {
+                    .border = contentBorders,
+                    .cornerRadius = CLAY_CORNER_RADIUS(4),
+                    .layout =
+                        {
+                            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                            .padding = CLAY_PADDING_ALL(4),
+                            .childGap = 4,
+                            .sizing =
+                                {
+                                    .width = CLAY_SIZING_FIXED(100),
+                                    .height = CLAY_SIZING_GROW(0),
+                                },
+                        },
+                }) {
                 for(int i = 0; i < documents.length; i++) {
                     Document document = documents.documents[i];
                     Clay_LayoutConfig sidebarButtonLayout = {.sizing = {.width = CLAY_SIZING_GROW(0)}, .padding = CLAY_PADDING_ALL(6)};
 
                     if(i == selected_document_index) {
                         CLAY_AUTO_ID({.layout = sidebarButtonLayout, .backgroundColor = COLOR_BLACK, .cornerRadius = CLAY_CORNER_RADIUS(4)}) {
-                            CLAY_TEXT(
-                                document.title,
-                                CLAY_TEXT_CONFIG({
-                                    .fontId = FontButton,
-                                    .textColor = COLOR_WHITE,
-                                }));
+                            CLAY_TEXT(document.title, CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_WHITE}));
                         }
                     } else {
                         CLAY_AUTO_ID({
@@ -138,12 +129,7 @@ static void complex_layout(App* app) {
                             .cornerRadius = CLAY_CORNER_RADIUS(4),
                             .border = contentBorders,
                         }) {
-                            CLAY_TEXT(
-                                document.title,
-                                CLAY_TEXT_CONFIG({
-                                    .fontId = FontButton,
-                                    .textColor = COLOR_BLACK,
-                                }));
+                            CLAY_TEXT(document.title, CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
                         }
                     }
                 }
@@ -160,13 +146,7 @@ static void complex_layout(App* app) {
                      .padding = CLAY_PADDING_ALL(6),
                      .sizing = layoutExpand,
                  }}) {
-                Document selectedDocument = documents.documents[selected_document_index];
-                CLAY_TEXT(
-                    selectedDocument.contents,
-                    CLAY_TEXT_CONFIG({
-                        .fontId = FontBody,
-                        .textColor = COLOR_BLACK,
-                    }));
+                CLAY_TEXT(documents.documents[selected_document_index].contents, CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
         }
     }
@@ -248,7 +228,7 @@ static void complex_scroll(App* app) {
     Clay_UpdateScrollContainers(false, scroll, 1 / 60.f);
 }
 
-App app_complex = {
+const App app_complex = {
     .state =
         &(ComplexAppState){
             .documents =
@@ -258,7 +238,6 @@ App app_complex = {
                         (Document[]){
                             (Document){
                                 .title = CLAY_STRING("Squirrels"),
-                                // .image = pd->graphics->loadBitmap("star.png", NULL),
                                 .contents = CLAY_STRING(
                                     "The Secret Life of Squirrels: Nature's Clever Acrobats\n"
                                     "Squirrels are often overlooked creatures, dismissed as mere park "
@@ -314,32 +293,10 @@ App app_complex = {
                                     "shelters. Despite these obstacles, squirrels in urban areas are "
                                     "often observed using human infrastructure such as buildings, "
                                     "bridges, and power lines as highways for their acrobatic "
-                                    "escapades.\n"
-                                    "There is, however, a growing concern regarding the impact of urban "
-                                    "life on squirrel populations. Pollution, deforestation, and the "
-                                    "loss of natural habitats are making it more difficult for squirrels "
-                                    "to find adequate food and shelter. As a result, conservationists "
-                                    "are focusing on creating squirrel-friendly spaces within cities, "
-                                    "with the goal of ensuring these resourceful creatures continue to "
-                                    "thrive in both rural and urban landscapes.\n"
-                                    "\n"
-                                    "A Symbol of Resilience\n"
-                                    "In many cultures, squirrels are symbols of resourcefulness, "
-                                    "adaptability, and preparation. Their ability to thrive in a variety "
-                                    "of environments while navigating challenges with agility and grace "
-                                    "serves as a reminder of the resilience inherent in nature. Whether "
-                                    "you encounter them in a quiet forest, a city park, or your own "
-                                    "backyard, squirrels are creatures that never fail to amaze with "
-                                    "their endless energy and ingenuity.\n"
-                                    "In the end, squirrels may be small, but they are mighty in their "
-                                    "ability to survive and thrive in a world that is constantly "
-                                    "changing. So next time you spot one hopping across a branch or "
-                                    "darting across your lawn, take a moment to appreciate the "
-                                    "remarkable acrobat at work a true marvel of the natural world.\n"),
+                                    "escapades.\n"),
                             },
                             (Document){
                                 .title = CLAY_STRING("Lorem Ipsum"),
-                                // .image = pd->graphics->loadBitmap("star.png", NULL),
                                 .contents = CLAY_STRING(
                                     "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do "
                                     "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim "
@@ -351,7 +308,6 @@ App app_complex = {
                             },
                             (Document){
                                 .title = CLAY_STRING("Vacuum Instructions"),
-                                // .image = pd->graphics->loadBitmap("star.png", NULL),
                                 .contents = CLAY_STRING(
                                     "Chapter 3: Getting Started - Unpacking and Setup\n"
                                     "\n"

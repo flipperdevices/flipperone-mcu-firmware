@@ -136,7 +136,7 @@ static bool test_touchpad_input(App* app, const GuiTestMessage* message) {
     return handled;
 }
 
-App app_test_touchpad = {
+const App app_test_touchpad = {
     .state = &(TouchpadState){0},
     .input = test_touchpad_input,
     .render = test_touchpad_layout,

@@ -10,10 +10,14 @@
 
 #define TAG "GuiTest"
 
+extern App app_test_keypad;
+extern App app_test_touchpad;
+extern App app_complex;
+extern App app_console;
 extern App app_switcher;
 extern void app_switcher_set_app_index(int index);
 extern int app_switcher_get_app_index();
-extern void app_switcher_init(App* app);
+extern void app_switcher_init(App* app, App* const apps[], size_t app_count);
 
 typedef enum {
     Power,
@@ -67,14 +71,28 @@ static void gui_test_input_touch_events_callback(const void* value, void* contex
     furi_message_queue_put(queue, &message, FuriWaitForever);
 }
 
+const int8_t brightness_levels[] = {40, 4, 2, 0};
+const size_t brightness_levels_count = sizeof(brightness_levels) / sizeof(brightness_levels[0]);
+
 int32_t gui_test_app(void* p) {
     FURI_LOG_I(TAG, "Starting GUI Test App");
+
+    App* const apps[] = {
+        &app_test_keypad,
+        &app_test_touchpad,
+        &app_complex,
+        &app_console,
+    };
+
+    const size_t app_count = COUNT_OF(apps);
 
     Ws2812* ws2812 = ws2812_init(&gpio_status_led_line1, 1);
     ws2812_put_pixel_rgb(ws2812, 0, 10, 0, 0);
 
+    size_t brightness_level_index = 0;
+
     DisplayJd9853QSPI* display = display_jd9853_qspi_init();
-    display_jd9853_qspi_set_brightness(display, 40);
+    display_jd9853_qspi_set_brightness(display, brightness_levels[brightness_level_index]);
 
     FuriMessageQueue* queue = furi_message_queue_alloc(32, sizeof(GuiTestMessage));
 
@@ -84,8 +102,8 @@ int32_t gui_test_app(void* p) {
     FuriPubSub* input_touch = furi_record_open(RECORD_INPUT_TOUCH_EVENTS);
     FuriPubSubSubscription* input_touch_subscription = furi_pubsub_subscribe(input_touch, gui_test_input_touch_events_callback, queue);
 
-    Clay_SetMaxElementCount(256);
-    Clay_SetMaxMeasureTextCacheWordCount(1024);
+    Clay_SetMaxElementCount(128);
+    Clay_SetMaxMeasureTextCacheWordCount(512);
 
     uint64_t totalMemorySize = Clay_MinMemorySize();
     FURI_LOG_I(TAG, "Clay allocation: %lluk", totalMemorySize / 1024);
@@ -100,7 +118,7 @@ int32_t gui_test_app(void* p) {
 
     render_set_current_buffer(buffer);
 
-    app_switcher_init(&app_switcher);
+    app_switcher_init(&app_switcher, apps, app_count);
     bool switching = false;
 
     while(1) {
@@ -138,32 +156,35 @@ int32_t gui_test_app(void* p) {
                     handled = apps_call_input(app, &message);
                 }
 
-                if(!handled) {
-                    switch(message.type) {
-                    case GuiTestMessageTypeInputEvent: {
-                        InputEvent event = message.input_event;
-                        if(event.type == InputTypePress) {
-                            if(event.key == InputKeySw) {
-                                if(!switching) {
-                                    app_switcher_set_app_index(app_index);
-                                    switching = true;
-                                } else if(switching) {
-                                    app_index = app_switcher_get_app_index();
-                                    switching = false;
-                                }
-                            }
+                if(message.type == GuiTestMessageTypeInputEvent) {
+                    InputEvent event = message.input_event;
 
-                            if(event.key == InputKeyOk) {
-                                if(switching) {
-                                    app_index = app_switcher_get_app_index();
-                                    switching = false;
-                                }
-                            }
+                    // always handle brightness change
+                    if(event.key == InputKey5 && event.type == InputTypePress) {
+                        brightness_level_index++;
+                        if(brightness_level_index >= brightness_levels_count) {
+                            brightness_level_index = 0;
                         }
-                    } break;
-                    case GuiTestMessageTypeInputTouchEvent:
+                        display_jd9853_qspi_set_brightness(display, brightness_levels[brightness_level_index]);
+                    }
 
-                        break;
+                    // handle app switching key
+                    if(event.key == InputKeySw && event.type == InputTypePress) {
+                        if(!switching) {
+                            app_switcher_set_app_index(app_index);
+                            switching = true;
+                        } else if(switching) {
+                            app_index = app_switcher_get_app_index();
+                            switching = false;
+                        }
+                    }
+
+                    // handle app selection in switcher
+                    if(event.key == InputKeyOk && event.type == InputTypePress) {
+                        if(switching) {
+                            app_index = app_switcher_get_app_index();
+                            switching = false;
+                        }
                     }
                 }
 

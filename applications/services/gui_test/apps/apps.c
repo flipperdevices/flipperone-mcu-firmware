@@ -1,19 +1,5 @@
 #include "apps.h"
 
-extern App app_test_keypad;
-extern App app_test_touchpad;
-extern App app_complex;
-extern App app_console;
-
-App* const apps[] = {
-    &app_test_keypad,
-    &app_test_touchpad,
-    &app_complex,
-    &app_console,
-};
-
-const size_t app_count = COUNT_OF(apps);
-
 void apps_call_render(App* app) {
     if(app) {
         if(app->render) {

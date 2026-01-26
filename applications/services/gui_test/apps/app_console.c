@@ -233,7 +233,7 @@ static void console_scroll(App* app) {
     Clay_UpdateScrollContainers(false, scroll, 1 / 60.f);
 }
 
-App app_console = {
+const App app_console = {
     .state =
         &(ConsoleAppState){
             .scroll_x_offset = 0,
