@@ -20,7 +20,7 @@ int32_t init_task(void* context) {
     // Set the UART for logging output
     furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart1, 230400);
     // ToDo: set debug mode
-    furi_log_set_level(FuriLogLevelDebug);
+    furi_log_set_level(FuriLogLevelInfo);
 
     FURI_LOG_I(TAG, "Init task started");
     // Init flipper

@@ -5,6 +5,7 @@
 #include <drivers/display/display_jd9853_reg.h>
 #include <furi_hal_resources.h>
 #include <drivers/ws2812/ws2812.h>
+#include <status_lights/status_lights.h>
 
 #include "apps/apps.h"
 
@@ -18,26 +19,6 @@ extern App app_switcher;
 extern void app_switcher_set_app_index(int index);
 extern int app_switcher_get_app_index();
 extern void app_switcher_init(App* app, App* const apps[], size_t app_count);
-
-typedef enum {
-    Power,
-    Unknown,
-    WiFi,
-    Lan2,
-    Lan1,
-    USBPlug,
-    USBWatt1,
-    USBWatt2,
-    USBWatt3,
-    USBWatt4,
-    BatteryCenter,
-    BatteryOutline,
-    BatteryWatt1,
-    BatteryWatt2,
-    BatteryWatt3,
-    BatteryWatt4,
-    Max,
-} LedType;
 
 static void gui_handle_clay_errors(Clay_ErrorData errorData) {
     FURI_LOG_E(TAG, "Clay error: %s", errorData.errorText.chars);
@@ -86,8 +67,8 @@ int32_t gui_test_app(void* p) {
 
     const size_t app_count = COUNT_OF(apps);
 
-    Ws2812* ws2812 = ws2812_init(&gpio_status_led_line1, 1);
-    ws2812_put_pixel_rgb(ws2812, 0, 10, 0, 0);
+    StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
+    status_lights_notification(status_lights, StatusLightsTypePower, STATUS_LIGHTS_COLOR_RED);
 
     size_t brightness_level_index = 0;
 
@@ -160,7 +141,7 @@ int32_t gui_test_app(void* p) {
                     InputEvent event = message.input_event;
 
                     // always handle brightness change
-                    if(event.key == InputKey5 && event.type == InputTypePress) {
+                    if(event.key == InputKeyPtt && event.type == InputTypePress) {
                         brightness_level_index++;
                         if(brightness_level_index >= brightness_levels_count) {
                             brightness_level_index = 0;
