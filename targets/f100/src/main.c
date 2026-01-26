@@ -1,6 +1,7 @@
 #include <furi.h>
 #include <furi_hal.h>
 #include <furi_hal_nvm.h>
+#include <furi_bsp.h>
 #include <flipper.h>
 
 #include "pico/multicore.h"
@@ -12,6 +13,9 @@ int32_t init_task(void* context) {
 
     // Flipper FURI HAL
     furi_hal_init();
+
+    // Flipper BSP init
+    furi_bsp_init();
 
     // Set the UART for logging output
     furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart1, 230400);

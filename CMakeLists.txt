@@ -44,6 +44,7 @@ file(GLOB_RECURSE SOURCES
     "app/theme/*.c"
     "app/fs/*.c"
     "targets/f100/furi_hal/*.c*"
+    "targets/f100/furi_bsp/*.c*"
     "lib/drivers/display/*.c*"  
     "lib/drivers/tps62868x/*.c*"
     "lib/drivers/tca6416a/*.c*"
@@ -56,7 +57,6 @@ file(GLOB_RECURSE SOURCES
     "applications/services/*.c"
     "applications/main/*.c"
     "targets/f100/src/*.c*" 
-   
 )
 
 add_executable(one-rp2350-control 
@@ -89,6 +89,7 @@ target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_hal
+    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_bsp
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/config
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos

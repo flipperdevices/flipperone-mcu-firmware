@@ -1,6 +1,6 @@
 #include "status_lights.h"
 
-#include <input/input.h>
+#include <furi_bsp.h>
 #include <furi_hal_resources.h>
 #include <api_lock.h>
 #include <drivers/ws2812/ws2812.h>
@@ -69,11 +69,11 @@ static FURI_ALWAYS_INLINE bool status_lights_start_off_timer(StatusLights* insta
     if(check_line != (instance->status_lights_stat.mask_power & line_power)) {
         if(check_line) {
             instance->status_lights_stat.mask_power |= line_power;
-            input_srv_led_power(instance->status_lights_stat.mask_power);
+            furi_bsp_expander_control_led_power(instance->status_lights_stat.mask_power);
             furi_delay_ms(STATUS_LIGHTS_WAIT_POWER_ON_WS2812_MS);
         } else {
             instance->status_lights_stat.mask_power &= ~line_power;
-            input_srv_led_power(instance->status_lights_stat.mask_power);
+            furi_bsp_expander_control_led_power(instance->status_lights_stat.mask_power);
         }
     }
     return instance->status_lights_stat.mask_power & line_power;
@@ -146,7 +146,7 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
                 furi_crash();
                 break;
             }
-            input_srv_led_power(instance->status_lights_stat.mask_power);
+            furi_bsp_expander_control_led_power(instance->status_lights_stat.mask_power);
         }
         result = true;
         break;
@@ -182,10 +182,6 @@ static StatusLights* status_lights_alloc(void) {
     ws2812_pins[STATUS_LIGHTS_LINE3_INDEX] = gpio_status_led_line3;
     instance->ws2812 = ws2812_init(ws2812_pins, STATUS_LIGHTS_LINE_COUNT);
     free(ws2812_pins);
-
-    //Todo: wait startup input service for led power enable
-    FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
-    furi_record_close(RECORD_INPUT_EVENTS);
 
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(STATUS_LIGHTS_MAX_MESSAGES, sizeof(StatusLightsMessage));

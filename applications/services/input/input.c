@@ -1,8 +1,7 @@
 #include "input.h"
 
-#include <furi_hal_i2c_config.h>
 #include <furi.h>
-#include <drivers/tca6416a/tca6416a.h>
+#include <furi_bsp.h>
 #include <haptic/haptic.h>
 
 #define INPUT_DEBOUNCE_TICKS      4
@@ -22,8 +21,6 @@ typedef struct {
     volatile uint8_t press_counter;
     volatile uint32_t counter;
 } InputPinState;
-
-static Tca6416a* tca6416a = NULL;
 
 static bool input_key_check_state(uint16_t state_pin, InputPinState input_pin) {
     bool val = (state_pin & input_pin.pin->key) ? true : false;
@@ -81,10 +78,6 @@ const char* input_get_type_name(InputType type) {
     }
 }
 
-void input_srv_led_power(uint16_t output_mask) {
-    tca6416a_write_output(tca6416a, output_mask & StatusLedPowerMask);
-}
-
 int32_t input_srv(void* p) {
     UNUSED(p);
 
@@ -104,12 +97,9 @@ int32_t input_srv(void* p) {
 
     InputPinState pin_states[input_pins_count];
 
-    tca6416a = tca6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
+    furi_bsp_expander_control_attach_buttons_callback(input_isr, thread_id);
 
-    tca6416a_write_mode(tca6416a, InputKeyMask);
-    tca6416a_set_input_callback(tca6416a, input_isr, thread_id);
-
-    uint16_t input_state = tca6416a_read_input(tca6416a);
+    uint16_t input_state = furi_bsp_expander_control_read_buttons();
 
     Haptic* haptic = furi_record_open(RECORD_HAPTIC);
 
@@ -126,7 +116,7 @@ int32_t input_srv(void* p) {
 
     while(1) {
         bool is_changing = false;
-        input_state = tca6416a_read_input(tca6416a);
+        input_state = furi_bsp_expander_control_read_buttons();
 
         for(size_t i = 0; i < input_pins_count; i++) {
             bool state = input_key_check_state(input_state, pin_states[i]);
