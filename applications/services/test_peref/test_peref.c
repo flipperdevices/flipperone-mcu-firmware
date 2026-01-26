@@ -1,12 +1,11 @@
 #include "test_peref.h"
-#include "core/kernel.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
 
 #include <furi_hal_pwm.h>
-#include <drivers/ws2812/ws2812.h>
+//#include <drivers/ws2812/ws2812.h>
 
 #include <furi_hal_i2c.h>
 #include <drivers/tca6416a/tca6416a.h>
@@ -24,6 +23,7 @@
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/display/jd9853_reg.h>
+#include <status_lights/status_lights.h>
 
 #define TAG "PerefTest"
 DisplayJd9853QSPI* display_h = NULL;
@@ -89,16 +89,16 @@ int32_t test_peref_srv(void* p) {
 
     uint8_t duty = 0;
 
-    GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 3);
-    ws2812_pins[0] = gpio_status_led_line1;
-    ws2812_pins[1] = gpio_status_led_line2;
-    ws2812_pins[2] = gpio_status_led_line3;
-    Ws2812* ws2812 = ws2812_init(ws2812_pins, 3);
-    free(ws2812_pins);
+    // GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 3);
+    // ws2812_pins[0] = gpio_status_led_line1;
+    // ws2812_pins[1] = gpio_status_led_line2;
+    // ws2812_pins[2] = gpio_status_led_line3;
+    // Ws2812* ws2812 = ws2812_init(ws2812_pins, 3);
+    // free(ws2812_pins);
 
-    //furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);
-    //furi_delay_ms(1000);
-    uint8_t index_led[3] = {0};
+    // //furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_internal);
+    // //furi_delay_ms(1000);
+    // uint8_t index_led[3] = {0};
 
     //Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_internal, INA219_ADDRESS, 0.1f, 0.4f); // 0.1 Ohm shunt, 2A max
 
@@ -107,6 +107,8 @@ int32_t test_peref_srv(void* p) {
     display_jd9853_qspi_set_brightness(display_h, 20);
     FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
     FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
+
+    StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
 
     while(true) {
         // display_set_brightness(display_h, 10);
@@ -214,7 +216,46 @@ int32_t test_peref_srv(void* p) {
         //     duty = 0;
         // }
         //   //  furi_hal_power_insomnia_enter();
-        furi_delay_ms(5000);
+        furi_delay_ms(500);
+
+        StatusLightsColor color = {.r = 127, .g = 30, .b = 30};
+
+        status_lights_notification(status_lights, StatusLightsTypeNet, color);
+        status_lights_notification(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
+        status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
+        status_lights_notification(status_lights, StatusLightsTypeUsbWatt4, color);
+
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeNet, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(100);
+        status_lights_notification(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(100);
+        status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(100);
+        status_lights_notification(status_lights, StatusLightsTypeUsbWatt4, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+
+        furi_delay_ms(500);
+
+        status_lights_notification(status_lights, StatusLightsTypeNet, color);
+        status_lights_notification(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
+        status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
+        status_lights_notification(status_lights, StatusLightsTypeUsbWatt3, color);
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeLine1Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeLine2Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeLine3Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(500);
+
+        status_lights_notification(status_lights, StatusLightsTypeEth2, color);
+        status_lights_notification(status_lights, StatusLightsTypeBatteryWatt4, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
+        status_lights_notification(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
+        status_lights_notification(status_lights, StatusLightsTypeUsbWatt2, color);
+        furi_delay_ms(500);
+        status_lights_notification(status_lights, StatusLightsTypeLineAllOff, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        furi_delay_ms(500);
+
         //test line 1
         // uint32_t line_buffer_1[4];
         // for(size_t i = 0; i < sizeof(line_buffer_1) / 4; i++) {
