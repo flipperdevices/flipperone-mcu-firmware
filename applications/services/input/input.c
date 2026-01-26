@@ -1,8 +1,7 @@
 #include "input.h"
 
-#include <furi_hal_i2c_config.h>
 #include <furi.h>
-#include <drivers/tca6416a/tca6416a.h>
+#include <furi_bsp.h>
 #include <haptic/haptic.h>
 
 #define INPUT_DEBOUNCE_TICKS      4
@@ -85,7 +84,6 @@ int32_t input_srv(void* p) {
     const FuriThreadId thread_id = furi_thread_get_current_id();
     FuriPubSub* event_pubsub = furi_pubsub_alloc();
     uint32_t counter = 1;
-    furi_record_create(RECORD_INPUT_EVENTS, event_pubsub);
 
 #ifdef INPUT_DEBUG
     furi_hal_gpio_init_simple(&debug_pin1, GpioModeOutputPushPull);
@@ -99,15 +97,13 @@ int32_t input_srv(void* p) {
 
     InputPinState pin_states[input_pins_count];
 
-    Tca6416a* tca6416a = tca6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
+    furi_bsp_expander_control_attach_buttons_callback(input_isr, thread_id);
 
-    tca6416a_write_mode(tca6416a, InputKeyMask);
-    tca6416a_write_output(tca6416a, ~InputKeyMask);
-    tca6416a_set_input_callback(tca6416a, input_isr, thread_id);
-
-    uint16_t input_state = tca6416a_read_input(tca6416a);
+    uint16_t input_state = furi_bsp_expander_control_read_buttons();
 
     Haptic* haptic = furi_record_open(RECORD_HAPTIC);
+
+    furi_record_create(RECORD_INPUT_EVENTS, event_pubsub);
 
     for(size_t i = 0; i < input_pins_count; i++) {
         pin_states[i].pin = &input_pins[i];
@@ -120,7 +116,7 @@ int32_t input_srv(void* p) {
 
     while(1) {
         bool is_changing = false;
-        input_state = tca6416a_read_input(tca6416a);
+        input_state = furi_bsp_expander_control_read_buttons();
 
         for(size_t i = 0; i < input_pins_count; i++) {
             bool state = input_key_check_state(input_state, pin_states[i]);
@@ -138,7 +134,7 @@ int32_t input_srv(void* p) {
                 if(state) {
                     haptic_notification(haptic, Drv2605lEffectSoftBump_100);
                 }
-               
+
                 // Common state info
                 InputEvent event;
                 event.sequence_source = INPUT_SEQUENCE_SOURCE_HARDWARE;
