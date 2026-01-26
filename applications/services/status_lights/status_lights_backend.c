@@ -7,10 +7,15 @@
 
 #define TAG "StatusLights"
 
-#define STATUS_LIGHTS_LINES_1_LED_COUNT (4)
-#define STATUS_LIGHTS_LINES_2_LED_COUNT (7)
-#define STATUS_LIGHTS_LINES_3_LED_COUNT (6)
-#define STATUS_LIGHTS_MAX_MESSAGES      (8)
+#define STATUS_LIGHTS_LINES_1_LED_COUNT       (4U)
+#define STATUS_LIGHTS_LINES_2_LED_COUNT       (7U)
+#define STATUS_LIGHTS_LINES_3_LED_COUNT       (6U)
+#define STATUS_LIGHTS_MAX_MESSAGES            (8U)
+#define STATUS_LIGHTS_WAIT_POWER_ON_WS2812_MS (5U)
+#define STATUS_LIGHTS_LINE1_INDEX             (0U)
+#define STATUS_LIGHTS_LINE2_INDEX             (1U)
+#define STATUS_LIGHTS_LINE3_INDEX             (2U)
+#define STATUS_LIGHTS_LINE_COUNT              (3U)
 
 typedef struct {
     uint32_t line1[STATUS_LIGHTS_LINES_1_LED_COUNT];
@@ -65,7 +70,7 @@ static FURI_ALWAYS_INLINE bool status_lights_start_off_timer(StatusLights* insta
         if(check_line) {
             instance->status_lights_stat.mask_power |= line_power;
             input_srv_led_power(instance->status_lights_stat.mask_power);
-            furi_delay_ms(5);
+            furi_delay_ms(STATUS_LIGHTS_WAIT_POWER_ON_WS2812_MS);
         } else {
             instance->status_lights_stat.mask_power &= ~line_power;
             input_srv_led_power(instance->status_lights_stat.mask_power);
@@ -92,7 +97,7 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
 
             if(status_lights_start_off_timer(
                    instance, status_lights_check_need_power(instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT), StatusLedPowerLine1))
-                ws2812_write_buffer_dma(instance->ws2812, 0, instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT);
+                ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE1_INDEX, instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT);
 
         } else if(msg.set_color.status_lights_type < StatusLightsTypeUsbCharging) { //line 2
             instance->status_lights_stat.line2[msg.set_color.status_lights_type - StatusLightsTypePower] =
@@ -105,36 +110,36 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
 
             if(status_lights_start_off_timer(
                    instance, status_lights_check_need_power(instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT), StatusLedPowerLine2))
-                ws2812_write_buffer_dma(instance->ws2812, 1, instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT);
+                ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE2_INDEX, instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT);
         } else if(msg.set_color.status_lights_type < StatusLightsTypeLine1Off) { //line 3
             instance->status_lights_stat.line3[msg.set_color.status_lights_type - StatusLightsTypeUsbCharging] =
                 ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
 
             if(status_lights_start_off_timer(
                    instance, status_lights_check_need_power(instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT), StatusLedPowerLine3))
-                ws2812_write_buffer_dma(instance->ws2812, 2, instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
+                ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE3_INDEX, instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
         } else {
             switch(msg.set_color.status_lights_type) {
             case StatusLightsTypeLine1Off:
                 //turn off line 1
-                memset(&instance->status_lights_stat.line1, 0, sizeof(instance->status_lights_stat.line1));
+                memset(&instance->status_lights_stat.line1, 0x00, sizeof(instance->status_lights_stat.line1));
                 instance->status_lights_stat.mask_power &= ~StatusLedPowerLine1;
                 break;
             case StatusLightsTypeLine2Off:
                 //turn off line 2
-                memset(&instance->status_lights_stat.line2, 0, sizeof(instance->status_lights_stat.line2));
+                memset(&instance->status_lights_stat.line2, 0x00, sizeof(instance->status_lights_stat.line2));
                 instance->status_lights_stat.mask_power &= ~StatusLedPowerLine2;
                 break;
             case StatusLightsTypeLine3Off:
                 //turn off line 3
-                memset(&instance->status_lights_stat.line3, 0, sizeof(instance->status_lights_stat.line3));
+                memset(&instance->status_lights_stat.line3, 0x00, sizeof(instance->status_lights_stat.line3));
                 instance->status_lights_stat.mask_power &= ~StatusLedPowerLine3;
                 break;
             case StatusLightsTypeLineAllOff:
                 //turn off all lines
-                memset(&instance->status_lights_stat.line1, 0, sizeof(instance->status_lights_stat.line1));
-                memset(&instance->status_lights_stat.line2, 0, sizeof(instance->status_lights_stat.line2));
-                memset(&instance->status_lights_stat.line3, 0, sizeof(instance->status_lights_stat.line3));
+                memset(&instance->status_lights_stat.line1, 0x00, sizeof(instance->status_lights_stat.line1));
+                memset(&instance->status_lights_stat.line2, 0x00, sizeof(instance->status_lights_stat.line2));
+                memset(&instance->status_lights_stat.line3, 0x00, sizeof(instance->status_lights_stat.line3));
                 instance->status_lights_stat.mask_power &= ~(StatusLedPowerLine1 | StatusLedPowerLine2 | StatusLedPowerLine3);
                 break;
             default:
@@ -171,11 +176,11 @@ static StatusLights* status_lights_alloc(void) {
     StatusLights* instance = (StatusLights*)malloc(sizeof(StatusLights));
 
     // Ws2812 init
-    GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 3);
-    ws2812_pins[0] = gpio_status_led_line1;
-    ws2812_pins[1] = gpio_status_led_line2;
-    ws2812_pins[2] = gpio_status_led_line3;
-    instance->ws2812 = ws2812_init(ws2812_pins, 3);
+    GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * STATUS_LIGHTS_LINE_COUNT);
+    ws2812_pins[STATUS_LIGHTS_LINE1_INDEX] = gpio_status_led_line1;
+    ws2812_pins[STATUS_LIGHTS_LINE2_INDEX] = gpio_status_led_line2;
+    ws2812_pins[STATUS_LIGHTS_LINE3_INDEX] = gpio_status_led_line3;
+    instance->ws2812 = ws2812_init(ws2812_pins, STATUS_LIGHTS_LINE_COUNT);
     free(ws2812_pins);
 
     //Todo: wait startup input service for led power enable
