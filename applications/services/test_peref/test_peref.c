@@ -77,6 +77,51 @@ static void input_events_callback(const void* value, void* ctx) {
 
 #define tag "TestPerefSrv"
 
+#include <stdio.h>
+#include "pico/stdlib.h"
+#include "kvstore.h"
+
+int testmain(void) {
+    char ssid[33] = {0};
+    char password[64] = {0};
+    int rc;
+
+    // stdio_init_all();
+    kvs_init();
+
+    rc = kvs_set("SSID", "MyWiFiNetwork", strlen("MyWiFiNetwork") + 1);
+    if(rc != KVSTORE_SUCCESS) {
+        FURI_LOG_E(TAG, "kvs_set1 %s", kvs_strerror(rc));
+        return 1;
+    }
+
+    rc = kvs_set("PASSWORD", "MyWiFiPassword", strlen("MyWiFiPassword") + 1);
+    if(rc != KVSTORE_SUCCESS) {
+        FURI_LOG_E(TAG, "kvs_set2 %s", kvs_strerror(rc));
+        return 1;
+    }
+
+    rc = kvs_get_str("SSID", ssid, sizeof(ssid));
+    if(rc != KVSTORE_SUCCESS) {
+        FURI_LOG_E(TAG, "kvs_get_str1 %s", kvs_strerror(rc));
+        return 1;
+    }
+    rc = kvs_get_str("PASSWORD", password, sizeof(password));
+    if(rc != KVSTORE_SUCCESS) {
+        FURI_LOG_E(TAG, "kvs_get_str2 %s", kvs_strerror(rc));
+        return 1;
+    }
+
+    FURI_LOG_I(
+        TAG,
+        "Wi-Fi credential:\n"
+        "SSID=%s\n"
+        "PASSWORD=%s",
+        ssid,
+        password);
+    return 0;
+}
+
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
 
@@ -88,6 +133,8 @@ int32_t test_peref_srv(void* p) {
     FURI_LOG_E("tag", "Error");
 
     uint8_t duty = 0;
+
+    testmain();
 
     // GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 3);
     // ws2812_pins[0] = gpio_status_led_line1;
