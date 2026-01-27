@@ -89,17 +89,23 @@ int testmain(void) {
     // stdio_init_all();
     kvs_init();
 
-    rc = kvs_set("SSID", "MyWiFiNetwork", strlen("MyWiFiNetwork") + 1);
+    rc = kvs_set("SSID", "MyWiFiNetwork1", strlen("MyWiFiNetwork1") + 1);
     if(rc != KVSTORE_SUCCESS) {
         FURI_LOG_E(TAG, "kvs_set1 %s", kvs_strerror(rc));
         return 1;
     }
 
-    rc = kvs_set("PASSWORD", "MyWiFiPassword", strlen("MyWiFiPassword") + 1);
-    if(rc != KVSTORE_SUCCESS) {
-        FURI_LOG_E(TAG, "kvs_set2 %s", kvs_strerror(rc));
-        return 1;
-    }
+    // rc = kvs_set("PASSWORD", "MyWiFiPassword", strlen("MyWiFiPassword") + 1);
+    // if(rc != KVSTORE_SUCCESS) {
+    //     FURI_LOG_E(TAG, "kvs_set2 %s", kvs_strerror(rc));
+    //     return 1;
+    // }
+
+    // rc = kvs_delete("SSID");
+    // if(rc != KVSTORE_SUCCESS) {
+    //     FURI_LOG_E(TAG, "kvs_set1 %s", kvs_strerror(rc));
+    //     return 1;
+    // }
 
     rc = kvs_get_str("SSID", ssid, sizeof(ssid));
     if(rc != KVSTORE_SUCCESS) {
@@ -114,8 +120,8 @@ int testmain(void) {
 
     FURI_LOG_I(
         TAG,
-        "Wi-Fi credential:\n"
-        "SSID=%s\n"
+        "Wi-Fi credential:\r\n"
+        "SSID=%s\r\n"
         "PASSWORD=%s",
         ssid,
         password);
