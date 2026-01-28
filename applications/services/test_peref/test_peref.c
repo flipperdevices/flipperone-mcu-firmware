@@ -24,6 +24,7 @@
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/display/jd9853_reg.h>
 #include <status_lights/status_lights.h>
+#include <furi_hal_nvm.h>
 
 #define TAG "PerefTest"
 DisplayJd9853QSPI* display_h = NULL;
@@ -75,57 +76,56 @@ static void input_events_callback(const void* value, void* ctx) {
     }
 }
 
-#define tag "TestPerefSrv"
+void test_nvm(void) {
+    FuriHalNvmStorage res;
+    int32_t int_value = -123456;
+    FuriString* str_value = furi_string_alloc();
+    furi_string_set_str(str_value, "Hello, NVM!");
 
-#include <stdio.h>
-#include "pico/stdlib.h"
-#include "kvstore.h"
+    // Test int32
+    res = furi_hal_nvm_set_int32("int_key", int_value);
+    FURI_LOG_I(TAG, "Set int32 result: %d", res);
 
-int testmain(void) {
-    char ssid[33] = {0};
-    char password[64] = {0};
-    int rc;
+    int32_t read_int_value = 0;
+    res = furi_hal_nvm_get_int32("int_key", &read_int_value);
+    FURI_LOG_I(TAG, "Get int32 result: %d, value_set: %d value_get: %d", res, int_value, read_int_value);
 
-    // stdio_init_all();
-    kvs_init();
+    // Test string
+    res = furi_hal_nvm_set_str("str_key", str_value);
+    FURI_LOG_I(TAG, "Set string result: %d", res);
 
-    rc = kvs_set("SSID", "MyWiFiNetwork1", strlen("MyWiFiNetwork1") + 1);
-    if(rc != KVSTORE_SUCCESS) {
-        FURI_LOG_E(TAG, "kvs_set1 %s", kvs_strerror(rc));
-        return 1;
-    }
+    FuriString* read_str_value = furi_string_alloc();
+    res = furi_hal_nvm_get_str("str_key", read_str_value);
+    FURI_LOG_I(TAG, "Get string result: %d, value_set: %s value: %s", res, furi_string_get_cstr(str_value), furi_string_get_cstr(read_str_value));
 
-    // rc = kvs_set("PASSWORD", "MyWiFiPassword", strlen("MyWiFiPassword") + 1);
-    // if(rc != KVSTORE_SUCCESS) {
-    //     FURI_LOG_E(TAG, "kvs_set2 %s", kvs_strerror(rc));
-    //     return 1;
-    // }
+    furi_string_free(str_value);
+    furi_string_free(read_str_value);
 
-    // rc = kvs_delete("SSID");
-    // if(rc != KVSTORE_SUCCESS) {
-    //     FURI_LOG_E(TAG, "kvs_set1 %s", kvs_strerror(rc));
-    //     return 1;
-    // }
+    // Test delete
+    res = furi_hal_nvm_get_int32("int_key", &read_int_value);
+    FURI_LOG_I(TAG, "Delete int_key  result: %d, value_get: %d", res, read_int_value);
+    res = furi_hal_nvm_delete("int_key");
+    FURI_LOG_I(TAG, "Delete int_key result: %d", res);
 
-    rc = kvs_get_str("SSID", ssid, sizeof(ssid));
-    if(rc != KVSTORE_SUCCESS) {
-        FURI_LOG_E(TAG, "kvs_get_str1 %s", kvs_strerror(rc));
-        return 1;
-    }
-    rc = kvs_get_str("PASSWORD", password, sizeof(password));
-    if(rc != KVSTORE_SUCCESS) {
-        FURI_LOG_E(TAG, "kvs_get_str2 %s", kvs_strerror(rc));
-        return 1;
-    }
+    // Try to get deleted key
+    res = furi_hal_nvm_get_int32("int_key", &read_int_value);
+    FURI_LOG_I(TAG, "Get deleted int_key result: %d", res);
 
-    FURI_LOG_I(
-        TAG,
-        "Wi-Fi credential:\r\n"
-        "SSID=%s\r\n"
-        "PASSWORD=%s",
-        ssid,
-        password);
-    return 0;
+    // Test UINT32
+    uint32_t uint_value = 123456;
+    res = furi_hal_nvm_set_uint32("uint_key", uint_value);
+    FURI_LOG_I(TAG, "Set uint32 result: %d", res);
+    uint32_t read_uint_value = 0;
+    res = furi_hal_nvm_get_uint32("uint_key", &read_uint_value);
+    FURI_LOG_I(TAG, "Get uint32 result: %d, value_set: %u value_get: %u", res, uint_value, read_uint_value);
+
+    // test bool
+    bool bool_value = true;
+    res = furi_hal_nvm_set_bool("bool_key", bool_value);
+    FURI_LOG_I(TAG, "Set bool result: %d", res);
+    bool read_bool_value = false;
+    res = furi_hal_nvm_get_bool("bool_key", &read_bool_value);
+    FURI_LOG_I(TAG, "Get bool result: %d, value_set: %d value_get: %d", res, bool_value, read_bool_value);
 }
 
 int32_t test_peref_srv(void* p) {
@@ -140,7 +140,7 @@ int32_t test_peref_srv(void* p) {
 
     uint8_t duty = 0;
 
-    testmain();
+    test_nvm();
 
     // GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 3);
     // ws2812_pins[0] = gpio_status_led_line1;

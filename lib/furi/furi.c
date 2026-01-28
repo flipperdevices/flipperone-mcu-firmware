@@ -5,6 +5,7 @@
 #include <FreeRTOS.h>
 #include <queue.h>
 #include <furi_hal_memory.h>
+#include <furi_hal_nvm.h>
 
 void furi_init(void) {
     furi_check(!furi_kernel_is_irq_or_masked());
@@ -13,6 +14,7 @@ void furi_init(void) {
     furi_thread_init();
     furi_log_init();
     furi_record_init();
+    furi_hal_nvm_init();
 }
 
 void furi_run(void) {
