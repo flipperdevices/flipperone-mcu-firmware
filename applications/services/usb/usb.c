@@ -13,25 +13,7 @@
 int32_t usb_srv(void* p) {
     UNUSED(p);
 
-    //usb_network_init();
-
-    //furi_hal_usb_set_irq(usb_core_irq, NULL);
-    // tusb_rhport_init_t dev_init = {
-    //     .role = TUSB_ROLE_DEVICE,
-    //     .speed = TUSB_SPEED_AUTO,
-    // };
-    // tusb_init(BOARD_TUD_RHPORT, &dev_init);
-
-    // furi_delay_ms(1000);
-
-    // board_init();
-
     tud_init(BOARD_TUD_RHPORT);
-
-    // if(board_init_after_tusb) {
-    //     board_init_after_tusb();
-    // }
-
     // furi_thread_set_current_priority(FuriThreadPriorityHigh);
 
     while(1) {
@@ -41,43 +23,43 @@ int32_t usb_srv(void* p) {
     return 0;
 }
 
-void tud_cdc_rx_cb(uint8_t itf) {
-    // allocate buffer for the data in the stack
-    uint8_t buf[CFG_TUD_CDC_RX_BUFSIZE];
+// void tud_cdc_rx_cb(uint8_t itf) {
+//     // allocate buffer for the data in the stack
+//     uint8_t buf[CFG_TUD_CDC_RX_BUFSIZE];
 
-    // printf("RX CDC %d\n", itf);
-    FURI_LOG_I(TAG, "RX CDC %d", itf);
+//     // printf("RX CDC %d\n", itf);
+//     FURI_LOG_I(TAG, "RX CDC %d", itf);
 
-    // read the available data
-    // | IMPORTANT: also do this for CDC0 because otherwise
-    // | you won't be able to print anymore to CDC0
-    // | next time this function is called
-    uint32_t count = tud_cdc_n_read(itf, buf, sizeof(buf));
+//     // read the available data
+//     // | IMPORTANT: also do this for CDC0 because otherwise
+//     // | you won't be able to print anymore to CDC0
+//     // | next time this function is called
+//     uint32_t count = tud_cdc_n_read(itf, buf, sizeof(buf));
 
-    // check if the data was received on the second cdc interface
-    if(itf == 1) {
-        // process the received data
-        buf[count] = 0; // null-terminate the string
-        // now echo data back to the console on CDC 0
-        //printf("Received on CDC 1: %s\n", buf);
-        FURI_LOG_I(TAG, "Received on CDC 1: %s", buf);
+//     // check if the data was received on the second cdc interface
+//     if(itf == 1) {
+//         // process the received data
+//         buf[count] = 0; // null-terminate the string
+//         // now echo data back to the console on CDC 0
+//         //printf("Received on CDC 1: %s\n", buf);
+//         FURI_LOG_I(TAG, "Received on CDC 1: %s", buf);
 
-        // and echo back OK on CDC 1
-        tud_cdc_n_write(itf, (uint8_t const*)"OK\r\n", 4);
-        tud_cdc_n_write_flush(itf);
-    }
+//         // and echo back OK on CDC 1
+//         tud_cdc_n_write(itf, (uint8_t const*)"OK\r\n", 4);
+//         tud_cdc_n_write_flush(itf);
+//     }
 
-    if(itf == 0) {
-        // process the received data
-        buf[count] = 0; // null-terminate the string
-        // now echo data back to the console on CDC 1
-        tud_cdc_n_write(1, buf, count);
-        tud_cdc_n_write_flush(1);
-        // and echo back OK on CDC 0
-        tud_cdc_n_write(itf, (uint8_t const*)"OK\r\n", 4);
-        tud_cdc_n_write_flush(itf);
-    }
-}
+//     if(itf == 0) {
+//         // process the received data
+//         buf[count] = 0; // null-terminate the string
+//         // now echo data back to the console on CDC 1
+//         tud_cdc_n_write(1, buf, count);
+//         tud_cdc_n_write_flush(1);
+//         // and echo back OK on CDC 0
+//         tud_cdc_n_write(itf, (uint8_t const*)"OK\r\n", 4);
+//         tud_cdc_n_write_flush(itf);
+//     }
+// }
 
 int usb_srv_log(const char* fmt, ...) {
 #define BUFFER_SIZE 256
@@ -88,7 +70,7 @@ int usb_srv_log(const char* fmt, ...) {
     vsnprintf(buffer, BUFFER_SIZE, fmt, args);
     va_end(args);
 
-    FURI_LOG_D("tUSB", "%s", buffer);
+    FURI_LOG_RAW_D("%s", buffer);
 
     return 0;
 }

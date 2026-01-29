@@ -197,10 +197,10 @@ int test_usb(void) {
 //     }
 // }
 
-// Invoked when device is mounted
-void tud_mount_cb(void) {
-    FURI_LOG_W(TAG, "USB MOUNTED");
-}
+// // Invoked when device is mounted
+// void tud_mount_cb(void) {
+//     FURI_LOG_W(TAG, "USB MOUNTED");
+// }
 
 // Invoked when device is unmounted
 void tud_umount_cb(void) {
@@ -210,10 +210,10 @@ void tud_umount_cb(void) {
 // Invoked when usb bus is suspended
 // remote_wakeup_en : if host allow us  to perform remote wakeup
 // Within 7ms, device must draw an average of current less than 2.5 mA from bus
-void tud_suspend_cb(bool remote_wakeup_en) {
-    (void)remote_wakeup_en;
-    FURI_LOG_W(TAG, "USB SUSPENDED");
-}
+// void tud_suspend_cb(bool remote_wakeup_en) {
+//     (void)remote_wakeup_en;
+//     FURI_LOG_W(TAG, "USB SUSPENDED");
+// }
 
 // Invoked when usb bus is resumed
 void tud_resume_cb(void) {
@@ -221,26 +221,45 @@ void tud_resume_cb(void) {
     tud_mounted() ? FURI_LOG_W(TAG, "USB RESUMED, MOUNTED") : FURI_LOG_W(TAG, "USB RESUMED, NOT MOUNTED");
 }
 
-// Invoked when cdc when line state changed e.g connected/disconnected
-// Use to reset to DFU when disconnect with 1200 bps
-void tud_cdc_line_state_cb(uint8_t instance, bool dtr, bool rts) {
-    (void)rts;
+// // Invoked when cdc when line state changed e.g connected/disconnected
+// // Use to reset to DFU when disconnect with 1200 bps
+// void tud_cdc_line_state_cb(uint8_t instance, bool dtr, bool rts) {
+//     (void)rts;
 
-    // DTR = false is counted as disconnected
-    if(!dtr) {
-        // touch1200 only with first CDC instance (Serial)
-        if(instance == 0) {
-            cdc_line_coding_t coding;
-            tud_cdc_get_line_coding(&coding);
-            FURI_LOG_W(TAG, "CDC line state changed: DTR=%d, RTS=%d, bit_rate=%d", dtr, rts, coding.bit_rate);
-            //   if (coding.bit_rate == 1200) {
-            //     if (board_reset_to_bootloader) {
-            //       board_reset_to_bootloader();
-            //     }
-            //   }
-        }
-    }
-}
+//     // DTR = false is counted as disconnected
+
+//     cdc_line_coding_t coding;
+//             tud_cdc_get_line_coding(&coding);
+//             FURI_LOG_W(TAG, "CDC instance = %d : DTR=%d, RTS=%d, bit_rate=%d", instance, dtr, rts, coding.bit_rate);
+
+//     //if(!dtr) {
+//         // touch1200 only with first CDC instance (Serial)
+//     //     if(instance == 0) {
+//     //         cdc_line_coding_t coding;
+//     //         tud_cdc_get_line_coding(&coding);
+//     //         FURI_LOG_W(TAG, "CDC : DTR=%d, RTS=%d, bit_rate=%d", dtr, rts, coding.bit_rate);
+//     //         //   if (coding.bit_rate == 1200) {
+//     //         //     if (board_reset_to_bootloader) {
+//     //         //       board_reset_to_bootloader();
+//     //         //     }
+//     //         //   }
+//     //     }
+//     // }
+
+//     // if(dtr) {
+//     //     // touch1200 only with first CDC instance (Serial)
+//     //     if(instance == 0) {
+//     //         cdc_line_coding_t coding;
+//     //         tud_cdc_get_line_coding(&coding);
+//     //         FURI_LOG_W(TAG, "CDC line state changed: DTR=%d, RTS=%d, bit_rate=%d", dtr, rts, coding.bit_rate);
+//     //         //   if (coding.bit_rate == 1200) {
+//     //         //     if (board_reset_to_bootloader) {
+//     //         //       board_reset_to_bootloader();
+//     //         //     }
+//     //         //   }
+//     //     }
+//     // }
+// }
 
 int32_t test_peref_srv(void* p) {
     UNUSED(p);

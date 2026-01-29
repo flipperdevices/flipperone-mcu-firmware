@@ -26,7 +26,7 @@ endif()
 # TODO: custom board with RP2350_B_
 set(PICO_BOARD pimoroni_pga2350 CACHE STRING "Board type")
 set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
-set(LOG 3 CACHE STRING "TinyUSB debug option")
+#set(LOG 3 CACHE STRING "TinyUSB debug option")
 message(" -------> TinyUSB OS option: ${TINYUSB_OPT_OS}")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
@@ -43,6 +43,8 @@ file(GLOB_RECURSE SOURCES
     "lib/furi/*.c*" 
     "lib/furi/version/*.c*" 
     "lib/furi/core/*.c*"
+    "lib/toolbox/*.c*"
+    "lib/toolbox/printf/*.c*"
     "app/*.c"
     "app/theme/*.c"
     "app/fs/*.c"
@@ -90,6 +92,8 @@ pico_enable_stdio_usb(one-rp2350-control 1)
 # Add the standard include files to the build
 target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
+    ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
+    ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox/printf
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
@@ -99,7 +103,7 @@ target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
-    ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
+    
     
 )
 
