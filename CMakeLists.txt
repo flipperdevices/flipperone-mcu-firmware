@@ -25,6 +25,9 @@ endif()
 # ====================================================================================
 # TODO: custom board with RP2350_B_
 set(PICO_BOARD pimoroni_pga2350 CACHE STRING "Board type")
+set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
+set(LOG 3 CACHE STRING "TinyUSB debug option")
+message(" -------> TinyUSB OS option: ${TINYUSB_OPT_OS}")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include("lib/sdk/pico_sdk_import.cmake")
@@ -53,6 +56,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/spi_get_frame/*.c*"
     "lib/drivers/ina219/*.c*"
     "lib/drivers/i2c_multi_slave/*.c*"
+    "lib/tusb/*.c*"
     "applications/*.c"
     "applications/services/*.c"
     "applications/main/*.c"
@@ -72,7 +76,7 @@ target_compile_definitions(one-rp2350-control PRIVATE
     USE_DBG_PRINTF
     PICO_USE_MALLOC_MUTEX=0
     #PICO_USE_SW_SPIN_LOCKS=0
-    )
+)
 
 
 
@@ -87,6 +91,7 @@ pico_enable_stdio_usb(one-rp2350-control 1)
 target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
+    ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_hal
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_bsp
@@ -95,6 +100,7 @@ target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
+    
 )
 
 add_subdirectory(lib/mlib)
@@ -117,6 +123,8 @@ target_link_libraries(one-rp2350-control
     hardware_watchdog
     hardware_clocks
     pico_unique_id
+    tinyusb_device
+    tinyusb_board #????
     ws2812
     i2c_multi
     freertos
@@ -127,4 +135,7 @@ target_link_libraries(one-rp2350-control
 
 
 pico_add_extra_outputs(one-rp2350-control)
+
+#pico_enable_stdio_usb(one-rp2350-control 1)
+
 
