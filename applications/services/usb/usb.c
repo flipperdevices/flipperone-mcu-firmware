@@ -22,17 +22,17 @@ int32_t usb_srv(void* p) {
     // };
     // tusb_init(BOARD_TUD_RHPORT, &dev_init);
 
-    furi_delay_ms(1000);
+    // furi_delay_ms(1000);
 
-    board_init();
+    // board_init();
 
     tud_init(BOARD_TUD_RHPORT);
 
-    if(board_init_after_tusb) {
-        board_init_after_tusb();
-    }
+    // if(board_init_after_tusb) {
+    //     board_init_after_tusb();
+    // }
 
-   // furi_thread_set_current_priority(FuriThreadPriorityHigh);
+    // furi_thread_set_current_priority(FuriThreadPriorityHigh);
 
     while(1) {
         tud_task_ext(FuriWaitForever, false);
@@ -40,7 +40,6 @@ int32_t usb_srv(void* p) {
 
     return 0;
 }
-
 
 void tud_cdc_rx_cb(uint8_t itf) {
     // allocate buffer for the data in the stack
@@ -81,16 +80,15 @@ void tud_cdc_rx_cb(uint8_t itf) {
 }
 
 int usb_srv_log(const char* fmt, ...) {
-    FuriString* string = furi_string_alloc();
+#define BUFFER_SIZE 256
+    static char buffer[BUFFER_SIZE];
 
     va_list args;
     va_start(args, fmt);
-    furi_string_vprintf(string, fmt, args);
+    vsnprintf(buffer, BUFFER_SIZE, fmt, args);
     va_end(args);
 
-    furi_string_trim(string, "\r\n");
+    FURI_LOG_D("tUSB", "%s", buffer);
 
-    FURI_LOG_D("tUSB", "%s", furi_string_get_cstr(string));
-    furi_string_free(string);
     return 0;
 }
