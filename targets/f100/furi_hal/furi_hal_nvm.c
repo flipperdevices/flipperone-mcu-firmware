@@ -1,4 +1,5 @@
 #include "furi_hal_nvm.h"
+#include "core/check.h"
 #include <kvstore.h>
 
 #define TAG "FuriHalNvm"
@@ -29,6 +30,7 @@ void furi_hal_nvm_deinit(void) {
 }
 
 static FuriHalNvmStorage furi_hal_nvm_check_error(const char* key, int rc) {
+    furi_check(rc != -1); //non-initialized KVS
     if(rc == KVSTORE_SUCCESS) {
         return FuriHalNvmStorageOK;
     } else if(rc == KVSTORE_ERROR_ITEM_NOT_FOUND) {
