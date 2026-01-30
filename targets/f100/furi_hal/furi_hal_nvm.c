@@ -1,5 +1,4 @@
 #include "furi_hal_nvm.h"
-#include "core/check.h"
 #include <kvstore.h>
 
 #define TAG "FuriHalNvm"
