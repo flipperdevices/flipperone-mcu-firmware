@@ -3,6 +3,7 @@
 //#include "cli_uart.h"
 #include "cli_vcp.h"
 #include <version/version.h>
+#include <pico/stdio.h>
 #include <applications.h>
 
 #include <furi.h>
@@ -28,51 +29,33 @@ Cli* cli_alloc(void) {
     return cli;
 }
 
-void cli_putc(Cli* cli, char c) {
+static void cli_session_set_callbacks(Cli* cli, FuriThreadStdoutWriteCallback write, FuriThreadStdinReadCallback read) {
     furi_check(cli);
-    if(cli->session != NULL) {
-        cli->session->tx((uint8_t*)&c, 1);
-    }
+    furi_thread_set_stdout_callback(write, NULL);
+    furi_thread_set_stdin_callback(read, NULL);
+}
+
+void cli_putc(Cli* cli, char c) {
+    UNUSED(cli);
+    putchar(c);
+    // TODO: move where cli_putc is called
+    stdio_flush();
 }
 
 char cli_getc(Cli* cli) {
-    furi_check(cli);
-    char c = 0;
-    if(cli->session != NULL) {
-        if(cli->session->rx((uint8_t*)&c, 1, FuriWaitForever) == 0) {
-            cli_reset(cli);
-            furi_delay_tick(10);
-        }
-    } else {
-        cli_reset(cli);
-        furi_delay_tick(10);
-    }
-    return c;
+    UNUSED(cli);
+    return getchar();
 }
 
 void cli_write(Cli* cli, const uint8_t* buffer, size_t size) {
-    furi_check(cli);
-    if(cli->session != NULL) {
-        cli->session->tx(buffer, size);
-    }
+    UNUSED(cli);
+    stdio_put_string((const char*)buffer, size, false, false);
 }
 
 size_t cli_read(Cli* cli, uint8_t* buffer, size_t size) {
     furi_check(cli);
-    if(cli->session != NULL) {
-        return cli->session->rx(buffer, size, FuriWaitForever);
-    } else {
-        return 0;
-    }
-}
-
-size_t cli_read_timeout(Cli* cli, uint8_t* buffer, size_t size, uint32_t timeout) {
-    furi_check(cli);
-    if(cli->session != NULL) {
-        return cli->session->rx(buffer, size, timeout);
-    } else {
-        return 0;
-    }
+    furi_check(size == 1 || size == 0);
+    return getchar();
 }
 
 bool cli_is_connected(Cli* cli) {
@@ -105,26 +88,27 @@ void cli_print_usage(const char* cmd, const char* usage, const char* arg) {
 }
 
 void cli_motd(void) {
-    printf("\r\n"
-           "              _.-------.._                    -,\r\n"
-           "          .-\"```\"--..,,_/ /`-,               -,  \\ \r\n"
-           "       .:\"          /:/  /'\\  \\     ,_...,  `. |  |\r\n"
-           "      /       ,----/:/  /`\\ _\\~`_-\"`     _;\r\n"
-           "     '      / /`\"\"\"'\\ \\ \\.~`_-'      ,-\"'/ \r\n"
-           "    |      | |  0    | | .-'      ,/`  /\r\n"
-           "   |    ,..\\ \\     ,.-\"`       ,/`    /\r\n"
-           "  ;    :    `/`\"\"\\`           ,/--==,/-----,\r\n"
-           "  |    `-...|        -.___-Z:_______J...---;\r\n"
-           "  :         `                           _-'\r\n"
-           " _L_  _     ___  ___  ___  ___  ____--\"`___  _     ___\r\n"
-           "| __|| |   |_ _|| _ \\| _ \\| __|| _ \\   / __|| |   |_ _|\r\n"
-           "| _| | |__  | | |  _/|  _/| _| |   /  | (__ | |__  | |\r\n"
-           "|_|  |____||___||_|  |_|  |___||_|_\\   \\___||____||___|\r\n"
-           "\r\n"
-           "Welcome to BsB Flipper One Command Line Interface!\r\n"
-           "Read the manual: https://docs.flipper.net/development/cli\r\n"
-           "Run `help` or `?` to list available commands\r\n"
-           "\r\n");
+    printf(
+        "\r\n"
+        "              _.-------.._                    -,\r\n"
+        "          .-\"```\"--..,,_/ /`-,               -,  \\ \r\n"
+        "       .:\"          /:/  /'\\  \\     ,_...,  `. |  |\r\n"
+        "      /       ,----/:/  /`\\ _\\~`_-\"`     _;\r\n"
+        "     '      / /`\"\"\"'\\ \\ \\.~`_-'      ,-\"'/ \r\n"
+        "    |      | |  0    | | .-'      ,/`  /\r\n"
+        "   |    ,..\\ \\     ,.-\"`       ,/`    /\r\n"
+        "  ;    :    `/`\"\"\\`           ,/--==,/-----,\r\n"
+        "  |    `-...|        -.___-Z:_______J...---;\r\n"
+        "  :         `                           _-'\r\n"
+        " _L_  _     ___  ___  ___  ___  ____--\"`___  _     ___\r\n"
+        "| __|| |   |_ _|| _ \\| _ \\| __|| _ \\   / __|| |   |_ _|\r\n"
+        "| _| | |__  | | |  _/|  _/| _| |   /  | (__ | |__  | |\r\n"
+        "|_|  |____||___||_|  |_|  |___||_|_\\   \\___||____||___|\r\n"
+        "\r\n"
+        "Welcome to Flipper One Command Line Interface!\r\n"
+        "Read the manual: https://docs.flipper.net/development/cli\r\n"
+        "Run `help` or `?` to list available commands\r\n"
+        "\r\n");
 
     //TODO implement version_get
 #if 0
@@ -255,9 +239,7 @@ static void cli_handle_enter(Cli* cli) {
     } else {
         furi_check(furi_mutex_release(cli->mutex) == FuriStatusOk);
         cli_nl(cli);
-        printf(
-            "`%s` command not found, use `help` or `?` to list all available commands",
-            furi_string_get_cstr(command));
+        printf("`%s` command not found, use `help` or `?` to list all available commands", furi_string_get_cstr(command));
         cli_putc(cli, CliSymbolAsciiBell);
     }
 
@@ -297,8 +279,7 @@ static void cli_handle_autocomplete(Cli* cli) {
                     size_t i = 0;
                     while(i < min_size) {
                         // Stop when do not match
-                        if(furi_string_get_char(*cli_command->key_ptr, i) !=
-                           furi_string_get_char(common, i)) {
+                        if(furi_string_get_char(*cli_command->key_ptr, i) != furi_string_get_char(common, i)) {
                             break;
                         }
                         i++;
@@ -348,7 +329,7 @@ static void cli_handle_escape(Cli* cli, char c) {
 }
 
 void cli_process_input(Cli* cli) {
-    char in_chr = cli_getc(cli);
+    char in_chr = getchar();
     size_t rx_len;
 
     if(in_chr == CliSymbolAsciiTab) {
@@ -395,12 +376,7 @@ void cli_process_input(Cli* cli) {
     }
 }
 
-void cli_add_command(
-    Cli* cli,
-    const char* name,
-    CliCommandFlag flags,
-    CliCallback callback,
-    void* context) {
+void cli_add_command(Cli* cli, const char* name, CliCommandFlag flags, CliCallback callback, void* context) {
     furi_check(cli);
     FuriString* name_str;
     name_str = furi_string_alloc_set(name);
@@ -448,9 +424,9 @@ void cli_session_open(Cli* cli, void* session) {
     cli->session = session;
     if(cli->session != NULL) {
         cli->session->init();
-        furi_thread_set_stdout_callback(cli->session->tx_stdout, NULL);
+        cli_session_set_callbacks(cli, cli->session->tx_stdout, cli->session->rx_stdin);
     } else {
-        furi_thread_set_stdout_callback(NULL, NULL);
+        cli_session_set_callbacks(cli, NULL, NULL);
     }
     furi_semaphore_release(cli->idle_sem);
     furi_check(furi_mutex_release(cli->mutex) == FuriStatusOk);
@@ -464,7 +440,7 @@ void cli_session_close(Cli* cli) {
         cli->session->deinit();
     }
     cli->session = NULL;
-    furi_thread_set_stdout_callback(NULL, NULL);
+    cli_session_set_callbacks(cli, NULL, NULL);
     furi_check(furi_mutex_release(cli->mutex) == FuriStatusOk);
 }
 
@@ -481,9 +457,9 @@ int32_t cli_srv(void* p) {
     cli_commands_init(cli);
 
     if(cli->session != NULL) {
-        furi_thread_set_stdout_callback(cli->session->tx_stdout, NULL);
+        cli_session_set_callbacks(cli, cli->session->tx_stdout, cli->session->rx_stdin);
     } else {
-        furi_thread_set_stdout_callback(NULL, NULL);
+        cli_session_set_callbacks(cli, NULL, NULL);
     }
 
     cli_session_open(cli, &cli_vcp);

@@ -16,28 +16,13 @@ void furi_bsp_stdio_deinit(void) {
     FURI_LOG_I(TAG, "Stdio deinitialized");
 }
 
-static void furi_bsp_stdio_out_chars(const char *buf, int length) {
+static void furi_bsp_stdio_out_chars(const char* buf, int length) {
     furi_thread_stdout_write(buf, length);
 }
 
-static int _fgetc(FILE* stream) {
-    if(stream != stdin) return EOF;
-    char c;
-    if(furi_thread_stdin_read(&c, 1, FuriWaitForever) == 0) return EOF;
-    return c;
+static int furi_bsp_stdio_in_chars(char* buf, int length) {
+    return furi_thread_stdin_read(buf, length, FuriWaitForever);
 }
-
-static int furi_bsp_stdio_in_chars(char *buf, int length) {
-    //return (int)SEGGER_RTT_Read(0, buf, (unsigned)length);
-    int i=0;
-    do{
-        buf[i++] = _fgetc(stdin);
-    } while(i<length && (buf[i-1] != EOF));
-
-    FURI_LOG_W(TAG, "Stdio input not supported");
-    return 0;
-}
-
 
 static void furi_bsp_stdio_out_flush(void) {
     furi_thread_stdout_flush();

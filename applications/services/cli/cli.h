@@ -84,17 +84,6 @@ void cli_delete_command(Cli* cli, const char* name);
  */
 size_t cli_read(Cli* cli, uint8_t* buffer, size_t size);
 
-/** Non-blocking read from terminal
- *
- * @param      cli     Cli instance
- * @param      buffer  pointer to buffer
- * @param      size    size of buffer in bytes
- * @param      timeout timeout value in ms
- *
- * @return     bytes read
- */
-size_t cli_read_timeout(Cli* cli, uint8_t* buffer, size_t size, uint32_t timeout);
-
 /** Non-blocking check for interrupt command received
  *
  * @param      cli   Cli instance

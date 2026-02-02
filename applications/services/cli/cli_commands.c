@@ -82,10 +82,8 @@ bool cli_command_log_level_set_from_string(FuriString* level) {
         printf("<log warn> — non-critical errors and warnings including <log error>\r\n");
         printf("<log info> — non-critical information including <log warn>\r\n");
         printf("<log default> — the default system log level (equivalent to <log info>)\r\n");
-        printf(
-            "<log debug> — debug information including <log info> (may impact system performance)\r\n");
-        printf(
-            "<log trace> — system traces including <log debug> (may impact system performance)\r\n");
+        printf("<log debug> — debug information including <log info> (may impact system performance)\r\n");
+        printf("<log trace> — system traces including <log debug> (may impact system performance)\r\n");
     }
     return false;
 }
@@ -163,17 +161,7 @@ static void cli_command_top(Cli* cli, FuriString* args, void* context) {
             memmgr_get_minimum_free_heap(),
             memmgr_heap_get_max_free_block());
 
-        printf(
-            "%-25s %-20s %-10s %5s %12s %6s %10s %7s %5s\r\n",
-            "AppID",
-            "Name",
-            "State",
-            "Prio",
-            "Stack start",
-            "Stack",
-            "Stack Min",
-            "Heap",
-            "CPU");
+        printf("%-25s %-20s %-10s %5s %12s %6s %10s %7s %5s\r\n", "AppID", "Name", "State", "Prio", "Stack start", "Stack", "Stack Min", "Heap", "CPU");
 
         for(size_t i = 0; i < furi_thread_list_size(thread_list); i++) {
             const FuriThreadListItem* item = furi_thread_list_get_at(thread_list, i);
