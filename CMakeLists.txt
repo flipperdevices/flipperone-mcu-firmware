@@ -78,16 +78,15 @@ target_compile_definitions(one-rp2350-control PRIVATE
     USE_DBG_PRINTF
     PICO_USE_MALLOC_MUTEX=0
     #PICO_USE_SW_SPIN_LOCKS=0
+    #PICO_STDIO_SHORT_CIRCUIT_CLIB_FUNCS=0
 )
-
-
 
 pico_set_program_name(one-rp2350-control "one-rp2350-control")
 pico_set_program_version(one-rp2350-control "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(one-rp2350-control 1)
-pico_enable_stdio_usb(one-rp2350-control 1)
+pico_enable_stdio_uart(one-rp2350-control 0)
+pico_enable_stdio_usb(one-rp2350-control 0)
 
 # Add the standard include files to the build
 target_include_directories(one-rp2350-control PRIVATE
@@ -137,9 +136,13 @@ target_link_libraries(one-rp2350-control
     mlib
 )
 
-
+# target_link_options(one-rp2350-control PRIVATE
+#     "-Wl,--wrap=printf"
+#     "-Wl,--wrap=vprintf" 
+#     "-Wl,--wrap=puts"
+#     "-Wl,--wrap=putchar"
+#     "-Wl,--wrap=getchar"
+# )
 pico_add_extra_outputs(one-rp2350-control)
-
-#pico_enable_stdio_usb(one-rp2350-control 1)
 
 
