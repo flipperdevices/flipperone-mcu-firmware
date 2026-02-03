@@ -90,6 +90,7 @@ static int32_t vcp_worker(void* context) {
     size_t missed_rx = 0;
     uint8_t last_tx_pkt_len = 0;
 
+    furi_hal_usb_cdc_init();
     furi_hal_cdc_set_callbacks(VCP_IF_NUM, &cdc_cb, NULL);
 
     FURI_LOG_D(TAG, "Start");
@@ -180,6 +181,8 @@ static int32_t vcp_worker(void* context) {
             vcp->connected = false;
             vcp->running = false;
             furi_hal_cdc_set_callbacks(VCP_IF_NUM, NULL, NULL);
+
+            furi_hal_usb_cdc_deinit();
 
             furi_stream_buffer_receive(vcp->tx_stream, vcp->data_buffer, USB_CDC_PKT_LEN, 0);
             furi_stream_buffer_send(vcp->rx_stream, &ascii_eot, 1, FuriWaitForever);
