@@ -8,7 +8,7 @@
 
 #define GUI_EVENT_FLAG_REDRAW (1U << 0)
 
-ViewPort* gui_view_port_find_enabled(ViewPortArray_t array) {
+static ViewPort* gui_view_port_find_enabled(ViewPortArray_t array) {
     // Iterating backward
     ViewPortArray_it_t it;
     ViewPortArray_it_last(it, array);

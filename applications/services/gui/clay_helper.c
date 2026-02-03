@@ -72,3 +72,11 @@ bool clay_helper_scroll_to_child(Clay_ElementId scrollContainerId, Clay_ElementI
         return false;
     }
 }
+
+Clay_String clay_helper_string_from(FuriString* furi_string) {
+    Clay_String clay_string;
+    clay_string.isStaticallyAllocated = false;
+    clay_string.length = furi_string_size(furi_string);
+    clay_string.chars = furi_string_get_cstr(furi_string);
+    return clay_string;
+}

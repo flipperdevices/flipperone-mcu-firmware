@@ -227,7 +227,7 @@ static void desktop_app_message_logic(FuriEventLoopObject* object, void* context
     }
 }
 
-Desktop* desktop_alloc(void) {
+static Desktop* desktop_alloc(void) {
     Desktop* desktop = malloc(sizeof(Desktop));
     desktop->gui = furi_record_open(RECORD_GUI);
     desktop->event_loop = furi_event_loop_alloc();
