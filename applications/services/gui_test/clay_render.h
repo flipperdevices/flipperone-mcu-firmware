@@ -4,6 +4,7 @@
 typedef enum {
     FontBody,
     FontButton,
+    FontKeyboard,
 } Font;
 
 typedef struct RenderBuffer RenderBuffer;

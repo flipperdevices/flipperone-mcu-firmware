@@ -93,7 +93,6 @@ static void app_layout(void* context) {
                 CLAY_TEXT(CLAY_STRING("Keypad Test"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
             }
         }
-
         CLAY(
             CLAY_APP_ID("MainContent"),
             {

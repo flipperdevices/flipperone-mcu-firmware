@@ -11,6 +11,7 @@
 
 #define TAG "GuiTest"
 
+extern App app_menu;
 extern App app_test_keypad;
 extern App app_test_touchpad;
 extern App app_complex;
@@ -59,6 +60,7 @@ int32_t gui_test_app(void* p) {
     FURI_LOG_I(TAG, "Starting GUI Test App");
 
     App* const apps[] = {
+        &app_menu,
         &app_test_keypad,
         &app_test_touchpad,
         &app_complex,

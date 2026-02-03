@@ -10,15 +10,10 @@
                 "-C",
                 "${workspaceFolder}/build"
             ],
-            "group": "build",
-            "presentation": {
-                "reveal": "always",
-                "panel": "dedicated"
-            },
-            "problemMatcher": "$gcc",
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe"
-            }
+            },
+            "problemMatcher": []
         },
         {
             "label": "Run Project",
@@ -58,7 +53,7 @@
             ],
             "problemMatcher": [],
             "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+                "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe"
             }
         }
     ]

@@ -23,6 +23,7 @@ int32_t init_task(void* context) {
     furi_log_set_level(FuriLogLevelInfo);
 
     FURI_LOG_I(TAG, "Init task started");
+    
     // Init flipper
     flipper_init();
 
@@ -40,22 +41,7 @@ int main(void) {
 
     FuriThread* main_thread = furi_thread_alloc_ex("Init", 4096, init_task, NULL);
     furi_thread_set_priority(main_thread, FuriThreadPriorityInit);
-#ifdef FURI_RAM_EXEC
     furi_thread_start(main_thread);
-#else
-    //FuriHalNvmBootMode boot_mode = furi_hal_nvm_get_boot_mode();
-    // if(boot_mode == FuriHalNvmBootModeUpdate) {
-    //     furi_delay_ms(200);
-    //     furi_hal_nvm_set_boot_mode(FuriHalNvmBootModeNormal);
-    //     platform_boot_to_update();
-    //     // If we are here, the switch to the update was not successful
-    //     // FURI_LOG_W(TAG, "Failed to switch to update mode");
-    //     furi_hal_power_reset();
-    // } else {
-    furi_thread_start(main_thread);
-    //}
-
-#endif
 
     // somehow openocd fucks up the multicore reset
     // so we need to reset core1 manually

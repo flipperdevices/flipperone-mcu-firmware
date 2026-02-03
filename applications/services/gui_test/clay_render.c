@@ -39,6 +39,8 @@ static const void* render_get_font_by_id(Font font_id) {
         return u8g2_font_haxrcorp4089_tr;
     case FontButton:
         return u8g2_font_helvB08_tr;
+    case FontKeyboard:
+        return u8g2_font_profont11_mr;
     default:
         return u8g2_font_haxrcorp4089_tr;
     }
