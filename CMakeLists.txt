@@ -123,7 +123,6 @@ target_link_libraries(one-rp2350-control
     hardware_clocks
     pico_unique_id
     tinyusb_device
-    tinyusb_board
     ws2812
     i2c_multi
     freertos
