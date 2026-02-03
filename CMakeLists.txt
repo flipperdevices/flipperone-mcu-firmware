@@ -76,7 +76,13 @@ target_compile_definitions(one-rp2350-control PRIVATE
     USE_PRINTF
     USE_DBG_PRINTF
     PICO_USE_MALLOC_MUTEX=0
-)
+    # https://www.raspberrypi.com/documentation/pico-sdk/high_level.html 
+    # Set PICO_FLASH_ASSUME_CORE1_SAFE=1 to explicitly say that core 1 is never using flash. 
+    #When enabling multi-core, this needs to be disabled and the correct flash access mechanism implemented
+    PICO_FLASH_ASSUME_CORE1_SAFE=1
+    #PICO_USE_SW_SPIN_LOCKS=0
+    )
+
 
 pico_set_program_name(one-rp2350-control "one-rp2350-control")
 pico_set_program_version(one-rp2350-control "0.1")
@@ -107,6 +113,7 @@ add_subdirectory(lib/drivers/ws2812)
 add_subdirectory(lib/drivers/i2c_multi_slave)
 add_subdirectory(lib/freertos)
 add_subdirectory(lib/lvgl)
+add_subdirectory(lib/pico-kvstore)
 add_subdirectory(assets)
 
 # Add the standard library to the build
@@ -129,6 +136,8 @@ target_link_libraries(one-rp2350-control
     lvgl_lib
     assets
     mlib
+    kvstore
+    kvstore_default
 )
 
 pico_add_extra_outputs(one-rp2350-control)

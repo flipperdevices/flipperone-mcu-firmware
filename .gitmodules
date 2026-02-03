@@ -8,3 +8,6 @@
 	path = lib/mlib/mlib
 	url = https://github.com/P-p-H-d/mlib.git
 	branch = master
+[submodule "lib/pico-kvstore"]
+	path = lib/pico-kvstore
+	url = https://github.com/oyama/pico-kvstore.git
