@@ -4,6 +4,7 @@
 #include <version/version.h>
 #include <pico/stdio.h>
 #include <applications.h>
+#include <furi_hal_power.h>
 
 #include <furi.h>
 
@@ -91,8 +92,6 @@ void cli_motd(void) {
         "Run `help` or `?` to list available commands\r\n"
         "\r\n");
 
-    //TODO implement version_get
-#if 0
     const Version* firmware_version = version_get();
     if(firmware_version) {
         printf(
@@ -103,7 +102,6 @@ void cli_motd(void) {
             version_get_dirty_flag(firmware_version) ? "-dirty" : "",
             version_get_builddate(firmware_version));
     }
-#endif
 }
 
 void cli_nl(Cli* cli) {
@@ -150,12 +148,11 @@ static void cli_execute_command(Cli* cli, CliCommand* command, FuriString* args)
     UNUSED(cli);
     UNUSED(command);
     UNUSED(args);
-    //TODO: Implement furi_hal_power_insomnia_enter
-#if 0
+
     if(!(command->flags & CliCommandFlagInsomniaSafe)) {
         furi_hal_power_insomnia_enter();
     }
-#endif
+
     //TODO Implement LOADER
     // Ensure that we running alone
     if(!(command->flags & CliCommandFlagParallelSafe)) {
@@ -176,12 +173,9 @@ static void cli_execute_command(Cli* cli, CliCommand* command, FuriString* args)
         command->callback(cli, args, command->context);
     }
 
-    //TODO: Implement furi_hal_power_insomnia_enter
-#if 0
     if(!(command->flags & CliCommandFlagInsomniaSafe)) {
         furi_hal_power_insomnia_exit();
     }
-#endif
 }
 
 static void cli_handle_enter(Cli* cli) {

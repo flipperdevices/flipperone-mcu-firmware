@@ -1,23 +1,7 @@
-/*
- * Copyright (c) 2020 Raspberry Pi (Trading) Ltd.
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
+#pragma once
 
-#ifndef _FURI_BSP_H
-#define _FURI_BSP_H
+#include <pico/stdio.h>
 
-#include "pico/stdio.h"
-
-/** \brief Support for stdin/stdout using SEGGER RTT
- *  \defgroup pico_stdio_rtt pico_stdio_rtt
- *  \ingroup pico_stdio
- *
- *  Linking this library or calling `pico_enable_stdio_rtt(TARGET)` in the CMake (which
- *  achieves the same thing) will add RTT to the drivers used for standard output
- */
-
-// PICO_CONFIG: FURI_BSP_DEFAULT_CRLF, Default state of CR/LF translation for rtt output, type=bool, default=PICO_STDIO_DEFAULT_CRLF, group=pico_stdio_rtt
 #ifndef FURI_BSP_DEFAULT_CRLF
 #define FURI_BSP_DEFAULT_CRLF PICO_STDIO_DEFAULT_CRLF
 #endif
@@ -28,22 +12,14 @@ extern "C" {
 
 extern stdio_driver_t furi_bsp_stdio;
 
-/*! \brief Explicitly initialize stdin/stdout over RTT and add it to the current set of stdin/stdout drivers
- *  \ingroup pico_stdio_rtt
- *
- * \note this method is automatically called by \ref stdio_init_all() if `pico_stdio_rtt` is included in the build
+/** Initialize BSP stdio driver
  */
 void furi_bsp_stdio_init(void);
 
-/*! \brief Explicitly deinitialize stdin/stdout over RTT and remove it from the current set of stdin/stdout drivers
- *  \ingroup pico_stdio_rtt
- *
- * \note this method is automatically called by \ref stdio_deinit_all() if `pico_stdio_rtt` is included in the build
+/** Deinitialize BSP stdio driver
  */
 void furi_bsp_stdio_deinit(void);
 
 #ifdef __cplusplus
 }
-#endif
-
 #endif

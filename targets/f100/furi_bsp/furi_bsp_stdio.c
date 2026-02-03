@@ -1,7 +1,7 @@
-#include "core/log.h"
-#include "pico/binary_info.h"
-#include "pico/stdio/driver.h"
+
 #include "furi_bsp_stdio.h"
+#include <pico/binary_info.h>
+#include <pico/stdio/driver.h>
 #include <furi.h>
 
 #define TAG "FuriBspStdio"
