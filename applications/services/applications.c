@@ -70,7 +70,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {.app = cli_srv,
      .name = "CliSrv",
      .appid = "cli",
-     .stack_size = 1024,
+     .stack_size = 1024*2,
      .flags = FlipperInternalApplicationFlagDefault },
 };
 const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);

@@ -1,7 +1,6 @@
 #include <furi.h>
 #include <furi_hal.h>
 #include <tusb.h>
-#include <bsp/board_api.h>
 
 #define TAG "USB"
 

@@ -1,6 +1,5 @@
 #include "cli_i.h"
 #include "cli_commands.h"
-//#include "cli_uart.h"
 #include "cli_vcp.h"
 #include <version/version.h>
 #include <pico/stdio.h>

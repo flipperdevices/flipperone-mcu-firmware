@@ -12,8 +12,6 @@
 
 #define VCP_IF_NUM 0
 
-#define CLI_VCP_DEBUG
-
 #ifdef CLI_VCP_DEBUG
 #define VCP_DEBUG(...) FURI_LOG_D(TAG, __VA_ARGS__)
 #else
@@ -30,9 +28,7 @@ typedef enum {
     VcpEvtTx = (1 << 6),
 } WorkerEvtFlags;
 
-#define VCP_THREAD_FLAG_ALL                                                                 \
-    (VcpEvtStop | VcpEvtConnect | VcpEvtDisconnect | VcpEvtRx | VcpEvtTx | VcpEvtStreamRx | \
-     VcpEvtStreamTx)
+#define VCP_THREAD_FLAG_ALL (VcpEvtStop | VcpEvtConnect | VcpEvtDisconnect | VcpEvtRx | VcpEvtTx | VcpEvtStreamRx | VcpEvtStreamTx)
 
 typedef struct {
     FuriThread* thread;
@@ -42,8 +38,6 @@ typedef struct {
 
     volatile bool connected;
     volatile bool running;
-
-   // FuriHalUsbInterface* usb_if_prev;
 
     uint8_t data_buffer[USB_CDC_PKT_LEN];
 } CliVcp;
@@ -96,23 +90,13 @@ static int32_t vcp_worker(void* context) {
     size_t missed_rx = 0;
     uint8_t last_tx_pkt_len = 0;
 
-    // Switch USB to VCP mode (if it is not set yet)
-
-    //Todo!
-    // vcp->usb_if_prev = furi_hal_usb_get_config();
-    // if((vcp->usb_if_prev != &usb_cdc_single) && (vcp->usb_if_prev != &usb_cdc_dual)) {
-    //     furi_hal_usb_set_config(&usb_cdc_single, NULL);
-    // }
-    
-    
     furi_hal_cdc_set_callbacks(VCP_IF_NUM, &cdc_cb, NULL);
 
     FURI_LOG_D(TAG, "Start");
     vcp->running = true;
 
     while(1) {
-        uint32_t flags =
-            furi_thread_flags_wait(VCP_THREAD_FLAG_ALL, FuriFlagWaitAny, FuriWaitForever);
+        uint32_t flags = furi_thread_flags_wait(VCP_THREAD_FLAG_ALL, FuriFlagWaitAny, FuriWaitForever);
         furi_assert(!(flags & FuriFlagError));
 
         // VCP session opened
@@ -153,10 +137,7 @@ static int32_t vcp_worker(void* context) {
                 VCP_DEBUG("Rx %ld", len);
 
                 if(len > 0) {
-                    furi_check(
-                        furi_stream_buffer_send(
-                            vcp->rx_stream, vcp->data_buffer, len, FuriWaitForever) ==
-                        (size_t)len);
+                    furi_check(furi_stream_buffer_send(vcp->rx_stream, vcp->data_buffer, len, FuriWaitForever) == (size_t)len);
                 }
             } else {
                 VCP_DEBUG("Rx missed");
@@ -175,8 +156,7 @@ static int32_t vcp_worker(void* context) {
 
         // CDC write transfer done
         if(flags & VcpEvtTx) {
-            size_t len =
-                furi_stream_buffer_receive(vcp->tx_stream, vcp->data_buffer, USB_CDC_PKT_LEN, 0);
+            size_t len = furi_stream_buffer_receive(vcp->tx_stream, vcp->data_buffer, USB_CDC_PKT_LEN, 0);
 
             VCP_DEBUG("Tx %d", len);
 
@@ -200,13 +180,7 @@ static int32_t vcp_worker(void* context) {
             vcp->connected = false;
             vcp->running = false;
             furi_hal_cdc_set_callbacks(VCP_IF_NUM, NULL, NULL);
-            // Restore previous USB mode (if it was set during init)
 
-            //Todo!
-            // if((vcp->usb_if_prev != &usb_cdc_single) && (vcp->usb_if_prev != &usb_cdc_dual)) {
-            //     furi_hal_usb_unlock();
-            //     furi_hal_usb_set_config(vcp->usb_if_prev, NULL);
-            // }
             furi_stream_buffer_receive(vcp->tx_stream, vcp->data_buffer, USB_CDC_PKT_LEN, 0);
             furi_stream_buffer_send(vcp->rx_stream, &ascii_eot, 1, FuriWaitForever);
             break;

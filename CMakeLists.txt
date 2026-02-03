@@ -44,7 +44,6 @@ file(GLOB_RECURSE SOURCES
     "lib/furi/version/*.c*" 
     "lib/furi/core/*.c*"
     "lib/toolbox/*.c*"
-    "lib/toolbox/printf/*.c*"
     "app/*.c"
     "app/theme/*.c"
     "app/fs/*.c"
@@ -77,8 +76,6 @@ target_compile_definitions(one-rp2350-control PRIVATE
     USE_PRINTF
     USE_DBG_PRINTF
     PICO_USE_MALLOC_MUTEX=0
-    #PICO_USE_SW_SPIN_LOCKS=0
-    #PICO_STDIO_SHORT_CIRCUIT_CLIB_FUNCS=0
 )
 
 pico_set_program_name(one-rp2350-control "one-rp2350-control")
@@ -92,7 +89,6 @@ pico_enable_stdio_usb(one-rp2350-control 0)
 target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
-    ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox/printf
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
@@ -127,7 +123,7 @@ target_link_libraries(one-rp2350-control
     hardware_clocks
     pico_unique_id
     tinyusb_device
-    tinyusb_board #????
+    tinyusb_board
     ws2812
     i2c_multi
     freertos
@@ -136,13 +132,6 @@ target_link_libraries(one-rp2350-control
     mlib
 )
 
-# target_link_options(one-rp2350-control PRIVATE
-#     "-Wl,--wrap=printf"
-#     "-Wl,--wrap=vprintf" 
-#     "-Wl,--wrap=puts"
-#     "-Wl,--wrap=putchar"
-#     "-Wl,--wrap=getchar"
-# )
 pico_add_extra_outputs(one-rp2350-control)
 
 

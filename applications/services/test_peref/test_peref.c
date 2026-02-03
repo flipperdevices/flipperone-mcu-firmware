@@ -26,6 +26,7 @@
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/display/jd9853_reg.h>
 #include <status_lights/status_lights.h>
+#include <tusb.h>
 
 #define TAG "PerefTest"
 DisplayJd9853QSPI* display_h = NULL;
@@ -77,189 +78,16 @@ static void input_events_callback(const void* value, void* ctx) {
     }
 }
 
-#include <bsp/board_api.h>
-#include <tusb.h>
-
-#include <pico/stdio.h>
-
-void custom_cdc_task(void);
-
-int test_usb(void) {
-    FURI_LOG_I(TAG, "!0");
-    // Initialize TinyUSB stack
-    board_init();
-    //  tusb_init();
-    FURI_LOG_I(TAG, "!1");
-    // // TinyUSB board init callback after init
-    // if (board_init_after_tusb) {
-    //     board_init_after_tusb();
-    // }
-    // init device stack on configured roothub port
-    //   tusb_rhport_init_t dev_init = {
-    //     .role = TUSB_ROLE_DEVICE,
-    //     .speed = TUSB_SPEED_AUTO
-    //   };
-    //   tusb_init(BOARD_TUD_RHPORT, &dev_init);
-    tud_init(BOARD_TUD_RHPORT);
-    FURI_LOG_I(TAG, "!2");
-    if(board_init_after_tusb) {
-        board_init_after_tusb();
-    }
-    FURI_LOG_I(TAG, "!3");
-    // // let pico sdk use the first cdc interface for std io
-    // stdio_init_all();
-
-    // main run loop
-    while(1) {
-        // TinyUSB device task | must be called regurlarly
-        FURI_LOG_I(TAG, "-> tud_task");
-        tud_task();  
-
-        // custom tasks
-        // custom_cdc_task();
-        // furi_delay_ms(10);
-        //furi_delay_ms(10);
-
-        // following code only run if tud_task() process at least 1 event
-        //tud_cdc_write_flush();
-
-
-/**
-                // If suspended or disconnected, delay for 1ms (20 ticks)
-        if (tud_suspended() || !tud_connected())
-            xTaskDelayUntil(&wake, 20);
-        // Go to sleep for up to a tick if nothing to do
-        else if (!tud_task_event_ready())
-            xTaskDelayUntil(&wake, 1);
-*/
-    }
-
-    // indicate no error
-    return 0;
-}
-
-// void custom_cdc_task(void)
-// {
-//     // polling CDC interfaces if wanted
-
-//     // Check if CDC interface 0 (for pico sdk stdio) is connected and ready
-
-//     if (tud_cdc_n_connected(0)) {
-//         // print on CDC 0 some debug message
-//         //printf("Connected to CDC 0\n");
-//         FURI_LOG_I(TAG, "Connected to CDC 0");
-//         sleep_ms(1000); // wait for 5 seconds
-//     }
-
-//         if (tud_cdc_n_connected(1)) {
-//         // print on CDC 0 some debug message
-//         FURI_LOG_I(TAG, "Connected to CDC 1");
-//         sleep_ms(1000); // wait for 5 seconds
-//     }
-// }
-
-// callback when data is received on a CDC interface
-// void tud_cdc_rx_cb(uint8_t itf) {
-//     // allocate buffer for the data in the stack
-//     uint8_t buf[CFG_TUD_CDC_RX_BUFSIZE];
-
-//     // printf("RX CDC %d\n", itf);
-//     FURI_LOG_I(TAG, "RX CDC %d", itf);
-
-//     // read the available data
-//     // | IMPORTANT: also do this for CDC0 because otherwise
-//     // | you won't be able to print anymore to CDC0
-//     // | next time this function is called
-//     uint32_t count = tud_cdc_n_read(itf, buf, sizeof(buf));
-
-//     // check if the data was received on the second cdc interface
-//     if(itf == 1) {
-//         // process the received data
-//         buf[count] = 0; // null-terminate the string
-//         // now echo data back to the console on CDC 0
-//         //printf("Received on CDC 1: %s\n", buf);
-//         FURI_LOG_I(TAG, "Received on CDC 1: %s", buf);
-
-//         // and echo back OK on CDC 1
-//         tud_cdc_n_write(itf, (uint8_t const*)"OK\r\n", 4);
-//         tud_cdc_n_write_flush(itf);
-//     }
-
-//     if(itf == 0) {
-//         // process the received data
-//         buf[count] = 0; // null-terminate the string
-//         // now echo data back to the console on CDC 1
-//         tud_cdc_n_write(1, buf, count);
-//         tud_cdc_n_write_flush(1);
-//         // and echo back OK on CDC 0
-//         tud_cdc_n_write(itf, (uint8_t const*)"OK\r\n", 4);
-//         tud_cdc_n_write_flush(itf);
-//     }
-// }
-
-// // Invoked when device is mounted
-// void tud_mount_cb(void) {
-//     FURI_LOG_W(TAG, "USB MOUNTED");
-// }
-
 // Invoked when device is unmounted
 void tud_umount_cb(void) {
     FURI_LOG_W(TAG, "USB UNMOUNTED");
 }
-
-// Invoked when usb bus is suspended
-// remote_wakeup_en : if host allow us  to perform remote wakeup
-// Within 7ms, device must draw an average of current less than 2.5 mA from bus
-// void tud_suspend_cb(bool remote_wakeup_en) {
-//     (void)remote_wakeup_en;
-//     FURI_LOG_W(TAG, "USB SUSPENDED");
-// }
 
 // Invoked when usb bus is resumed
 void tud_resume_cb(void) {
     //blink_interval_ms = tud_mounted() ? BLINK_MOUNTED : BLINK_NOT_MOUNTED;
     tud_mounted() ? FURI_LOG_W(TAG, "USB RESUMED, MOUNTED") : FURI_LOG_W(TAG, "USB RESUMED, NOT MOUNTED");
 }
-
-// // Invoked when cdc when line state changed e.g connected/disconnected
-// // Use to reset to DFU when disconnect with 1200 bps
-// void tud_cdc_line_state_cb(uint8_t instance, bool dtr, bool rts) {
-//     (void)rts;
-
-//     // DTR = false is counted as disconnected
-
-//     cdc_line_coding_t coding;
-//             tud_cdc_get_line_coding(&coding);
-//             FURI_LOG_W(TAG, "CDC instance = %d : DTR=%d, RTS=%d, bit_rate=%d", instance, dtr, rts, coding.bit_rate);
-
-//     //if(!dtr) {
-//         // touch1200 only with first CDC instance (Serial)
-//     //     if(instance == 0) {
-//     //         cdc_line_coding_t coding;
-//     //         tud_cdc_get_line_coding(&coding);
-//     //         FURI_LOG_W(TAG, "CDC : DTR=%d, RTS=%d, bit_rate=%d", dtr, rts, coding.bit_rate);
-//     //         //   if (coding.bit_rate == 1200) {
-//     //         //     if (board_reset_to_bootloader) {
-//     //         //       board_reset_to_bootloader();
-//     //         //     }
-//     //         //   }
-//     //     }
-//     // }
-
-//     // if(dtr) {
-//     //     // touch1200 only with first CDC instance (Serial)
-//     //     if(instance == 0) {
-//     //         cdc_line_coding_t coding;
-//     //         tud_cdc_get_line_coding(&coding);
-//     //         FURI_LOG_W(TAG, "CDC line state changed: DTR=%d, RTS=%d, bit_rate=%d", dtr, rts, coding.bit_rate);
-//     //         //   if (coding.bit_rate == 1200) {
-//     //         //     if (board_reset_to_bootloader) {
-//     //         //       board_reset_to_bootloader();
-//     //         //     }
-//     //         //   }
-//     //     }
-//     // }
-// }
 
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
@@ -272,8 +100,6 @@ int32_t test_peref_srv(void* p) {
     FURI_LOG_E("tag", "Error");
 
     uint8_t duty = 0;
-    //furi_delay_ms(1000);
-    //test_usb();
 
     // GpioPin* ws2812_pins = (GpioPin*)malloc(sizeof(GpioPin) * 3);
     // ws2812_pins[0] = gpio_status_led_line1;

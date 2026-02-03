@@ -34,13 +34,7 @@ struct CliSession {
     bool (*is_connected)(void);
 };
 
-BPTREE_DEF2(
-    CliCommandTree,
-    CLI_COMMANDS_TREE_RANK,
-    FuriString*,
-    FURI_STRING_OPLIST,
-    CliCommand,
-    M_POD_OPLIST)
+BPTREE_DEF2(CliCommandTree, CLI_COMMANDS_TREE_RANK, FuriString*, FURI_STRING_OPLIST, CliCommand, M_POD_OPLIST)
 
 #define M_OPL_CliCommandTree_t() BPTREE_OPLIST(CliCommandTree, M_POD_OPLIST)
 
