@@ -1,10 +1,11 @@
 #include <furi_hal.h>
 #include <furi_hal_power.h>
-//#include <furi_hal_nvm.h>
+#include <furi_hal_nvm.h>
 
 #define TAG "FuriHal"
 
 void furi_hal_init_early(void) {
+    furi_hal_nvm_init();
     // furi_hal_cortex_init_early();
     // furi_hal_clock_init_early();
     // furi_hal_bus_init_early();
@@ -16,7 +17,6 @@ void furi_hal_init_early(void) {
     furi_hal_i2c_init_internal();
     // // furi_hal_light_init();
     // furi_hal_rtc_init_early();
-    // furi_hal_nvm_init_early();
 }
 
 void furi_hal_deinit_early(void) {
@@ -34,7 +34,6 @@ void furi_hal_init(void) {
     // furi_hal_mpu_init();
     // furi_hal_clock_init();
     // // furi_hal_psram_init();
-    // furi_hal_nvm_init();
     // furi_hal_sdmmc_init(false);
     // furi_hal_random_init();
     furi_hal_serial_control_init();
