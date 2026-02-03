@@ -1,6 +1,6 @@
-#include <gui/gui.h>
-#include <gui/clay_helper.h>
 #include <applications.h>
+#include <gui/clay_helper.h>
+#include <gui/gui.h>
 
 #define DESKTOP_INPUT_QUEUE_SIZE       16
 #define DESKTOP_INPUT_TOUCH_QUEUE_SIZE 16
@@ -82,18 +82,6 @@ void desktop_post_layout(void* context) {
     }
 }
 
-static void desktop_input_gui_glue(InputEvent* event, void* context) {
-    furi_check(context);
-    Desktop* app = context;
-    furi_check(furi_message_queue_put(app->input_queue, event, FuriWaitForever) == FuriStatusOk);
-}
-
-static void desktop_input_touch_gui_glue(InputTouchEvent* event, void* context) {
-    furi_check(context);
-    Desktop* app = context;
-    furi_check(furi_message_queue_put(app->input_touch_queue, event, FuriWaitForever) == FuriStatusOk);
-}
-
 static void desktop_input_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     Desktop* app = context;
@@ -120,19 +108,23 @@ static void desktop_touch_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     Desktop* app = context;
     furi_check(object == app->input_touch_queue);
+
+    InputTouchEvent event;
+    furi_check(furi_message_queue_get(app->input_touch_queue, &event, 0) == FuriStatusOk);
 }
 
 Desktop* desktop_alloc(void) {
     Desktop* app = malloc(sizeof(Desktop));
     app->gui = furi_record_open(RECORD_GUI);
     app->event_loop = furi_event_loop_alloc();
-
-    app->view_port = view_port_alloc();
-    view_port_set_layout_callbacks(app->view_port, desktop_layout, desktop_post_layout, app);
-    view_port_set_input_callbacks(app->view_port, desktop_input_gui_glue, desktop_input_touch_gui_glue, app);
-
     app->input_queue = furi_message_queue_alloc(DESKTOP_INPUT_QUEUE_SIZE, sizeof(InputEvent));
     app->input_touch_queue = furi_message_queue_alloc(DESKTOP_INPUT_TOUCH_QUEUE_SIZE, sizeof(InputTouchEvent));
+
+    app->view_port = view_port_alloc();
+    view_port_set_layout_callback(app->view_port, desktop_layout, app);
+    view_port_set_post_layout_callback(app->view_port, desktop_post_layout, app);
+    view_port_set_input_callback(app->view_port, view_port_input_queue_glue, app->input_queue);
+    view_port_set_input_touch_callback(app->view_port, view_port_input_touch_queue_glue, app->input_touch_queue);
 
     furi_event_loop_subscribe_message_queue(app->event_loop, app->input_queue, FuriEventLoopEventIn, desktop_input_logic, app);
     furi_event_loop_subscribe_message_queue(app->event_loop, app->input_touch_queue, FuriEventLoopEventIn, desktop_touch_logic, app);

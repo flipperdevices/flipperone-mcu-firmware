@@ -23,36 +23,35 @@ typedef void (*ViewPortInputCallback)(InputEvent* event, void* context);
  */
 typedef void (*ViewPortInputTouchCallback)(InputTouchEvent* event, void* context);
 
-/** ViewPort post layout callback
- * @warning    called from GUI thread
- */
-typedef void (*ViewPortPostLayoutCallback)(void* context);
-
 ViewPort* view_port_alloc(void);
 
 void view_port_free(ViewPort* view_port);
 
-void view_port_set_input_callbacks(
-    ViewPort* view_port,
-    ViewPortInputCallback input_callback,
-    ViewPortInputTouchCallback input_touch_callback,
-    void* input_context);
+void view_port_set_input_callback(ViewPort* view_port, ViewPortInputCallback input_callback, void* input_context);
 
-void view_port_set_layout_callbacks(
-    ViewPort* view_port,
-    ViewPortLayoutCallback layout_callback,
-    ViewPortPostLayoutCallback post_layout_callback,
-    void* layout_context);
+void view_port_set_input_touch_callback(ViewPort* view_port, ViewPortInputTouchCallback input_touch_callback, void* input_touch_context);
+
+void view_port_set_layout_callback(ViewPort* view_port, ViewPortLayoutCallback layout_callback, void* layout_context);
+
+void view_port_set_post_layout_callback(ViewPort* view_port, ViewPortLayoutCallback post_layout_callback, void* post_layout_context);
 
 bool view_port_is_enabled(const ViewPort* view_port);
 
-void view_port_layout(ViewPort* view_port);
+/**
+ * @brief Glue function to put input events into a message queue, to use with view_port_set_input_callback
+ * @warning Expects context to be of type FuriMessageQueue pointer
+ * @param event 
+ * @param context 
+ */
+void view_port_input_queue_glue(InputEvent* event, void* context);
 
-void view_port_post_layout(ViewPort* view_port);
-
-void view_port_input(ViewPort* view_port, InputEvent* event);
-
-void view_port_input_touch(ViewPort* view_port, InputTouchEvent* event);
+/**
+ * @brief Glue function to put touch input events into a message queue to use with view_port_set_input_touch_callback
+ * @warning Expects context to be of type FuriMessageQueue pointer
+ * @param event 
+ * @param context 
+ */
+void view_port_input_touch_queue_glue(InputTouchEvent* event, void* context);
 
 #ifdef __cplusplus
 }

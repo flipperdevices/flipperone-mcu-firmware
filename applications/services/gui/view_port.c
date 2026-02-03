@@ -2,17 +2,35 @@
 
 #define TAG "ViewPort"
 
+typedef struct {
+    ViewPortLayoutCallback callback;
+    void* context;
+} LayoutCallback;
+
+typedef struct {
+    ViewPortLayoutCallback callback;
+    void* context;
+} PostLayoutCallback;
+
+typedef struct {
+    ViewPortInputCallback callback;
+    void* context;
+} InputCallback;
+
+typedef struct {
+    ViewPortInputTouchCallback callback;
+    void* context;
+} InputTouchCallback;
+
 struct ViewPort {
     Gui* gui;
     FuriMutex* mutex;
     bool is_enabled;
 
-    ViewPortLayoutCallback callback_layout;
-    ViewPortPostLayoutCallback callback_post_layout;
-    ViewPortInputCallback callback_input;
-    ViewPortInputTouchCallback callback_input_touch;
-    void* callback_layout_context;
-    void* callback_input_context;
+    LayoutCallback layout;
+    PostLayoutCallback post_layout;
+    InputCallback input;
+    InputTouchCallback input_touch;
 };
 
 ViewPort* view_port_alloc(void) {
@@ -31,29 +49,35 @@ void view_port_free(ViewPort* view_port) {
     free(view_port);
 }
 
-void view_port_set_input_callbacks(
-    ViewPort* view_port,
-    ViewPortInputCallback input_callback,
-    ViewPortInputTouchCallback input_touch_callback,
-    void* input_context) {
+void view_port_set_input_callback(ViewPort* view_port, ViewPortInputCallback input_callback, void* input_context) {
     furi_check(view_port);
     furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
-    view_port->callback_input = input_callback;
-    view_port->callback_input_touch = input_touch_callback;
-    view_port->callback_input_context = input_context;
+    view_port->input.callback = input_callback;
+    view_port->input.context = input_context;
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
 }
 
-void view_port_set_layout_callbacks(
-    ViewPort* view_port,
-    ViewPortLayoutCallback layout_callback,
-    ViewPortPostLayoutCallback post_layout_callback,
-    void* layout_context) {
+void view_port_set_input_touch_callback(ViewPort* view_port, ViewPortInputTouchCallback input_touch_callback, void* input_touch_context) {
     furi_check(view_port);
     furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
-    view_port->callback_layout = layout_callback;
-    view_port->callback_post_layout = post_layout_callback;
-    view_port->callback_layout_context = layout_context;
+    view_port->input_touch.callback = input_touch_callback;
+    view_port->input_touch.context = input_touch_context;
+    furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
+}
+
+void view_port_set_layout_callback(ViewPort* view_port, ViewPortLayoutCallback layout_callback, void* layout_context) {
+    furi_check(view_port);
+    furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
+    view_port->layout.callback = layout_callback;
+    view_port->layout.context = layout_context;
+    furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
+}
+
+void view_port_set_post_layout_callback(ViewPort* view_port, ViewPortLayoutCallback post_layout_callback, void* post_layout_context) {
+    furi_check(view_port);
+    furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
+    view_port->post_layout.callback = post_layout_callback;
+    view_port->post_layout.context = post_layout_context;
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
 }
 
@@ -63,6 +87,18 @@ bool view_port_is_enabled(const ViewPort* view_port) {
     bool is_enabled = view_port->is_enabled;
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
     return is_enabled;
+}
+
+void view_port_input_queue_glue(InputEvent* event, void* context) {
+    furi_check(event);
+    furi_check(context);
+    furi_message_queue_put(context, event, FuriWaitForever);
+}
+
+void view_port_input_touch_queue_glue(InputTouchEvent* event, void* context) {
+    furi_check(event);
+    furi_check(context);
+    furi_message_queue_put(context, event, FuriWaitForever);
 }
 
 void view_port_layout(ViewPort* view_port) {
@@ -76,8 +112,8 @@ void view_port_layout(ViewPort* view_port) {
 
     furi_check(view_port->gui);
 
-    if(view_port->callback_layout) {
-        view_port->callback_layout(view_port->callback_layout_context);
+    if(view_port->layout.callback) {
+        view_port->layout.callback(view_port->layout.context);
     }
 
     furi_mutex_release(view_port->mutex);
@@ -94,8 +130,8 @@ void view_port_post_layout(ViewPort* view_port) {
 
     furi_check(view_port->gui);
 
-    if(view_port->callback_post_layout) {
-        view_port->callback_post_layout(view_port->callback_layout_context);
+    if(view_port->post_layout.callback) {
+        view_port->post_layout.callback(view_port->post_layout.context);
     }
 
     furi_mutex_release(view_port->mutex);
@@ -107,8 +143,8 @@ void view_port_input(ViewPort* view_port, InputEvent* event) {
 
     furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
     furi_check(view_port->gui);
-    if(view_port->callback_input) {
-        view_port->callback_input(event, view_port->callback_input_context);
+    if(view_port->input.callback) {
+        view_port->input.callback(event, view_port->input.context);
     }
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
 }
@@ -119,8 +155,8 @@ void view_port_input_touch(ViewPort* view_port, InputTouchEvent* event) {
 
     furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
     furi_check(view_port->gui);
-    if(view_port->callback_input_touch) {
-        view_port->callback_input_touch(event, view_port->callback_input_context);
+    if(view_port->input_touch.callback) {
+        view_port->input_touch.callback(event, view_port->input_touch.context);
     }
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
 }

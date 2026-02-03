@@ -6,6 +6,8 @@
 #define GUI_INPUT_EVENT_QUEUE_SIZE       32
 #define GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE 32
 
+#define GUI_EVENT_FLAG_REDRAW (1U << 0)
+
 ViewPort* gui_view_port_find_enabled(ViewPortArray_t array) {
     // Iterating backward
     ViewPortArray_it_t it;
@@ -22,17 +24,13 @@ ViewPort* gui_view_port_find_enabled(ViewPortArray_t array) {
 
 void gui_update(Gui* gui) {
     furi_assert(gui);
-    furi_thread_flags_set(gui->thread_id, GUI_THREAD_FLAG_DRAW);
+    furi_event_flag_set(gui->redraw_flag, GUI_EVENT_FLAG_REDRAW);
 }
 
-void gui_input_events_callback(const void* value, void* ctx) {
+static void gui_input_events_glue(const void* value, void* ctx) {
     furi_assert(value);
     furi_assert(ctx);
-
-    Gui* gui = ctx;
-
-    furi_message_queue_put(gui->input_queue, value, FuriWaitForever);
-    furi_thread_flags_set(gui->thread_id, GUI_THREAD_FLAG_INPUT);
+    furi_message_queue_put(ctx, value, FuriWaitForever);
 }
 
 static void gui_redraw(Gui* gui) {
@@ -75,10 +73,6 @@ static void gui_input_touch(Gui* gui, InputTouchEvent* input_event) {
     gui_lock(gui);
 
     do {
-        if(!gui->ongoing_input_view_port) {
-            break;
-        }
-
         ViewPort* view_port = NULL;
 
         view_port = gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]);
@@ -282,15 +276,50 @@ void gui_view_port_send_to_back(Gui* gui, ViewPort* view_port) {
 }
 
 static void gui_handle_clay_errors(Clay_ErrorData errorData) {
-    FURI_LOG_E(TAG, "Clay error: %s", errorData.errorText.chars);
+    FURI_LOG_E(TAG, "clay error: %s", errorData.errorText.chars);
 }
 
-Gui* gui_alloc(void) {
+static void gui_input_logic(FuriEventLoopObject* object, void* context) {
+    furi_check(context);
+    Gui* gui = context;
+    furi_check(object == gui->input_queue);
+
+    InputEvent input_event;
+    while(furi_message_queue_get(gui->input_queue, &input_event, 0) == FuriStatusOk) {
+        gui_input(gui, &input_event);
+    }
+}
+
+static void gui_input_touch_logic(FuriEventLoopObject* object, void* context) {
+    furi_check(context);
+    Gui* gui = context;
+    furi_check(object == gui->input_touch_queue);
+
+    InputTouchEvent input_touch_event;
+    while(furi_message_queue_get(gui->input_touch_queue, &input_touch_event, 0) == FuriStatusOk) {
+        gui_input_touch(gui, &input_touch_event);
+    }
+}
+
+static void gui_redraw_logic(FuriEventLoopObject* object, void* context) {
+    furi_check(context);
+    Gui* gui = context;
+    furi_check(object == gui->redraw_flag);
+    furi_event_flag_clear(gui->redraw_flag, GUI_EVENT_FLAG_REDRAW);
+    gui_redraw(gui);
+}
+
+static Gui* gui_alloc(void) {
     Gui* gui = malloc(sizeof(Gui));
-    // Thread ID
-    gui->thread_id = furi_thread_get_current_id();
+
     // Allocate mutex
     gui->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+
+    // Event handling
+    gui->event_loop = furi_event_loop_alloc();
+    gui->redraw_flag = furi_event_flag_alloc();
+    gui->input_queue = furi_message_queue_alloc(GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent));
+    gui->input_touch_queue = furi_message_queue_alloc(GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE, sizeof(InputTouchEvent));
 
     // Layers
     for(size_t i = 0; i < GuiLayerMAX; i++) {
@@ -300,29 +329,26 @@ Gui* gui_alloc(void) {
     // Display and buffer
     gui->display = display_jd9853_qspi_init();
     display_jd9853_qspi_set_brightness(gui->display, 20);
-
     gui->render_buffer = render_alloc_buffer();
+    render_set_current_buffer(gui->render_buffer);
 
+    // Clay initialization
     Clay_SetMaxElementCount(128);
     Clay_SetMaxMeasureTextCacheWordCount(512);
     uint64_t totalMemorySize = Clay_MinMemorySize();
     FURI_LOG_I(TAG, "Clay allocation: %lluk", totalMemorySize / 1024);
-
-    gui->arena_memory = malloc(totalMemorySize);
-    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, gui->arena_memory);
+    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
     Clay_Initialize(arena, (Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT}, (Clay_ErrorHandler){gui_handle_clay_errors, gui});
     Clay_SetMeasureTextFunction(render_measure_text, NULL);
-    render_set_current_buffer(gui->render_buffer);
 
-    // Input
-    gui->input_queue = furi_message_queue_alloc(GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent));
-    gui->input_events = furi_record_open(RECORD_INPUT_EVENTS);
+    // Subscribe to input events
+    furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), gui_input_events_glue, gui->input_queue);
+    furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_TOUCH_EVENTS), gui_input_events_glue, gui->input_touch_queue);
 
-    // Touch Input
-    gui->input_touch_queue = furi_message_queue_alloc(GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE, sizeof(InputTouchEvent));
-    gui->input_touch_events = furi_record_open(RECORD_INPUT_TOUCH_EVENTS);
-
-    furi_pubsub_subscribe(gui->input_events, gui_input_events_callback, gui);
+    // Event loop subscriptions
+    furi_event_loop_subscribe_message_queue(gui->event_loop, gui->input_queue, FuriEventLoopEventIn, gui_input_logic, gui);
+    furi_event_loop_subscribe_message_queue(gui->event_loop, gui->input_touch_queue, FuriEventLoopEventIn, gui_input_touch_logic, gui);
+    furi_event_loop_subscribe_event_flag(gui->event_loop, gui->redraw_flag, FuriEventLoopEventIn, gui_redraw_logic, gui);
 
     return gui;
 }
@@ -332,31 +358,7 @@ int32_t gui_srv(void* p) {
     Gui* gui = gui_alloc();
 
     furi_record_create(RECORD_GUI, gui);
-
-    while(1) {
-        uint32_t flags = furi_thread_flags_wait(GUI_THREAD_FLAG_ALL, FuriFlagWaitAny, FuriWaitForever);
-        // Process and dispatch input
-        if(flags & GUI_THREAD_FLAG_INPUT) {
-            // Process till queue become empty
-            InputEvent input_event;
-            while(furi_message_queue_get(gui->input_queue, &input_event, 0) == FuriStatusOk) {
-                gui_input(gui, &input_event);
-            }
-        }
-        if(flags & GUI_THREAD_FLAG_INPUT_TOUCH) {
-            // Process till queue become empty
-            InputTouchEvent input_touch_event;
-            while(furi_message_queue_get(gui->input_touch_queue, &input_touch_event, 0) == FuriStatusOk) {
-                gui_input_touch(gui, &input_touch_event);
-            }
-        }
-        // Process and dispatch draw call
-        if(flags & GUI_THREAD_FLAG_DRAW) {
-            // Clear flags that arrived on input step
-            furi_thread_flags_clear(GUI_THREAD_FLAG_DRAW);
-            gui_redraw(gui);
-        }
-    }
+    furi_event_loop_run(gui->event_loop);
 
     return 0;
 }

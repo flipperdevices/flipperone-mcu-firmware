@@ -27,13 +27,6 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 768,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    // {
-    //     .app = test_srv,
-    //     .name = "TestSrv",
-    //     .appid = "test",
-    //     .stack_size = 1024,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
     {
         .app = input_srv,
         .name = "InputSrv",
@@ -41,13 +34,6 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    // {
-    //     .app = test_input_srv,
-    //     .name = "TestInputSrv",
-    //     .appid = "test_input",
-    //     .stack_size = 512,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
     // {
     //     .app = uart_echo_app,
     //     .name = "UartEcho",
@@ -62,13 +48,6 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 768,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    // {
-    //     .app = display_srv,
-    //     .name = "DisplaySrv",
-    //     .appid = "display",
-    //     .stack_size = 1024,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
     // {
     //     .app = test_peref_srv,
     //     .name = "TestPerefSrv",
@@ -103,14 +82,14 @@ const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);
 const FlipperInternalApplication FLIPPER_APPS[] = {
     {
         .app = keypad_test_app,
-        .name = "KeypadTest",
+        .name = "Keypad Test",
         .appid = "keypad_test",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
         .app = touchpad_test_app,
-        .name = "TouchpadTest",
+        .name = "Touchpad Test",
         .appid = "touchpad_test",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
