@@ -1,6 +1,6 @@
 #pragma once
-#include <gui_test/clay.h>
-#include <gui_test/clay_render.h>
+#include "clay.h"
+#include "clay_render.h"
 
 #ifdef __cplusplus
 extern "C" {

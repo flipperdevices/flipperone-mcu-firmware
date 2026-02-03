@@ -4,8 +4,8 @@
 #include <m-array.h>
 #include "gui.h"
 #include "view_port.h"
-#include <gui_test/clay.h>
-#include <gui_test/clay_render.h>
+#include "clay.h"
+#include "clay_render.h"
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/display/display_jd9853_reg.h>
 
