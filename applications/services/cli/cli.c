@@ -34,27 +34,9 @@ static void cli_session_set_callbacks(Cli* cli, FuriThreadStdoutWriteCallback wr
     furi_thread_set_stdin_callback(read, NULL);
 }
 
-void cli_putc(Cli* cli, char c) {
-    UNUSED(cli);
-    putchar(c);
-    // TODO: move where cli_putc is called
-    stdio_flush();
-}
-
-char cli_getc(Cli* cli) {
-    UNUSED(cli);
-    return getchar();
-}
-
 void cli_write(Cli* cli, const uint8_t* buffer, size_t size) {
     UNUSED(cli);
     stdio_put_string((const char*)buffer, size, false, false);
-}
-
-size_t cli_read(Cli* cli, uint8_t* buffer, size_t size) {
-    furi_check(cli);
-    furi_check(size == 1 || size == 0);
-    return getchar();
 }
 
 bool cli_is_connected(Cli* cli) {
@@ -154,7 +136,8 @@ static void cli_handle_backspace(Cli* cli) {
 
         cli->cursor_position--;
     } else {
-        cli_putc(cli, CliSymbolAsciiBell);
+        putchar(CliSymbolAsciiBell);
+        stdio_flush();
     }
 }
 
@@ -239,7 +222,8 @@ static void cli_handle_enter(Cli* cli) {
         furi_check(furi_mutex_release(cli->mutex) == FuriStatusOk);
         cli_nl(cli);
         printf("`%s` command not found, use `help` or `?` to list all available commands", furi_string_get_cstr(command));
-        cli_putc(cli, CliSymbolAsciiBell);
+        putchar(CliSymbolAsciiBell);
+        stdio_flush();
     }
 
     cli_reset(cli);
@@ -343,12 +327,13 @@ void cli_process_input(Cli* cli) {
     } else if(in_chr == CliSymbolAsciiEOT) {
         cli_reset(cli);
     } else if(in_chr == CliSymbolAsciiEsc) {
-        rx_len = cli_read(cli, (uint8_t*)&in_chr, 1);
-        if((rx_len > 0) && (in_chr == '[')) {
-            cli_read(cli, (uint8_t*)&in_chr, 1);
+        in_chr = getchar();
+        if(in_chr == '[') {
+            in_chr = getchar();
             cli_handle_escape(cli, in_chr);
         } else {
-            cli_putc(cli, CliSymbolAsciiBell);
+            putchar(CliSymbolAsciiBell);
+            stdio_flush();
         }
     } else if(in_chr == CliSymbolAsciiBackspace || in_chr == CliSymbolAsciiDel) {
         cli_handle_backspace(cli);
@@ -359,7 +344,8 @@ void cli_process_input(Cli* cli) {
         (furi_string_size(cli->line) < CLI_INPUT_LEN_LIMIT)) {
         if(cli->cursor_position == furi_string_size(cli->line)) {
             furi_string_push_back(cli->line, in_chr);
-            cli_putc(cli, in_chr);
+            putchar(in_chr);
+            stdio_flush();
         } else {
             // Insert character to line buffer
             const char in_str[2] = {in_chr, 0};
@@ -371,7 +357,8 @@ void cli_process_input(Cli* cli) {
         }
         cli->cursor_position++;
     } else {
-        cli_putc(cli, CliSymbolAsciiBell);
+        putchar(CliSymbolAsciiBell);
+        stdio_flush();
     }
 }
 

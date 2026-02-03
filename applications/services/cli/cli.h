@@ -74,16 +74,6 @@ void cli_print_usage(const char* cmd, const char* usage, const char* arg);
  */
 void cli_delete_command(Cli* cli, const char* name);
 
-/** Read from terminal
- *
- * @param      cli     Cli instance
- * @param      buffer  pointer to buffer
- * @param      size    size of buffer in bytes
- *
- * @return     bytes read
- */
-size_t cli_read(Cli* cli, uint8_t* buffer, size_t size);
-
 /** Non-blocking check for interrupt command received
  *
  * @param      cli   Cli instance
@@ -99,14 +89,6 @@ bool cli_cmd_interrupt_received(Cli* cli);
  * @param      size    size of buffer in bytes
  */
 void cli_write(Cli* cli, const uint8_t* buffer, size_t size);
-
-/** Read character
- *
- * @param      cli   Cli instance
- *
- * @return     char
- */
-char cli_getc(Cli* cli);
 
 /** New line Send new ine sequence
  */
