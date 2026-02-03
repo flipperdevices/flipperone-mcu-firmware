@@ -22,7 +22,7 @@ typedef struct {
     FuriString* exit_text;
 } App;
 
-static void test_create_empty(void) {
+static void app_create_empty(void) {
     CLAY_AUTO_ID({
         .layout =
             {
@@ -36,7 +36,7 @@ static void test_create_empty(void) {
     }
 }
 
-static void test_create_keypad_button(Clay_String text, bool inverted) {
+static void app_create_keypad_button(Clay_String text, bool inverted) {
     CLAY_AUTO_ID({
         .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
         .layout =
