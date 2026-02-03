@@ -165,8 +165,8 @@ static int32_t vcp_worker(void* context) {
                 furi_hal_cdc_send(VCP_IF_NUM, vcp->data_buffer, len);
                 last_tx_pkt_len = len;
             } else { // There is nothing to send.
-                if(last_tx_pkt_len == 64) {
-                    // Send extra zero-length packet if last packet len is 64 to indicate transfer end
+                if(last_tx_pkt_len == USB_CDC_PKT_LEN) {
+                    // Send extra zero-length packet if last packet len is USB_CDC_PKT_LEN to indicate transfer end
                     furi_hal_cdc_send(VCP_IF_NUM, NULL, 0);
                 } else {
                     // Set flag to start next transfer instantly

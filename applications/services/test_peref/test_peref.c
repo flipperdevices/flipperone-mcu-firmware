@@ -1,6 +1,4 @@
 #include "test_peref.h"
-#include "core/kernel.h"
-#include "core/log.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -16,9 +14,6 @@
 #include <furi_hal_i2c_config.h>
 #include <drivers/iqs7211e/iqs7211e.h>
 #include <drivers/ina219/ina219.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <drivers/tps62868x/tps62868x.h>
 #include <display/display.h>
 #include <input/input.h>
