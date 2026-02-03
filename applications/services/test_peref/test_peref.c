@@ -74,16 +74,6 @@ static void input_events_callback(const void* value, void* ctx) {
     }
 }
 
-// Invoked when device is unmounted
-void tud_umount_cb(void) {
-    FURI_LOG_W(TAG, "USB UNMOUNTED");
-}
-
-// Invoked when usb bus is resumed
-void tud_resume_cb(void) {
-    //blink_interval_ms = tud_mounted() ? BLINK_MOUNTED : BLINK_NOT_MOUNTED;
-    tud_mounted() ? FURI_LOG_W(TAG, "USB RESUMED, MOUNTED") : FURI_LOG_W(TAG, "USB RESUMED, NOT MOUNTED");
-    
 void test_nvm(void) {
     FuriHalNvmStorage res;
     int32_t int_value = -123456;
