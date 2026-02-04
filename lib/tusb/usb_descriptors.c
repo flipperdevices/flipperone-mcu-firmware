@@ -211,7 +211,8 @@ enum {
     STRID_SERIAL,
 };
 
-static char usbd_serial_str[PICO_UNIQUE_BOARD_ID_SIZE_BYTES * 2 + 1];
+// Must be less that 16 characters to fit in 32 bytes
+static char usbd_serial_str[] = "_one_xxxxxxxx_";
 
 // array of pointer to string descriptors
 static char const* usbd_desc_str[] = {
@@ -237,7 +238,7 @@ static inline size_t _board_usb_get_serial(uint16_t desc_str1[], size_t max_char
     return 2 * len;
 }
 
-const uint16_t *tud_descriptor_string_cb(uint8_t index, __unused uint16_t langid) {
+const uint16_t* tud_descriptor_string_cb(uint8_t index, __unused uint16_t langid) {
 #ifndef USBD_DESC_STR_MAX
 #define USBD_DESC_STR_MAX (32)
 #elif USBD_DESC_STR_MAX > 127
@@ -246,28 +247,43 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, __unused uint16_t langid
 #error USBD_DESC_STR_MAX too low (min is 17).
 #endif
     static uint16_t desc_str[USBD_DESC_STR_MAX];
+    const size_t serial_start = 5;
 
     // Assign the SN using the unique flash id
-    if (!usbd_serial_str[0]) {
-        pico_get_unique_board_id_string(usbd_serial_str, sizeof(usbd_serial_str));
+    if(usbd_serial_str[serial_start] == 'x') {
+        pico_unique_board_id_t id;
+        pico_get_unique_board_id(&id);
+
+        uint8_t id_xored[PICO_UNIQUE_BOARD_ID_SIZE_BYTES / 2];
+        for(size_t i = 0; i < sizeof(id_xored); i++) {
+            id_xored[i] = id.id[i] ^ id.id[i + PICO_UNIQUE_BOARD_ID_SIZE_BYTES / 2];
+        }
+
+        static_assert(sizeof(id_xored) == 4, "id_xored must be 4 bytes to fit in 8 hex characters");
+        for(size_t i = 0; i < sizeof(id_xored); i++) {
+            uint8_t nibble_hi = (id_xored[i] >> 4) & 0x0F;
+            uint8_t nibble_lo = id_xored[i] & 0x0F;
+            usbd_serial_str[serial_start + i * 2] = nibble_hi < 10 ? ('0' + nibble_hi) : ('a' + nibble_hi - 10);
+            usbd_serial_str[serial_start + i * 2 + 1] = nibble_lo < 10 ? ('0' + nibble_lo) : ('a' + nibble_lo - 10);
+        }
     }
 
     uint8_t len;
-    if (index == 0) {
+    if(index == 0) {
         memcpy(&desc_str[1], usbd_desc_str[0], 2);
         len = 1;
     } else {
-        if (index >= sizeof(usbd_desc_str) / sizeof(usbd_desc_str[0])) {
+        if(index >= sizeof(usbd_desc_str) / sizeof(usbd_desc_str[0])) {
             return NULL;
         }
-        const char *str = usbd_desc_str[index];
-        for (len = 0; len < USBD_DESC_STR_MAX - 1 && str[len]; ++len) {
+        const char* str = usbd_desc_str[index];
+        for(len = 0; len < USBD_DESC_STR_MAX - 1 && str[len]; ++len) {
             desc_str[1 + len] = str[len];
         }
     }
 
     // first byte is length (including header), second byte is string type
-    desc_str[0] = (uint16_t) ((TUSB_DESC_STRING << 8) | (2 * len + 2));
+    desc_str[0] = (uint16_t)((TUSB_DESC_STRING << 8) | (2 * len + 2));
 
     return desc_str;
 }
