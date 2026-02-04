@@ -211,7 +211,7 @@ enum {
     STRID_SERIAL,
 };
 
-// Must be less that 16 characters to fit in 32 bytes
+// Must be less than 16 characters to fit in 32 bytes
 static char usbd_serial_str[] = "_one_xxxxxxxx_";
 
 // array of pointer to string descriptors
@@ -222,8 +222,6 @@ static char const* usbd_desc_str[] = {
     usbd_serial_str, // 3: Serials will use unique ID if possible
     "FlipperOneUSB CDC", // 4: CDC Interface
 };
-
-//static uint16_t _desc_str[32 + 1];
 
 // Get USB Serial number string from unique ID if available. Return number of character.
 // Input is string descriptor from index 1 (index 0 is type + len)
