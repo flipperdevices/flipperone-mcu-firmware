@@ -109,37 +109,37 @@ static void app_layout(void* context) {
                     },
             }) {
             CLAY_AUTO_ID({.layout = layout_row}) {
-                test_create_keypad_button(CLAY_STRING("PTT"), app->key_state & InputKeyPtt);
-                test_create_empty();
-                test_create_keypad_button(CLAY_STRING("Up"), app->key_state & InputKeyUp);
-                test_create_empty();
-                test_create_empty();
+                app_create_keypad_button(CLAY_STRING("PTT"), app->key_state & InputKeyPtt);
+                app_create_empty();
+                app_create_keypad_button(CLAY_STRING("Up"), app->key_state & InputKeyUp);
+                app_create_empty();
+                app_create_empty();
             }
             CLAY_AUTO_ID({.layout = layout_row}) {
-                test_create_keypad_button(CLAY_STRING("Left"), app->key_state & InputKeyLeft);
-                test_create_keypad_button(CLAY_STRING("Ok"), app->key_state & InputKeyOk);
-                test_create_keypad_button(CLAY_STRING("Right"), app->key_state & InputKeyRight);
+                app_create_keypad_button(CLAY_STRING("Left"), app->key_state & InputKeyLeft);
+                app_create_keypad_button(CLAY_STRING("Ok"), app->key_state & InputKeyOk);
+                app_create_keypad_button(CLAY_STRING("Right"), app->key_state & InputKeyRight);
             }
             CLAY_AUTO_ID({.layout = layout_row}) {
-                test_create_keypad_button(CLAY_STRING("Down"), app->key_state & InputKeyDown);
+                app_create_keypad_button(CLAY_STRING("Down"), app->key_state & InputKeyDown);
             }
             CLAY_AUTO_ID({.layout = layout_row}) {
-                test_create_keypad_button(CLAY_STRING("SW"), app->key_state & InputKeySw);
-                test_create_empty();
-                test_create_empty();
-                test_create_empty();
+                app_create_keypad_button(CLAY_STRING("SW"), app->key_state & InputKeySw);
+                app_create_empty();
+                app_create_empty();
+                app_create_empty();
                 if(app->exit_counter > 0) {
-                    test_create_keypad_button(clay_helper_string_from(app->exit_text), app->key_state & InputKeyBack);
+                    app_create_keypad_button(clay_helper_string_from(app->exit_text), app->key_state & InputKeyBack);
                 } else {
-                    test_create_keypad_button(CLAY_STRING("Back"), app->key_state & InputKeyBack);
+                    app_create_keypad_button(CLAY_STRING("Back"), app->key_state & InputKeyBack);
                 }
             }
             CLAY_AUTO_ID({.layout = layout_row}) {
-                test_create_keypad_button(CLAY_STRING("1"), app->key_state & InputKey1);
-                test_create_keypad_button(CLAY_STRING("2"), app->key_state & InputKey2);
-                test_create_keypad_button(CLAY_STRING("P"), app->key_state & InputKey3);
-                test_create_keypad_button(CLAY_STRING("4"), app->key_state & InputKey4);
-                test_create_keypad_button(CLAY_STRING("5"), app->key_state & InputKey5);
+                app_create_keypad_button(CLAY_STRING("1"), app->key_state & InputKey1);
+                app_create_keypad_button(CLAY_STRING("2"), app->key_state & InputKey2);
+                app_create_keypad_button(CLAY_STRING("P"), app->key_state & InputKey3);
+                app_create_keypad_button(CLAY_STRING("4"), app->key_state & InputKey4);
+                app_create_keypad_button(CLAY_STRING("5"), app->key_state & InputKey5);
             }
         }
     }
