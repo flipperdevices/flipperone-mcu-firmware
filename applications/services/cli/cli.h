@@ -27,8 +27,7 @@ typedef enum {
 
 typedef enum {
     CliCommandFlagDefault = 0, /**< Default, loader lock is used */
-    CliCommandFlagParallelSafe =
-        (1 << 0), /**< Safe to run in parallel with other apps, loader lock is not used */
+    CliCommandFlagParallelSafe = (1 << 0), /**< Safe to run in parallel with other apps, loader lock is not used */
     CliCommandFlagInsomniaSafe = (1 << 1), /**< Safe to run with insomnia mode on */
 } CliCommandFlag;
 
@@ -52,12 +51,7 @@ typedef void (*CliCallback)(Cli* cli, FuriString* args, void* context);
  * @param      callback  callback function
  * @param      context   pointer to whatever we need to pass to callback
  */
-void cli_add_command(
-    Cli* cli,
-    const char* name,
-    CliCommandFlag flags,
-    CliCallback callback,
-    void* context);
+void cli_add_command(Cli* cli, const char* name, CliCommandFlag flags, CliCallback callback, void* context);
 
 /** Print unified cmd usage tip
  *
@@ -93,10 +87,6 @@ void cli_write(Cli* cli, const uint8_t* buffer, size_t size);
 /** New line Send new ine sequence
  */
 void cli_nl(Cli* cli);
-
-void cli_session_open(Cli* cli, void* session);
-
-void cli_session_close(Cli* cli);
 
 bool cli_is_connected(Cli* cli);
 

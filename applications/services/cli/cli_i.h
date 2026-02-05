@@ -49,12 +49,6 @@ struct Cli {
     size_t cursor_position;
 };
 
-Cli* cli_alloc(void);
-
-void cli_reset(Cli* cli);
-
-void cli_stdout_callback(void* _cookie, const char* data, size_t size);
-
 #ifdef __cplusplus
 }
 #endif

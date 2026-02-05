@@ -12,7 +12,7 @@
 
 #define CLI_INPUT_LEN_LIMIT 256
 
-Cli* cli_alloc(void) {
+static Cli* cli_alloc(void) {
     Cli* cli = malloc(sizeof(Cli));
 
     CliCommandTree_init(cli->commands);
@@ -115,7 +115,7 @@ void cli_prompt(Cli* cli) {
     fflush(stdout);
 }
 
-void cli_reset(Cli* cli) {
+static void cli_reset(Cli* cli) {
     // cli->last_line is cleared and cli->line's buffer moved to cli->last_line
     furi_string_move(cli->last_line, cli->line);
     // Reiniting cli->line
@@ -153,7 +153,7 @@ static void cli_execute_command(Cli* cli, CliCommand* command, FuriString* args)
         furi_hal_power_insomnia_enter();
     }
 
-    //TODO Implement LOADER
+    // TODO Implement LOADER
     // Ensure that we running alone
     if(!(command->flags & CliCommandFlagParallelSafe)) {
 #if 0
@@ -305,7 +305,7 @@ static void cli_handle_escape(Cli* cli, char c) {
     fflush(stdout);
 }
 
-void cli_process_input(Cli* cli) {
+static void cli_process_input(Cli* cli) {
     char in_chr = getchar();
     size_t rx_len;
 
@@ -397,7 +397,7 @@ void cli_delete_command(Cli* cli, const char* name) {
     furi_string_free(name_str);
 }
 
-void cli_session_open(Cli* cli, void* session) {
+static void cli_session_open(Cli* cli, void* session) {
     furi_check(cli);
 
     furi_check(furi_mutex_acquire(cli->mutex, FuriWaitForever) == FuriStatusOk);
@@ -412,7 +412,7 @@ void cli_session_open(Cli* cli, void* session) {
     furi_check(furi_mutex_release(cli->mutex) == FuriStatusOk);
 }
 
-void cli_session_close(Cli* cli) {
+static void cli_session_close(Cli* cli) {
     furi_check(cli);
 
     furi_check(furi_mutex_acquire(cli->mutex, FuriWaitForever) == FuriStatusOk);

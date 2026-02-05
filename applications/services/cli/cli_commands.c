@@ -7,16 +7,7 @@
 #include <time.h>
 #include <args.h>
 
-// Close to ISO, `date +'%Y-%m-%d %H:%M:%S %u'`
-#define CLI_DATE_FORMAT "%.4d-%.2d-%.2d %.2d:%.2d:%.2d %d"
-
-void cli_command_info_callback(const char* key, const char* value, bool last, void* context) {
-    UNUSED(last);
-    UNUSED(context);
-    printf("%-30s: %s\r\n", key, value);
-}
-
-void cli_command_help(Cli* cli, FuriString* args, void* context) {
+static void cli_command_help(Cli* cli, FuriString* args, void* context) {
     UNUSED(args);
     UNUSED(context);
     printf("Commands available:");
@@ -56,7 +47,7 @@ void cli_command_help(Cli* cli, FuriString* args, void* context) {
     }
 }
 
-void cli_command_uptime(Cli* cli, FuriString* args, void* context) {
+static void cli_command_uptime(Cli* cli, FuriString* args, void* context) {
     UNUSED(cli);
     UNUSED(args);
     UNUSED(context);
@@ -67,11 +58,11 @@ void cli_command_uptime(Cli* cli, FuriString* args, void* context) {
 #define CLI_COMMAND_LOG_RING_SIZE   2048
 #define CLI_COMMAND_LOG_BUFFER_SIZE 64
 
-void cli_command_log_tx_callback(const uint8_t* buffer, size_t size, void* context) {
+static void cli_command_log_tx_callback(const uint8_t* buffer, size_t size, void* context) {
     furi_stream_buffer_send(context, buffer, size, 0);
 }
 
-bool cli_command_log_level_set_from_string(FuriString* level) {
+static bool cli_command_log_level_set_from_string(FuriString* level) {
     FuriLogLevel log_level;
     if(furi_log_level_from_string(furi_string_get_cstr(level), &log_level)) {
         furi_log_set_level(log_level);
@@ -88,7 +79,7 @@ bool cli_command_log_level_set_from_string(FuriString* level) {
     return false;
 }
 
-void cli_command_log(Cli* cli, FuriString* args, void* context) {
+static void cli_command_log(Cli* cli, FuriString* args, void* context) {
     UNUSED(context);
     FuriStreamBuffer* ring = furi_stream_buffer_alloc(CLI_COMMAND_LOG_RING_SIZE, 1);
     uint8_t buffer[CLI_COMMAND_LOG_BUFFER_SIZE];
@@ -187,7 +178,7 @@ static void cli_command_top(Cli* cli, FuriString* args, void* context) {
     furi_thread_list_free(thread_list);
 }
 
-void cli_command_free(Cli* cli, FuriString* args, void* context) {
+static void cli_command_free(Cli* cli, FuriString* args, void* context) {
     UNUSED(cli);
     UNUSED(args);
     UNUSED(context);
@@ -201,7 +192,7 @@ void cli_command_free(Cli* cli, FuriString* args, void* context) {
     printf("Maximum pool block: %zu\r\n", memmgr_pool_get_max_block());
 }
 
-void cli_command_free_blocks(Cli* cli, FuriString* args, void* context) {
+static void cli_command_free_blocks(Cli* cli, FuriString* args, void* context) {
     UNUSED(cli);
     UNUSED(args);
     UNUSED(context);
