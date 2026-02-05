@@ -38,8 +38,7 @@ typedef enum {
     FuriThreadPriorityNormal = 16, /**< Normal, system default */
     FuriThreadPriorityHigh = 17, /**< High */
     FuriThreadPriorityHighest = 18, /**< Highest */
-    FuriThreadPriorityIsr =
-        (FURI_CONFIG_THREAD_MAX_PRIORITIES - 1), /**< Deferred ISR (highest possible) */
+    FuriThreadPriorityIsr = (FURI_CONFIG_THREAD_MAX_PRIORITIES - 1), /**< Deferred ISR (highest possible) */
 } FuriThreadPriority;
 
 /**
@@ -89,8 +88,7 @@ typedef void (*FuriThreadStdoutWriteCallback)(const char* data, size_t size, voi
  * @param[in] context optional context
  * @returns number of bytes that was actually read into the buffer
  */
-typedef size_t (
-    *FuriThreadStdinReadCallback)(char* buffer, size_t size, FuriWait timeout, void* context);
+typedef size_t (*FuriThreadStdinReadCallback)(uint8_t* buffer, size_t size, uint32_t timeout, void* context);
 
 /**
  * @brief         State change callback function pointer type.
@@ -140,11 +138,7 @@ FuriThread* furi_thread_alloc(void);
  * @param[in] context pointer to a user-specified object (will be passed to the callback)
  * @return pointer to the created FuriThread instance
  */
-FuriThread* furi_thread_alloc_service(
-    const char* name,
-    uint32_t stack_size,
-    FuriThreadCallback callback,
-    void* context);
+FuriThread* furi_thread_alloc_service(const char* name, uint32_t stack_size, FuriThreadCallback callback, void* context);
 
 /**
  * @brief Create a FuriThread instance w/ extra parameters.
@@ -155,11 +149,7 @@ FuriThread* furi_thread_alloc_service(
  * @param[in] context pointer to a user-specified object (will be passed to the callback)
  * @return pointer to the created FuriThread instance
  */
-FuriThread* furi_thread_alloc_ex(
-    const char* name,
-    uint32_t stack_size,
-    FuriThreadCallback callback,
-    void* context);
+FuriThread* furi_thread_alloc_ex(const char* name, uint32_t stack_size, FuriThreadCallback callback, void* context);
 
 /**
  * @brief Delete a FuriThread instance.
@@ -295,10 +285,7 @@ FuriThreadState furi_thread_get_state(FuriThread* thread);
  * @param[in] callback pointer to a user-specified callback function
  * @param[in] context pointer to a user-specified object (will be passed to the callback, can be NULL)
  */
-void furi_thread_set_signal_callback(
-    FuriThread* thread,
-    FuriThreadSignalCallback callback,
-    void* context);
+void furi_thread_set_signal_callback(FuriThread* thread, FuriThreadSignalCallback callback, void* context);
 
 /**
  * @brief Get a signal callback for a FuriThread instance.
