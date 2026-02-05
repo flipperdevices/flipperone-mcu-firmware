@@ -33,10 +33,10 @@
  *   [MSB]         HID | MSC | CDC          [LSB]
  */
 #define _PID_MAP(itf, n) ((CFG_TUD_##itf) << (n))
-#define USB_PID          (0x4000 | _PID_MAP(CDC, 0) | _PID_MAP(MSC, 1) | _PID_MAP(HID, 2) | _PID_MAP(MIDI, 3) | _PID_MAP(VENDOR, 4))
 
 // Todo: replace with your own VID
-#define USB_VID 0xCafe
+#define USB_VID 0x37c1
+#define USB_PID 0x1337
 #define USB_BCD 0x0200
 
 //--------------------------------------------------------------------+
@@ -217,10 +217,10 @@ static char usbd_serial_str[] = "_one_xxxxxxxx_";
 // array of pointer to string descriptors
 static char const* usbd_desc_str[] = {
     (const char[]){0x09, 0x04}, // 0: is supported language is English (0x0409)
-    "FlipperOneUSB", // 1: Manufacturer
-    "FlipperOneUSB Device", // 2: Product
+    "Flipper Devices Inc.", // 1: Manufacturer
+    "Flipper One", // 2: Product
     usbd_serial_str, // 3: Serials will use unique ID if possible
-    "FlipperOneUSB CDC", // 4: CDC Interface
+    "CDC", // 4: CDC Interface
 };
 
 // Get USB Serial number string from unique ID if available. Return number of character.
