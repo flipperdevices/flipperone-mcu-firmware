@@ -14,6 +14,8 @@ extern int32_t display_srv(void* p);
 extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
 extern int32_t status_lights_srv(void* p);
+extern int32_t usb_srv(void* p);
+extern int32_t cli_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -74,6 +76,20 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .name = "StatusLightsSrv",
         .appid = "status_lights",
         .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = usb_srv,
+        .name = "UsbSrv",
+        .appid = "usb",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = cli_srv,
+        .name = "CliSrv",
+        .appid = "cli",
+        .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
 };
