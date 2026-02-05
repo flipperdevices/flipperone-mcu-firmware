@@ -17,17 +17,17 @@ typedef struct {
     uint32_t x;
     uint32_t y;
     bool pressed;
-} App;
+} TouchpadTestApp;
 
-static void app_layout(void* context) {
+static void touchpad_test_app_layout(void* context) {
     furi_assert(context);
-    App* app = (App*)context;
+    TouchpadTestApp* instance = (TouchpadTestApp*)context;
 
     Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
     Clay_BorderElementConfig contentBorders = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}};
 
-    float touch_x = (app->x - 180.f) / 2.8f;
-    float touch_y = (app->y - 180.f) / 5.f;
+    float touch_x = (instance->x - 180.f) / 2.8f;
+    float touch_y = (instance->y - 180.f) / 5.f;
 
     CLAY(
         CLAY_APP_ID("OuterContainer"),
@@ -79,7 +79,7 @@ static void app_layout(void* context) {
                         .padding = {8, 8, 4, 4},
                         .sizing = {.width = CLAY_SIZING_FIXED(0), .height = CLAY_SIZING_FIXED(15)},
                     },
-                .backgroundColor = app->pressed ? COLOR_BLACK : COLOR_WHITE,
+                .backgroundColor = instance->pressed ? COLOR_BLACK : COLOR_WHITE,
                 .cornerRadius = CLAY_CORNER_RADIUS(8),
             }) {
             }
@@ -87,13 +87,13 @@ static void app_layout(void* context) {
     }
 }
 
-static void app_input_logic(FuriEventLoopObject* object, void* context) {
+static void touchpad_test_app_input_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
-    App* app = context;
-    furi_check(object == app->input_queue);
+    TouchpadTestApp* instance = context;
+    furi_check(object == instance->input_queue);
 
     InputEvent event;
-    furi_check(furi_message_queue_get(app->input_queue, &event, 0) == FuriStatusOk);
+    furi_check(furi_message_queue_get(instance->input_queue, &event, 0) == FuriStatusOk);
 
     if(event.key == InputKeyBack) {
         if(event.type == InputTypePress) {
@@ -102,66 +102,67 @@ static void app_input_logic(FuriEventLoopObject* object, void* context) {
     }
 }
 
-static void app_input_touch_logic(FuriEventLoopObject* object, void* context) {
+static void touchpad_test_app_input_touch_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
-    App* app = context;
-    furi_check(object == app->input_touch_queue);
+    TouchpadTestApp* instance = context;
+    furi_check(object == instance->input_touch_queue);
 
     InputTouchEvent event;
-    furi_check(furi_message_queue_get(app->input_touch_queue, &event, 0) == FuriStatusOk);
+    furi_check(furi_message_queue_get(instance->input_touch_queue, &event, 0) == FuriStatusOk);
 
     switch(event.type) {
     case InputTouchTypeStart:
-        app->pressed = true;
-        app->x = event.x;
-        app->y = event.y;
-        gui_update(app->gui);
+        instance->pressed = true;
+        instance->x = event.x;
+        instance->y = event.y;
+        gui_update(instance->gui);
         break;
     case InputTouchTypeMove:
-        app->x = event.x;
-        app->y = event.y;
-        gui_update(app->gui);
+        instance->x = event.x;
+        instance->y = event.y;
+        gui_update(instance->gui);
         break;
     case InputTouchTypeEnd:
-        app->pressed = false;
-        gui_update(app->gui);
+        instance->pressed = false;
+        gui_update(instance->gui);
         break;
     }
 }
 
-static App* app_alloc(void) {
-    App* app = malloc(sizeof(App));
-    app->gui = furi_record_open(RECORD_GUI);
-    app->event_loop = furi_event_loop_alloc();
-    app->input_queue = furi_message_queue_alloc(APP_INPUT_QUEUE_SIZE, sizeof(InputEvent));
-    app->input_touch_queue = furi_message_queue_alloc(APP_INPUT_TOUCH_QUEUE_SIZE, sizeof(InputTouchEvent));
+static TouchpadTestApp* touchpad_test_app_alloc(void) {
+    TouchpadTestApp* instance = malloc(sizeof(TouchpadTestApp));
+    instance->gui = furi_record_open(RECORD_GUI);
+    instance->event_loop = furi_event_loop_alloc();
+    instance->input_queue = furi_message_queue_alloc(APP_INPUT_QUEUE_SIZE, sizeof(InputEvent));
+    instance->input_touch_queue = furi_message_queue_alloc(APP_INPUT_TOUCH_QUEUE_SIZE, sizeof(InputTouchEvent));
 
-    app->view_port = view_port_alloc();
-    view_port_set_layout_callback(app->view_port, app_layout, app);
-    view_port_set_input_callback(app->view_port, view_port_input_queue_glue, app->input_queue);
-    view_port_set_input_touch_callback(app->view_port, view_port_input_touch_queue_glue, app->input_touch_queue);
-    furi_event_loop_subscribe_message_queue(app->event_loop, app->input_queue, FuriEventLoopEventIn, app_input_logic, app);
-    furi_event_loop_subscribe_message_queue(app->event_loop, app->input_touch_queue, FuriEventLoopEventIn, app_input_touch_logic, app);
-    gui_add_view_port(app->gui, app->view_port, GuiLayerFullscreen);
-    return app;
+    instance->view_port = view_port_alloc();
+    view_port_set_layout_callback(instance->view_port, touchpad_test_app_layout, instance);
+    view_port_set_input_callback(instance->view_port, view_port_input_queue_glue, instance->input_queue);
+    view_port_set_input_touch_callback(instance->view_port, view_port_input_touch_queue_glue, instance->input_touch_queue);
+    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->input_queue, FuriEventLoopEventIn, touchpad_test_app_input_logic, instance);
+    furi_event_loop_subscribe_message_queue(
+        instance->event_loop, instance->input_touch_queue, FuriEventLoopEventIn, touchpad_test_app_input_touch_logic, instance);
+    gui_add_view_port(instance->gui, instance->view_port, GuiLayerFullscreen);
+    return instance;
 }
 
-static void app_free(App* app) {
-    gui_remove_view_port(app->gui, app->view_port);
+static void touchpad_test_app_free(TouchpadTestApp* instance) {
+    gui_remove_view_port(instance->gui, instance->view_port);
     furi_record_close(RECORD_GUI);
 
-    furi_event_loop_unsubscribe(app->event_loop, app->input_queue);
-    furi_event_loop_unsubscribe(app->event_loop, app->input_touch_queue);
-    view_port_free(app->view_port);
-    furi_message_queue_free(app->input_queue);
-    furi_message_queue_free(app->input_touch_queue);
-    furi_event_loop_free(app->event_loop);
-    free(app);
+    furi_event_loop_unsubscribe(instance->event_loop, instance->input_queue);
+    furi_event_loop_unsubscribe(instance->event_loop, instance->input_touch_queue);
+    view_port_free(instance->view_port);
+    furi_message_queue_free(instance->input_queue);
+    furi_message_queue_free(instance->input_touch_queue);
+    furi_event_loop_free(instance->event_loop);
+    free(instance);
 }
 
 int32_t touchpad_test_app(void* p) {
-    App* app = app_alloc();
-    furi_event_loop_run(app->event_loop);
-    app_free(app);
+    TouchpadTestApp* instance = touchpad_test_app_alloc();
+    furi_event_loop_run(instance->event_loop);
+    touchpad_test_app_free(instance);
     return 0;
 }

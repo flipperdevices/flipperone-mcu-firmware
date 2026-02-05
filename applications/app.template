@@ -17,16 +17,16 @@ typedef struct {
 
 static void app_layout(void* context) {
     furi_assert(context);
-    App* app = (App*)context;
+    App* instance = (App*)context;
 }
 
 static void app_input_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
-    App* app = context;
-    furi_check(object == app->input_queue);
+    App* instance = context;
+    furi_check(object == instance->input_queue);
 
     InputEvent event;
-    furi_check(furi_message_queue_get(app->input_queue, &event, 0) == FuriStatusOk);
+    furi_check(furi_message_queue_get(instance->input_queue, &event, 0) == FuriStatusOk);
 
     if(event.key == InputKeyBack) {
         if(event.type == InputTypePress) {
@@ -37,46 +37,46 @@ static void app_input_logic(FuriEventLoopObject* object, void* context) {
 
 static void app_input_touch_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
-    App* app = context;
-    furi_check(object == app->input_touch_queue);
+    App* instance = context;
+    furi_check(object == instance->input_touch_queue);
 
     InputTouchEvent event;
-    furi_check(furi_message_queue_get(app->input_touch_queue, &event, 0) == FuriStatusOk);
+    furi_check(furi_message_queue_get(instance->input_touch_queue, &event, 0) == FuriStatusOk);
 }
 
 static App* app_alloc(void) {
-    App* app = malloc(sizeof(App));
-    app->gui = furi_record_open(RECORD_GUI);
-    app->event_loop = furi_event_loop_alloc();
-    app->input_queue = furi_message_queue_alloc(APP_INPUT_QUEUE_SIZE, sizeof(InputEvent));
-    app->input_touch_queue = furi_message_queue_alloc(APP_INPUT_TOUCH_QUEUE_SIZE, sizeof(InputTouchEvent));
+    App* instance = malloc(sizeof(App));
+    instance->gui = furi_record_open(RECORD_GUI);
+    instance->event_loop = furi_event_loop_alloc();
+    instance->input_queue = furi_message_queue_alloc(APP_INPUT_QUEUE_SIZE, sizeof(InputEvent));
+    instance->input_touch_queue = furi_message_queue_alloc(APP_INPUT_TOUCH_QUEUE_SIZE, sizeof(InputTouchEvent));
 
-    app->view_port = view_port_alloc();
-    view_port_set_layout_callback(app->view_port, app_layout, app);
-    view_port_set_input_callback(app->view_port, view_port_input_queue_glue, app->input_queue);
-    view_port_set_input_touch_callback(app->view_port, view_port_input_touch_queue_glue, app->input_touch_queue);
-    furi_event_loop_subscribe_message_queue(app->event_loop, app->input_queue, FuriEventLoopEventIn, app_input_logic, app);
-    furi_event_loop_subscribe_message_queue(app->event_loop, app->input_touch_queue, FuriEventLoopEventIn, app_input_touch_logic, app);
-    gui_add_view_port(app->gui, app->view_port, GuiLayerFullscreen);
-    return app;
+    instance->view_port = view_port_alloc();
+    view_port_set_layout_callback(instance->view_port, app_layout, instance);
+    view_port_set_input_callback(instance->view_port, view_port_input_queue_glue, instance->input_queue);
+    view_port_set_input_touch_callback(instance->view_port, view_port_input_touch_queue_glue, instance->input_touch_queue);
+    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->input_queue, FuriEventLoopEventIn, app_input_logic, instance);
+    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->input_touch_queue, FuriEventLoopEventIn, app_input_touch_logic, instance);
+    gui_add_view_port(instance->gui, instance->view_port, GuiLayerFullscreen);
+    return instance;
 }
 
-static void app_free(App* app) {
-    gui_remove_view_port(app->gui, app->view_port);
+static void app_free(App* instance) {
+    gui_remove_view_port(instance->gui, instance->view_port);
     furi_record_close(RECORD_GUI);
 
-    furi_event_loop_unsubscribe(app->event_loop, app->input_queue);
-    furi_event_loop_unsubscribe(app->event_loop, app->input_touch_queue);
-    view_port_free(app->view_port);
-    furi_message_queue_free(app->input_queue);
-    furi_message_queue_free(app->input_touch_queue);
-    furi_event_loop_free(app->event_loop);
-    free(app);
+    furi_event_loop_unsubscribe(instance->event_loop, instance->input_queue);
+    furi_event_loop_unsubscribe(instance->event_loop, instance->input_touch_queue);
+    view_port_free(instance->view_port);
+    furi_message_queue_free(instance->input_queue);
+    furi_message_queue_free(instance->input_touch_queue);
+    furi_event_loop_free(instance->event_loop);
+    free(instance);
 }
 
 int32_t test_app(void* p) {
-    App* app = app_alloc();
-    furi_event_loop_run(app->event_loop);
-    app_free(app);
+    App* instance = app_alloc();
+    furi_event_loop_run(instance->event_loop);
+    app_free(instance);
     return 0;
 }
