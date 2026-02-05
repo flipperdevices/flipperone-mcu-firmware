@@ -26,8 +26,6 @@ endif()
 # TODO: custom board with RP2350_B_
 set(PICO_BOARD pimoroni_pga2350 CACHE STRING "Board type")
 set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
-#set(LOG 3 CACHE STRING "TinyUSB debug option")
-message(" -------> TinyUSB OS option: ${TINYUSB_OPT_OS}")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include("lib/sdk/pico_sdk_import.cmake")
