@@ -25,6 +25,7 @@ endif()
 # ====================================================================================
 # TODO: custom board with RP2350_B_
 set(PICO_BOARD pimoroni_pga2350 CACHE STRING "Board type")
+set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include("lib/sdk/pico_sdk_import.cmake")
@@ -40,6 +41,7 @@ file(GLOB_RECURSE SOURCES
     "lib/furi/*.c*" 
     "lib/furi/version/*.c*" 
     "lib/furi/core/*.c*"
+    "lib/toolbox/*.c*"
     "app/*.c"
     "app/theme/*.c"
     "app/fs/*.c"
@@ -53,6 +55,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/spi_get_frame/*.c*"
     "lib/drivers/ina219/*.c*"
     "lib/drivers/i2c_multi_slave/*.c*"
+    "lib/tusb/*.c*"
     "applications/*.c"
     "applications/services/*.c"
     "applications/main/*.c"
@@ -79,18 +82,19 @@ target_compile_definitions(one-rp2350-control PRIVATE
     )
 
 
-
 pico_set_program_name(one-rp2350-control "one-rp2350-control")
 pico_set_program_version(one-rp2350-control "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(one-rp2350-control 1)
-pico_enable_stdio_usb(one-rp2350-control 1)
+pico_enable_stdio_uart(one-rp2350-control 0)
+pico_enable_stdio_usb(one-rp2350-control 0)
 
 # Add the standard include files to the build
 target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
+    ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
+    ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_hal
     ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_bsp
@@ -98,7 +102,8 @@ target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
-    ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
+    
+    
 )
 
 add_subdirectory(lib/mlib)
@@ -122,6 +127,7 @@ target_link_libraries(one-rp2350-control
     hardware_watchdog
     hardware_clocks
     pico_unique_id
+    tinyusb_device
     ws2812
     i2c_multi
     freertos
@@ -132,6 +138,6 @@ target_link_libraries(one-rp2350-control
     kvstore_default
 )
 
-
 pico_add_extra_outputs(one-rp2350-control)
+
 

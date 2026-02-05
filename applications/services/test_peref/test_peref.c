@@ -14,9 +14,6 @@
 #include <furi_hal_i2c_config.h>
 #include <drivers/iqs7211e/iqs7211e.h>
 #include <drivers/ina219/ina219.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
 #include <drivers/tps62868x/tps62868x.h>
 #include <display/display.h>
 #include <input/input.h>
@@ -24,6 +21,7 @@
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/display/jd9853_reg.h>
 #include <status_lights/status_lights.h>
+#include <tusb.h>
 #include <furi_hal_nvm.h>
 
 #define TAG "PerefTest"

@@ -19,7 +19,7 @@ int32_t test_srv(void* p) {
     bool gpio_key_down_state = false;
     while(!instance->stop) {
         FURI_LOG_I(TAG, "Test message");
-        furi_delay_ms(1000);
+        furi_delay_ms(5000);
         // gpio_key_down_state = !gpio_key_down_state;
         // furi_hal_gpio_write_open_drain(&gpio_key_down, gpio_key_down_state);
         // furi_hal_power_insomnia_enter();
