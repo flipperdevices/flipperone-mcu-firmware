@@ -10,13 +10,13 @@ typedef struct {
     uint8_t b;
 } StatusLightsColor;
 
-#define STATUS_LIGHTS_COLOR_RED        {255, 0, 0};
-#define STATUS_LIGHTS_COLOR_GREEN      {0, 255, 0};
-#define STATUS_LIGHTS_COLOR_BLUE       {0, 0, 255};
-#define STATUS_LIGHTS_COLOR_YELLOW     {255, 255, 0};
-#define STATUS_LIGHTS_COLOR_ORANGE     {255, 165, 0};
-#define STATUS_LIGHTS_COLOR_LIGHT_BLUE {0x12, 0xCD, 0xD4};
-#define STATUS_LIGHTS_COLOR_BLACK      {0, 0, 0};
+#define STATUS_LIGHTS_COLOR_RED        (StatusLightsColor){255, 0, 0}
+#define STATUS_LIGHTS_COLOR_GREEN      (StatusLightsColor){0, 255, 0}
+#define STATUS_LIGHTS_COLOR_BLUE       (StatusLightsColor){0, 0, 255}
+#define STATUS_LIGHTS_COLOR_YELLOW     (StatusLightsColor){255, 255, 0}
+#define STATUS_LIGHTS_COLOR_ORANGE     (StatusLightsColor){255, 165, 0}
+#define STATUS_LIGHTS_COLOR_LIGHT_BLUE (StatusLightsColor){0x12, 0xCD, 0xD4}
+#define STATUS_LIGHTS_COLOR_BLACK      (StatusLightsColor){0, 0, 0}
 
 typedef enum {
     //line 1

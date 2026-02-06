@@ -25,9 +25,9 @@ typedef enum {
     InputKeyDown = (1 << 7),
     InputKeyRight = (1 << 8),
     InputKeyOk = (1 << 9),
-    InputKeyLeft = (1 << 10),    
+    InputKeyLeft = (1 << 10),
     InputKeyUp = (1 << 11),
-    InputKeyRtt = (1 << 12),    
+    InputKeyPtt = (1 << 12),
 
     InputKeyMask = (0x1FFF),
 } InputKey;

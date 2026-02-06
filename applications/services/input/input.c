@@ -2,7 +2,6 @@
 
 #include <furi.h>
 #include <furi_bsp.h>
-#include <haptic/haptic.h>
 
 #define INPUT_DEBOUNCE_TICKS      4
 #define INPUT_DEBOUNCE_TICKS_HALF (INPUT_DEBOUNCE_TICKS / 2)
@@ -101,8 +100,6 @@ int32_t input_srv(void* p) {
 
     uint16_t input_state = furi_bsp_expander_control_read_buttons();
 
-    Haptic* haptic = furi_record_open(RECORD_HAPTIC);
-
     furi_record_create(RECORD_INPUT_EVENTS, event_pubsub);
 
     for(size_t i = 0; i < input_pins_count; i++) {
@@ -130,10 +127,6 @@ int32_t input_srv(void* p) {
                 is_changing = true;
             } else if(pin_states[i].state != state) {
                 pin_states[i].state = state;
-
-                if(state) {
-                    haptic_notification(haptic, Drv2605lEffectSoftBump_100);
-                }
 
                 // Common state info
                 InputEvent event;

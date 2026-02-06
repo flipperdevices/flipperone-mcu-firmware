@@ -91,6 +91,7 @@ pico_enable_stdio_usb(one-rp2350-control 0)
 
 # Add the standard include files to the build
 target_include_directories(one-rp2350-control PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/applications
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
@@ -110,7 +111,6 @@ add_subdirectory(lib/mlib)
 add_subdirectory(lib/drivers/ws2812)
 add_subdirectory(lib/drivers/i2c_multi_slave)
 add_subdirectory(lib/freertos)
-add_subdirectory(lib/lvgl)
 add_subdirectory(lib/pico-kvstore)
 add_subdirectory(assets)
 
@@ -131,7 +131,6 @@ target_link_libraries(one-rp2350-control
     ws2812
     i2c_multi
     freertos
-    lvgl_lib
     assets
     mlib
     kvstore
