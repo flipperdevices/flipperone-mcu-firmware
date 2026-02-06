@@ -1,5 +1,11 @@
+#include "gui.h"
 #include "gui_i.h"
 #include "view_port_i.h"
+#include <m-array.h>
+#include "clay.h"
+#include "clay_render.h"
+#include <drivers/display/display_jd9853_qspi.h>
+#include <drivers/display/display_jd9853_reg.h>
 
 #define TAG "GuiSrv"
 
@@ -7,6 +13,25 @@
 #define GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE 32
 
 #define GUI_EVENT_FLAG_REDRAW (1U << 0)
+
+ARRAY_DEF(ViewPortArray, ViewPort*, M_PTR_OPLIST);
+
+/** Gui structure */
+struct Gui {
+    // Global gui mutex
+    FuriMutex* mutex;
+
+    // Layers and Canvas
+    ViewPortArray_t layers[GuiLayerMAX];
+    RenderBuffer* render_buffer;
+    DisplayJd9853QSPI* display;
+
+    // Event handling
+    FuriEventLoop* event_loop;
+    FuriEventFlag* redraw_flag;
+    FuriMessageQueue* input_queue;
+    FuriMessageQueue* input_touch_queue;
+};
 
 static ViewPort* gui_view_port_find_enabled(ViewPortArray_t array) {
     // Iterating backward
@@ -44,7 +69,6 @@ static void gui_redraw(Gui* gui) {
 
     Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
-    render_clear_buffer(0xFF);
     render_do_render(&renderCommands);
 
     view_port_post_layout(gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]));
@@ -60,40 +84,12 @@ static void gui_input_touch(Gui* gui, InputTouchEvent* input_event) {
     furi_assert(gui);
     furi_assert(input_event);
 
-    // Check input complementarity
-    if(input_event->type == InputTouchTypeEnd) {
-        gui->onging_touch_input = false;
-    } else if(input_event->type == InputTouchTypeStart) {
-        gui->onging_touch_input = true;
-    } else if(!gui->onging_touch_input) {
-        FURI_LOG_D(TAG, "non-complementary touch, discarding type: %d", input_event->type);
-        return;
-    }
-
     gui_lock(gui);
 
     do {
-        ViewPort* view_port = NULL;
+        ViewPort* view_port = gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]);
+        view_port_input_touch(view_port, input_event);
 
-        view_port = gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]);
-
-        if(gui->onging_touch_input && input_event->type == InputTouchTypeStart) {
-            gui->ongoing_input_view_port = view_port;
-        }
-
-        if(view_port && view_port == gui->ongoing_input_view_port) {
-            view_port_input_touch(view_port, input_event);
-        } else if(gui->ongoing_input_view_port && input_event->type == InputTouchTypeEnd) {
-            FURI_LOG_D(
-                TAG,
-                "ViewPort changed while touch %p -> %p. Sending touch type: %d to previous view port",
-                gui->ongoing_input_view_port,
-                view_port,
-                input_event->type);
-            view_port_input_touch(gui->ongoing_input_view_port, input_event);
-        } else {
-            FURI_LOG_D(TAG, "ViewPort changed while key press %p -> %p. Discarding touch type: %d", gui->ongoing_input_view_port, view_port, input_event->type);
-        }
     } while(false);
 
     gui_unlock(gui);
@@ -103,55 +99,11 @@ static void gui_input(Gui* gui, InputEvent* input_event) {
     furi_assert(gui);
     furi_assert(input_event);
 
-    // Check input complementarity
-    uint8_t key_bit = input_event->key;
-    if(input_event->type == InputTypeRelease) {
-        gui->ongoing_input &= ~key_bit;
-    } else if(input_event->type == InputTypePress) {
-        gui->ongoing_input |= key_bit;
-    } else if(!(gui->ongoing_input & key_bit)) {
-        FURI_LOG_D(
-            TAG,
-            "non-complementary input, discarding key: %s type: %s, sequence: %p",
-            input_get_key_name(input_event->key),
-            input_get_type_name(input_event->type),
-            (void*)input_event->sequence);
-        return;
-    }
-
     gui_lock(gui);
 
     do {
-        ViewPort* view_port = NULL;
-
-        view_port = gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]);
-
-        if(!(gui->ongoing_input & ~key_bit) && input_event->type == InputTypePress) {
-            gui->ongoing_input_view_port = view_port;
-        }
-
-        if(view_port && view_port == gui->ongoing_input_view_port) {
-            view_port_input(view_port, input_event);
-        } else if(gui->ongoing_input_view_port && input_event->type == InputTypeRelease) {
-            FURI_LOG_D(
-                TAG,
-                "ViewPort changed while key press %p -> %p. Sending key: %s, type: %s, sequence: %p to previous view port",
-                gui->ongoing_input_view_port,
-                view_port,
-                input_get_key_name(input_event->key),
-                input_get_type_name(input_event->type),
-                (void*)input_event->sequence);
-            view_port_input(gui->ongoing_input_view_port, input_event);
-        } else {
-            FURI_LOG_D(
-                TAG,
-                "ViewPort changed while key press %p -> %p. Discarding key: %s, type: %s, sequence: %p",
-                gui->ongoing_input_view_port,
-                view_port,
-                input_get_key_name(input_event->key),
-                input_get_type_name(input_event->type),
-                (void*)input_event->sequence);
-        }
+        ViewPort* view_port = gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]);
+        view_port_input(view_port, input_event);
     } while(false);
 
     gui_unlock(gui);
@@ -207,9 +159,6 @@ void gui_remove_view_port(Gui* gui, ViewPort* view_port) {
                 ViewPortArray_next(it);
             }
         }
-    }
-    if(gui->ongoing_input_view_port == view_port) {
-        gui->ongoing_input_view_port = NULL;
     }
     gui_unlock(gui);
 
