@@ -37,6 +37,8 @@ void view_port_set_post_layout_callback(ViewPort* view_port, ViewPortLayoutCallb
 
 bool view_port_is_enabled(const ViewPort* view_port);
 
+void view_port_update(ViewPort* view_port);
+
 /**
  * @brief Glue function to put input events into a message queue, to use with view_port_set_input_callback
  * @warning Expects context to be of type FuriMessageQueue pointer

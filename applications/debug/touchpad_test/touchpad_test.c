@@ -115,16 +115,16 @@ static void touchpad_test_app_input_touch_logic(FuriEventLoopObject* object, voi
         instance->pressed = true;
         instance->x = event.x;
         instance->y = event.y;
-        gui_update(instance->gui);
+        view_port_update(instance->view_port);
         break;
     case InputTouchTypeMove:
         instance->x = event.x;
         instance->y = event.y;
-        gui_update(instance->gui);
+        view_port_update(instance->view_port);
         break;
     case InputTouchTypeEnd:
         instance->pressed = false;
-        gui_update(instance->gui);
+        view_port_update(instance->view_port);
         break;
     }
 }

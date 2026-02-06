@@ -157,25 +157,25 @@ static void keypad_test_app_input_logic(FuriEventLoopObject* object, void* conte
         } else {
             instance->key_state &= ~event.key;
         }
-        gui_update(instance->gui);
+        view_port_update(instance->view_port);
     }
 
     if(event.key == InputKeyBack) {
         if(event.type == InputTypePress) {
             instance->exit_counter = 1;
             furi_string_printf(instance->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT);
-            gui_update(instance->gui);
+            view_port_update(instance->view_port);
         } else if(event.type == InputTypeRelease) {
             instance->exit_counter = 0;
             furi_string_set(instance->exit_text, "");
-            gui_update(instance->gui);
+            view_port_update(instance->view_port);
         } else if(event.type == InputTypeRepeat) {
             instance->exit_counter++;
             furi_string_printf(instance->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT - instance->exit_counter);
             if(instance->exit_counter >= KEYPAD_TEST_TICKS_TO_EXIT) {
                 furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             }
-            gui_update(instance->gui);
+            view_port_update(instance->view_port);
         }
     }
 }

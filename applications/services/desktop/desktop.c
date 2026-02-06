@@ -99,7 +99,7 @@ static void desktop_post_layout(void* context) {
     Clay_ElementId scrollContainerId = CLAY_APP_ID("Container");
     Clay_ElementId targetChildId = DESKTOP_MENU_ID(desktop->selected_index);
     if(clay_helper_scroll_to_child(scrollContainerId, targetChildId, 0, 10, 15)) {
-        gui_update(desktop->gui);
+        view_port_update(desktop->view_port);
     }
 }
 
@@ -170,7 +170,7 @@ static void desktop_input_logic(FuriEventLoopObject* object, void* context) {
             break;
         }
     }
-    gui_update(desktop->gui);
+    view_port_update(desktop->view_port);
 }
 
 static void desktop_touch_logic(FuriEventLoopObject* object, void* context) {

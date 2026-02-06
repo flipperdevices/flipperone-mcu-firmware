@@ -32,3 +32,9 @@ struct Gui {
     uint32_t ongoing_input;
     bool onging_touch_input;
 };
+
+void gui_update(Gui* gui);
+
+void gui_lock(Gui* gui);
+
+void gui_unlock(Gui* gui);
