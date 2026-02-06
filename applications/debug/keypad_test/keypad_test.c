@@ -4,11 +4,9 @@
 
 #define TAG "KeypadTestApp"
 
-#define APP_INPUT_QUEUE_SIZE 16
-
-#define APP_TICKS_TO_EXIT 10
-
-#define APP_BUTTON_WIDTH CLAY_SIZING_FIXED(40)
+#define KEYPAD_TEST_INPUT_QUEUE_SIZE 16
+#define KEYPAD_TEST_TICKS_TO_EXIT    10
+#define KEYPAD_TEST_BUTTON_WIDTH     CLAY_SIZING_FIXED(40)
 
 typedef struct {
     Gui* gui;
@@ -27,7 +25,7 @@ static void keypad_test_app_create_empty(void) {
         .layout =
             {
                 .padding = {8, 8, 4, 4},
-                .sizing = {.width = APP_BUTTON_WIDTH},
+                .sizing = {.width = KEYPAD_TEST_BUTTON_WIDTH},
                 .childAlignment = {.x = CLAY_ALIGN_X_CENTER},
             },
         .backgroundColor = COLOR_WHITE,
@@ -42,7 +40,7 @@ static void keypad_test_app_create_keypad_button(Clay_String text, bool inverted
         .layout =
             {
                 .padding = {8, 8, 4, 4},
-                .sizing = {.width = APP_BUTTON_WIDTH},
+                .sizing = {.width = KEYPAD_TEST_BUTTON_WIDTH},
                 .childAlignment = {.x = CLAY_ALIGN_X_CENTER},
             },
         .backgroundColor = inverted ? COLOR_WHITE : COLOR_BLACK,
@@ -165,7 +163,7 @@ static void keypad_test_app_input_logic(FuriEventLoopObject* object, void* conte
     if(event.key == InputKeyBack) {
         if(event.type == InputTypePress) {
             instance->exit_counter = 1;
-            furi_string_printf(instance->exit_text, "%zu", APP_TICKS_TO_EXIT);
+            furi_string_printf(instance->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT);
             gui_update(instance->gui);
         } else if(event.type == InputTypeRelease) {
             instance->exit_counter = 0;
@@ -173,8 +171,8 @@ static void keypad_test_app_input_logic(FuriEventLoopObject* object, void* conte
             gui_update(instance->gui);
         } else if(event.type == InputTypeRepeat) {
             instance->exit_counter++;
-            furi_string_printf(instance->exit_text, "%zu", APP_TICKS_TO_EXIT - instance->exit_counter);
-            if(instance->exit_counter >= APP_TICKS_TO_EXIT) {
+            furi_string_printf(instance->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT - instance->exit_counter);
+            if(instance->exit_counter >= KEYPAD_TEST_TICKS_TO_EXIT) {
                 furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             }
             gui_update(instance->gui);
@@ -186,7 +184,7 @@ static KeypadTestApp* keypad_test_app_alloc(void) {
     KeypadTestApp* instance = malloc(sizeof(KeypadTestApp));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
-    instance->input_queue = furi_message_queue_alloc(APP_INPUT_QUEUE_SIZE, sizeof(InputEvent));
+    instance->input_queue = furi_message_queue_alloc(KEYPAD_TEST_INPUT_QUEUE_SIZE, sizeof(InputEvent));
     instance->exit_text = furi_string_alloc();
 
     instance->view_port = view_port_alloc();

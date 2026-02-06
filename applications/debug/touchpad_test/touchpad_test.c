@@ -4,8 +4,8 @@
 
 #define TAG "TouchpadTest"
 
-#define APP_INPUT_QUEUE_SIZE       16
-#define APP_INPUT_TOUCH_QUEUE_SIZE 16
+#define TOUCHPAD_TEST_INPUT_QUEUE_SIZE       16
+#define TOUCHPAD_TEST_INPUT_TOUCH_QUEUE_SIZE 16
 
 typedef struct {
     Gui* gui;
@@ -133,8 +133,8 @@ static TouchpadTestApp* touchpad_test_app_alloc(void) {
     TouchpadTestApp* instance = malloc(sizeof(TouchpadTestApp));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
-    instance->input_queue = furi_message_queue_alloc(APP_INPUT_QUEUE_SIZE, sizeof(InputEvent));
-    instance->input_touch_queue = furi_message_queue_alloc(APP_INPUT_TOUCH_QUEUE_SIZE, sizeof(InputTouchEvent));
+    instance->input_queue = furi_message_queue_alloc(TOUCHPAD_TEST_INPUT_QUEUE_SIZE, sizeof(InputEvent));
+    instance->input_touch_queue = furi_message_queue_alloc(TOUCHPAD_TEST_INPUT_TOUCH_QUEUE_SIZE, sizeof(InputTouchEvent));
 
     instance->view_port = view_port_alloc();
     view_port_set_layout_callback(instance->view_port, touchpad_test_app_layout, instance);
