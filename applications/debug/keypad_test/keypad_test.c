@@ -191,7 +191,7 @@ static KeypadTestApp* keypad_test_app_alloc(void) {
     view_port_set_layout_callback(instance->view_port, keypad_test_app_layout, instance);
     view_port_set_input_callback(instance->view_port, view_port_input_queue_glue, instance->input_queue);
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->input_queue, FuriEventLoopEventIn, keypad_test_app_input_logic, instance);
-    gui_add_view_port(instance->gui, instance->view_port, GuiLayerFullscreen);
+    gui_add_view_port(instance->gui, instance->view_port);
     return instance;
 }
 

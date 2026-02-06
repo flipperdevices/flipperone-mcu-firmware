@@ -7,17 +7,11 @@
 extern "C" {
 #endif
 
-/** Gui layers */
-typedef enum {
-    GuiLayerFullscreen, /**< Fullscreen layer, no status bar */
-    GuiLayerMAX /**< Don't use or move, special value */
-} GuiLayer;
-
 typedef struct Gui Gui;
 
 #define RECORD_GUI "Gui"
 
-void gui_add_view_port(Gui* gui, ViewPort* view_port, GuiLayer layer);
+void gui_add_view_port(Gui* gui, ViewPort* view_port);
 
 void gui_remove_view_port(Gui* gui, ViewPort* view_port);
 

@@ -21,8 +21,8 @@ struct Gui {
     // Global gui mutex
     FuriMutex* mutex;
 
-    // Layers and Canvas
-    ViewPortArray_t layers[GuiLayerMAX];
+    // View ports
+    ViewPortArray_t views;
     RenderBuffer* render_buffer;
     DisplayJd9853QSPI* display;
 
@@ -65,13 +65,13 @@ static void gui_redraw(Gui* gui) {
     Clay_ResetMeasureTextCache();
     Clay_BeginLayout();
 
-    view_port_layout(gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]));
+    view_port_layout(gui_view_port_find_enabled(gui->views));
 
     Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
     render_do_render(&renderCommands);
 
-    view_port_post_layout(gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]));
+    view_port_post_layout(gui_view_port_find_enabled(gui->views));
 
     size_t width = render_get_buffer_width(gui->render_buffer);
     size_t height = render_get_buffer_height(gui->render_buffer);
@@ -87,7 +87,7 @@ static void gui_input_touch(Gui* gui, InputTouchEvent* input_event) {
     gui_lock(gui);
 
     do {
-        ViewPort* view_port = gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]);
+        ViewPort* view_port = gui_view_port_find_enabled(gui->views);
         view_port_input_touch(view_port, input_event);
 
     } while(false);
@@ -102,7 +102,7 @@ static void gui_input(Gui* gui, InputEvent* input_event) {
     gui_lock(gui);
 
     do {
-        ViewPort* view_port = gui_view_port_find_enabled(gui->layers[GuiLayerFullscreen]);
+        ViewPort* view_port = gui_view_port_find_enabled(gui->views);
         view_port_input(view_port, input_event);
     } while(false);
 
@@ -119,23 +119,22 @@ void gui_unlock(Gui* gui) {
     furi_check(furi_mutex_release(gui->mutex) == FuriStatusOk);
 }
 
-void gui_add_view_port(Gui* gui, ViewPort* view_port, GuiLayer layer) {
+void gui_add_view_port(Gui* gui, ViewPort* view_port) {
     furi_check(gui);
     furi_check(view_port);
-    furi_check(layer < GuiLayerMAX);
 
     gui_lock(gui);
+
     // Verify that view port is not yet added
     ViewPortArray_it_t it;
-    for(size_t i = 0; i < GuiLayerMAX; i++) {
-        ViewPortArray_it(it, gui->layers[i]);
-        while(!ViewPortArray_end_p(it)) {
-            furi_assert(*ViewPortArray_ref(it) != view_port);
-            ViewPortArray_next(it);
-        }
+    ViewPortArray_it(it, gui->views);
+    while(!ViewPortArray_end_p(it)) {
+        furi_assert(*ViewPortArray_ref(it) != view_port);
+        ViewPortArray_next(it);
     }
+
     // Add view port and link with gui
-    ViewPortArray_push_back(gui->layers[layer], view_port);
+    ViewPortArray_push_back(gui->views, view_port);
     view_port_gui_set(view_port, gui);
     gui_unlock(gui);
 
@@ -149,17 +148,17 @@ void gui_remove_view_port(Gui* gui, ViewPort* view_port) {
 
     gui_lock(gui);
     view_port_gui_set(view_port, NULL);
+
     ViewPortArray_it_t it;
-    for(size_t i = 0; i < GuiLayerMAX; i++) {
-        ViewPortArray_it(it, gui->layers[i]);
-        while(!ViewPortArray_end_p(it)) {
-            if(*ViewPortArray_ref(it) == view_port) {
-                ViewPortArray_remove(gui->layers[i], it);
-            } else {
-                ViewPortArray_next(it);
-            }
+    ViewPortArray_it(it, gui->views);
+    while(!ViewPortArray_end_p(it)) {
+        if(*ViewPortArray_ref(it) == view_port) {
+            ViewPortArray_remove(gui->views, it);
+        } else {
+            ViewPortArray_next(it);
         }
     }
+
     gui_unlock(gui);
 
     // Request redraw
@@ -171,24 +170,20 @@ void gui_view_port_send_to_front(Gui* gui, ViewPort* view_port) {
     furi_check(view_port);
 
     gui_lock(gui);
-    // Remove
-    GuiLayer layer = GuiLayerMAX;
+
+    // Remove from current position
     ViewPortArray_it_t it;
-    for(size_t i = 0; i < GuiLayerMAX; i++) {
-        ViewPortArray_it(it, gui->layers[i]);
-        while(!ViewPortArray_end_p(it)) {
-            if(*ViewPortArray_ref(it) == view_port) {
-                ViewPortArray_remove(gui->layers[i], it);
-                furi_check(layer == GuiLayerMAX);
-                layer = i;
-            } else {
-                ViewPortArray_next(it);
-            }
+    ViewPortArray_it(it, gui->views);
+    while(!ViewPortArray_end_p(it)) {
+        if(*ViewPortArray_ref(it) == view_port) {
+            ViewPortArray_remove(gui->views, it);
+        } else {
+            ViewPortArray_next(it);
         }
     }
-    furi_check(layer != GuiLayerMAX);
+
     // Return to the top
-    ViewPortArray_push_back(gui->layers[layer], view_port);
+    ViewPortArray_push_back(gui->views, view_port);
     gui_unlock(gui);
 
     // Request redraw
@@ -200,24 +195,20 @@ void gui_view_port_send_to_back(Gui* gui, ViewPort* view_port) {
     furi_assert(view_port);
 
     gui_lock(gui);
-    // Remove
-    GuiLayer layer = GuiLayerMAX;
+
+    // Remove from current position
     ViewPortArray_it_t it;
-    for(size_t i = 0; i < GuiLayerMAX; i++) {
-        ViewPortArray_it(it, gui->layers[i]);
-        while(!ViewPortArray_end_p(it)) {
-            if(*ViewPortArray_ref(it) == view_port) {
-                ViewPortArray_remove(gui->layers[i], it);
-                furi_assert(layer == GuiLayerMAX);
-                layer = i;
-            } else {
-                ViewPortArray_next(it);
-            }
+    ViewPortArray_it(it, gui->views);
+    while(!ViewPortArray_end_p(it)) {
+        if(*ViewPortArray_ref(it) == view_port) {
+            ViewPortArray_remove(gui->views, it);
+        } else {
+            ViewPortArray_next(it);
         }
     }
-    furi_assert(layer != GuiLayerMAX);
+
     // Return to the top
-    ViewPortArray_push_at(gui->layers[layer], 0, view_port);
+    ViewPortArray_push_at(gui->views, 0, view_port);
     gui_unlock(gui);
 
     // Request redraw
@@ -270,10 +261,8 @@ static Gui* gui_alloc(void) {
     gui->input_queue = furi_message_queue_alloc(GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent));
     gui->input_touch_queue = furi_message_queue_alloc(GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE, sizeof(InputTouchEvent));
 
-    // Layers
-    for(size_t i = 0; i < GuiLayerMAX; i++) {
-        ViewPortArray_init(gui->layers[i]);
-    }
+    // View ports
+    ViewPortArray_init(gui->views);
 
     // Display and buffer
     gui->display = display_jd9853_qspi_init();

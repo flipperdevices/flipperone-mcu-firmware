@@ -143,7 +143,7 @@ static TouchpadTestApp* touchpad_test_app_alloc(void) {
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->input_queue, FuriEventLoopEventIn, touchpad_test_app_input_logic, instance);
     furi_event_loop_subscribe_message_queue(
         instance->event_loop, instance->input_touch_queue, FuriEventLoopEventIn, touchpad_test_app_input_touch_logic, instance);
-    gui_add_view_port(instance->gui, instance->view_port, GuiLayerFullscreen);
+    gui_add_view_port(instance->gui, instance->view_port);
     return instance;
 }
 
