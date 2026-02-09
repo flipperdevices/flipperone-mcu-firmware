@@ -4,9 +4,6 @@
 
 #define TAG "TouchpadTest"
 
-#define TOUCHPAD_TEST_INPUT_QUEUE_SIZE       16
-#define TOUCHPAD_TEST_INPUT_TOUCH_QUEUE_SIZE 16
-
 typedef struct {
     uint32_t x;
     uint32_t y;

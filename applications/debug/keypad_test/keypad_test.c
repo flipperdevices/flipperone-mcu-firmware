@@ -4,9 +4,8 @@
 
 #define TAG "KeypadTestApp"
 
-#define KEYPAD_TEST_INPUT_QUEUE_SIZE 16
-#define KEYPAD_TEST_TICKS_TO_EXIT    10
-#define KEYPAD_TEST_BUTTON_WIDTH     CLAY_SIZING_FIXED(40)
+#define KEYPAD_TEST_TICKS_TO_EXIT 10
+#define KEYPAD_TEST_BUTTON_WIDTH  CLAY_SIZING_FIXED(40)
 
 typedef struct {
     uint32_t key_state;
