@@ -7,6 +7,6 @@ void view_port_layout(ViewPort* view_port);
 
 void view_port_post_layout(ViewPort* view_port);
 
-void view_port_input(ViewPort* view_port, InputEvent* event);
+bool view_port_input(ViewPort* view_port, InputEvent* event);
 
-void view_port_input_touch(ViewPort* view_port, InputTouchEvent* event);
+bool view_port_input_touch(ViewPort* view_port, InputTouchEvent* event);

@@ -33,18 +33,58 @@ struct Gui {
     FuriMessageQueue* input_touch_queue;
 };
 
-static ViewPort* gui_view_port_find_enabled(ViewPortArray_t array) {
+static bool gui_view_port_find_opaque_from_top(ViewPortArray_t array, ViewPortArray_it_t* it) {
     // Iterating backward
-    ViewPortArray_it_t it;
-    ViewPortArray_it_last(it, array);
-    while(!ViewPortArray_end_p(it)) {
-        ViewPort* view_port = *ViewPortArray_ref(it);
-        if(view_port_is_enabled(view_port)) {
-            return view_port;
+    ViewPortArray_it_last(*it, array);
+    while(!ViewPortArray_end_p(*it)) {
+        ViewPort* view_port = *ViewPortArray_ref(*it);
+        if(view_port_is_enabled(view_port) && !view_port_is_transparent(view_port)) {
+            return true;
         }
-        ViewPortArray_previous(it);
+        ViewPortArray_previous(*it);
     }
-    return NULL;
+    return false;
+}
+
+static bool gui_view_port_find_next_transparent(ViewPortArray_t array, ViewPortArray_it_t* it) {
+    // Iterating forward
+    while(!ViewPortArray_end_p(*it)) {
+        ViewPort* view_port = *ViewPortArray_ref(*it);
+        if(view_port_is_enabled(view_port) && view_port_is_transparent(view_port)) {
+            return true;
+        }
+        ViewPortArray_next(*it);
+    }
+    return false;
+}
+
+static bool gui_view_port_find_any_from_top(ViewPortArray_t array, ViewPortArray_it_t* it) {
+    // Iterating backward
+    ViewPortArray_it_last(*it, array);
+    while(!ViewPortArray_end_p(*it)) {
+        ViewPort* view_port = *ViewPortArray_ref(*it);
+        if(view_port_is_enabled(view_port)) {
+            return true;
+        }
+        ViewPortArray_previous(*it);
+    }
+    return false;
+}
+
+static bool gui_view_port_find_any_previous(ViewPortArray_t array, ViewPortArray_it_t* it) {
+    // Iterating backward
+    while(!ViewPortArray_end_p(*it)) {
+        ViewPort* view_port = *ViewPortArray_ref(*it);
+        if(view_port_is_enabled(view_port)) {
+            return true;
+        }
+        ViewPortArray_previous(*it);
+    }
+    return false;
+}
+
+static ViewPort* gui_view_port_from_it(ViewPortArray_it_t* it) {
+    return *ViewPortArray_ref(*it);
 }
 
 void gui_update(Gui* gui) {
@@ -65,13 +105,23 @@ static void gui_redraw(Gui* gui) {
     Clay_ResetMeasureTextCache();
     Clay_BeginLayout();
 
-    view_port_layout(gui_view_port_find_enabled(gui->views));
+    ViewPortArray_it_t it;
+
+    if(gui_view_port_find_opaque_from_top(gui->views, &it)) {
+        do {
+            view_port_layout(gui_view_port_from_it(&it));
+        } while(gui_view_port_find_next_transparent(gui->views, &it));
+    }
 
     Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
     render_do_render(&renderCommands);
 
-    view_port_post_layout(gui_view_port_find_enabled(gui->views));
+    if(gui_view_port_find_opaque_from_top(gui->views, &it)) {
+        do {
+            view_port_post_layout(gui_view_port_from_it(&it));
+        } while(gui_view_port_find_next_transparent(gui->views, &it));
+    }
 
     size_t width = render_get_buffer_width(gui->render_buffer);
     size_t height = render_get_buffer_height(gui->render_buffer);
@@ -86,11 +136,18 @@ static void gui_input_touch(Gui* gui, InputTouchEvent* input_event) {
 
     gui_lock(gui);
 
-    do {
-        ViewPort* view_port = gui_view_port_find_enabled(gui->views);
-        view_port_input_touch(view_port, input_event);
+    ViewPortArray_it_t it;
+    if(gui_view_port_find_any_from_top(gui->views, &it)) {
+        do {
+            ViewPort* view_port = gui_view_port_from_it(&it);
 
-    } while(false);
+            // Break if input was consumed
+            if(view_port_input_touch(view_port, input_event)) break;
+
+            // Break if view port is opaque
+            if(!view_port_is_transparent(view_port)) break;
+        } while(gui_view_port_find_any_previous(gui->views, &it));
+    }
 
     gui_unlock(gui);
 }
@@ -101,10 +158,18 @@ static void gui_input(Gui* gui, InputEvent* input_event) {
 
     gui_lock(gui);
 
-    do {
-        ViewPort* view_port = gui_view_port_find_enabled(gui->views);
-        view_port_input(view_port, input_event);
-    } while(false);
+    ViewPortArray_it_t it;
+    if(gui_view_port_find_any_from_top(gui->views, &it)) {
+        do {
+            ViewPort* view_port = gui_view_port_from_it(&it);
+
+            // Break if input was consumed
+            if(view_port_input(view_port, input_event)) break;
+
+            // Break if view port is opaque
+            if(!view_port_is_transparent(view_port)) break;
+        } while(gui_view_port_find_any_previous(gui->views, &it));
+    }
 
     gui_unlock(gui);
 }

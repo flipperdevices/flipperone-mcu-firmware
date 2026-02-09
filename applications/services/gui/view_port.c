@@ -27,6 +27,7 @@ struct ViewPort {
     Gui* gui;
     FuriMutex* mutex;
     bool is_enabled;
+    bool is_transparent;
 
     LayoutCallback layout;
     PostLayoutCallback post_layout;
@@ -90,16 +91,33 @@ bool view_port_is_enabled(const ViewPort* view_port) {
     return is_enabled;
 }
 
-void view_port_input_queue_glue(InputEvent* event, void* context) {
-    furi_check(event);
-    furi_check(context);
-    furi_message_queue_put(context, event, FuriWaitForever);
+bool view_port_is_transparent(const ViewPort* view_port) {
+    furi_check(view_port);
+    furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
+    bool is_transparent = view_port->is_transparent;
+    furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
+    return is_transparent;
 }
 
-void view_port_input_touch_queue_glue(InputTouchEvent* event, void* context) {
+void view_port_set_enabled(ViewPort* view_port, bool enabled) {
+    furi_check(view_port);
+    furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
+    view_port->is_enabled = enabled;
+    furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
+}
+
+bool view_port_input_queue_glue(InputEvent* event, void* context) {
     furi_check(event);
     furi_check(context);
     furi_message_queue_put(context, event, FuriWaitForever);
+    return true;
+}
+
+bool view_port_input_touch_queue_glue(InputTouchEvent* event, void* context) {
+    furi_check(event);
+    furi_check(context);
+    furi_message_queue_put(context, event, FuriWaitForever);
+    return true;
 }
 
 void view_port_layout(ViewPort* view_port) {
@@ -138,28 +156,32 @@ void view_port_post_layout(ViewPort* view_port) {
     furi_mutex_release(view_port->mutex);
 }
 
-void view_port_input(ViewPort* view_port, InputEvent* event) {
+bool view_port_input(ViewPort* view_port, InputEvent* event) {
     furi_assert(view_port);
     furi_assert(event);
+    bool consumed = false;
 
     furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
     furi_check(view_port->gui);
     if(view_port->input.callback) {
-        view_port->input.callback(event, view_port->input.context);
+        consumed = view_port->input.callback(event, view_port->input.context);
     }
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
+    return consumed;
 }
 
-void view_port_input_touch(ViewPort* view_port, InputTouchEvent* event) {
+bool view_port_input_touch(ViewPort* view_port, InputTouchEvent* event) {
     furi_assert(view_port);
     furi_assert(event);
+    bool consumed = false;
 
     furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
     furi_check(view_port->gui);
     if(view_port->input_touch.callback) {
-        view_port->input_touch.callback(event, view_port->input_touch.context);
+        consumed = view_port->input_touch.callback(event, view_port->input_touch.context);
     }
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
+    return consumed;
 }
 
 void view_port_gui_set(ViewPort* view_port, Gui* gui) {

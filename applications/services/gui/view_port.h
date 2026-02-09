@@ -15,13 +15,15 @@ typedef void (*ViewPortLayoutCallback)(void* context);
 
 /** ViewPort Input callback
  * @warning    called from GUI thread
+ * @return true if the input event was consumed and should not be propagated to other view ports
  */
-typedef void (*ViewPortInputCallback)(InputEvent* event, void* context);
+typedef bool (*ViewPortInputCallback)(InputEvent* event, void* context);
 
 /** ViewPort Input Touch callback
  * @warning    called from GUI thread
+ * @return true if the input touch event was consumed and should not be propagated to other view ports
  */
-typedef void (*ViewPortInputTouchCallback)(InputTouchEvent* event, void* context);
+typedef bool (*ViewPortInputTouchCallback)(InputTouchEvent* event, void* context);
 
 ViewPort* view_port_alloc(void);
 
@@ -37,6 +39,10 @@ void view_port_set_post_layout_callback(ViewPort* view_port, ViewPortLayoutCallb
 
 bool view_port_is_enabled(const ViewPort* view_port);
 
+bool view_port_is_transparent(const ViewPort* view_port);
+
+void view_port_set_enabled(ViewPort* view_port, bool enabled);
+
 void view_port_update(ViewPort* view_port);
 
 /**
@@ -44,16 +50,18 @@ void view_port_update(ViewPort* view_port);
  * @warning Expects context to be of type FuriMessageQueue pointer
  * @param event 
  * @param context 
+ * @return always true (the input is always consumed)
  */
-void view_port_input_queue_glue(InputEvent* event, void* context);
+bool view_port_input_queue_glue(InputEvent* event, void* context);
 
 /**
  * @brief Glue function to put touch input events into a message queue to use with view_port_set_input_touch_callback
  * @warning Expects context to be of type FuriMessageQueue pointer
  * @param event 
  * @param context 
+ * @return always true (the input is always consumed)
  */
-void view_port_input_touch_queue_glue(InputTouchEvent* event, void* context);
+bool view_port_input_touch_queue_glue(InputTouchEvent* event, void* context);
 
 #ifdef __cplusplus
 }
