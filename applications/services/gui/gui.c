@@ -62,12 +62,12 @@ static bool gui_view_port_find_opaque_from_top(ViewPortArray_t array, ViewPortAr
 
 static bool gui_view_port_find_next_transparent(ViewPortArray_t array, ViewPortArray_it_t* it) {
     // Iterating forward
-    while(!ViewPortArray_end_p(*it)) {
+    while(!ViewPortArray_last_p(*it)) {
+        ViewPortArray_next(*it);
         ViewPort* view_port = ViewPortArray_ref(*it)->view_port;
         if(view_port_is_enabled(view_port) && view_port_is_transparent(view_port)) {
             return true;
         }
-        ViewPortArray_next(*it);
     }
     return false;
 }
@@ -88,11 +88,11 @@ static bool gui_view_port_find_any_from_top(ViewPortArray_t array, ViewPortArray
 static bool gui_view_port_find_any_previous(ViewPortArray_t array, ViewPortArray_it_t* it) {
     // Iterating backward
     while(!ViewPortArray_end_p(*it)) {
+        ViewPortArray_previous(*it);
         ViewPort* view_port = ViewPortArray_ref(*it)->view_port;
         if(view_port_is_enabled(view_port)) {
             return true;
         }
-        ViewPortArray_previous(*it);
     }
     return false;
 }

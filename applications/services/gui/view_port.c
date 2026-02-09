@@ -153,6 +153,13 @@ void view_port_set_enabled(ViewPort* view_port, bool enabled) {
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
 }
 
+void view_port_set_transparent(ViewPort* view_port, bool transparent) {
+    furi_check(view_port);
+    furi_check(furi_mutex_acquire(view_port->mutex, FuriWaitForever) == FuriStatusOk);
+    view_port->is_transparent = transparent;
+    furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
+}
+
 bool view_port_input_queue_glue(InputEvent* event, void* context) {
     furi_check(event);
     furi_check(context);

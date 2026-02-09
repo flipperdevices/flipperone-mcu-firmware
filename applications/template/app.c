@@ -2,7 +2,7 @@
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 
-#define TAG "TestApp"
+#define TAG "TemplateApp"
 
 typedef struct {
 } AppModel;
@@ -17,6 +17,7 @@ typedef struct {
 static bool app_layout(void* _model) {
     furi_assert(_model);
     AppModel* model = (AppModel*)_model;
+    return false;
 }
 
 static bool app_input(InputEvent* event, void* context) {
@@ -45,6 +46,7 @@ static App* app_alloc(void) {
     App* instance = malloc(sizeof(App));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
+    instance->thread = furi_thread_get_current();
 
     instance->view_port = view_port_alloc();
     view_port_allocate_model(instance->view_port, ViewPortModelTypeLockFree, sizeof(AppModel));
@@ -63,7 +65,7 @@ static void app_free(App* instance) {
     free(instance);
 }
 
-int32_t test_app(void* p) {
+int32_t app_body(void* p) {
     App* instance = app_alloc();
     furi_event_loop_run(instance->event_loop);
     app_free(instance);

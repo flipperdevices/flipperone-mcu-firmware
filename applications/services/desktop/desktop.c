@@ -17,7 +17,7 @@ typedef enum {
 
 typedef struct {
     DesktopMessageType type;
-    FlipperInternalApplication* app;
+    const FlipperInternalApplication* app;
     const char* args;
 } DesktopMessage;
 
@@ -49,8 +49,8 @@ typedef struct {
 } DesktopEvent;
 
 static bool desktop_layout(void* _model) {
-    DesktopModel* desktop = _model;
-    furi_check(desktop);
+    DesktopModel* model = _model;
+    furi_check(model);
 
     Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
 
@@ -68,7 +68,7 @@ static bool desktop_layout(void* _model) {
             .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
         }) {
         for(uint32_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
-            bool selected = (i == desktop->selected_index);
+            bool selected = (i == model->selected_index);
             CLAY(
                 DESKTOP_MENU_ID(i),
                 {
@@ -94,11 +94,11 @@ static bool desktop_layout(void* _model) {
 }
 
 static bool desktop_post_layout(void* _model) {
-    DesktopModel* desktop = _model;
-    furi_check(desktop);
+    DesktopModel* model = _model;
+    furi_check(model);
 
     Clay_ElementId scrollContainerId = CLAY_APP_ID("Container");
-    Clay_ElementId targetChildId = DESKTOP_MENU_ID(desktop->selected_index);
+    Clay_ElementId targetChildId = DESKTOP_MENU_ID(model->selected_index);
 
     if(clay_helper_scroll_to_child(scrollContainerId, targetChildId, 0, 10, 15)) {
         return true;

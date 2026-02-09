@@ -71,6 +71,8 @@ bool view_port_is_transparent(const ViewPort* view_port);
 
 void view_port_set_enabled(ViewPort* view_port, bool enabled);
 
+void view_port_set_transparent(ViewPort* view_port, bool transparent);
+
 void view_port_update(ViewPort* view_port);
 
 // /** Glue function to put input events into a message queue, to use with view_port_set_input_callback
