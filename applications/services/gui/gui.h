@@ -11,7 +11,13 @@ typedef struct Gui Gui;
 
 #define RECORD_GUI "Gui"
 
-void gui_add_view_port(Gui* gui, ViewPort* view_port);
+typedef enum {
+    GuiViewPriorityDesktop = 0,
+    GuiViewPriorityApplication = 50000,
+    GuiViewPriorityMenu = 100000,
+} GuiViewPriority;
+
+void gui_add_view_port(Gui* gui, ViewPort* view_port, GuiViewPriority priority);
 
 void gui_remove_view_port(Gui* gui, ViewPort* view_port);
 

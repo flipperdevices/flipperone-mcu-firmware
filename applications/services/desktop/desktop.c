@@ -245,7 +245,7 @@ static Desktop* desktop_alloc(void) {
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->input_touch_queue, FuriEventLoopEventIn, desktop_touch_logic, desktop);
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
 
-    gui_add_view_port(desktop->gui, desktop->view_port);
+    gui_add_view_port(desktop->gui, desktop->view_port, GuiViewPriorityDesktop);
 
     return desktop;
 }
