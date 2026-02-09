@@ -147,7 +147,7 @@ void display_set_brightness(Display* instance, int8_t brightness) {
 
     if(brightness < DISPLAY_BRIGHTNESS_MIN) brightness = DISPLAY_BRIGHTNESS_MIN;
     if(brightness > DISPLAY_BRIGHTNESS_MAX) brightness = DISPLAY_BRIGHTNESS_MAX;
-    
+
     const DisplayMessage msg = {
         .type = DisplayMessageTypeSetBrightness,
         .set_brightness = brightness,

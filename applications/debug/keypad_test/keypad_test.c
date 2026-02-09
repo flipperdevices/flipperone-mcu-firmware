@@ -9,15 +9,16 @@
 #define KEYPAD_TEST_BUTTON_WIDTH     CLAY_SIZING_FIXED(40)
 
 typedef struct {
-    Gui* gui;
-    ViewPort* view_port;
-
-    FuriEventLoop* event_loop;
-    FuriMessageQueue* input_queue;
-
     uint32_t key_state;
     size_t exit_counter;
     FuriString* exit_text;
+} KeypadTestModel;
+
+typedef struct {
+    Gui* gui;
+    ViewPort* view_port;
+    FuriEventLoop* event_loop;
+    FuriThread* thread;
 } KeypadTestApp;
 
 static void keypad_test_app_create_empty(void) {
@@ -50,9 +51,9 @@ static void keypad_test_app_create_keypad_button(Clay_String text, bool inverted
     }
 }
 
-static void keypad_test_app_layout(void* context) {
-    furi_assert(context);
-    KeypadTestApp* instance = (KeypadTestApp*)context;
+static bool keypad_test_app_layout(void* _model) {
+    furi_assert(_model);
+    KeypadTestModel* model = _model;
 
     Clay_Sizing layout_expand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
     Clay_LayoutConfig layout_row = {
@@ -107,90 +108,120 @@ static void keypad_test_app_layout(void* context) {
                     },
             }) {
             CLAY_AUTO_ID({.layout = layout_row}) {
-                keypad_test_app_create_keypad_button(CLAY_STRING("PTT"), instance->key_state & InputKeyPtt);
+                keypad_test_app_create_keypad_button(CLAY_STRING("PTT"), model->key_state & InputKeyPtt);
                 keypad_test_app_create_empty();
-                keypad_test_app_create_keypad_button(CLAY_STRING("Up"), instance->key_state & InputKeyUp);
+                keypad_test_app_create_keypad_button(CLAY_STRING("Up"), model->key_state & InputKeyUp);
                 keypad_test_app_create_empty();
                 keypad_test_app_create_empty();
             }
             CLAY_AUTO_ID({.layout = layout_row}) {
-                keypad_test_app_create_keypad_button(CLAY_STRING("Left"), instance->key_state & InputKeyLeft);
-                keypad_test_app_create_keypad_button(CLAY_STRING("Ok"), instance->key_state & InputKeyOk);
-                keypad_test_app_create_keypad_button(CLAY_STRING("Right"), instance->key_state & InputKeyRight);
+                keypad_test_app_create_keypad_button(CLAY_STRING("Left"), model->key_state & InputKeyLeft);
+                keypad_test_app_create_keypad_button(CLAY_STRING("Ok"), model->key_state & InputKeyOk);
+                keypad_test_app_create_keypad_button(CLAY_STRING("Right"), model->key_state & InputKeyRight);
             }
             CLAY_AUTO_ID({.layout = layout_row}) {
-                keypad_test_app_create_keypad_button(CLAY_STRING("Down"), instance->key_state & InputKeyDown);
+                keypad_test_app_create_keypad_button(CLAY_STRING("Down"), model->key_state & InputKeyDown);
             }
             CLAY_AUTO_ID({.layout = layout_row}) {
-                keypad_test_app_create_keypad_button(CLAY_STRING("SW"), instance->key_state & InputKeySw);
+                keypad_test_app_create_keypad_button(CLAY_STRING("SW"), model->key_state & InputKeySw);
                 keypad_test_app_create_empty();
                 keypad_test_app_create_empty();
                 keypad_test_app_create_empty();
-                if(instance->exit_counter > 0) {
-                    keypad_test_app_create_keypad_button(clay_helper_string_from(instance->exit_text), instance->key_state & InputKeyBack);
+                if(model->exit_counter > 0) {
+                    keypad_test_app_create_keypad_button(clay_helper_string_from(model->exit_text), model->key_state & InputKeyBack);
                 } else {
-                    keypad_test_app_create_keypad_button(CLAY_STRING("Back"), instance->key_state & InputKeyBack);
+                    keypad_test_app_create_keypad_button(CLAY_STRING("Back"), model->key_state & InputKeyBack);
                 }
             }
             CLAY_AUTO_ID({.layout = layout_row}) {
-                keypad_test_app_create_keypad_button(CLAY_STRING("1"), instance->key_state & InputKey1);
-                keypad_test_app_create_keypad_button(CLAY_STRING("2"), instance->key_state & InputKey2);
-                keypad_test_app_create_keypad_button(CLAY_STRING("P"), instance->key_state & InputKey3);
-                keypad_test_app_create_keypad_button(CLAY_STRING("4"), instance->key_state & InputKey4);
-                keypad_test_app_create_keypad_button(CLAY_STRING("5"), instance->key_state & InputKey5);
+                keypad_test_app_create_keypad_button(CLAY_STRING("1"), model->key_state & InputKey1);
+                keypad_test_app_create_keypad_button(CLAY_STRING("2"), model->key_state & InputKey2);
+                keypad_test_app_create_keypad_button(CLAY_STRING("P"), model->key_state & InputKey3);
+                keypad_test_app_create_keypad_button(CLAY_STRING("4"), model->key_state & InputKey4);
+                keypad_test_app_create_keypad_button(CLAY_STRING("5"), model->key_state & InputKey5);
             }
         }
     }
 }
 
-static void keypad_test_app_input_logic(FuriEventLoopObject* object, void* context) {
+static bool keypad_test_app_input_logic(InputEvent* event, void* context) {
     furi_check(context);
     KeypadTestApp* instance = context;
-    furi_check(object == instance->input_queue);
+    bool consumed = false;
 
-    InputEvent event;
-    furi_check(furi_message_queue_get(instance->input_queue, &event, 0) == FuriStatusOk);
-
-    if(event.type == InputTypePress || event.type == InputTypeRelease) {
-        if(event.type == InputTypePress) {
-            instance->key_state |= event.key;
-        } else {
-            instance->key_state &= ~event.key;
-        }
-        view_port_update(instance->view_port);
+    if(event->type == InputTypePress || event->type == InputTypeRelease) {
+        with_view_model(
+            instance->view_port,
+            KeypadTestModel * model,
+            {
+                if(event->type == InputTypePress) {
+                    model->key_state |= event->key;
+                } else {
+                    model->key_state &= ~event->key;
+                }
+            },
+            true);
     }
 
-    if(event.key == InputKeyBack) {
-        if(event.type == InputTypePress) {
-            instance->exit_counter = 1;
-            furi_string_printf(instance->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT);
+    if(event->key == InputKeyBack) {
+        if(event->type == InputTypePress) {
+            with_view_model(
+                instance->view_port,
+                KeypadTestModel * model,
+                {
+                    model->exit_counter = 1;
+                    furi_string_printf(model->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT);
+                },
+                true);
             view_port_update(instance->view_port);
-        } else if(event.type == InputTypeRelease) {
-            instance->exit_counter = 0;
-            furi_string_set(instance->exit_text, "");
+        } else if(event->type == InputTypeRelease) {
+            with_view_model(
+                instance->view_port,
+                KeypadTestModel * model,
+                {
+                    model->exit_counter = 0;
+                    furi_string_set(model->exit_text, "");
+                },
+                true);
             view_port_update(instance->view_port);
-        } else if(event.type == InputTypeRepeat) {
-            instance->exit_counter++;
-            furi_string_printf(instance->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT - instance->exit_counter);
-            if(instance->exit_counter >= KEYPAD_TEST_TICKS_TO_EXIT) {
-                furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
-            }
-            view_port_update(instance->view_port);
+        } else if(event->type == InputTypeRepeat) {
+            with_view_model(
+                instance->view_port,
+                KeypadTestModel * model,
+                {
+                    model->exit_counter++;
+                    furi_string_printf(model->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT - model->exit_counter);
+
+                    if(model->exit_counter >= KEYPAD_TEST_TICKS_TO_EXIT) {
+                        furi_thread_signal(instance->thread, FuriSignalExit, NULL);
+                    }
+                },
+                true);
         }
     }
+
+    return consumed;
 }
 
 static KeypadTestApp* keypad_test_app_alloc(void) {
     KeypadTestApp* instance = malloc(sizeof(KeypadTestApp));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
-    instance->input_queue = furi_message_queue_alloc(KEYPAD_TEST_INPUT_QUEUE_SIZE, sizeof(InputEvent));
-    instance->exit_text = furi_string_alloc();
+    instance->thread = furi_thread_get_current();
 
     instance->view_port = view_port_alloc();
-    view_port_set_layout_callback(instance->view_port, keypad_test_app_layout, instance);
-    view_port_set_input_callback(instance->view_port, view_port_input_queue_glue, instance->input_queue);
-    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->input_queue, FuriEventLoopEventIn, keypad_test_app_input_logic, instance);
+    view_port_allocate_model(instance->view_port, ViewPortModelTypeLockFree, sizeof(KeypadTestModel));
+    with_view_model(
+        instance->view_port,
+        KeypadTestModel * model,
+        {
+            model->key_state = 0;
+            model->exit_counter = 0;
+            model->exit_text = furi_string_alloc();
+        },
+        false);
+    view_port_set_layout_callback(instance->view_port, keypad_test_app_layout);
+    view_port_set_input_callback(instance->view_port, keypad_test_app_input_logic, instance);
     gui_add_view_port(instance->gui, instance->view_port, GuiViewPriorityApplication);
     return instance;
 }
@@ -198,13 +229,9 @@ static KeypadTestApp* keypad_test_app_alloc(void) {
 static void keypad_test_app_free(KeypadTestApp* instance) {
     gui_remove_view_port(instance->gui, instance->view_port);
     furi_record_close(RECORD_GUI);
-
-    furi_event_loop_unsubscribe(instance->event_loop, instance->input_queue);
-
+    with_view_model(instance->view_port, KeypadTestModel * model, { furi_string_free(model->exit_text); }, false);
     view_port_free(instance->view_port);
-    furi_message_queue_free(instance->input_queue);
     furi_event_loop_free(instance->event_loop);
-    furi_string_free(instance->exit_text);
     free(instance);
 }
 
