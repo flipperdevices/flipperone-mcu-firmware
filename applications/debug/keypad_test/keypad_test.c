@@ -141,6 +141,8 @@ static bool keypad_test_app_layout(void* _model) {
             }
         }
     }
+
+    return false;
 }
 
 static bool keypad_test_app_input_logic(InputEvent* event, void* context) {
@@ -233,6 +235,7 @@ static void keypad_test_app_free(KeypadTestApp* instance) {
 }
 
 int32_t keypad_test_app(void* p) {
+    UNUSED(p);
     KeypadTestApp* instance = keypad_test_app_alloc();
     furi_event_loop_run(instance->event_loop);
     keypad_test_app_free(instance);
