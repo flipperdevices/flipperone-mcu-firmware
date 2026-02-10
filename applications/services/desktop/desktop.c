@@ -52,8 +52,6 @@ static bool desktop_layout(void* _model) {
     DesktopModel* model = _model;
     furi_check(model);
 
-    Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
-
     CLAY(
         CLAY_APP_ID("Container"),
         {
@@ -80,12 +78,12 @@ static bool desktop_layout(void* _model) {
                     .backgroundColor = selected ? COLOR_BLACK : COLOR_WHITE,
                     .cornerRadius = CLAY_CORNER_RADIUS(2),
                 }) {
-                Clay_String test_str = {
-                    .isStaticallyAllocated = false,
-                    .length = strlen(FLIPPER_APPS[i].name),
-                    .chars = FLIPPER_APPS[i].name,
-                };
-                CLAY_TEXT(test_str, CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
+                CLAY_TEXT(
+                    clay_helper_string_from_chars(FLIPPER_APPS[i].name),
+                    CLAY_TEXT_CONFIG({
+                        .fontId = FontBody,
+                        .textColor = selected ? COLOR_WHITE : COLOR_BLACK,
+                    }));
             }
         }
     }
