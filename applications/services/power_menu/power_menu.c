@@ -105,18 +105,19 @@ static bool power_menu_input(InputEvent* event, void* context) {
                     PowerMenuModel * model,
                     { model->selected_index = (model->selected_index - 1 + power_menu_items_count) % power_menu_items_count; },
                     true);
-                consumed = true;
             } else if(event->key == InputKeyDown) {
                 with_view_model(
                     instance->view_port, PowerMenuModel * model, { model->selected_index = (model->selected_index + 1) % power_menu_items_count; }, true);
-                consumed = true;
             } else if(event->key == InputKeyOk) {
                 with_view_model(instance->view_port, PowerMenuModel * model, { model->visible = false; }, true);
-                consumed = true;
             } else if(event->key == InputKeyBack) {
                 with_view_model(instance->view_port, PowerMenuModel * model, { model->visible = false; }, true);
-                consumed = true;
             }
+        }
+
+        // Consume all events when visible except for release events
+        if(event->type != InputTypeRelease) {
+            consumed = true;
         }
     }
 
