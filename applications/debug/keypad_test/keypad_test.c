@@ -172,7 +172,6 @@ static bool keypad_test_app_input_logic(InputEvent* event, void* context) {
                     furi_string_printf(model->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT);
                 },
                 true);
-            view_update(instance->view);
         } else if(event->type == InputTypeRelease) {
             with_view_model(
                 instance->view,
@@ -182,7 +181,6 @@ static bool keypad_test_app_input_logic(InputEvent* event, void* context) {
                     furi_string_set(model->exit_text, "");
                 },
                 true);
-            view_update(instance->view);
         } else if(event->type == InputTypeRepeat) {
             with_view_model(
                 instance->view,

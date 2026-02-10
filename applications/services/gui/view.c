@@ -100,6 +100,19 @@ static void view_unlock_model(View* view) {
     }
 }
 
+static void view_update(View* view) {
+    furi_check(view);
+
+    // We are not going to lockup system, but will notify you instead
+    // Make sure that you don't call view methods inside of another mutex, especially one that is used in draw call
+    if(furi_mutex_acquire(view->mutex, 2) != FuriStatusOk) {
+        FURI_LOG_W(TAG, "View lockup: see %s:%d", __FILE__, __LINE__ - 3);
+    }
+
+    if(view->gui && view->is_enabled) gui_update(view->gui);
+    furi_mutex_release(view->mutex);
+}
+
 void view_set_input_callback(View* view, ViewInputCallback input_callback, void* input_context) {
     furi_check(view);
     furi_check(furi_mutex_acquire(view->mutex, FuriWaitForever) == FuriStatusOk);
@@ -239,19 +252,6 @@ void view_gui_set(View* view, Gui* gui) {
     furi_check(furi_mutex_acquire(view->mutex, FuriWaitForever) == FuriStatusOk);
     view->gui = gui;
     furi_check(furi_mutex_release(view->mutex) == FuriStatusOk);
-}
-
-void view_update(View* view) {
-    furi_check(view);
-
-    // We are not going to lockup system, but will notify you instead
-    // Make sure that you don't call view methods inside of another mutex, especially one that is used in draw call
-    if(furi_mutex_acquire(view->mutex, 2) != FuriStatusOk) {
-        FURI_LOG_W(TAG, "View lockup: see %s:%d", __FILE__, __LINE__ - 3);
-    }
-
-    if(view->gui && view->is_enabled) gui_update(view->gui);
-    furi_mutex_release(view->mutex);
 }
 
 void* view_get_model(View* view) {
