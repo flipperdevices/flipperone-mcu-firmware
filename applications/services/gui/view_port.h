@@ -75,22 +75,6 @@ void view_port_set_transparent(ViewPort* view_port, bool transparent);
 
 void view_port_update(ViewPort* view_port);
 
-// /** Glue function to put input events into a message queue, to use with view_port_set_input_callback
-//  * @warning Expects context to be of type FuriMessageQueue pointer
-//  * @param event
-//  * @param context
-//  * @return always true (the input is always consumed)
-//  */
-// bool view_port_input_queue_glue(InputEvent* event, void* context);
-
-// /** Glue function to put touch input events into a message queue to use with view_port_set_input_touch_callback
-//  * @warning Expects context to be of type FuriMessageQueue pointer
-//  * @param event
-//  * @param context
-//  * @return always true (the input is always consumed)
-//  */
-// bool view_port_input_touch_queue_glue(InputTouchEvent* event, void* context);
-
 /** Get view model data
  * @param      view_port  ViewPort instance
  * @return     pointer to model data

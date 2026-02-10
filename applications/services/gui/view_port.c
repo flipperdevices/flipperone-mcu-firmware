@@ -160,26 +160,12 @@ void view_port_set_transparent(ViewPort* view_port, bool transparent) {
     furi_check(furi_mutex_release(view_port->mutex) == FuriStatusOk);
 }
 
-bool view_port_input_queue_glue(InputEvent* event, void* context) {
-    furi_check(event);
-    furi_check(context);
-    furi_message_queue_put(context, event, FuriWaitForever);
-    return true;
-}
-
-bool view_port_input_touch_queue_glue(InputTouchEvent* event, void* context) {
-    furi_check(event);
-    furi_check(context);
-    furi_message_queue_put(context, event, FuriWaitForever);
-    return true;
-}
-
 void view_port_layout(ViewPort* view_port) {
     furi_check(view_port);
 
     // We are not going to lockup system, but will notify you instead
     // Make sure that you don't call viewport methods inside of another mutex, especially one that is used in draw call
-    if(furi_mutex_acquire(view_port->mutex, 2) != FuriStatusOk) {
+    if(furi_mutex_acquire(view_port->mutex, 16) != FuriStatusOk) {
         FURI_LOG_W(TAG, "ViewPort lockup: see %s:%d", __FILE__, __LINE__ - 3);
     }
 
@@ -187,7 +173,10 @@ void view_port_layout(ViewPort* view_port) {
 
     if(view_port->layout.callback) {
         void* data = view_port_get_model(view_port);
-        view_port->layout.callback(data);
+        if(view_port->layout.callback(data)) {
+            // force next frame
+            view_port_update(view_port);
+        }
         view_unlock_model(view_port);
     }
 
@@ -207,7 +196,10 @@ void view_port_post_layout(ViewPort* view_port) {
 
     if(view_port->post_layout.callback) {
         void* data = view_port_get_model(view_port);
-        view_port->post_layout.callback(data);
+        if(view_port->post_layout.callback(data)) {
+            // force next frame
+            view_port_update(view_port);
+        }
         view_unlock_model(view_port);
     }
 
