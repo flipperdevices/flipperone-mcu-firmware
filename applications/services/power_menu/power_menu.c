@@ -3,7 +3,7 @@
 #include <gui/clay_helper.h>
 
 #define TAG              "PowerMenu"
-#define POWER_MENU_ID(x) CLAY_SIDI(CLAY_STRING("Menu"), x)
+#define POWER_MENU_ID(x) CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
 
 static const char* power_menu_items[] = {
     "Power Off",
@@ -53,6 +53,17 @@ static bool power_menu_layout(void* _model) {
             .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
             .cornerRadius = CLAY_CORNER_RADIUS(4),
         }) {
+        CLAY_AUTO_ID({
+            .layout =
+                {
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(13)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                },
+            .backgroundColor = COLOR_WHITE,
+            .border = {.color = COLOR_BLACK, .width = {.bottom = 1}},
+        }) {
+            CLAY_TEXT(CLAY_STRING("Power"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
+        }
         for(uint32_t i = 0; i < power_menu_items_count; i++) {
             bool selected = (i == model->selected_index);
             CLAY(
@@ -85,14 +96,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
 
     if(event->key == InputKey3) {
         if(event->type == InputTypeLong) {
-            with_view_model(
-                instance->view,
-                PowerMenuModel * model,
-                {
-                    model->visible = !model->visible;
-                    FURI_LOG_I(TAG, "Visibility toggled to %d", model->visible);
-                },
-                true);
+            with_view_model(instance->view, PowerMenuModel * model, { model->visible = !model->visible; }, true);
             consumed = true;
         }
     }
@@ -111,6 +115,8 @@ static bool power_menu_input(InputEvent* event, void* context) {
             } else if(event->key == InputKeyOk) {
                 with_view_model(instance->view, PowerMenuModel * model, { model->visible = false; }, true);
             } else if(event->key == InputKeyBack) {
+                with_view_model(instance->view, PowerMenuModel * model, { model->visible = false; }, true);
+            } else if(event->key == InputKey3) {
                 with_view_model(instance->view, PowerMenuModel * model, { model->visible = false; }, true);
             }
         }

@@ -8,7 +8,7 @@
 
 #define TAG "DesktopSrv"
 
-#define DESKTOP_MENU_ID(x) CLAY_SIDI(CLAY_STRING("Menu"), x)
+#define DESKTOP_MENU_ID(x) CLAY_SIDI(CLAY_STRING("DesktopMenu"), x)
 
 typedef enum {
     DesktopMessageTypeAppStart,
