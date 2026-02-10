@@ -88,3 +88,11 @@ Clay_String clay_helper_string_from(FuriString* furi_string) {
     clay_string.chars = furi_string_get_cstr(furi_string);
     return clay_string;
 }
+
+Clay_String clay_helper_string_from_chars(const char* chars) {
+    Clay_String clay_string;
+    clay_string.isStaticallyAllocated = false;
+    clay_string.length = strlen(chars);
+    clay_string.chars = chars;
+    return clay_string;
+}
