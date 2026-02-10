@@ -33,7 +33,7 @@ typedef struct {
 
 typedef struct {
     Gui* gui;
-    ViewPort* view_port;
+    View* view;
 
     FuriEventLoop* event_loop;
     DesktopApp app;
@@ -154,7 +154,7 @@ static bool desktop_input(InputEvent* event, void* context) {
         switch(event->key) {
         case InputKeyOk: {
             uint32_t selected_index;
-            with_view_model(desktop->view_port, DesktopModel * model, { selected_index = model->selected_index; }, false);
+            with_view_model(desktop->view, DesktopModel * model, { selected_index = model->selected_index; }, false);
 
             DesktopMessage message = {
                 .type = DesktopMessageTypeAppStart,
@@ -167,15 +167,12 @@ static bool desktop_input(InputEvent* event, void* context) {
             break;
         }
         case InputKeyDown:
-            with_view_model(desktop->view_port, DesktopModel * model, { model->selected_index = (model->selected_index + 1) % FLIPPER_APPS_COUNT; }, true);
+            with_view_model(desktop->view, DesktopModel * model, { model->selected_index = (model->selected_index + 1) % FLIPPER_APPS_COUNT; }, true);
             consumed = true;
             break;
         case InputKeyUp:
             with_view_model(
-                desktop->view_port,
-                DesktopModel * model,
-                { model->selected_index = (model->selected_index - 1 + FLIPPER_APPS_COUNT) % FLIPPER_APPS_COUNT; },
-                true);
+                desktop->view, DesktopModel * model, { model->selected_index = (model->selected_index - 1 + FLIPPER_APPS_COUNT) % FLIPPER_APPS_COUNT; }, true);
             consumed = true;
             break;
         default:
@@ -241,15 +238,15 @@ static Desktop* desktop_alloc(void) {
     desktop->event_loop = furi_event_loop_alloc();
     desktop->app_message_queue = furi_message_queue_alloc(DESKTOP_APP_MESSAGE_QUEUE_SIZE, sizeof(DesktopMessage));
 
-    desktop->view_port = view_port_alloc();
-    view_port_allocate_model(desktop->view_port, ViewPortModelTypeLockFree, sizeof(DesktopModel));
-    view_port_set_layout_callback(desktop->view_port, desktop_layout);
-    view_port_set_post_layout_callback(desktop->view_port, desktop_post_layout);
-    view_port_set_input_callback(desktop->view_port, desktop_input, desktop);
-    view_port_set_input_touch_callback(desktop->view_port, desktop_input_touch, desktop);
+    desktop->view = view_alloc();
+    view_allocate_model(desktop->view, ViewModelTypeLockFree, sizeof(DesktopModel));
+    view_set_layout_callback(desktop->view, desktop_layout);
+    view_set_post_layout_callback(desktop->view, desktop_post_layout);
+    view_set_input_callback(desktop->view, desktop_input, desktop);
+    view_set_input_touch_callback(desktop->view, desktop_input_touch, desktop);
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
 
-    gui_add_view_port(desktop->gui, desktop->view_port, GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, desktop->view, GuiViewPriorityDesktop);
 
     return desktop;
 }

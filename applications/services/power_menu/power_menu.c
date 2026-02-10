@@ -20,7 +20,7 @@ typedef struct {
 
 typedef struct {
     Gui* gui;
-    ViewPort* view_port;
+    View* view;
     FuriEventLoop* event_loop;
 } PowerMenu;
 
@@ -81,12 +81,12 @@ static bool power_menu_input(InputEvent* event, void* context) {
     PowerMenu* instance = context;
     bool consumed = false;
     bool visible;
-    with_view_model(instance->view_port, PowerMenuModel * model, { visible = model->visible; }, false);
+    with_view_model(instance->view, PowerMenuModel * model, { visible = model->visible; }, false);
 
     if(event->key == InputKey3) {
         if(event->type == InputTypeLong) {
             with_view_model(
-                instance->view_port,
+                instance->view,
                 PowerMenuModel * model,
                 {
                     model->visible = !model->visible;
@@ -101,17 +101,17 @@ static bool power_menu_input(InputEvent* event, void* context) {
         if(event->type == InputTypePress) {
             if(event->key == InputKeyUp) {
                 with_view_model(
-                    instance->view_port,
+                    instance->view,
                     PowerMenuModel * model,
                     { model->selected_index = (model->selected_index - 1 + power_menu_items_count) % power_menu_items_count; },
                     true);
             } else if(event->key == InputKeyDown) {
                 with_view_model(
-                    instance->view_port, PowerMenuModel * model, { model->selected_index = (model->selected_index + 1) % power_menu_items_count; }, true);
+                    instance->view, PowerMenuModel * model, { model->selected_index = (model->selected_index + 1) % power_menu_items_count; }, true);
             } else if(event->key == InputKeyOk) {
-                with_view_model(instance->view_port, PowerMenuModel * model, { model->visible = false; }, true);
+                with_view_model(instance->view, PowerMenuModel * model, { model->visible = false; }, true);
             } else if(event->key == InputKeyBack) {
-                with_view_model(instance->view_port, PowerMenuModel * model, { model->visible = false; }, true);
+                with_view_model(instance->view, PowerMenuModel * model, { model->visible = false; }, true);
             }
         }
 
@@ -129,19 +129,19 @@ static PowerMenu* power_menu_alloc(void) {
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
 
-    instance->view_port = view_port_alloc();
-    view_port_set_transparent(instance->view_port, true);
-    view_port_allocate_model(instance->view_port, ViewPortModelTypeLockFree, sizeof(PowerMenuModel));
-    view_port_set_layout_callback(instance->view_port, power_menu_layout);
-    view_port_set_input_callback(instance->view_port, power_menu_input, instance);
-    gui_add_view_port(instance->gui, instance->view_port, GuiViewPriorityMenu);
+    instance->view = view_alloc();
+    view_set_transparent(instance->view, true);
+    view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(PowerMenuModel));
+    view_set_layout_callback(instance->view, power_menu_layout);
+    view_set_input_callback(instance->view, power_menu_input, instance);
+    gui_add_view(instance->gui, instance->view, GuiViewPriorityMenu);
     return instance;
 }
 
 static void power_menu_free(PowerMenu* instance) {
-    gui_remove_view_port(instance->gui, instance->view_port);
+    gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
-    view_port_free(instance->view_port);
+    view_free(instance->view);
     furi_event_loop_free(instance->event_loop);
     free(instance);
 }

@@ -12,7 +12,7 @@ typedef struct {
 
 typedef struct {
     Gui* gui;
-    ViewPort* view_port;
+    View* view;
     FuriEventLoop* event_loop;
     FuriThread* thread;
 } TouchpadTestApp;
@@ -110,7 +110,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
     switch(event->type) {
     case InputTouchTypeStart:
         with_view_model(
-            instance->view_port,
+            instance->view,
             TouchpadTestModel * model,
             {
                 model->pressed = true;
@@ -122,7 +122,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
         break;
     case InputTouchTypeMove:
         with_view_model(
-            instance->view_port,
+            instance->view,
             TouchpadTestModel * model,
             {
                 model->x = event->x;
@@ -132,7 +132,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
         consumed = true;
         break;
     case InputTouchTypeEnd:
-        with_view_model(instance->view_port, TouchpadTestModel * model, { model->pressed = false; }, true);
+        with_view_model(instance->view, TouchpadTestModel * model, { model->pressed = false; }, true);
         consumed = true;
         break;
     }
@@ -144,19 +144,19 @@ static TouchpadTestApp* touchpad_test_app_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->thread = furi_thread_get_current();
 
-    instance->view_port = view_port_alloc();
-    view_port_allocate_model(instance->view_port, ViewPortModelTypeLockFree, sizeof(TouchpadTestModel));
-    view_port_set_layout_callback(instance->view_port, touchpad_test_app_layout);
-    view_port_set_input_callback(instance->view_port, touchpad_test_app_input, instance);
-    view_port_set_input_touch_callback(instance->view_port, touchpad_test_app_input_touch, instance);
-    gui_add_view_port(instance->gui, instance->view_port, GuiViewPriorityApplication);
+    instance->view = view_alloc();
+    view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(TouchpadTestModel));
+    view_set_layout_callback(instance->view, touchpad_test_app_layout);
+    view_set_input_callback(instance->view, touchpad_test_app_input, instance);
+    view_set_input_touch_callback(instance->view, touchpad_test_app_input_touch, instance);
+    gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
     return instance;
 }
 
 static void touchpad_test_app_free(TouchpadTestApp* instance) {
-    gui_remove_view_port(instance->gui, instance->view_port);
+    gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
-    view_port_free(instance->view_port);
+    view_free(instance->view);
     furi_event_loop_free(instance->event_loop);
     free(instance);
 }

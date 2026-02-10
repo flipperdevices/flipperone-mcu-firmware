@@ -1,6 +1,6 @@
 #include "gui.h"
 #include "gui_i.h"
-#include "view_port_i.h"
+#include "view_i.h"
 #include <m-array.h>
 #include <m-algo.h>
 #include "clay.h"
@@ -16,13 +16,13 @@
 #define GUI_EVENT_FLAG_REDRAW (1U << 0)
 
 typedef struct {
-    ViewPort* view_port;
+    View* view;
     GuiViewPriority priority;
-} ViewPortHandle;
+} ViewHandle;
 
-ARRAY_DEF(ViewPortArray, ViewPortHandle, M_POD_OPLIST);
-#define M_OPL_ViewPortArray_t() ARRAY_OPLIST(ViewPortArray, M_POD_OPLIST)
-ALGO_DEF(ViewPortArray, ViewPortArray_t);
+ARRAY_DEF(ViewHandleArray, ViewHandle, M_POD_OPLIST);
+#define M_OPL_ViewHandleArray_t() ARRAY_OPLIST(ViewHandleArray, M_POD_OPLIST)
+ALGO_DEF(ViewHandleArray, ViewHandleArray_t);
 
 /** Gui structure */
 struct Gui {
@@ -30,7 +30,7 @@ struct Gui {
     FuriMutex* mutex;
 
     // View ports
-    ViewPortArray_t views;
+    ViewHandleArray_t views;
     RenderBuffer* render_buffer;
     DisplayJd9853QSPI* display;
 
@@ -41,64 +41,64 @@ struct Gui {
     FuriMessageQueue* input_touch_queue;
 };
 
-static int gui_view_port_compare(const ViewPortHandle* a, const ViewPortHandle* b) {
+static int gui_view_compare(const ViewHandle* a, const ViewHandle* b) {
     if(a->priority < b->priority) return -1;
     if(a->priority > b->priority) return 1;
     return 0;
 }
 
-static bool gui_view_port_find_opaque_from_top(ViewPortArray_t array, ViewPortArray_it_t* it) {
+static bool gui_view_find_opaque_from_top(ViewHandleArray_t array, ViewHandleArray_it_t* it) {
     // Iterating backward
-    ViewPortArray_it_last(*it, array);
-    while(!ViewPortArray_end_p(*it)) {
-        ViewPort* view_port = ViewPortArray_ref(*it)->view_port;
-        if(view_port_is_enabled(view_port) && !view_port_is_transparent(view_port)) {
+    ViewHandleArray_it_last(*it, array);
+    while(!ViewHandleArray_end_p(*it)) {
+        View* view = ViewHandleArray_ref(*it)->view;
+        if(view_is_enabled(view) && !view_is_transparent(view)) {
             return true;
         }
-        ViewPortArray_previous(*it);
+        ViewHandleArray_previous(*it);
     }
     return false;
 }
 
-static bool gui_view_port_find_next_transparent(ViewPortArray_t array, ViewPortArray_it_t* it) {
+static bool gui_view_find_next_transparent(ViewHandleArray_t array, ViewHandleArray_it_t* it) {
     // Iterating forward
-    while(!ViewPortArray_last_p(*it)) {
-        ViewPortArray_next(*it);
-        ViewPort* view_port = ViewPortArray_ref(*it)->view_port;
-        if(view_port_is_enabled(view_port) && view_port_is_transparent(view_port)) {
+    while(!ViewHandleArray_last_p(*it)) {
+        ViewHandleArray_next(*it);
+        View* view = ViewHandleArray_ref(*it)->view;
+        if(view_is_enabled(view) && view_is_transparent(view)) {
             return true;
         }
     }
     return false;
 }
 
-static bool gui_view_port_find_any_from_top(ViewPortArray_t array, ViewPortArray_it_t* it) {
+static bool gui_view_find_any_from_top(ViewHandleArray_t array, ViewHandleArray_it_t* it) {
     // Iterating backward
-    ViewPortArray_it_last(*it, array);
-    while(!ViewPortArray_end_p(*it)) {
-        ViewPort* view_port = ViewPortArray_ref(*it)->view_port;
-        if(view_port_is_enabled(view_port)) {
+    ViewHandleArray_it_last(*it, array);
+    while(!ViewHandleArray_end_p(*it)) {
+        View* view = ViewHandleArray_ref(*it)->view;
+        if(view_is_enabled(view)) {
             return true;
         }
-        ViewPortArray_previous(*it);
+        ViewHandleArray_previous(*it);
     }
     return false;
 }
 
-static bool gui_view_port_find_any_previous(ViewPortArray_t array, ViewPortArray_it_t* it) {
+static bool gui_view_find_any_previous(ViewHandleArray_t array, ViewHandleArray_it_t* it) {
     // Iterating backward
-    while(!ViewPortArray_end_p(*it)) {
-        ViewPortArray_previous(*it);
-        ViewPort* view_port = ViewPortArray_ref(*it)->view_port;
-        if(view_port_is_enabled(view_port)) {
+    while(!ViewHandleArray_end_p(*it)) {
+        ViewHandleArray_previous(*it);
+        View* view = ViewHandleArray_ref(*it)->view;
+        if(view_is_enabled(view)) {
             return true;
         }
     }
     return false;
 }
 
-static ViewPort* gui_view_port_from_it(ViewPortArray_it_t* it) {
-    return ViewPortArray_ref(*it)->view_port;
+static View* gui_view_from_it(ViewHandleArray_it_t* it) {
+    return ViewHandleArray_ref(*it)->view;
 }
 
 void gui_update(Gui* gui) {
@@ -119,22 +119,22 @@ static void gui_redraw(Gui* gui) {
     Clay_ResetMeasureTextCache();
     Clay_BeginLayout();
 
-    ViewPortArray_it_t it;
+    ViewHandleArray_it_t it;
 
-    if(gui_view_port_find_opaque_from_top(gui->views, &it)) {
+    if(gui_view_find_opaque_from_top(gui->views, &it)) {
         do {
-            view_port_layout(gui_view_port_from_it(&it));
-        } while(gui_view_port_find_next_transparent(gui->views, &it));
+            view_layout(gui_view_from_it(&it));
+        } while(gui_view_find_next_transparent(gui->views, &it));
     }
 
     Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
     render_do_render(&renderCommands);
 
-    if(gui_view_port_find_opaque_from_top(gui->views, &it)) {
+    if(gui_view_find_opaque_from_top(gui->views, &it)) {
         do {
-            view_port_post_layout(gui_view_port_from_it(&it));
-        } while(gui_view_port_find_next_transparent(gui->views, &it));
+            view_post_layout(gui_view_from_it(&it));
+        } while(gui_view_find_next_transparent(gui->views, &it));
     }
 
     size_t width = render_get_buffer_width(gui->render_buffer);
@@ -150,17 +150,17 @@ static void gui_input_touch(Gui* gui, InputTouchEvent* input_event) {
 
     gui_lock(gui);
 
-    ViewPortArray_it_t it;
-    if(gui_view_port_find_any_from_top(gui->views, &it)) {
+    ViewHandleArray_it_t it;
+    if(gui_view_find_any_from_top(gui->views, &it)) {
         do {
-            ViewPort* view_port = gui_view_port_from_it(&it);
+            View* view = gui_view_from_it(&it);
 
             // Break if input was consumed
-            if(view_port_input_touch(view_port, input_event)) break;
+            if(view_input_touch(view, input_event)) break;
 
             // Break if view port is opaque
-            if(!view_port_is_transparent(view_port)) break;
-        } while(gui_view_port_find_any_previous(gui->views, &it));
+            if(!view_is_transparent(view)) break;
+        } while(gui_view_find_any_previous(gui->views, &it));
     }
 
     gui_unlock(gui);
@@ -172,17 +172,17 @@ static void gui_input(Gui* gui, InputEvent* input_event) {
 
     gui_lock(gui);
 
-    ViewPortArray_it_t it;
-    if(gui_view_port_find_any_from_top(gui->views, &it)) {
+    ViewHandleArray_it_t it;
+    if(gui_view_find_any_from_top(gui->views, &it)) {
         do {
-            ViewPort* view_port = gui_view_port_from_it(&it);
+            View* view = gui_view_from_it(&it);
 
             // Break if input was consumed
-            if(view_port_input(view_port, input_event)) break;
+            if(view_input(view, input_event)) break;
 
             // Break if view port is opaque
-            if(!view_port_is_transparent(view_port)) break;
-        } while(gui_view_port_find_any_previous(gui->views, &it));
+            if(!view_is_transparent(view)) break;
+        } while(gui_view_find_any_previous(gui->views, &it));
     }
 
     gui_unlock(gui);
@@ -198,27 +198,27 @@ void gui_unlock(Gui* gui) {
     furi_check(furi_mutex_release(gui->mutex) == FuriStatusOk);
 }
 
-void gui_add_view_port(Gui* gui, ViewPort* view_port, GuiViewPriority priority) {
+void gui_add_view(Gui* gui, View* view, GuiViewPriority priority) {
     furi_check(gui);
-    furi_check(view_port);
+    furi_check(view);
 
     gui_lock(gui);
 
     // Verify that view port is not yet added
-    ViewPortArray_it_t it;
-    ViewPortArray_it(it, gui->views);
-    while(!ViewPortArray_end_p(it)) {
-        furi_assert(ViewPortArray_ref(it)->view_port != view_port);
-        ViewPortArray_next(it);
+    ViewHandleArray_it_t it;
+    ViewHandleArray_it(it, gui->views);
+    while(!ViewHandleArray_end_p(it)) {
+        furi_assert(ViewHandleArray_ref(it)->view != view);
+        ViewHandleArray_next(it);
     }
 
     // Add view port and link with gui
-    ViewPortHandle handle = {.view_port = view_port, .priority = priority};
-    ViewPortArray_push_back(gui->views, handle);
-    view_port_gui_set(view_port, gui);
+    ViewHandle handle = {.view = view, .priority = priority};
+    ViewHandleArray_push_back(gui->views, handle);
+    view_gui_set(view, gui);
 
     // Sort view ports by priority
-    ViewPortArray_special_sort(gui->views, gui_view_port_compare);
+    ViewHandleArray_special_sort(gui->views, gui_view_compare);
 
     gui_unlock(gui);
 
@@ -226,20 +226,20 @@ void gui_add_view_port(Gui* gui, ViewPort* view_port, GuiViewPriority priority) 
     gui_update(gui);
 }
 
-void gui_remove_view_port(Gui* gui, ViewPort* view_port) {
+void gui_remove_view(Gui* gui, View* view) {
     furi_check(gui);
-    furi_check(view_port);
+    furi_check(view);
 
     gui_lock(gui);
-    view_port_gui_set(view_port, NULL);
+    view_gui_set(view, NULL);
 
-    ViewPortArray_it_t it;
-    ViewPortArray_it(it, gui->views);
-    while(!ViewPortArray_end_p(it)) {
-        if(ViewPortArray_ref(it)->view_port == view_port) {
-            ViewPortArray_remove(gui->views, it);
+    ViewHandleArray_it_t it;
+    ViewHandleArray_it(it, gui->views);
+    while(!ViewHandleArray_end_p(it)) {
+        if(ViewHandleArray_ref(it)->view == view) {
+            ViewHandleArray_remove(gui->views, it);
         } else {
-            ViewPortArray_next(it);
+            ViewHandleArray_next(it);
         }
     }
 
@@ -296,7 +296,7 @@ static Gui* gui_alloc(void) {
     gui->input_touch_queue = furi_message_queue_alloc(GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE, sizeof(InputTouchEvent));
 
     // View ports
-    ViewPortArray_init(gui->views);
+    ViewHandleArray_init(gui->views);
 
     // Display and buffer
     gui->display = display_jd9853_qspi_init();

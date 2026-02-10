@@ -15,7 +15,7 @@ typedef struct {
 
 typedef struct {
     Gui* gui;
-    ViewPort* view_port;
+    View* view;
     FuriEventLoop* event_loop;
     FuriThread* thread;
 } KeypadTestApp;
@@ -150,7 +150,7 @@ static bool keypad_test_app_input_logic(InputEvent* event, void* context) {
 
     if(event->type == InputTypePress || event->type == InputTypeRelease) {
         with_view_model(
-            instance->view_port,
+            instance->view,
             KeypadTestModel * model,
             {
                 if(event->type == InputTypePress) {
@@ -165,27 +165,27 @@ static bool keypad_test_app_input_logic(InputEvent* event, void* context) {
     if(event->key == InputKeyBack) {
         if(event->type == InputTypePress) {
             with_view_model(
-                instance->view_port,
+                instance->view,
                 KeypadTestModel * model,
                 {
                     model->exit_counter = 1;
                     furi_string_printf(model->exit_text, "%zu", KEYPAD_TEST_TICKS_TO_EXIT);
                 },
                 true);
-            view_port_update(instance->view_port);
+            view_update(instance->view);
         } else if(event->type == InputTypeRelease) {
             with_view_model(
-                instance->view_port,
+                instance->view,
                 KeypadTestModel * model,
                 {
                     model->exit_counter = 0;
                     furi_string_set(model->exit_text, "");
                 },
                 true);
-            view_port_update(instance->view_port);
+            view_update(instance->view);
         } else if(event->type == InputTypeRepeat) {
             with_view_model(
-                instance->view_port,
+                instance->view,
                 KeypadTestModel * model,
                 {
                     model->exit_counter++;
@@ -208,10 +208,10 @@ static KeypadTestApp* keypad_test_app_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->thread = furi_thread_get_current();
 
-    instance->view_port = view_port_alloc();
-    view_port_allocate_model(instance->view_port, ViewPortModelTypeLockFree, sizeof(KeypadTestModel));
+    instance->view = view_alloc();
+    view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(KeypadTestModel));
     with_view_model(
-        instance->view_port,
+        instance->view,
         KeypadTestModel * model,
         {
             model->key_state = 0;
@@ -219,17 +219,17 @@ static KeypadTestApp* keypad_test_app_alloc(void) {
             model->exit_text = furi_string_alloc();
         },
         false);
-    view_port_set_layout_callback(instance->view_port, keypad_test_app_layout);
-    view_port_set_input_callback(instance->view_port, keypad_test_app_input_logic, instance);
-    gui_add_view_port(instance->gui, instance->view_port, GuiViewPriorityApplication);
+    view_set_layout_callback(instance->view, keypad_test_app_layout);
+    view_set_input_callback(instance->view, keypad_test_app_input_logic, instance);
+    gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
     return instance;
 }
 
 static void keypad_test_app_free(KeypadTestApp* instance) {
-    gui_remove_view_port(instance->gui, instance->view_port);
+    gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
-    with_view_model(instance->view_port, KeypadTestModel * model, { furi_string_free(model->exit_text); }, false);
-    view_port_free(instance->view_port);
+    with_view_model(instance->view, KeypadTestModel * model, { furi_string_free(model->exit_text); }, false);
+    view_free(instance->view);
     furi_event_loop_free(instance->event_loop);
     free(instance);
 }

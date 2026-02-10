@@ -9,7 +9,7 @@ typedef struct {
 
 typedef struct {
     Gui* gui;
-    ViewPort* view_port;
+    View* view;
     FuriEventLoop* event_loop;
     FuriThread* thread;
 } App;
@@ -48,19 +48,19 @@ static App* app_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->thread = furi_thread_get_current();
 
-    instance->view_port = view_port_alloc();
-    view_port_allocate_model(instance->view_port, ViewPortModelTypeLockFree, sizeof(AppModel));
-    view_port_set_layout_callback(instance->view_port, app_layout);
-    view_port_set_input_callback(instance->view_port, app_input, instance);
-    view_port_set_input_touch_callback(instance->view_port, app_input_touch, instance);
-    gui_add_view_port(instance->gui, instance->view_port, GuiViewPriorityApplication);
+    instance->view = view_alloc();
+    view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(AppModel));
+    view_set_layout_callback(instance->view, app_layout);
+    view_set_input_callback(instance->view, app_input, instance);
+    view_set_input_touch_callback(instance->view, app_input_touch, instance);
+    gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
     return instance;
 }
 
 static void app_free(App* instance) {
-    gui_remove_view_port(instance->gui, instance->view_port);
+    gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
-    view_port_free(instance->view_port);
+    view_free(instance->view);
     furi_event_loop_free(instance->event_loop);
     free(instance);
 }
