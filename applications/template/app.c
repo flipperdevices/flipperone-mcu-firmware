@@ -17,6 +17,8 @@ typedef struct {
 static bool app_layout(void* _model) {
     furi_assert(_model);
     AppModel* model = (AppModel*)_model;
+    UNUSED(model);
+
     return false;
 }
 
@@ -38,6 +40,8 @@ static bool app_input(InputEvent* event, void* context) {
 static bool app_input_touch(InputTouchEvent* event, void* context) {
     furi_check(context);
     App* instance = context;
+    UNUSED(event);
+    UNUSED(instance);
 
     return false;
 }
@@ -66,6 +70,7 @@ static void app_free(App* instance) {
 }
 
 int32_t app_body(void* p) {
+    UNUSED(p);
     App* instance = app_alloc();
     furi_event_loop_run(instance->event_loop);
     app_free(instance);

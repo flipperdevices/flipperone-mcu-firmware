@@ -60,7 +60,7 @@ static bool gui_view_find_opaque_from_top(ViewHandleArray_t array, ViewHandleArr
     return false;
 }
 
-static bool gui_view_find_next_transparent(ViewHandleArray_t array, ViewHandleArray_it_t* it) {
+static bool gui_view_find_next_transparent(ViewHandleArray_it_t* it) {
     // Iterating forward
     while(!ViewHandleArray_last_p(*it)) {
         ViewHandleArray_next(*it);
@@ -85,7 +85,7 @@ static bool gui_view_find_any_from_top(ViewHandleArray_t array, ViewHandleArray_
     return false;
 }
 
-static bool gui_view_find_any_previous(ViewHandleArray_t array, ViewHandleArray_it_t* it) {
+static bool gui_view_find_any_previous(ViewHandleArray_it_t* it) {
     // Iterating backward
     while(!ViewHandleArray_end_p(*it)) {
         ViewHandleArray_previous(*it);
@@ -124,7 +124,7 @@ static void gui_redraw(Gui* gui) {
     if(gui_view_find_opaque_from_top(gui->views, &it)) {
         do {
             view_layout(gui_view_from_it(&it));
-        } while(gui_view_find_next_transparent(gui->views, &it));
+        } while(gui_view_find_next_transparent(&it));
     }
 
     Clay_RenderCommandArray renderCommands = Clay_EndLayout();
@@ -134,7 +134,7 @@ static void gui_redraw(Gui* gui) {
     if(gui_view_find_opaque_from_top(gui->views, &it)) {
         do {
             view_post_layout(gui_view_from_it(&it));
-        } while(gui_view_find_next_transparent(gui->views, &it));
+        } while(gui_view_find_next_transparent(&it));
     }
 
     size_t width = render_get_buffer_width(gui->render_buffer);
@@ -160,7 +160,7 @@ static void gui_input_touch(Gui* gui, InputTouchEvent* input_event) {
 
             // Break if view port is opaque
             if(!view_is_transparent(view)) break;
-        } while(gui_view_find_any_previous(gui->views, &it));
+        } while(gui_view_find_any_previous(&it));
     }
 
     gui_unlock(gui);
@@ -182,7 +182,7 @@ static void gui_input(Gui* gui, InputEvent* input_event) {
 
             // Break if view port is opaque
             if(!view_is_transparent(view)) break;
-        } while(gui_view_find_any_previous(gui->views, &it));
+        } while(gui_view_find_any_previous(&it));
     }
 
     gui_unlock(gui);

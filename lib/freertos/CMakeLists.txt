@@ -8,8 +8,7 @@ set(INCLUDES
 )
 
 target_sources(${PROJECT_NAME} INTERFACE
-    ${CMAKE_CURRENT_SOURCE_DIR}/freertos_glue.cpp
-    #${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS-Kernel/portable/MemMang/heap_3.c # simple wrapper for malloc/free
+    ${CMAKE_CURRENT_SOURCE_DIR}/freertos_glue.c
 )
 
 target_compile_options(${PROJECT_NAME} INTERFACE
@@ -23,11 +22,3 @@ add_subdirectory(FreeRTOS-Kernel/portable/ThirdParty/GCC/RP2350_ARM_NTZ)
 target_link_libraries(${PROJECT_NAME} INTERFACE
     FreeRTOS-Kernel
 )
-
-
-
-
-
-
-
-

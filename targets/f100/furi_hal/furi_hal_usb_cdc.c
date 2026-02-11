@@ -8,7 +8,6 @@
 FuriMutex* furi_hal_usb_cdc_mutex = NULL;
 
 #define IF_NUM_MAX CFG_TUD_CDC
-static cdc_line_coding_t cdc_config[IF_NUM_MAX] = {0};
 static CdcCallbacks* callbacks[IF_NUM_MAX] = {NULL};
 static void* cb_ctx[IF_NUM_MAX] = {};
 static uint8_t cdc_ctrl_line_state[IF_NUM_MAX] = {};
@@ -100,7 +99,7 @@ void furi_hal_cdc_set_callbacks(uint8_t if_num, CdcCallbacks* cb, void* context)
 
 cdc_line_coding_t* furi_hal_cdc_get_port_settings(uint8_t if_num) {
     //static struct usb_cdc_line_coding line_coding;
-    cdc_line_coding_t* line_coding;
+    cdc_line_coding_t* line_coding = NULL;
     tud_cdc_n_get_line_coding(if_num, line_coding);
     return line_coding;
 }

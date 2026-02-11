@@ -153,6 +153,7 @@ static void power_menu_free(PowerMenu* instance) {
 }
 
 int32_t power_menu(void* p) {
+    UNUSED(p);
     PowerMenu* instance = power_menu_alloc();
     furi_event_loop_run(instance->event_loop);
     power_menu_free(instance);

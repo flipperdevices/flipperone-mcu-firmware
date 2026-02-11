@@ -135,7 +135,11 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
         with_view_model(instance->view, TouchpadTestModel * model, { model->pressed = false; }, true);
         consumed = true;
         break;
+    default:
+        break;
     }
+
+    return consumed;
 }
 
 static TouchpadTestApp* touchpad_test_app_alloc(void) {
@@ -162,6 +166,7 @@ static void touchpad_test_app_free(TouchpadTestApp* instance) {
 }
 
 int32_t touchpad_test_app(void* p) {
+    UNUSED(p);
     TouchpadTestApp* instance = touchpad_test_app_alloc();
     furi_event_loop_run(instance->event_loop);
     touchpad_test_app_free(instance);

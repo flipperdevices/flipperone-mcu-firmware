@@ -18,7 +18,7 @@ void furi_hal_gpio_init_ex(const GpioPin* gpio, const GpioMode mode, const GpioP
     // Configure gpio with interrupts disabled
     FURI_CRITICAL_ENTER();
 
-    gpio_set_function(gpio->pin, alt_fn);
+    gpio_set_function(gpio->pin, (gpio_function_t)alt_fn);
 
     // Set gpio speed
     switch(speed) {
@@ -157,5 +157,6 @@ FURI_ALWAYS_INLINE static void furi_hal_gpio_int_call(uint16_t pin_num) {
 }
 
 void __isr __not_in_flash_func(furi_hal_gpio_callback)(uint gpio, uint32_t event_mask) {
+    UNUSED(event_mask);
     furi_hal_gpio_int_call(gpio);
 }

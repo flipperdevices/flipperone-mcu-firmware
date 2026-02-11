@@ -307,7 +307,6 @@ static void cli_handle_escape(Cli* cli, char c) {
 
 static void cli_process_input(Cli* cli) {
     char in_chr = getchar();
-    size_t rx_len;
 
     if(in_chr == CliSymbolAsciiTab) {
         cli_handle_autocomplete(cli);
@@ -426,6 +425,7 @@ static void cli_session_close(Cli* cli) {
 
 int32_t cli_srv(void* p) {
     UNUSED(p);
+    UNUSED(cli_session_close);
 
     FURI_LOG_I(TAG, "Started");
 

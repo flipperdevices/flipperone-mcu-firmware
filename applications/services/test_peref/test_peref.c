@@ -86,7 +86,7 @@ void test_nvm(void) {
 
     int32_t read_int_value = 0;
     res = furi_hal_nvm_get_int32("int_key", &read_int_value);
-    FURI_LOG_I(TAG, "Get int32 result: %d, value_set: %d value_get: %d", res, int_value, read_int_value);
+    FURI_LOG_I(TAG, "Get int32 result: %d, value_set: %ld value_get: %ld", res, int_value, read_int_value);
 
     // Test string
     res = furi_hal_nvm_set_str("str_key", str_value);
@@ -101,7 +101,7 @@ void test_nvm(void) {
 
     // Test delete
     res = furi_hal_nvm_get_int32("int_key", &read_int_value);
-    FURI_LOG_I(TAG, "Delete int_key  result: %d, value_get: %d", res, read_int_value);
+    FURI_LOG_I(TAG, "Delete int_key  result: %d, value_get: %ld", res, read_int_value);
     res = furi_hal_nvm_delete("int_key");
     FURI_LOG_I(TAG, "Delete int_key result: %d", res);
 
@@ -115,7 +115,7 @@ void test_nvm(void) {
     FURI_LOG_I(TAG, "Set uint32 result: %d", res);
     uint32_t read_uint_value = 0;
     res = furi_hal_nvm_get_uint32("uint_key", &read_uint_value);
-    FURI_LOG_I(TAG, "Get uint32 result: %d, value_set: %u value_get: %u", res, uint_value, read_uint_value);
+    FURI_LOG_I(TAG, "Get uint32 result: %d, value_set: %lu value_get: %lu", res, uint_value, read_uint_value);
 
     // test bool
     bool bool_value = true;
@@ -137,6 +137,7 @@ int32_t test_peref_srv(void* p) {
     FURI_LOG_E("tag", "Error");
 
     uint8_t duty = 0;
+    UNUSED(duty);
 
     test_nvm();
 
@@ -158,6 +159,7 @@ int32_t test_peref_srv(void* p) {
     display_jd9853_qspi_set_brightness(display_h, 20);
     FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
     FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
+    UNUSED(input_subscription);
 
     StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
 
