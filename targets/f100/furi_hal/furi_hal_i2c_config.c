@@ -82,6 +82,8 @@ const FuriHalI2cBusHandle furi_hal_i2c_handle_internal = {
 };
 
 void furi_hal_i2c_bus_handle_external_event(const FuriHalI2cBusHandle* handle, FuriHalI2cBusHandleEvent event) {
+    UNUSED(handle);
+
     if(event == FuriHalI2cBusHandleEventActivate) {
         // furi_hal_gpio_init_ex(
         //     &gpio_ext_pc0, GpioModeAltFunctionOpenDrain, GpioPullNo, GpioSpeedLow, GpioAltFn4I2C3);

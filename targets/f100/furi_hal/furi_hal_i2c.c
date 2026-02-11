@@ -57,7 +57,12 @@ int furi_hal_i2c_master_tx_blocking(const FuriHalI2cBusHandle* handle, uint8_t d
     return i2c_write_blocking_until(handle->bus->i2c, device_address, tx_buffer, size, false, make_timeout_time_us(timeout_us));
 }
 
-int furi_hal_i2c_master_tx_blocking_nostop(const FuriHalI2cBusHandle* handle, uint8_t device_address, const uint8_t* tx_buffer, size_t size, uint32_t timeout_us) {
+int furi_hal_i2c_master_tx_blocking_nostop(
+    const FuriHalI2cBusHandle* handle,
+    uint8_t device_address,
+    const uint8_t* tx_buffer,
+    size_t size,
+    uint32_t timeout_us) {
     furi_check(handle);
 
     return i2c_write_blocking_until(handle->bus->i2c, device_address, tx_buffer, size, true, make_timeout_time_us(timeout_us));
@@ -100,7 +105,7 @@ bool furi_hal_i2c_device_ready(const FuriHalI2cBusHandle* handle, uint8_t device
     if((device_address & 0x78) == 0 || (device_address & 0x78) == 0x78)
         ret = PICO_ERROR_GENERIC;
     else
-        ret = furi_hal_i2c_master_tx_blocking(handle, device_address, &rxdata, 1, FURI_HAL_I2C_TIMEOUT_US);
+        ret = furi_hal_i2c_master_tx_blocking(handle, device_address, &rxdata, 1, timeout_us);
 
     return ret < PICO_OK ? false : true;
 }

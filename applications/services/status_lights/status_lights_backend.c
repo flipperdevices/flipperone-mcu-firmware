@@ -47,11 +47,6 @@ typedef struct {
     };
 } StatusLightsMessage;
 
-void status_lights_event_isr(void* context) {
-    furi_assert(context);
-    StatusLights* instance = (StatusLights*)context;
-}
-
 static bool status_lights_check_need_power(uint32_t* line_buffer, size_t led_count) {
     furi_assert(line_buffer);
     bool need_power = false;

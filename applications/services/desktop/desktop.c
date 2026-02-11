@@ -118,7 +118,7 @@ static void desktop_app_thread_state_callback(FuriThread* thread, FuriThreadStat
     }
 }
 
-static void desktop_start_app_thread(Desktop* desktop, FlipperInternalApplicationFlag flags) {
+static void desktop_start_app_thread(Desktop* desktop) {
     // setup heap trace
     furi_thread_enable_heap_trace(desktop->app.thread);
 
@@ -142,7 +142,7 @@ static void desktop_start_internal_app(Desktop* desktop, const FlipperInternalAp
     desktop->app.thread = furi_thread_alloc_ex(app->name, app->stack_size, app->app, desktop->app.args);
     furi_thread_set_appid(desktop->app.thread, app->appid);
 
-    desktop_start_app_thread(desktop, app->flags);
+    desktop_start_app_thread(desktop);
 }
 
 static bool desktop_input(InputEvent* event, void* context) {
@@ -181,10 +181,6 @@ static bool desktop_input(InputEvent* event, void* context) {
     }
 
     return consumed;
-}
-
-static bool desktop_input_touch(InputTouchEvent* event, void* context) {
-    return false;
 }
 
 static void desktop_do_app_closed(Desktop* desktop) {
@@ -243,7 +239,6 @@ static Desktop* desktop_alloc(void) {
     view_set_layout_callback(desktop->view, desktop_layout);
     view_set_post_layout_callback(desktop->view, desktop_post_layout);
     view_set_input_callback(desktop->view, desktop_input, desktop);
-    view_set_input_touch_callback(desktop->view, desktop_input_touch, desktop);
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
 
     gui_add_view(desktop->gui, desktop->view, GuiViewPriorityDesktop);
@@ -252,6 +247,7 @@ static Desktop* desktop_alloc(void) {
 }
 
 int32_t desktop_srv(void* p) {
+    UNUSED(p);
     Desktop* desktop = desktop_alloc();
     furi_event_loop_run(desktop->event_loop);
     return 0;

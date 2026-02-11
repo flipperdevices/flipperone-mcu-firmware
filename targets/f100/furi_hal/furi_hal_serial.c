@@ -129,32 +129,6 @@ static void furi_hal_serial_irq_callback(void* context) {
     }
 }
 
-static void furi_hal_serial_dma_irq_callback(void* context) {
-    FuriHalSerialHandle* handle = context;
-    FuriHalSerial* serial = furi_hal_serial[handle->id];
-
-    const uint32_t dma_rx_channel = serial->dma_rx_channel;
-    const uint32_t dma_tx_channel = serial->dma_tx_channel;
-
-    // if(LL_DMA_IsActiveFlag_TC(GPDMA1, dma_rx_channel)) {
-    //     LL_DMA_ClearFlag_TC(GPDMA1, dma_rx_channel);
-    //     LL_DMA_DisableChannel(GPDMA1, dma_rx_channel);
-
-    //     if(serial->rx_callback) {
-    //         serial->rx_callback(handle, FuriHalSerialRxEventData, serial->callback_context);
-    //     }
-    // }
-
-    // if(LL_DMA_IsActiveFlag_TC(GPDMA1, dma_tx_channel)) {
-    //     LL_DMA_ClearFlag_TC(GPDMA1, dma_tx_channel);
-    //     LL_DMA_DisableChannel(GPDMA1, dma_tx_channel);
-
-    //     if(serial->tx_callback) {
-    //         serial->tx_callback(handle, FuriHalSerialTxEventComplete, serial->callback_context);
-    //     }
-    // }
-}
-
 static void furi_hal_serial_dma_tx_init(FuriHalSerialHandle* handle) {
     furi_assert(handle);
 
@@ -412,8 +386,6 @@ void furi_hal_serial_set_hw_flow_control(FuriHalSerialHandle* handle, FuriHalSer
     bool rts_enabled = false;
     bool cts_enabled = false;
 
-    uint32_t hw_flow_reg_value;
-
     if(flow_control == FuriHalSerialHwFlowControlNone) {
         if(gpio_rts != NULL) furi_hal_gpio_init_ex(gpio_rts, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
         if(gpio_cts != NULL) furi_hal_gpio_init_ex(gpio_cts, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
@@ -478,6 +450,7 @@ size_t furi_hal_serial_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, si
 bool furi_hal_serial_tx_wait_complete(FuriHalSerialHandle* handle, uint32_t timeout) {
     furi_check(handle);
     //Todo: implement timeout
+    UNUSED(timeout);
     uart_tx_wait_blocking(furi_hal_serial_resources[handle->id].periph);
 
     return true;
@@ -539,6 +512,8 @@ void furi_hal_serial_async_rx_stop(FuriHalSerialHandle* handle) {
 
 void furi_hal_serial_dma_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, size_t buffer_size) {
     furi_check(handle);
+    UNUSED(buffer);
+    UNUSED(buffer_size);
 
     // FuriHalSerial* serial = furi_hal_serial[handle->id];
     // furi_check(serial);
@@ -604,6 +579,7 @@ void furi_hal_serial_clear(FuriHalSerialHandle* handle) {
     // Clear RX buffer
     while(uart_is_readable(periph)) {
         volatile uint8_t dummy = uart_get_hw(periph)->dr;
+        UNUSED(dummy);
     }
 }
 

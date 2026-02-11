@@ -264,7 +264,7 @@ static inline void byte_handler_pio(void) {
             pio_sm_put(
                 i2c_multi->pio,
                 i2c_multi->sm_write,
-                (((uint32_t)wait_ack_program_instructions[7] + i2c_multi->offset_write) << 16) | (wait_ack_program_instructions[6]) + i2c_multi->offset_write);
+                (((uint32_t)wait_ack_program_instructions[7] + i2c_multi->offset_write) << 16) | (wait_ack_program_instructions[6] + i2c_multi->offset_write));
             pio_sm_put(i2c_multi->pio, i2c_multi->sm_write, value);
             pio_sm_put(i2c_multi->pio, i2c_multi->sm_write, (((uint32_t)wait_ack_program_instructions[1]) << 16) | wait_ack_program_instructions[0]);
             pio_sm_put(i2c_multi->pio, i2c_multi->sm_write, (((uint32_t)wait_ack_program_instructions[3]) << 16) | wait_ack_program_instructions[2]);

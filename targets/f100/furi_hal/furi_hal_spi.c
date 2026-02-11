@@ -79,23 +79,24 @@ void furi_hal_spi_init(
 
     // Configure SPI format
     spi_order_t order = (bit_order == FuriHalSpiTransferBitOrderMsbFirst) ? SPI_MSB_FIRST : SPI_LSB_FIRST;
-    spi_cpol_t cpol, cpha;
+    spi_cpol_t cpol;
+    spi_cpha_t cpha;
     switch(transfer_mode) {
     case FuriHalSpiTransferMode0:
-        cpol = SPI_CPOL_0;
-        cpha = SPI_CPHA_0;
+        cpol = (spi_cpol_t)SPI_CPOL_0;
+        cpha = (spi_cpha_t)SPI_CPHA_0;
         break;
     case FuriHalSpiTransferMode1:
-        cpol = SPI_CPOL_0;
-        cpha = SPI_CPHA_1;
+        cpol = (spi_cpol_t)SPI_CPOL_0;
+        cpha = (spi_cpha_t)SPI_CPHA_1;
         break;
     case FuriHalSpiTransferMode2:
-        cpol = SPI_CPOL_1;
-        cpha = SPI_CPHA_0;
+        cpol = (spi_cpol_t)SPI_CPOL_1;
+        cpha = (spi_cpha_t)SPI_CPHA_0;
         break;
     case FuriHalSpiTransferMode3:
-        cpol = SPI_CPOL_1;
-        cpha = SPI_CPHA_1;
+        cpol = (spi_cpol_t)SPI_CPOL_1;
+        cpha = (spi_cpha_t)SPI_CPHA_1;
         break;
     default:
         furi_crash("Invalid SPI transfer mode");

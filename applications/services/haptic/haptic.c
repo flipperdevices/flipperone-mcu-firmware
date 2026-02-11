@@ -30,11 +30,6 @@ typedef struct {
     };
 } HapticMessage;
 
-void haptic_event_isr(void* context) {
-    furi_assert(context);
-    Haptic* instance = (Haptic*)context;
-}
-
 static FURI_ALWAYS_INLINE void haptic_start_off_timer(Haptic* instance) {
     furi_assert(instance);
     drv2605l_enable(instance->haptic_header);

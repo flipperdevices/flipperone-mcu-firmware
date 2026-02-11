@@ -269,7 +269,7 @@ static void render_rectangle(Clay_BoundingBox* bb, Clay_RectangleRenderData* rec
 
     FURI_LOG_D(TAG, "Rectangle");
     FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, color);
-    FURI_LOG_D(TAG, "    [%d, %d, %d, %d]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
+    FURI_LOG_D(TAG, "    [%lu, %lu, %lu, %lu]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
 
     if(!r_top_left && !r_top_right && !r_bottom_right && !r_bottom_left) {
         render_fill_rectangle(bb->x, bb->y, bb->width, bb->height, color);
@@ -312,7 +312,7 @@ static void render_border(Clay_BoundingBox* bb, Clay_BorderRenderData* border_da
 
     FURI_LOG_D(TAG, "Border");
     FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, color);
-    FURI_LOG_D(TAG, "    [%d, %d, %d, %d]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
+    FURI_LOG_D(TAG, "    [%lu, %lu, %lu, %lu]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
     FURI_LOG_D(TAG, "    [%d, %d, %d, %d]", border_data->width.top, border_data->width.right, border_data->width.bottom, border_data->width.left);
 
     if(border_data->width.top > 0) {
@@ -339,7 +339,7 @@ static void render_border(Clay_BoundingBox* bb, Clay_BorderRenderData* border_da
 }
 
 static void render_text(Clay_BoundingBox* bb, Clay_TextRenderData* text_data) {
-    FURI_LOG_D(TAG, "Text: '%.*s'", text_data->stringContents.length, text_data->stringContents.chars);
+    FURI_LOG_D(TAG, "Text: '%.*s'", (int)text_data->stringContents.length, text_data->stringContents.chars);
     FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(text_data->textColor));
     FURI_LOG_D(TAG, "    i[d: %d, size: %d, spacing: %d, line: %d]", text_data->fontId, text_data->fontSize, text_data->letterSpacing, text_data->lineHeight);
 
@@ -363,7 +363,7 @@ static void render_image(Clay_BoundingBox* bb, Clay_ImageRenderData* image_data)
         image_data->cornerRadius.topRight,
         image_data->cornerRadius.bottomRight,
         image_data->cornerRadius.bottomLeft);
-    FURI_LOG_D(TAG, "    [img w: %d, h: %d]", image->width, image->height);
+    FURI_LOG_D(TAG, "    [img w: %lu, h: %lu]", image->width, image->height);
 
     uint8_t* data = image->data;
     switch(image->format) {
@@ -392,8 +392,8 @@ static void render_scissor_start(Clay_BoundingBox* bb) {
     // Clamp scissors to buffer dimensions
     if(render_data.scissors_x0 < 0) render_data.scissors_x0 = 0;
     if(render_data.scissors_y0 < 0) render_data.scissors_y0 = 0;
-    if(render_data.scissors_x1 > JD9853_WIDTH) render_data.scissors_x1 = JD9853_WIDTH;
-    if(render_data.scissors_y1 > JD9853_HEIGHT) render_data.scissors_y1 = JD9853_HEIGHT;
+    if(render_data.scissors_x1 > (int32_t)JD9853_WIDTH) render_data.scissors_x1 = JD9853_WIDTH;
+    if(render_data.scissors_y1 > (int32_t)JD9853_HEIGHT) render_data.scissors_y1 = JD9853_HEIGHT;
 }
 
 static void render_scissor_end(void) {
@@ -410,6 +410,8 @@ void render_do_render(Clay_RenderCommandArray* renderCommands) {
         Clay_BoundingBox boundingBox = renderCommand->boundingBox;
 
         switch(renderCommand->commandType) {
+        case CLAY_RENDER_COMMAND_TYPE_NONE:
+            break;
         case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
             render_rectangle(&boundingBox, &renderCommand->renderData.rectangle);
             break;
@@ -436,6 +438,7 @@ void render_do_render(Clay_RenderCommandArray* renderCommands) {
 }
 
 Clay_Dimensions render_measure_text(Clay_StringSlice text, Clay_TextElementConfig* config, void* userData) {
+    UNUSED(userData);
     const void* font = render_get_font_by_id((Font)config->fontId);
     U8G2FontRender_t font_render = U8G2FontRender(font, render_draw_pixel_fg, render_draw_pixel_bg, NULL);
 
