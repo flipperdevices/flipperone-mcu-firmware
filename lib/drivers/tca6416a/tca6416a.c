@@ -63,6 +63,7 @@ Tca6416a* tca6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
 void tca6416a_deinit(Tca6416a* instance) {
     furi_check(instance);
     furi_hal_gpio_remove_int_callback(instance->pin_interrupt);
+    furi_hal_gpio_init_ex(instance->pin_interrupt, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(instance->pin_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     free(instance);
 }
