@@ -34,7 +34,7 @@ FuriHalPwm* furi_hal_pwm_init(const GpioPin* gpio, size_t bits, size_t freq_hz, 
     float freq_temp = (float)clock_get_hz(clk_sys) / (float)(div_value) / instance->max_value;
     FURI_LOG_D(
         TAG,
-        "PWM %d: slice_num: %ld, channel_num: %ld, frequency: %.2f kHz, div: %f",
+        "PWM %d: slice_num: %ld, channel_num: %ld, frequency: %.2f kHz, div: %u",
         gpio->pin,
         instance->slice_num,
         instance->channel_num,
@@ -64,8 +64,6 @@ void furi_hal_pwm_set_duty_cycle(FuriHalPwm* instance, uint32_t value) {
 
     if(value > instance->max_value) {
         value = instance->max_value;
-    } else if(value < 0) {
-        value = 0;
     }
 
     if(instance->invert) {

@@ -21,7 +21,7 @@
 
 #define THREAD_NOTIFY_INDEX (1) // Index 0 is used for stream buffers
 
-#if(configNUM_THREAD_LOCAL_STORAGE_POINTERS == 0)
+#if (configNUM_THREAD_LOCAL_STORAGE_POINTERS == 0)
 #error "FuriThread needs configNUM_THREAD_LOCAL_STORAGE_POINTERS > 0"
 #else
 #define THREAD_STORAGE_INDEX (configNUM_THREAD_LOCAL_STORAGE_POINTERS - 1)
@@ -184,18 +184,14 @@ void furi_thread_init(void) {
 void furi_thread_scrub(void) {
     FuriThread* thread_to_scrub = NULL;
     while(true) {
-        furi_check(
-            furi_message_queue_get(
-                furi_thread_scrub_message_queue, &thread_to_scrub, FuriWaitForever) ==
-            FuriStatusOk);
+        furi_check(furi_message_queue_get(furi_thread_scrub_message_queue, &thread_to_scrub, FuriWaitForever) == FuriStatusOk);
 
         TaskHandle_t task = (TaskHandle_t)thread_to_scrub;
 
         // Delete task: FreeRTOS will remove task from all lists where it may be
         vTaskDelete(task);
         // Sanity check: ensure that local storage is ours and clear it
-        furi_check(
-            pvTaskGetThreadLocalStoragePointer(task, THREAD_STORAGE_INDEX) == thread_to_scrub);
+        furi_check(pvTaskGetThreadLocalStoragePointer(task, THREAD_STORAGE_INDEX) == thread_to_scrub);
         vTaskSetThreadLocalStoragePointer(task, THREAD_STORAGE_INDEX, NULL);
 
         // Deliver thread stopped callback
@@ -211,11 +207,7 @@ FuriThread* furi_thread_alloc(void) {
     return thread;
 }
 
-FuriThread* furi_thread_alloc_service(
-    const char* name,
-    uint32_t stack_size,
-    FuriThreadCallback callback,
-    void* context) {
+FuriThread* furi_thread_alloc_service(const char* name, uint32_t stack_size, FuriThreadCallback callback, void* context) {
     FuriThread* thread = memmgr_alloc_from_pool(sizeof(FuriThread));
 
     furi_thread_init_common(thread);
@@ -231,11 +223,7 @@ FuriThread* furi_thread_alloc_service(
     return thread;
 }
 
-FuriThread* furi_thread_alloc_ex(
-    const char* name,
-    uint32_t stack_size,
-    FuriThreadCallback callback,
-    void* context) {
+FuriThread* furi_thread_alloc_ex(const char* name, uint32_t stack_size, FuriThreadCallback callback, void* context) {
     FuriThread* thread = furi_thread_alloc();
     furi_thread_set_name(thread, name);
     furi_thread_set_stack_size(thread, stack_size);
@@ -353,10 +341,7 @@ FuriThreadState furi_thread_get_state(FuriThread* thread) {
     return thread->state;
 }
 
-void furi_thread_set_signal_callback(
-    FuriThread* thread,
-    FuriThreadSignalCallback callback,
-    void* context) {
+void furi_thread_set_signal_callback(FuriThread* thread, FuriThreadSignalCallback callback, void* context) {
     furi_check(thread);
     furi_check(thread->state == FuriThreadStateStopped || thread == furi_thread_get_current());
 
@@ -393,14 +378,8 @@ void furi_thread_start(FuriThread* thread) {
     uint32_t stack_depth = thread->stack_size / sizeof(StackType_t);
 
     furi_check(
-        xTaskCreateStatic(
-            furi_thread_body,
-            thread->name,
-            stack_depth,
-            thread,
-            thread->priority,
-            thread->stack_buffer,
-            &thread->container) == (TaskHandle_t)thread);
+        xTaskCreateStatic(furi_thread_body, thread->name, stack_depth, thread, thread->priority, thread->stack_buffer, &thread->container) ==
+        (TaskHandle_t)thread);
 }
 
 bool furi_thread_join(FuriThread* thread) {
@@ -485,8 +464,7 @@ uint32_t furi_thread_flags_set(FuriThreadId thread_id, uint32_t flags) {
             yield = pdFALSE;
 
             (void)xTaskNotifyIndexedFromISR(hTask, THREAD_NOTIFY_INDEX, flags, eSetBits, &yield);
-            (void)xTaskNotifyAndQueryIndexedFromISR(
-                hTask, THREAD_NOTIFY_INDEX, 0, eNoAction, &rflags, NULL);
+            (void)xTaskNotifyAndQueryIndexedFromISR(hTask, THREAD_NOTIFY_INDEX, 0, eNoAction, &rflags, NULL);
 
             portYIELD_FROM_ISR(yield);
         } else {
@@ -509,13 +487,11 @@ uint32_t furi_thread_flags_clear(uint32_t flags) {
     } else {
         hTask = xTaskGetCurrentTaskHandle();
 
-        if(xTaskNotifyAndQueryIndexed(hTask, THREAD_NOTIFY_INDEX, 0, eNoAction, &cflags) ==
-           pdPASS) {
+        if(xTaskNotifyAndQueryIndexed(hTask, THREAD_NOTIFY_INDEX, 0, eNoAction, &cflags) == pdPASS) {
             rflags = cflags;
             cflags &= ~flags;
 
-            if(xTaskNotifyIndexed(hTask, THREAD_NOTIFY_INDEX, cflags, eSetValueWithOverwrite) !=
-               pdPASS) {
+            if(xTaskNotifyIndexed(hTask, THREAD_NOTIFY_INDEX, cflags, eSetValueWithOverwrite) != pdPASS) {
                 rflags = (uint32_t)FuriStatusError;
             }
         } else {
@@ -536,8 +512,7 @@ uint32_t furi_thread_flags_get(void) {
     } else {
         hTask = xTaskGetCurrentTaskHandle();
 
-        if(xTaskNotifyAndQueryIndexed(hTask, THREAD_NOTIFY_INDEX, 0, eNoAction, &rflags) !=
-           pdPASS) {
+        if(xTaskNotifyAndQueryIndexed(hTask, THREAD_NOTIFY_INDEX, 0, eNoAction, &rflags) != pdPASS) {
             rflags = (uint32_t)FuriStatusError;
         }
     }
@@ -654,8 +629,7 @@ bool furi_thread_enumerate(FuriThreadList* thread_list) {
         for(uint32_t i = 0U; i < count; i++) {
             TaskControlBlock* tcb = (TaskControlBlock*)task[i].xHandle;
 
-            FuriThreadListItem* item =
-                furi_thread_list_get_or_insert(thread_list, (FuriThread*)task[i].xHandle);
+            FuriThreadListItem* item = furi_thread_list_get_or_insert(thread_list, (FuriThread*)task[i].xHandle);
 
             FuriThreadId thread_id = (FuriThreadId)task[i].xHandle;
             item->thread = (FuriThread*)thread_id;
@@ -701,8 +675,7 @@ const char* furi_thread_get_appid(FuriThreadId thread_id) {
     const char* appid = "system";
 
     if(!FURI_IS_IRQ_MODE() && (hTask != NULL)) {
-        FuriThread* thread =
-            (FuriThread*)pvTaskGetThreadLocalStoragePointer(hTask, THREAD_STORAGE_INDEX);
+        FuriThread* thread = (FuriThread*)pvTaskGetThreadLocalStoragePointer(hTask, THREAD_STORAGE_INDEX);
         if(thread) {
             appid = thread->appid;
         }
@@ -733,10 +706,9 @@ static size_t __furi_thread_stdout_write(FuriThread* thread, const char* data, s
     return size;
 }
 
-static size_t
-    __furi_thread_stdin_read(FuriThread* thread, char* data, size_t size, FuriWait timeout) {
+static size_t __furi_thread_stdin_read(FuriThread* thread, char* data, size_t size, FuriWait timeout) {
     if(thread->input.read_callback != NULL) {
-        return thread->input.read_callback(data, size, timeout, thread->input.context);
+        return thread->input.read_callback((uint8_t*)data, size, timeout, thread->input.context);
     } else {
         return 0;
     }
@@ -817,8 +789,7 @@ size_t furi_thread_stdin_read(char* buffer, size_t size, FuriWait timeout) {
 
     size_t from_buffer = MIN(furi_string_size(thread->input.unread_buffer), size);
     size_t from_input = size - from_buffer;
-    size_t from_input_actual =
-        __furi_thread_stdin_read(thread, buffer + from_buffer, from_input, timeout);
+    size_t from_input_actual = __furi_thread_stdin_read(thread, buffer + from_buffer, from_input, timeout);
     memcpy(buffer, furi_string_get_cstr(thread->input.unread_buffer), from_buffer);
     furi_string_right(thread->input.unread_buffer, from_buffer);
 

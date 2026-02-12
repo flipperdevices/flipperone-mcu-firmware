@@ -98,10 +98,10 @@ static FURI_ALWAYS_INLINE void iqs7211e_i2c_release(Iqs7211e* instance) {
     }
 }
 
-static FURI_ALWAYS_INLINE int iqs7211e_write_reg(Iqs7211e* instance, Iqs7211eReg reg, uint16_t data, Iqs7211eI2cTransferType transfer_type) {
+static FURI_ALWAYS_INLINE int iqs7211e_write_reg(Iqs7211e* instance, Iqs7211eReg reg, uint16_t* data, Iqs7211eI2cTransferType transfer_type) {
     furi_assert(instance);
     int ret;
-    uint8_t buffer[3] = {reg, data & 0xFF, data >> 8};
+    uint8_t buffer[3] = {reg, *data & 0xFF, *data >> 8};
 
     iqs7211e_i2c_acquire(instance);
 
@@ -117,7 +117,7 @@ static FURI_ALWAYS_INLINE int iqs7211e_write_reg(Iqs7211e* instance, Iqs7211eReg
         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
         iqs7211e_i2c_release(instance);
     } else {
-        IQS7211E_DEBUG(TAG, "Wrote reg 0x%02X: %016b", reg, data);
+        IQS7211E_DEBUG(TAG, "Wrote reg 0x%02X: %016b", reg, *data);
     }
 
     return ret;
@@ -519,6 +519,7 @@ static bool iqs7211e_initialization(Iqs7211e* instance) {
             FURI_LOG_E(TAG, "\t\tDevice is not a IQS7211E! Read 0x%04X, need 0x%04X", prod_num, IQS7211E_PRODUCT_NUM);
             furi_crash();
         }
+        break;
     case Iqs7211eInitStateReadReset:
         Iqs7211eInfoFlags info_flags;
         iqs7211e_read_reg(instance, Iqs7211eRegInfoFlags, (uint16_t*)&info_flags, Iqs7211eI2cTransferTypeNext);
@@ -535,7 +536,7 @@ static bool iqs7211e_initialization(Iqs7211e* instance) {
         Iqs7211eSysControl sys_control;
         iqs7211e_read_reg(instance, Iqs7211eRegSysControl, (uint16_t*)&sys_control, Iqs7211eI2cTransferTypeNext);
         sys_control.sw_reset = 1;
-        iqs7211e_write_reg(instance, Iqs7211eRegSysControl, *(uint16_t*)&sys_control, Iqs7211eI2cTransferTypeStop);
+        iqs7211e_write_reg(instance, Iqs7211eRegSysControl, (uint16_t*)&sys_control, Iqs7211eI2cTransferTypeStop);
         IQS7211E_DEBUG(TAG, "Init chip reset");
         IQS7211E_DEBUG(TAG, "\t\tSoftware Reset Bit Set.");
         instance->init_state = Iqs7211eInitStateReadReset;
@@ -549,7 +550,7 @@ static bool iqs7211e_initialization(Iqs7211e* instance) {
         Iqs7211eSysControl sys_control_ack;
         iqs7211e_read_reg(instance, Iqs7211eRegSysControl, (uint16_t*)&sys_control_ack, Iqs7211eI2cTransferTypeNext);
         sys_control_ack.ack_reset = 1;
-        iqs7211e_write_reg(instance, Iqs7211eRegSysControl, *(uint16_t*)&sys_control_ack, Iqs7211eI2cTransferTypeStop);
+        iqs7211e_write_reg(instance, Iqs7211eRegSysControl, (uint16_t*)&sys_control_ack, Iqs7211eI2cTransferTypeStop);
         IQS7211E_DEBUG(TAG, "Init ack reset");
         instance->init_state = Iqs7211eInitStateAti;
         break;
@@ -557,7 +558,7 @@ static bool iqs7211e_initialization(Iqs7211e* instance) {
         Iqs7211eSysControl sys_control_ati;
         iqs7211e_read_reg(instance, Iqs7211eRegSysControl, (uint16_t*)&sys_control_ati, Iqs7211eI2cTransferTypeNext);
         sys_control_ati.tp_re_ati = 1;
-        iqs7211e_write_reg(instance, Iqs7211eRegSysControl, *(uint16_t*)&sys_control_ati, Iqs7211eI2cTransferTypeStop);
+        iqs7211e_write_reg(instance, Iqs7211eRegSysControl, (uint16_t*)&sys_control_ati, Iqs7211eI2cTransferTypeStop);
         IQS7211E_DEBUG(TAG, "Init ATI");
         instance->init_state = Iqs7211eInitStateWaitForAti;
         break;
@@ -579,9 +580,13 @@ static bool iqs7211e_initialization(Iqs7211e* instance) {
         Iqs7211eConfigSettings config_settings;
         iqs7211e_read_reg(instance, Iqs7211eRegConfigSettings, (uint16_t*)&config_settings, Iqs7211eI2cTransferTypeNext);
         config_settings.event_mode = IQS7211E_EVENT_MODE_ENABLE;
-        iqs7211e_write_reg(instance, Iqs7211eRegConfigSettings, *(uint16_t*)&config_settings, Iqs7211eI2cTransferTypeStop);
+        iqs7211e_write_reg(instance, Iqs7211eRegConfigSettings, (uint16_t*)&config_settings, Iqs7211eI2cTransferTypeStop);
         IQS7211E_DEBUG(TAG, "Init activate event mode");
         instance->init_state = Iqs7211eInitStateDone;
+        break;
+    case Iqs7211eInitStateNone:
+    case Iqs7211eInitStateCheckReset:
+    case Iqs7211eInitStateDone:
         break;
     }
 
@@ -608,7 +613,7 @@ void iqs7211e_run(Iqs7211e* instance) {
             Iqs7211eSysControl sys_control;
             iqs7211e_read_reg(instance, Iqs7211eRegSysControl, (uint16_t*)&sys_control, Iqs7211eI2cTransferTypeNext);
             sys_control.sw_reset = 1;
-            iqs7211e_write_reg(instance, Iqs7211eRegSysControl, *(uint16_t*)&sys_control, Iqs7211eI2cTransferTypeStop);
+            iqs7211e_write_reg(instance, Iqs7211eRegSysControl, (uint16_t*)&sys_control, Iqs7211eI2cTransferTypeStop);
             instance->state = Iqs7211eStateRun;
         }
         break;
@@ -634,6 +639,8 @@ void iqs7211e_run(Iqs7211e* instance) {
                 instance->state = Iqs7211eStateCheckReset;
             }
         }
+        break;
+    case Iqs7211eStateNone:
         break;
     }
 }

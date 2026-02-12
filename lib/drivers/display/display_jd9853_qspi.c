@@ -39,6 +39,7 @@ struct DisplayJd9853QSPI {
 static DisplayJd9853QSPI* display_instance = NULL;
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853QSPI* display) {
+    UNUSED(display);
     while(!(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS)) {
         tight_loop_contents();
     }
@@ -103,6 +104,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_cs_up(void) {
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_write_reg_1line(DisplayJd9853QSPI* display, DisplayJd9853Reg reg) {
+    UNUSED(display);
     display_jd9853_hstx_put_word(JD9853_QSPI_CMD_1_LINE_MODE); // Command Write Quad SPI
     display_jd9853_hstx_put_word((uint8_t)0x00);
     display_jd9853_hstx_put_word((uint8_t)reg);
@@ -128,6 +130,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_reg(DisplayJd9853QSPI* displ
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* display, uint8_t* data, size_t size) {
+    UNUSED(display);
     for(size_t i = 0; i < size; i++) {
         display_jd9853_hstx_put_word(data[i]);
     }
@@ -198,6 +201,7 @@ static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
 }
 
 static int64_t __isr __not_in_flash_func(display_jd9853_end_tx_hstx_callback)(alarm_id_t id, __unused void* user_data) {
+    UNUSED(id);
     furi_hal_gpio_write(&gpio_display_cs, true);
     furi_hal_gpio_disable_int_callback(&gpio_display_te);
     furi_semaphore_release(display_instance->busy);

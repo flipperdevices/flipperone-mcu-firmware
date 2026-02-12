@@ -34,6 +34,14 @@ bool clay_helper_scroll_to_child(Clay_ElementId scrollContainerId, Clay_ElementI
  */
 Clay_String clay_helper_string_from(FuriString* furi_string);
 
+/**
+ * @brief Constructs a Clay_String from a null-terminated C string.
+ * @warning The underlying character data from the C string must remain valid for the lifetime of the Clay_String.
+ * @param chars The null-terminated C string to convert.
+ * @return Clay_String
+ */
+Clay_String clay_helper_string_from_chars(const char* chars);
+
 #ifdef __cplusplus
 }
 #endif

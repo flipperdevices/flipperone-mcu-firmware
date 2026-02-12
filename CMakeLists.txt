@@ -35,8 +35,16 @@ project(one-rp2350-control C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-# Add executable. Default name is the project name, version 0.1
+# Enable warnings and treat as errors
+add_compile_options(-fno-strict-aliasing)
+add_compile_options(-Werror -Wall)
 
+# FreeRTOS has some warnings that we need to disable for now
+# TODO: disable these only for FreeRTOS files, not the whole project
+add_compile_options(-Wno-unused-variable)
+add_compile_options(-Wno-unused-but-set-variable)
+
+# Add executable. Default name is the project name, version 0.1
 file(GLOB_RECURSE SOURCES
     "lib/furi/*.c*" 
     "lib/furi/version/*.c*" 
@@ -77,10 +85,10 @@ target_compile_definitions(one-rp2350-control PRIVATE
     PICO_USE_MALLOC_MUTEX=0
     # https://www.raspberrypi.com/documentation/pico-sdk/high_level.html 
     # Set PICO_FLASH_ASSUME_CORE1_SAFE=1 to explicitly say that core 1 is never using flash. 
-    #When enabling multi-core, this needs to be disabled and the correct flash access mechanism implemented
+    # TODO: When enabling multi-core, this needs to be disabled and the correct flash access mechanism implemented
     PICO_FLASH_ASSUME_CORE1_SAFE=1
     #PICO_USE_SW_SPIN_LOCKS=0
-    )
+)
 
 
 pico_set_program_name(one-rp2350-control "one-rp2350-control")
@@ -104,8 +112,6 @@ target_include_directories(one-rp2350-control PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
-    
-    
 )
 
 add_subdirectory(lib/mlib)
@@ -139,5 +145,3 @@ target_link_libraries(one-rp2350-control
 )
 
 pico_add_extra_outputs(one-rp2350-control)
-
-

@@ -1,35 +1,25 @@
 #pragma once
 #include <input/input.h>
 #include <input_touch/input_touch.h>
-#include "view_port.h"
+#include "view.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/** Gui layers */
-typedef enum {
-    GuiLayerFullscreen, /**< Fullscreen layer, no status bar */
-    GuiLayerMAX /**< Don't use or move, special value */
-} GuiLayer;
-
 typedef struct Gui Gui;
 
 #define RECORD_GUI "Gui"
 
-void gui_lock(Gui* gui);
+typedef enum {
+    GuiViewPriorityDesktop = 0,
+    GuiViewPriorityApplication = 50000,
+    GuiViewPriorityMenu = 100000,
+} GuiViewPriority;
 
-void gui_unlock(Gui* gui);
+void gui_add_view(Gui* gui, View* view, GuiViewPriority priority);
 
-void gui_add_view_port(Gui* gui, ViewPort* view_port, GuiLayer layer);
-
-void gui_remove_view_port(Gui* gui, ViewPort* view_port);
-
-void gui_view_port_send_to_front(Gui* gui, ViewPort* view_port);
-
-void gui_view_port_send_to_back(Gui* gui, ViewPort* view_port);
-
-void gui_update(Gui* gui);
+void gui_remove_view(Gui* gui, View* view);
 
 #ifdef __cplusplus
 }

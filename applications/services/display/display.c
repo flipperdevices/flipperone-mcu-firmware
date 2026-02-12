@@ -53,11 +53,6 @@ static void __isr __not_in_flash_func(display_spi_get_frame_isr)(uint8_t* data, 
     furi_event_loop_set_custom_event(instance->event_loop, DisplayEventTypeSpiFrameReady);
 }
 
-void display_event_isr(void* context) {
-    furi_assert(context);
-    Display* instance = (Display*)context;
-}
-
 static void display_message_queue_callback(FuriEventLoopObject* object, void* context) {
     furi_assert(context);
     Display* instance = context;
@@ -147,7 +142,7 @@ void display_set_brightness(Display* instance, int8_t brightness) {
 
     if(brightness < DISPLAY_BRIGHTNESS_MIN) brightness = DISPLAY_BRIGHTNESS_MIN;
     if(brightness > DISPLAY_BRIGHTNESS_MAX) brightness = DISPLAY_BRIGHTNESS_MAX;
-    
+
     const DisplayMessage msg = {
         .type = DisplayMessageTypeSetBrightness,
         .set_brightness = brightness,

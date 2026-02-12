@@ -79,6 +79,8 @@ const FuriHalI2cBusHandle furi_hal_i2c_handle_internal = {
 };
 
 void furi_hal_i2c_bus_handle_external_event(const FuriHalI2cBusHandle* handle, FuriHalI2cBusHandleEvent event) {
+    UNUSED(handle);
+
     if(event == FuriHalI2cBusHandleEventActivate) {
         i2c_init(handle->bus->i2c, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400);
 

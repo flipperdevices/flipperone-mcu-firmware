@@ -87,7 +87,6 @@ static void uart_echo_on_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialRxEven
 
     uint8_t data[64];
     size_t length = 0;
-    char buf[32];
 
     if(event & FuriHalSerialRxEventData) {
         // length = furi_hal_serial_rx_data_non_blocking(handle, data, 64);
@@ -128,10 +127,11 @@ static void uart_echo_on_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialRxEven
     furi_thread_flags_set(furi_thread_get_id(app->worker_thread), flag);
 }
 
-static void uart_echo_tx_complete_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialTxEvent event, void* context){
+static void uart_echo_tx_complete_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialTxEvent event, void* context) {
+    UNUSED(handle);
     WorkerEventFlags flag = 0;
     UartEchoApp* app = context;
-    if(event & FuriHalSerialTxEventComplete){
+    if(event & FuriHalSerialTxEventComplete) {
         flag |= WorkerEventTxComplete;
     }
     furi_thread_flags_set(furi_thread_get_id(app->worker_thread), flag);
