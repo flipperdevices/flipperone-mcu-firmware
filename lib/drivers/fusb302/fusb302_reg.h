@@ -300,4 +300,33 @@ _Static_assert(
     sizeof(Fusb302FifosRegBits) == 1,
     "Size check for 'Fusb302FifosRegBits' failed.");
 
+// Interrupt Mask
+#define FUSB302_INTERRUPT_MASK_BC_LVL       (1 << 0)
+#define FUSB302_INTERRUPT_MASK_COLLISION    (1 << 1)
+#define FUSB302_INTERRUPT_MASK_WAKE         (1 << 2)
+#define FUSB302_INTERRUPT_MASK_ALERT        (1 << 3)
+#define FUSB302_INTERRUPT_MASK_CRC_CHK      (1 << 4)
+#define FUSB302_INTERRUPT_MASK_COMP_CHNG    (1 << 5)
+#define FUSB302_INTERRUPT_MASK_ACTIVITY     (1 << 6)
+#define FUSB302_INTERRUPT_MASK_VBUSOK       (1 << 7)
+
+#define FUSB302_INTERRUPTA_MASK_HARDRST     (1 << 0)
+#define FUSB302_INTERRUPTA_MASK_SOFTRST     (1 << 1)
+#define FUSB302_INTERRUPTA_MASK_TXSENT      (1 << 2)
+#define FUSB302_INTERRUPTA_MASK_HARDSENT    (1 << 3)
+#define FUSB302_INTERRUPTA_MASK_RETRYFAIL   (1 << 4)
+#define FUSB302_INTERRUPTA_MASK_SOFTFAIL    (1 << 5)
+#define FUSB302_INTERRUPTA_MASK_TOGDONE     (1 << 6)
+#define FUSB302_INTERRUPTA_MASK_OCP_TEMP    (1 << 7)
+
+#define FUSB302_INTERRUPTB_MASK_GCRCSENT    (1 << 0)
+
+// Status1aTogss
+#define FUSB302_STATUS1A_TOGSS_TOGGLE_LOGIC_RUNNING    (0b000)  /* Toggle logic running (processor has previously written TOGGLE=1) */
+#define FUSB302_STATUS1A_TOGSS_SRCON_CC1               (0b001)  /* Toggle functionality has settled to SRCon CC1 (STOP_SRC1 state)*/
+#define FUSB302_STATUS1A_TOGSS_SRCON_CC2               (0b010)  /* Toggle functionality has settled to SRCon CC2 (STOP_SRC2 state) */
+#define FUSB302_STATUS1A_TOGSS_SNKON_CC1               (0b101)  /* Toggle functionality has settled to SNKon CC1 (STOP_SNK1 state) */
+#define FUSB302_STATUS1A_TOGSS_SNKON_CC2               (0b110)  /* Toggle functionality has settled to SNKon CC2 (STOP_SNK2 state) */
+#define FUSB302_STATUS1A_TOGSS_AUDIO_ACCESSORY         (0b111)  /* Toggle functionality has detected AudioAccessory with vRa on both CC1 and CC2 (settles to STOP_SRC1 state) */
+
 /* clang-format on */

@@ -1,11 +1,8 @@
-#include "core/log.h"
 #include "fusb302_reg.h"
 #include "fusb302.h"
 #include <furi.h>
 
 #include <furi_hal_i2c.h>
-#include <stdbool.h>
-#include <stdint.h>
 
 #define TAG "Fusb302"
 
@@ -21,6 +18,8 @@ struct Fusb302 {
     const FuriHalI2cBusHandle* i2c_handle;
     uint8_t address;
     const GpioPin* pin_interrupt;
+    Fusb302Callback callback;
+    void* context;
 };
 
 static FURI_ALWAYS_INLINE int fusb302_write_reg(Fusb302* instance, Fusb302Reg reg, uint8_t data) {
@@ -65,10 +64,9 @@ static FURI_ALWAYS_INLINE int fusb302_read_reg(Fusb302* instance, Fusb302Reg reg
 
 static __isr __not_in_flash_func(void) fusb302_interrupt_handler(void* ctx) {
     Fusb302* instance = (Fusb302*)ctx;
-    // if(instance->input_callback) {
-    //     instance->input_callback(instance->callback_context);
-    // }
-    furi_log_puts("INTERRUPT!\r\n");
+    if(instance->callback) {
+        instance->callback(instance->context);
+    }
 }
 
 void fusb302_start_drp_logic(Fusb302* instance) {
@@ -99,9 +97,9 @@ void fusb302_start_drp_logic(Fusb302* instance) {
     mask.m_wake = 1; // Mask wake interrupts
     mask.m_alert = 1; // Mask alert interrupts
     mask.m_crc_chk = 1; // Mask CRC check interrupts
-    mask.m_comp_chng = 1; // Mask comparator change interrupts
+    mask.m_comp_chng = 0; // Mask comparator change interrupts
     mask.m_activity = 1; // Mask activity interrupts
-    mask.m_vbusok = 1; // Mask VBUS OK interrupts
+    mask.m_vbusok = 0; // Mask VBUS OK interrupts
     fusb302_write_reg(instance, Fusb302RegMask, *(uint8_t*)&mask);
 
     Fusb302MaskARegBits mask_a = {0};
@@ -173,48 +171,47 @@ void fusb302_deinit(Fusb302* instance) {
 
 void fusb302_pd_reset(Fusb302* instance) {
     furi_check(instance);
-    //     Fusb302ResetRegBits reset = {
-    //     .pd_reset = 1,
-    // };
-    // fusb302_write_reg(instance, Fusb302RegReset, *(uint8_t*)&reset);
-    // furi_delay_ms(10);
-    fusb302_start_drp_logic(instance);
+    Fusb302ResetRegBits reset = {
+        .pd_reset = 1,
+    };
+    fusb302_write_reg(instance, Fusb302RegReset, *(uint8_t*)&reset);
 }
 
 bool fusb302_read_role(Fusb302* instance) {
     // Read interrupts to determine what happened
     uint8_t irq_a;
+    uint8_t irq;
     bool ret = false;
     fusb302_read_reg(instance, Fusb302RegInterruptA, &irq_a);
-    FUSB302_DEBUG(TAG, "Interrupt A: %02X", irq_a);
-    if(irq_a & 0x40) { // Checking I_TOGDONE bit (bit 6)
+    fusb302_read_reg(instance, Fusb302RegInterrupt, &irq);
+    // FUSB302_DEBUG(TAG, "Interrupt A: %02X", irq_a);
+    // FUSB302_DEBUG(TAG, "Interrupt: %02X", irq);
+    if(irq_a & FUSB302_INTERRUPTA_MASK_TOGDONE) { // Checking I_TOGDONE bit (bit 6)
         // Read status to determine the current role
-        uint8_t status1a;
-        fusb302_read_reg(instance, Fusb302RegStatus1A, &status1a);
+        
+        Fusb302Status1ARegBits status1a_bits;
+        fusb302_read_reg(instance, Fusb302RegStatus1A, (uint8_t*)&status1a_bits);
 
-        // TOGSS is located in bits 5, 4, 3 (according to 0x3D Status1a)
-        uint8_t togss = (status1a >> 3) & 0x07;
-
-        switch(togss) {
-        case 0x01: // 001 - Source на CC1
+        switch(status1a_bits.togss) {
+        case FUSB302_STATUS1A_TOGSS_SRCON_CC1: // 001 - Source on CC1
             FUSB302_DEBUG(TAG, "Role determined: SOURCE CC1\n");
             //todo: need to turn on VBUS through external GPIO
             break;
-        case 0x02: // 010 - Source на CC2
+        case FUSB302_STATUS1A_TOGSS_SRCON_CC2: // 010 - Source on CC2
             FUSB302_DEBUG(TAG, "Role determined: SOURCE CC2\n");
             //todo: need to turn on VBUS through external GPIO
             break;
 
-        case 0x05: // 101 - Sink на CC1
+        case FUSB302_STATUS1A_TOGSS_SNKON_CC1: // 101 - Sink on CC1
             FUSB302_DEBUG(TAG, "Role determined: SINK CC1\n");
             //todo: need to wait for VBUS from partner
             break;
-        case 0x06: // 110 - Sink на CC2
+        case FUSB302_STATUS1A_TOGSS_SNKON_CC2: // 110 - Sink on CC2
             FUSB302_DEBUG(TAG, "Role determined: SINK CC2\n");
             //todo: need to wait for VBUS from partner
             break;
 
-        case 0x07: // 111 - Audio Accessory
+        case FUSB302_STATUS1A_TOGSS_AUDIO_ACCESSORY: // 111 - Audio Accessory
             FUSB302_DEBUG(TAG, "Role determined: Audio Accessory (Not supported)\n");
             break;
 
@@ -223,12 +220,24 @@ bool fusb302_read_role(Fusb302* instance) {
             break;
         }
         ret = true;
+    } else if(irq & FUSB302_INTERRUPT_MASK_COMP_CHNG) { // Checking I_COMP_CHNG bit (bit 5)
+        FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_COMP_CHNG\n");
+        fusb302_start_drp_logic(instance);
+    } else if(irq & FUSB302_INTERRUPT_MASK_VBUSOK) { // Checking I_COMP_CHNG bit (bit 5)
+        FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_VBUSOK\n");
+        fusb302_start_drp_logic(instance);
     } else {
-        FUSB302_DEBUG(TAG, "Toggle not completed yet...\n");
+        // FUSB302_DEBUG(TAG, "Toggle not completed yet...\n");
     }
     return ret;
 }
 
 void fusb302_read_cc_status(Fusb302* instance, uint8_t cc) {
     furi_check(instance);
+}
+
+void fusb302_set_input_callback(Fusb302* instance, Fusb302Callback callback, void* context) {
+    furi_check(instance);
+    instance->callback = callback;
+    instance->context = context;
 }

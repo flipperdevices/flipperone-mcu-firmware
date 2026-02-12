@@ -1,5 +1,4 @@
 #include "test_peref.h"
-#include "core/kernel.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -169,19 +168,19 @@ int32_t test_peref_srv(void* p) {
 
     furi_delay_ms(2000);
 
-    Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
+   // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
 
     while(true) {
     //    furi_hal_i2c_acquire(&furi_hal_i2c_handle_external);
     //     furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_external);
     //    furi_hal_i2c_release(&furi_hal_i2c_handle_external);
        // fusb302_read_cc_status(fusb302,1);
-       if(fusb302_read_role(fusb302)) {
-            FURI_LOG_I(TAG, "Role toggle completed!");
-            fusb302_pd_reset(fusb302);
-        } else {
-            FURI_LOG_I(TAG, "Role toggle not completed yet...");
-        }
+       //if(fusb302_read_role(fusb302)) {
+           // FURI_LOG_I(TAG, "Role toggle completed!");
+            //fusb302_pd_reset(fusb302);
+       // } else {
+           // FURI_LOG_I(TAG, "Role toggle not completed yet...");
+       // }
         // const size_t width = JD9853_WIDTH; // 1 byte per pixel
         // const size_t height = JD9853_HEIGHT;
         // uint8_t ton[18] = {0xFC, 0x0, 0x11, 0x22, 0x32, 0x43, 0x54, 0x65, 0x76, 0x86, 0x97, 0xA8, 0xB9, 0xCA, 0xDA, 0xEB, 0xFC, 0x0};
