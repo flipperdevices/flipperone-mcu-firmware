@@ -59,7 +59,8 @@ typedef enum {
     InputExpMainGpio3v3En = (1 << 14),
     InputExpMainExpander17 = (1 << 15),
 
-    InputExpMainMask = (0x00FF),
+    InputExpMainInputMask = (0x00FF),
+    InputExpMainOutputMask = (0xFF00),
 } InputExpMain;
 
 typedef struct {
