@@ -30,50 +30,50 @@ DisplayJd9853QSPI* display_h = NULL;
 int mod = 1;
 bool eco = false;
 
-static void input_events_callback(const void* value, void* ctx) {
-    furi_assert(value);
-    furi_assert(ctx);
+// static void input_events_callback(const void* value, void* ctx) {
+//     furi_assert(value);
+//     furi_assert(ctx);
 
-    const InputEvent* event = value;
-    if(event->type == InputTypePress) {
-        if(event->key == InputKeyUp) {
-            display_jd9853_qspi_set_brightness(display_h, display_jd9853_qspi_get_brightness(display_h) + 2);
-        } else if(event->key == InputKeyRight) {
-            float vci = display_jd9853_qspi_get_vci(display_h);
-            vci += 0.1f * mod;
-            if(vci < 2.0f) vci = 2.0f;
-            if(vci > 3.3f) vci = 3.3f;
-            display_jd9853_qspi_set_vci(display_h, vci);
-            FURI_LOG_I(TAG, "Display VCI set to %.2f V", vci);
+//     const InputEvent* event = value;
+//     if(event->type == InputTypePress) {
+//         if(event->key == InputKeyUp) {
+//             display_jd9853_qspi_set_brightness(display_h, display_jd9853_qspi_get_brightness(display_h) + 2);
+//         } else if(event->key == InputKeyRight) {
+//             float vci = display_jd9853_qspi_get_vci(display_h);
+//             vci += 0.1f * mod;
+//             if(vci < 2.0f) vci = 2.0f;
+//             if(vci > 3.3f) vci = 3.3f;
+//             display_jd9853_qspi_set_vci(display_h, vci);
+//             FURI_LOG_I(TAG, "Display VCI set to %.2f V", vci);
 
-        } else if(event->key == InputKeyDown) {
-            display_jd9853_qspi_set_brightness(display_h, display_jd9853_qspi_get_brightness(display_h) - 2);
-        } else if(event->key == InputKeyLeft) {
-            float vci = display_jd9853_qspi_get_vci(display_h);
-            vci -= 0.1f * mod;
-            if(vci < 2.0f) vci = 2.0f;
-            if(vci > 3.3f) vci = 3.3f;
-            display_jd9853_qspi_set_vci(display_h, vci);
-            FURI_LOG_I(TAG, "Display VCI set to %.2f V", vci);
-        } else if(event->key == InputKeyOk) {
-            eco = !eco;
-            display_jd9853_qspi_eco_mode(display_h, eco);
-        }
+//         } else if(event->key == InputKeyDown) {
+//             display_jd9853_qspi_set_brightness(display_h, display_jd9853_qspi_get_brightness(display_h) - 2);
+//         } else if(event->key == InputKeyLeft) {
+//             float vci = display_jd9853_qspi_get_vci(display_h);
+//             vci -= 0.1f * mod;
+//             if(vci < 2.0f) vci = 2.0f;
+//             if(vci > 3.3f) vci = 3.3f;
+//             display_jd9853_qspi_set_vci(display_h, vci);
+//             FURI_LOG_I(TAG, "Display VCI set to %.2f V", vci);
+//         } else if(event->key == InputKeyOk) {
+//             eco = !eco;
+//             display_jd9853_qspi_eco_mode(display_h, eco);
+//         }
 
-        if(event->key == InputKey1) {
-            display_jd9853_load_config((DisplayJd9853QSPI*)display_h, jd9853_init_seq_2025_04_01_normal_white_no_reset);
-            FURI_LOG_I(TAG, "Display set to white mode");
-        } else if(event->key == InputKey5) {
-            display_jd9853_load_config((DisplayJd9853QSPI*)display_h, jd9853_init_seq_2025_04_01_normal_white_mod_no_reset);
-            FURI_LOG_I(TAG, "Display set to white mode");
-        } else if(event->key == InputKey2) {
-            if(mod == 1)
-                mod = -1;
-            else
-                mod = 1;
-        }
-    }
-}
+//         if(event->key == InputKey1) {
+//             display_jd9853_load_config((DisplayJd9853QSPI*)display_h, jd9853_init_seq_2025_04_01_normal_white_no_reset);
+//             FURI_LOG_I(TAG, "Display set to white mode");
+//         } else if(event->key == InputKey5) {
+//             display_jd9853_load_config((DisplayJd9853QSPI*)display_h, jd9853_init_seq_2025_04_01_normal_white_mod_no_reset);
+//             FURI_LOG_I(TAG, "Display set to white mode");
+//         } else if(event->key == InputKey2) {
+//             if(mod == 1)
+//                 mod = -1;
+//             else
+//                 mod = 1;
+//         }
+//     }
+// }
 
 void test_nvm(void) {
     FuriHalNvmStorage res;

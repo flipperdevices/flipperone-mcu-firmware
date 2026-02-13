@@ -300,33 +300,32 @@ _Static_assert(
     sizeof(Fusb302FifosRegBits) == 1,
     "Size check for 'Fusb302FifosRegBits' failed.");
 
-// Interrupt Mask
-#define FUSB302_INTERRUPT_MASK_BC_LVL       (1 << 0)
-#define FUSB302_INTERRUPT_MASK_COLLISION    (1 << 1)
-#define FUSB302_INTERRUPT_MASK_WAKE         (1 << 2)
-#define FUSB302_INTERRUPT_MASK_ALERT        (1 << 3)
-#define FUSB302_INTERRUPT_MASK_CRC_CHK      (1 << 4)
-#define FUSB302_INTERRUPT_MASK_COMP_CHNG    (1 << 5)
-#define FUSB302_INTERRUPT_MASK_ACTIVITY     (1 << 6)
-#define FUSB302_INTERRUPT_MASK_VBUSOK       (1 << 7)
-
-#define FUSB302_INTERRUPTA_MASK_HARDRST     (1 << 0)
-#define FUSB302_INTERRUPTA_MASK_SOFTRST     (1 << 1)
-#define FUSB302_INTERRUPTA_MASK_TXSENT      (1 << 2)
-#define FUSB302_INTERRUPTA_MASK_HARDSENT    (1 << 3)
-#define FUSB302_INTERRUPTA_MASK_RETRYFAIL   (1 << 4)
-#define FUSB302_INTERRUPTA_MASK_SOFTFAIL    (1 << 5)
-#define FUSB302_INTERRUPTA_MASK_TOGDONE     (1 << 6)
-#define FUSB302_INTERRUPTA_MASK_OCP_TEMP    (1 << 7)
-
-#define FUSB302_INTERRUPTB_MASK_GCRCSENT    (1 << 0)
-
 // Status1aTogss
-#define FUSB302_STATUS1A_TOGSS_TOGGLE_LOGIC_RUNNING    (0b000)  /* Toggle logic running (processor has previously written TOGGLE=1) */
-#define FUSB302_STATUS1A_TOGSS_SRCON_CC1               (0b001)  /* Toggle functionality has settled to SRCon CC1 (STOP_SRC1 state)*/
-#define FUSB302_STATUS1A_TOGSS_SRCON_CC2               (0b010)  /* Toggle functionality has settled to SRCon CC2 (STOP_SRC2 state) */
-#define FUSB302_STATUS1A_TOGSS_SNKON_CC1               (0b101)  /* Toggle functionality has settled to SNKon CC1 (STOP_SNK1 state) */
-#define FUSB302_STATUS1A_TOGSS_SNKON_CC2               (0b110)  /* Toggle functionality has settled to SNKon CC2 (STOP_SNK2 state) */
-#define FUSB302_STATUS1A_TOGSS_AUDIO_ACCESSORY         (0b111)  /* Toggle functionality has detected AudioAccessory with vRa on both CC1 and CC2 (settles to STOP_SRC1 state) */
+#define FUSB302_STATUS1A_TOGSS_TOGGLE_LOGIC_RUNNING     (0b000)     /* Toggle logic running (processor has previously written TOGGLE=1) */
+#define FUSB302_STATUS1A_TOGSS_SRCON_CC1                (0b001)     /* Toggle functionality has settled to SRCon CC1 (STOP_SRC1 state)*/
+#define FUSB302_STATUS1A_TOGSS_SRCON_CC2                (0b010)     /* Toggle functionality has settled to SRCon CC2 (STOP_SRC2 state) */
+#define FUSB302_STATUS1A_TOGSS_SNKON_CC1                (0b101)     /* Toggle functionality has settled to SNKon CC1 (STOP_SNK1 state) */
+#define FUSB302_STATUS1A_TOGSS_SNKON_CC2                (0b110)     /* Toggle functionality has settled to SNKon CC2 (STOP_SNK2 state) */
+#define FUSB302_STATUS1A_TOGSS_AUDIO_ACCESSORY          (0b111)     /* Toggle functionality has detected AudioAccessory with vRa on both CC1 and CC2 (settles to STOP_SRC1 state) */
+
+// Receive FIFO token definitions
+#define FUSB302_RX_TOKEN_SOP_MASK                       (0b111<<5) /* Mask for SOP token bits in the received token */
+#define FUSB302_RX_TOKEN_SOP                            (0b111<<5)  /* Start of Packet token for SOP */ 
+#define FUSB302_RX_TOKEN_SOP1                           (0b110<<5)  /* Start of Packet token for SOP’ (SOP prime) */
+#define FUSB302_RX_TOKEN_SOP2                           (0b101<<5)  /* Start of Packet token for SOP” (SOP double prime) */ 
+#define FUSB302_RX_TOKEN_SOP1DB                         (0b100<<5)  /* Start of Packet token for SOP’_DEBUG (SOP prime debug) */
+#define FUSB302_RX_TOKEN_SOP2DB                         (0b011<<5)  /* Start of Packet token for SOP”_DEBUG (SOP double prime debug) */
+
+// Transmit FIFO token definitions 
+#define FUSB302_TX_TOKEN_TXON                           (0xA1)      /* Enable transmitter */ 
+#define FUSB302_TX_TOKEN_SYNC1                          (0x12)      /* First sync token */ 
+#define FUSB302_TX_TOKEN_SYNC2                          (0x13)      /* Second sync token */ 
+#define FUSB302_TX_TOKEN_SYNC3                          (0x1B)      /* Third sync token */ 
+#define FUSB302_TX_TOKEN_RST1                           (0x15)      /* First reset token */ 
+#define FUSB302_TX_TOKEN_RST2                           (0x16)      /* Second reset token */ 
+#define FUSB302_TX_TOKEN_PACKSYM                        (0x80)      /* Packet symbol */ 
+#define FUSB302_TX_TOKEN_JAMCRC                         (0xFF)      /* JAM CRC token */ 
+#define FUSB302_TX_TOKEN_EOP                            (0x14)      /* End of packet token */ 
+#define FUSB302_TX_TOKEN_TXOFF                          (0xFE)      /* Disable transmitter */
 
 /* clang-format on */

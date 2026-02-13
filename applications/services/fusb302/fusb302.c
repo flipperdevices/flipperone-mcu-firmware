@@ -1,10 +1,12 @@
 #include "fusb302.h"
 
+#include "core/kernel.h"
 #include <furi.h>
 #include <api_lock.h>
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_resources.h>
 #include <drivers/fusb302/fusb302.h>
+#include <stdint.h>
 
 #define TAG "Fusb302"
 
@@ -80,6 +82,32 @@ static void fusb302_custom_event_callback(uint32_t events, void* context) {
 
     if(events & Fusb302EventTypeIsr) {
         fusb302_read_role(instance->fusb302_header);
+
+
+        fusb302_pd_reset_hard(instance->fusb302_header);
+        
+        fusb302_cc_orientation_set(instance->fusb302_header, Fusb302TypeCcOrientationNormal);
+        fusb302_pd_reset_logic(instance->fusb302_header);
+        fusb302_pd_autogoodcrc_set(instance->fusb302_header, true);
+        fusb302_pd_autoretry_set(instance->fusb302_header, 3);
+        fusb302_pd_rx_flush(instance->fusb302_header);
+
+        for(uint8_t i = 0;i<10; i++) {
+            Fusb302PdMsg msg;
+            Fusb302Status res = fusb302_pd_message_receive(instance->fusb302_header, &msg);
+
+            if(res == Fusb302StatusOk) {
+                FURI_LOG_W(TAG, "Received PD message: SOP=%d, Header=0x%04X, Objects=%d", msg.sop_type, msg.header, msg.object_count);
+            } else if(res == Fusb302StatusRxEmpty) {
+                FURI_LOG_W(TAG, "No PD message received (Rx FIFO empty)");
+                break;
+            } else {
+                FURI_LOG_W(TAG, "Error receiving PD message");
+                break;
+            }
+            furi_delay_ms(50);
+        }
+
     }
 }
 
