@@ -39,6 +39,29 @@ typedef enum {
     StatusLedPowerMask = (0xE000),
 } StatusLedPower;
 
+typedef enum {
+    //input expander main
+    InputExpMainGpio5v0Flt = (1 << 0),
+    InputExpMainGpio3v3Flt = (1 << 1),
+    InputExpMainBq25798Int = (1 << 2),
+    InputExpMainFusb302Int = (1 << 3),
+    InputExpMainMuxVconFault = (1 << 4),
+    InputExpMainTypeCUpSwPg = (1 << 5),
+    InputExpMainTypeAUpSwPg = (1 << 6),
+    InputExpMainExpander7 = (1 << 7),
+    //output expander main
+    InputExpMainUsb20Sel = (1 << 8),
+    InputExpMainHubPwrEn = (1 << 9),
+    InputExpMainTypeAUpSwEn = (1 << 10),
+    InputExpMainVcc5v0DevS0En = (1 << 11),
+    InputExpMainVcc5v0SysS5En = (1 << 12),
+    InputExpMainGpio5v0En = (1 << 13),
+    InputExpMainGpio3v3En = (1 << 14),
+    InputExpMainExpander17 = (1 << 15),
+
+    InputExpMainMask = (0x00FF),
+} InputExpMain;
+
 typedef struct {
     const InputKey key;
     const bool inverted;

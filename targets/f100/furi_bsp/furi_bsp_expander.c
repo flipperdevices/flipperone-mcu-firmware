@@ -10,12 +10,27 @@ typedef struct {
 } Expander;
 
 static Expander* expander_control = NULL;
+static Expander* expander_main = NULL;
 
-void furi_bsp_expander_init(void) {
+static void furi_bsp_expander_control_init(void) {
     furi_check(expander_control == NULL);
     expander_control = malloc(sizeof(Expander));
     expander_control->handle = tca6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
     tca6416a_write_mode(expander_control->handle, InputKeyMask);
+}
+
+static void furi_bsp_expander_main_init(void) {
+    furi_check(expander_main == NULL);
+    expander_main = malloc(sizeof(Expander));
+    expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_res, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
+    tca6416a_write_mode(expander_main->handle, InputExpMainMask);
+}
+
+void furi_bsp_expander_init(void) {
+    furi_check(expander_control == NULL);
+    furi_check(expander_main == NULL);
+    furi_bsp_expander_control_init();
+    furi_bsp_expander_main_init();
 }
 
 uint16_t furi_bsp_expander_control_read_buttons(void) {
@@ -33,4 +48,14 @@ void furi_bsp_expander_control_attach_buttons_callback(FuriCallback callback, vo
 void furi_bsp_expander_control_led_power(uint16_t led_mask) {
     furi_check(expander_control != NULL);
     tca6416a_write_output(expander_control->handle, led_mask & StatusLedPowerMask);
+}
+
+uint16_t furi_bsp_expander_main_read_input(void) {
+    furi_assert(expander_main != NULL);
+    return tca6416a_read_input(expander_main->handle);
+}
+
+void furi_bsp_expander_main_write_output(uint16_t output_mask) {
+    furi_check(expander_main != NULL);
+    tca6416a_write_output(expander_main->handle, output_mask & InputExpMainMask);
 }

@@ -26,6 +26,16 @@ void furi_bsp_expander_control_attach_buttons_callback(FuriCallback callback, vo
  */
 void furi_bsp_expander_control_led_power(uint16_t led_mask);
 
+/** Returns the current state of inputs from the main expander
+ * @return uint16_t - bitmask of input states
+ */
+uint16_t furi_bsp_expander_main_read_input(void);
+
+/** Control outputs on the main expander
+ * @param output_mask - bitmask of outputs to set high
+ */
+void furi_bsp_expander_main_write_output(uint16_t output_mask);
+
 #ifdef __cplusplus
 }
 #endif
