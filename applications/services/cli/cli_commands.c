@@ -3,6 +3,7 @@
 #include <core/thread.h>
 #include <core/thread_list.h>
 #include <furi_hal.h>
+#include <furi_hal_i2c_config.h>
 #include <task_control_block.h>
 #include <time.h>
 #include <args.h>
@@ -200,6 +201,35 @@ static void cli_command_free_blocks(Cli* cli, FuriString* args, void* context) {
     memmgr_heap_printf_free_blocks();
 }
 
+static void cli_scan_i2c_bus(const FuriHalI2cBusHandle* handle, const char* bus_name) {
+    furi_hal_i2c_acquire(handle);
+    printf(
+        "Scanning %s i2c\r\n"
+        "Clock: 100khz, 7bit address\r\n"
+        "\r\n",
+        bus_name);
+    printf("  | 0 1 2 3 4 5 6 7 8 9 A B C D E F\r\n");
+    printf("--+--------------------------------\r\n");
+    for(uint8_t row = 0; row < 0x8; row++) {
+        printf("%x | ", row);
+        for(uint8_t column = 0; column <= 0xF; column++) {
+            bool ret = furi_hal_i2c_device_ready(handle, ((row << 4) + column), 10 * 1000);
+            printf("%c ", ret ? '#' : '-');
+        }
+        printf("\r\n");
+    }
+    furi_hal_i2c_release(handle);
+}
+
+void cli_command_i2c(Cli* cli, FuriString* args, void* context) {
+    UNUSED(cli);
+    UNUSED(args);
+    UNUSED(context);
+    cli_scan_i2c_bus(&furi_hal_i2c_handle_internal, "internal");
+    printf("\r\n");
+    cli_scan_i2c_bus(&furi_hal_i2c_handle_external, "external");
+}
+
 void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "?", CliCommandFlagParallelSafe, cli_command_help, NULL);
     cli_add_command(cli, "help", CliCommandFlagParallelSafe, cli_command_help, NULL);
@@ -209,4 +239,6 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "top", CliCommandFlagParallelSafe, cli_command_top, NULL);
     cli_add_command(cli, "free", CliCommandFlagParallelSafe, cli_command_free, NULL);
     cli_add_command(cli, "free_blocks", CliCommandFlagParallelSafe, cli_command_free_blocks, NULL);
+
+    cli_add_command(cli, "i2c", CliCommandFlagParallelSafe, cli_command_i2c, NULL);
 }
