@@ -203,20 +203,26 @@ static void cli_command_free_blocks(Cli* cli, FuriString* args, void* context) {
 
 static void cli_scan_i2c_bus(const FuriHalI2cBusHandle* handle, const char* bus_name) {
     furi_hal_i2c_acquire(handle);
-    printf(
-        "Scanning %s i2c\r\n"
-        "Clock: 100khz, 7bit address\r\n"
-        "\r\n",
-        bus_name);
-    printf("  | 0 1 2 3 4 5 6 7 8 9 A B C D E F\r\n");
-    printf("--+--------------------------------\r\n");
-    for(uint8_t row = 0; row < 0x8; row++) {
-        printf("%x | ", row);
-        for(uint8_t column = 0; column <= 0xF; column++) {
-            bool ret = furi_hal_i2c_device_ready(handle, ((row << 4) + column), 10 * 1000);
-            printf("%c ", ret ? '#' : '-');
+    furi_check(handle);
+
+    printf("Scanning %s bus (I2C%d):\r\n", bus_name, i2c_get_index(handle->bus->i2c));
+    printf("     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\r\n");
+    printf("    -----------------------------------------------\r\n");
+
+    for(uint8_t addr = 0; addr < 128; addr++) {
+        if(addr % 16 == 0) {
+            printf("%02x | ", addr);
         }
-        printf("\r\n");
+
+        // Perform a 1-byte dummy read from the probe address. If a slave
+        // acknowledges this address, the function returns the number of bytes
+        // transferred. If the address byte is ignored, the function returns
+        // -1.
+
+        // Skip over any reserved addresses.
+        bool ret = furi_hal_i2c_device_ready(handle, addr, FURI_HAL_I2C_TIMEOUT_US);
+        printf(ret ? "@" : ".");
+        printf(addr % 16 == 15 ? "\r\n" : "  ");
     }
     furi_hal_i2c_release(handle);
 }

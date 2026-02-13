@@ -109,27 +109,3 @@ bool furi_hal_i2c_device_ready(const FuriHalI2cBusHandle* handle, uint8_t device
 
     return ret < PICO_OK ? false : true;
 }
-
-void furi_hal_i2c_bus_scan_print(const FuriHalI2cBusHandle* handle) {
-    furi_check(handle);
-
-    FURI_LOG_I(TAG, "I2C Bus Scan on I2C%d:", i2c_get_index(handle->bus->i2c));
-    FURI_LOG_I(TAG, "\t     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F");
-    FURI_LOG_I(TAG, "\t   -----------------------------------------------");
-
-    for(uint8_t addr = 0; addr < 128; addr++) {
-        if(addr % 16 == 0) {
-            FURI_LOG_RAW_I("\t\t\t%02x | ", addr);
-        }
-
-        // Perform a 1-byte dummy read from the probe address. If a slave
-        // acknowledges this address, the function returns the number of bytes
-        // transferred. If the address byte is ignored, the function returns
-        // -1.
-
-        // Skip over any reserved addresses.
-        bool ret = furi_hal_i2c_device_ready(handle, addr, FURI_HAL_I2C_TIMEOUT_US);
-        FURI_LOG_RAW_I(ret ? "@" : ".");
-        FURI_LOG_RAW_I(addr % 16 == 15 ? "\r\n" : "  ");
-    }
-}
