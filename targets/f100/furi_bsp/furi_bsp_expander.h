@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <toolbox/furi_callback.h>
+#include <furi_hal_resources.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -11,9 +12,9 @@ extern "C" {
 void furi_bsp_expander_init(void);
 
 /** Returns the current state of buttons from the expander
- * @return uint16_t - bitmask of button states
+ * @return InputKey - bitmask of button states
  */
-uint16_t furi_bsp_expander_control_read_buttons(void);
+InputKey furi_bsp_expander_control_read_buttons(void);
 
 /** Attach a callback for button events
  * @param callback - function to call on button events
@@ -24,17 +25,22 @@ void furi_bsp_expander_control_attach_buttons_callback(FuriCallback callback, vo
 /** Control power to status LED lines
  * @param led_mask - bitmask of LED lines to power on
  */
-void furi_bsp_expander_control_led_power(uint16_t led_mask);
+void furi_bsp_expander_control_led_power(StatusLedPower led_mask);
 
 /** Returns the current state of inputs from the main expander
- * @return uint16_t - bitmask of input states
+ * @return InputExpMain - bitmask of input states
  */
-uint16_t furi_bsp_expander_main_read_input(void);
+InputExpMain furi_bsp_expander_main_read_input(void);
 
 /** Control outputs on the main expander
  * @param output_mask - bitmask of outputs to set high
  */
-void furi_bsp_expander_main_write_output(uint16_t output_mask);
+void furi_bsp_expander_main_write_output(OutputExpMain output_mask);
+
+/** Returns the current state of outputs from the main expander
+ * @return OutputExpMain - bitmask of output states
+ */
+OutputExpMain furi_bsp_expander_main_read_output(void);
 
 #ifdef __cplusplus
 }
