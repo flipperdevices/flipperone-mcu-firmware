@@ -42,6 +42,8 @@ void furi_bsp_expander_main_write_output(OutputExpMain output_mask);
  */
 OutputExpMain furi_bsp_expander_main_read_output(void);
 
+void furi_bsp_main_reset(void);
+
 #ifdef __cplusplus
 }
 #endif

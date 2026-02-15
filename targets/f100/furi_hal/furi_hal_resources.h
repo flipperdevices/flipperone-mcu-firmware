@@ -135,7 +135,7 @@ extern const GpioPin gpio_cpu_adc_in0_boot;
 extern const GpioPin gpio_mcu_gpio0;
 extern const GpioPin gpio_mcu_gpio1;
 
-extern const GpioPin gpio_main_board_res;
+extern const GpioPin gpio_main_board_reset;
 extern const GpioPin gpio_main_expander_int;
 
 extern const GpioPin gpio_uart0_tx;

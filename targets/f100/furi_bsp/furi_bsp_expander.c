@@ -21,7 +21,23 @@ static void furi_bsp_expander_control_init(void) {
 static void furi_bsp_expander_main_init(void) {
     furi_check(expander_main == NULL);
     expander_main = malloc(sizeof(Expander));
-    expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_res, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
+    expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
+
+    // Todo: Errata lay the I2C line
+    furi_bsp_expander_main_write_output(OutputExpMainVcc5v0DevS0En);
+    tca6416a_write_mode(expander_main->handle, InputExpMainInputMask);
+}
+
+void furi_bsp_main_reset(void) {
+    furi_check(expander_main != NULL);
+    tca6416a_deinit(expander_main->handle);
+
+    furi_hal_gpio_write_open_drain(&gpio_main_board_reset, false);
+    furi_delay_ms(10);
+    furi_hal_gpio_write_open_drain(&gpio_main_board_reset, true);
+    furi_delay_ms(10);
+
+    tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
 
     // Todo: Errata lay the I2C line
     furi_bsp_expander_main_write_output(OutputExpMainVcc5v0DevS0En);

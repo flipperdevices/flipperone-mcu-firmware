@@ -1,7 +1,6 @@
 #include "furi_hal_gpio.h"
 #include <furi_hal_resources.h>
 
-
 const GpioPin gpio_qspi0_cs1 = {.pin = 0};
 const GpioPin gpio_nboot_disable = {.pin = 1};
 
@@ -61,12 +60,11 @@ const GpioPin gpio_cpu_adc_in0_boot = {.pin = 4};
 const GpioPin gpio_mcu_gpio0 = {.pin = 40};
 const GpioPin gpio_mcu_gpio1 = {.pin = 41};
 
-const GpioPin gpio_main_board_res = {.pin = 38};
+const GpioPin gpio_main_board_reset = {.pin = 38};
 const GpioPin gpio_main_expander_int = {.pin = 39};
 
 const GpioPin gpio_uart0_tx = {.pin = 32};
 const GpioPin gpio_uart0_rx = {.pin = 33};
-
 
 const GpioPinRecord gpio_pins[] = {};
 const size_t gpio_pins_count = COUNT_OF(gpio_pins);
