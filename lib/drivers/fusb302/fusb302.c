@@ -1,6 +1,3 @@
-#include "core/check.h"
-#include "core/kernel.h"
-#include "core/log.h"
 #include "fusb302_reg.h"
 #include "fusb302.h"
 #include <furi.h>
@@ -8,9 +5,6 @@
 #include <furi_hal_i2c.h>
 #include <pico/error.h>
 #include <pico/types.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
 
 #define TAG "Fusb302"
 
@@ -246,9 +240,10 @@ Fusb302* fusb302_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
 
     if(ret) {
         FURI_LOG_I(TAG, "FUSB302 device ready at address 0x%02X", instance->address);
-
-        furi_hal_gpio_init_simple(instance->pin_interrupt, GpioModeInput);
-        furi_hal_gpio_add_int_callback(instance->pin_interrupt, GpioConditionFall, fusb302_interrupt_handler, instance);
+        if(instance->pin_interrupt) {
+            furi_hal_gpio_init_simple(instance->pin_interrupt, GpioModeInput);
+            furi_hal_gpio_add_int_callback(instance->pin_interrupt, GpioConditionFall, fusb302_interrupt_handler, instance);
+        }
 
         Fusb302DeviceIdRegBits device_id = {0};
         fusb302_read_reg(instance, Fusb302RegDeviceId, (uint8_t*)&device_id);
@@ -267,8 +262,10 @@ Fusb302* fusb302_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
 
 void fusb302_deinit(Fusb302* instance) {
     furi_check(instance);
-    furi_hal_gpio_remove_int_callback(instance->pin_interrupt);
-    furi_hal_gpio_init_ex(instance->pin_interrupt, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    if(instance->pin_interrupt) {
+        furi_hal_gpio_remove_int_callback(instance->pin_interrupt);
+        furi_hal_gpio_init_ex(instance->pin_interrupt, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    }
     free(instance);
 }
 
@@ -291,8 +288,8 @@ bool fusb302_read_role(Fusb302* instance) {
     bool ret = false;
     fusb302_read_reg(instance, Fusb302RegInterruptA, (uint8_t*)&irq_a_bits);
     fusb302_read_reg(instance, Fusb302RegInterrupt, (uint8_t*)&irq_bits);
-     FUSB302_DEBUG(TAG, "Interrupt A: %02X", *(uint8_t*)&irq_a_bits);
-     FUSB302_DEBUG(TAG, "Interrupt: %02X", *(uint8_t*)&irq_bits);
+    FUSB302_DEBUG(TAG, "Interrupt A: %02X", *(uint8_t*)&irq_a_bits);
+    FUSB302_DEBUG(TAG, "Interrupt: %02X", *(uint8_t*)&irq_bits);
     if(irq_a_bits.i_tog_done) { // Checking I_TOGDONE bit (bit 6)
         // Read status to determine the current role
 
@@ -360,7 +357,7 @@ bool fusb302_read_role(Fusb302* instance) {
 
     } else if(irq_bits.i_comp_chng) { // Checking I_COMP_CHNG bit (bit 5)
         FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_COMP_CHNG\n");
-        //fusb302_start_drp_logic(instance);
+        fusb302_start_drp_logic(instance);
 
         // fusb302_pd_reset_logic(instance);
         // fusb302_pd_autogoodcrc_set(instance, true);
@@ -369,7 +366,7 @@ bool fusb302_read_role(Fusb302* instance) {
 
     } else if(irq_bits.i_vbusok) { // Checking I_COMP_CHNG bit (bit 5)
         FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_VBUSOK\n");
-        //fusb302_start_drp_logic(instance);
+        fusb302_start_drp_logic(instance);
 
         // fusb302_pd_reset_logic(instance);
         // fusb302_pd_autogoodcrc_set(instance, true);

@@ -130,7 +130,7 @@ void test_nvm(void) {
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
 
-    furi_log_set_level(FuriLogLevelDebug);
+    //furi_log_set_level(FuriLogLevelDebug);
     FURI_LOG_T("tag", "Trace");
     FURI_LOG_D("tag", "Debug");
     FURI_LOG_I("tag", "Info");
@@ -157,10 +157,8 @@ int32_t test_peref_srv(void* p) {
 
     //display_h = furi_record_open(RECORD_DISPLAY);
 
-
     // display_h = display_jd9853_qspi_init();
     // display_jd9853_qspi_set_brightness(display_h, 20);
-
 
     // FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
     // FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
@@ -169,19 +167,19 @@ int32_t test_peref_srv(void* p) {
 
     furi_delay_ms(2000);
 
-   // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
+    // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
 
     while(true) {
-    //    furi_hal_i2c_acquire(&furi_hal_i2c_handle_external);
-    //     furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_external);
-    //    furi_hal_i2c_release(&furi_hal_i2c_handle_external);
-       // fusb302_read_cc_status(fusb302,1);
-       //if(fusb302_read_role(fusb302)) {
-           // FURI_LOG_I(TAG, "Role toggle completed!");
-            //fusb302_pd_reset(fusb302);
-       // } else {
-           // FURI_LOG_I(TAG, "Role toggle not completed yet...");
-       // }
+        //    furi_hal_i2c_acquire(&furi_hal_i2c_handle_external);
+        //     furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_external);
+        //    furi_hal_i2c_release(&furi_hal_i2c_handle_external);
+        // fusb302_read_cc_status(fusb302,1);
+        //if(fusb302_read_role(fusb302)) {
+        // FURI_LOG_I(TAG, "Role toggle completed!");
+        //fusb302_pd_reset(fusb302);
+        // } else {
+        // FURI_LOG_I(TAG, "Role toggle not completed yet...");
+        // }
         // const size_t width = JD9853_WIDTH; // 1 byte per pixel
         // const size_t height = JD9853_HEIGHT;
         // uint8_t ton[18] = {0xFC, 0x0, 0x11, 0x22, 0x32, 0x43, 0x54, 0x65, 0x76, 0x86, 0x97, 0xA8, 0xB9, 0xCA, 0xDA, 0xEB, 0xFC, 0x0};
