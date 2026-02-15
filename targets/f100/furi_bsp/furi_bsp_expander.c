@@ -1,6 +1,6 @@
-#include "core/check.h"
 #include <furi_hal_i2c_config.h>
 #include <drivers/tca6416a/tca6416a.h>
+#include <stdio.h>
 
 #include "furi_bsp_expander.h"
 
@@ -13,6 +13,7 @@ typedef struct {
     Tca6416a* handle;
     FuriThreadId thread_id;
     InputExpMain input_mask_old;
+    FuriBsbControlExpanderMain control_state;
 
     FuriCallback gpio_5v0_flt_callback;
     void* gpio_5v0_flt_callback_context;
@@ -127,6 +128,7 @@ static void furi_bsp_expander_main_init(void) {
     expander_main = malloc(sizeof(ExpanderMain));
     expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
     tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
+    expander_main->control_state = FuriBsbControlExpanderMainOn;
     // Todo: Errata lay the I2C line
     furi_bsp_expander_main_write_output(OutputExpMainVcc5v0DevS0En);
     tca6416a_write_mode(expander_main->handle, InputExpMainInputMask);
@@ -146,7 +148,8 @@ void furi_bsp_main_reset(void) {
     furi_delay_ms(10);
 
     tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
-
+    tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
+    expander_main->control_state = FuriBsbControlExpanderMainOn;
     // Todo: Errata lay the I2C line
     furi_bsp_expander_main_write_output(OutputExpMainVcc5v0DevS0En);
     tca6416a_write_mode(expander_main->handle, InputExpMainInputMask);
@@ -189,6 +192,25 @@ OutputExpMain furi_bsp_expander_main_read_output(void) {
 InputExpMain furi_bsp_expander_main_read_input(void) {
     furi_assert(expander_main != NULL);
     return tca6416a_read_input(expander_main->handle) & InputExpMainInputMask;
+}
+
+void furi_bsp_expander_main_set_control(FuriBsbControlExpanderMain control) {
+    furi_check(expander_main != NULL);
+    if(control == expander_main->control_state) {
+        return;
+    }
+    if(control == FuriBsbControlExpanderMainOn) {
+        tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
+        expander_main->control_state = FuriBsbControlExpanderMainOn;
+    } else {
+        tca6416a_set_input_callback(expander_main->handle, NULL, NULL);
+        expander_main->control_state = FuriBsbControlExpanderMainOff;
+    }
+}
+
+FuriBsbControlExpanderMain furi_bsp_expander_main_get_control_state(void) {
+    furi_check(expander_main != NULL);
+    return expander_main->control_state;
 }
 
 void furi_bsp_expander_main_attach_gpio_5v0_flt_callback(FuriCallback callback, void* context) {

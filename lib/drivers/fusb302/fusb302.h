@@ -35,6 +35,7 @@ typedef enum {
     Fusb302TypeCcOrientationNormal, //!< Cable is plugged in normally (CC1 active)
     Fusb302TypeCcOrientationReverse, //!< Cable is plugged in upside-down (CC2 active)
 } Fusb302TypeCcOrientation;
+
 /**
  * USB Power Delivery message structure.
  *

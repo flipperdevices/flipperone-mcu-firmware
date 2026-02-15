@@ -327,51 +327,14 @@ bool fusb302_read_role(Fusb302* instance) {
         }
         ret = true;
 
-        // int result = usb_controller.pd_message_receive(msg);
-
-        //   if (result == 1) {
-        //     Serial.print("Received PD message: Header=0x");
-        //     Serial.println(msg.header, HEX);
-        //     // Process message...
-        //   } else if (result < 0) {
-        //     Serial.println("Error receiving message");
-        //   }
-        // if(orientation != Fusb302TypeCcOrientationNone) {
-        //     fusb302_pd_reset_logic(instance);
-        //     // fusb302_pd_autogoodcrc_set(instance, true);
-        //     // fusb302_pd_autoretry_set(instance, 3);
-        //     fusb302_cc_orientation_set(instance, orientation);
-        //     //fusb302_pd_rx_flush(instance);
-        //     furi_delay_ms(100);
-        //     Fusb302PdMsg msg;
-        //     Fusb302Status res = fusb302_pd_message_receive(instance, &msg);
-
-        //     if(res == Fusb302StatusOk) {
-        //         FUSB302_DEBUG(TAG, "Received PD message: SOP=%d, Header=0x%04X, Objects=%d", msg.sop_type, msg.header, msg.object_count);
-        //     } else if(res == Fusb302StatusRxEmpty) {
-        //         FUSB302_DEBUG(TAG, "No PD message received (Rx FIFO empty)");
-        //     } else {
-        //         FUSB302_DEBUG(TAG, "Error receiving PD message");
-        //     }
-        // }
-
     } else if(irq_bits.i_comp_chng) { // Checking I_COMP_CHNG bit (bit 5)
         FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_COMP_CHNG\n");
         fusb302_start_drp_logic(instance);
-
-        // fusb302_pd_reset_logic(instance);
-        // fusb302_pd_autogoodcrc_set(instance, true);
-        // fusb302_pd_autoretry_set(instance, 3);
-        // fusb302_pd_rx_flush(instance);
 
     } else if(irq_bits.i_vbusok) { // Checking I_COMP_CHNG bit (bit 5)
         FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_VBUSOK\n");
         fusb302_start_drp_logic(instance);
 
-        // fusb302_pd_reset_logic(instance);
-        // fusb302_pd_autogoodcrc_set(instance, true);
-        // fusb302_pd_autoretry_set(instance, 3);
-        // fusb302_pd_rx_flush(instance);
     } else {
         // FUSB302_DEBUG(TAG, "Toggle not completed yet...\n");
     }
@@ -392,11 +355,11 @@ void fusb302_set_input_callback(Fusb302* instance, Fusb302Callback callback, voi
  * - Configures TX by setting appropriate TX_CC1 or TX_CC2 bits
  * - May interfere with DFP/SRC functionality
  *
- * The orientation parameter must be either USB_TYPEC_CC_ORIENTATION_NORMAL
- * or USB_TYPEC_CC_ORIENTATION_REVERSE.
+ * The orientation parameter must be either Fusb302TypeCcOrientationNormal
+ * or Fusb302TypeCcOrientationReverse.
  *
  * @param[in] orientation The cable orientation to configure (normal or reversed)
- * @return 0 on successful configuration, or a negative error code otherwise
+ * @return Fusb302StatusOk on successful configuration, or a negative error code otherwise
  */
 Fusb302Status fusb302_cc_orientation_set(Fusb302* instance, Fusb302TypeCcOrientation orientation) {
     furi_check(instance);
@@ -405,7 +368,7 @@ Fusb302Status fusb302_cc_orientation_set(Fusb302* instance, Fusb302TypeCcOrienta
     Fusb302Status res = Fusb302StatusUnknown;
     do {
         /* Handle RX by setting MEAS_CC1 or MEAS_CC2
-     * @note Interfers with DFP/SRC code */
+         * @note Interfers with DFP/SRC code */
         Fusb302Switches0RegBits switches0_bits = {0};
         res = fusb302_read_reg(instance, Fusb302RegSwitches0, (uint8_t*)&switches0_bits);
         if(res != Fusb302StatusOk) {
@@ -456,7 +419,7 @@ Fusb302Status fusb302_cc_orientation_set(Fusb302* instance, Fusb302TypeCcOrienta
  * functionality unaffected. This is useful for recovering from protocol
  * errors or reinitializing PD communication.
  *
- * @return 0 on successful reset, or a negative error code otherwise
+ * @return Fusb302StatusOk on successful reset, or a negative error code otherwise
  */
 Fusb302Status fusb302_pd_reset_logic(Fusb302* instance) {
     furi_check(instance);
@@ -473,7 +436,7 @@ Fusb302Status fusb302_pd_reset_logic(Fusb302* instance) {
 /**
  * @brief Sends a USB Power Delivery Hard Reset sequence.
  *
- * @return 0 on successful transmission, or a negative error code otherwise
+ * @return Fusb302StatusOk on successful transmission, or a negative error code otherwise
  * @see Section 6.6.3.3 of the USB Power Delivery Specification
  */
 Fusb302Status fusb302_pd_reset_hard(Fusb302* instance) {
@@ -502,7 +465,7 @@ Fusb302Status fusb302_pd_reset_hard(Fusb302* instance) {
  * USB PD operation according to the specification.
  *
  * @param[in] enabled true to enable automatic GoodCRC response, false to disable
- * @return 0 on successful configuration, or a negative error code otherwise
+ * @return Fusb302StatusOk on successful configuration, or a negative error code otherwise
  */
 Fusb302Status fusb302_pd_autogoodcrc_set(Fusb302* instance, bool enabled) {
     furi_check(instance);
@@ -532,7 +495,7 @@ Fusb302Status fusb302_pd_autogoodcrc_set(Fusb302* instance, bool enabled) {
  * The retries parameter must be between 0 and 3 inclusive.
  *
  * @param[in] retries Number of retry attempts (0-3) for message transmission
- * @return 0 on successful configuration, or a negative error code otherwise
+ * @return Fusb302StatusOk on successful configuration, or a negative error code otherwise
  */
 Fusb302Status fusb302_pd_autoretry_set(Fusb302* instance, int retries) {
     furi_check(instance);
@@ -557,10 +520,9 @@ Fusb302Status fusb302_pd_autoretry_set(Fusb302* instance, int retries) {
  * @brief Flushes the USB PD receive FIFO buffer.
  *
  * Clears any pending received messages from the RX FIFO and waits for
- * the clear operation to complete. A timeout mechanism should be
- * implemented in future versions.
+ * the clear operation to complete. 
  *
- * @return 0 on successful flush operation, or a negative error code otherwise
+ * @return Fusb302StatusOk on successful flush operation, or a negative error code otherwise
  */
 Fusb302Status fusb302_pd_rx_flush(Fusb302* instance) {
     furi_check(instance);
@@ -603,10 +565,9 @@ Fusb302Status fusb302_pd_rx_flush(Fusb302* instance) {
  * @brief Flushes the USB PD transmit FIFO buffer.
  *
  * Clears any pending messages from the TX FIFO and waits for the clear
- * operation to complete. A timeout mechanism should be implemented in
- * future versions.
+ * operation to complete. 
  *
- * @return 0 on successful flush operation, or a negative error code otherwise
+ * @return Fusb302StatusOk on successful flush operation, or a negative error code otherwise
  */
 Fusb302Status fusb302_pd_tx_flush(Fusb302* instance) {
     furi_check(instance);
@@ -656,8 +617,8 @@ Fusb302Status fusb302_pd_tx_flush(Fusb302* instance) {
  * - Retrieves the message payload if present
  *
  * @param[out] msg Reference to a power delivery message structure where the received message will be stored
- * @return 1 if a message was successfully received
- *         0 if no message was available to receive
+ * @return Fusb302StatusOk if a message was successfully received
+ *         Fusb302StatusRxEmpty if no message was available to receive
  *         negative error code if an error occurred during reception
  */
 Fusb302Status fusb302_pd_message_receive(Fusb302* instance, Fusb302PdMsg* msg) {
