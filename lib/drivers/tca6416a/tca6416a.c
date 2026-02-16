@@ -70,8 +70,10 @@ void tca6416a_deinit(Tca6416a* instance) {
 
 void tca6416a_set_input_callback(Tca6416a* instance, Tca6416aCallbackInput callback, void* context) {
     furi_check(instance);
+    FURI_CRITICAL_ENTER();
     instance->input_callback = callback;
     instance->callback_context = context;
+    FURI_CRITICAL_EXIT();
 }
 
 static FURI_ALWAYS_INLINE int tca6416a_write_reg(Tca6416a* instance, Tca6416aReg reg, uint16_t data) {

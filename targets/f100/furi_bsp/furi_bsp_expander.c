@@ -10,27 +10,24 @@ typedef struct {
 } ExpanderControl;
 
 typedef struct {
+    FuriCallback callback;
+    void* context;
+} ExpanderCallbackStorage;
+
+typedef struct {
     Tca6416a* handle;
     FuriThreadId thread_id;
     InputExpMain input_mask_old;
     FuriBspControlExpanderMain control_state;
 
-    FuriCallback gpio_5v0_flt_callback;
-    void* gpio_5v0_flt_callback_context;
-    FuriCallback gpio_3v3_flt_callback;
-    void* gpio_3v3_flt_callback_context;
-    FuriCallback bq25798_callback;
-    void* bq25798_callback_context;
-    FuriCallback fusb302_callback;
-    void* fusb302_callback_context;
-    FuriCallback mux_vconn_fault_callback;
-    void* mux_vconn_fault_callback_context;
-    FuriCallback type_c_up_sw_pg_callback;
-    void* type_c_up_sw_pg_callback_context;
-    FuriCallback type_a_up_sw_pg_callback;
-    void* type_a_up_sw_pg_callback_context;
-    FuriCallback expander7_callback;
-    void* expander7_callback_context;
+    ExpanderCallbackStorage gpio_5v0_flt;
+    ExpanderCallbackStorage gpio_3v3_flt;
+    ExpanderCallbackStorage bq25798;
+    ExpanderCallbackStorage fusb302;
+    ExpanderCallbackStorage mux_vconn_fault;
+    ExpanderCallbackStorage type_c_up_sw_pg;
+    ExpanderCallbackStorage type_a_up_sw_pg;
+    ExpanderCallbackStorage expander7;
 } ExpanderMain;
 
 #define TAG "Expander"
@@ -48,6 +45,13 @@ typedef struct {
 static ExpanderControl* expander_control = NULL;
 static ExpanderMain* expander_main = NULL;
 
+static void furi_bsp_set_callback(ExpanderCallbackStorage* storage, FuriCallback callback, void* context) {
+    FURI_CRITICAL_ENTER();
+    storage->callback = callback;
+    storage->context = context;
+    FURI_CRITICAL_EXIT();
+}
+
 static void furi_bsp_expander_control_init(void) {
     furi_check(expander_control == NULL);
     expander_control = malloc(sizeof(ExpanderControl));
@@ -60,11 +64,13 @@ static __isr __not_in_flash_func(void) furi_bsp_expander_main_interrupt_handler(
     furi_thread_flags_set(instance->thread_id, EXPANDER_MAIN_THREAD_FLAG_ISR);
 }
 
-static int32_t subghz_worker_thread_callback(void* context) {
+static int32_t furi_bsp_expander_callback_thread(void* context) {
     ExpanderMain* instance = context;
 
     while(1) {
         furi_thread_flags_wait(EXPANDER_MAIN_THREAD_FLAG_ISR, FuriFlagWaitAny, FuriWaitForever);
+
+        // Trigger on interrupts that changed and transitioned from high to low (active low)
         InputExpMain input = ~tca6416a_read_input(instance->handle) & InputExpMainInputMask;
         EXPANDER_DEBUG("Expander Main Input: 0x%02X", input);
         InputExpMain changed = (input ^ instance->input_mask_old) & input;
@@ -72,50 +78,50 @@ static int32_t subghz_worker_thread_callback(void* context) {
 
         if(changed & InputExpMainGpio5v0Flt) {
             EXPANDER_DEBUG("GPIO 5V0 Fault Detected");
-            if(instance->gpio_5v0_flt_callback) {
-                instance->gpio_5v0_flt_callback(instance->gpio_5v0_flt_callback_context);
+            if(instance->gpio_5v0_flt.callback) {
+                instance->gpio_5v0_flt.callback(instance->gpio_5v0_flt.context);
             }
         }
         if(changed & InputExpMainGpio3v3Flt) {
             EXPANDER_DEBUG("GPIO 3V3 Fault Detected");
-            if(instance->gpio_3v3_flt_callback) {
-                instance->gpio_3v3_flt_callback(instance->gpio_3v3_flt_callback_context);
+            if(instance->gpio_3v3_flt.callback) {
+                instance->gpio_3v3_flt.callback(instance->gpio_3v3_flt.context);
             }
         }
         if(changed & InputExpMainBq25798Int) {
             EXPANDER_DEBUG("BQ25798 Interrupt Detected");
-            if(instance->bq25798_callback) {
-                instance->bq25798_callback(instance->bq25798_callback_context);
+            if(instance->bq25798.callback) {
+                instance->bq25798.callback(instance->bq25798.context);
             }
         }
         if(changed & InputExpMainFusb302Int) {
             EXPANDER_DEBUG("FUSB302 Interrupt Detected");
-            if(instance->fusb302_callback) {
-                instance->fusb302_callback(instance->fusb302_callback_context);
+            if(instance->fusb302.callback) {
+                instance->fusb302.callback(instance->fusb302.context);
             }
         }
         if(changed & InputExpMainMuxVconnFault) {
             EXPANDER_DEBUG("MUX VCON Fault Detected");
-            if(instance->mux_vconn_fault_callback) {
-                instance->mux_vconn_fault_callback(instance->mux_vconn_fault_callback_context);
+            if(instance->mux_vconn_fault.callback) {
+                instance->mux_vconn_fault.callback(instance->mux_vconn_fault.context);
             }
         }
         if(changed & InputExpMainTypeCUpSwPg) {
             EXPANDER_DEBUG("Type-C Up SW PG Detected");
-            if(instance->type_c_up_sw_pg_callback) {
-                instance->type_c_up_sw_pg_callback(instance->type_c_up_sw_pg_callback_context);
+            if(instance->type_c_up_sw_pg.callback) {
+                instance->type_c_up_sw_pg.callback(instance->type_c_up_sw_pg.context);
             }
         }
         if(changed & InputExpMainTypeAUpSwPg) {
             EXPANDER_DEBUG("Type-A Up SW PG Detected");
-            if(instance->type_a_up_sw_pg_callback) {
-                instance->type_a_up_sw_pg_callback(instance->type_a_up_sw_pg_callback_context);
+            if(instance->type_a_up_sw_pg.callback) {
+                instance->type_a_up_sw_pg.callback(instance->type_a_up_sw_pg.context);
             }
         }
         if(changed & InputExpMainExpander7) {
             EXPANDER_DEBUG("Expander 7 Interrupt Detected");
-            if(instance->expander7_callback) {
-                instance->expander7_callback(instance->expander7_callback_context);
+            if(instance->expander7.callback) {
+                instance->expander7.callback(instance->expander7.context);
             }
         }
     }
@@ -134,7 +140,7 @@ static void furi_bsp_expander_main_init(void) {
     tca6416a_write_mode(expander_main->handle, InputExpMainInputMask);
 
     expander_main->input_mask_old = ~tca6416a_read_input(expander_main->handle) & InputExpMainInputMask;
-    expander_main->thread_id = furi_thread_alloc_ex("ExpanderMainWorker", 1024, subghz_worker_thread_callback, expander_main);
+    expander_main->thread_id = furi_thread_alloc_ex("ExpanderMainWorker", 1024, furi_bsp_expander_callback_thread, expander_main);
     furi_thread_start(expander_main->thread_id);
 }
 
@@ -216,63 +222,55 @@ FuriBspControlExpanderMain furi_bsp_expander_main_get_control_state(void) {
 void furi_bsp_expander_main_attach_gpio_5v0_flt_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
-    furi_check(expander_main->gpio_5v0_flt_callback == NULL);
-    expander_main->gpio_5v0_flt_callback = callback;
-    expander_main->gpio_5v0_flt_callback_context = context;
+    furi_check(expander_main->gpio_5v0_flt.callback == NULL);
+    furi_bsp_set_callback(&expander_main->gpio_5v0_flt, callback, context);
 }
 
 void furi_bsp_expander_main_attach_gpio_3v3_flt_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
-    furi_check(expander_main->gpio_3v3_flt_callback == NULL);
-    expander_main->gpio_3v3_flt_callback = callback;
-    expander_main->gpio_3v3_flt_callback_context = context;
+    furi_check(expander_main->gpio_3v3_flt.callback == NULL);
+    furi_bsp_set_callback(&expander_main->gpio_3v3_flt, callback, context);
 }
 
 void furi_bsp_expander_main_attach_bq25798_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
-    furi_check(expander_main->bq25798_callback == NULL);
-    expander_main->bq25798_callback = callback;
-    expander_main->bq25798_callback_context = context;
+    furi_check(expander_main->bq25798.callback == NULL);
+    furi_bsp_set_callback(&expander_main->bq25798, callback, context);
 }
 
 void furi_bsp_expander_main_attach_fusb302_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
-    furi_check(expander_main->fusb302_callback == NULL);
-    expander_main->fusb302_callback = callback;
-    expander_main->fusb302_callback_context = context;
+    furi_check(expander_main->fusb302.callback == NULL);
+    furi_bsp_set_callback(&expander_main->fusb302, callback, context);
 }
 
 void furi_bsp_expander_main_attach_mux_vconn_fault_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
-    furi_check(expander_main->mux_vconn_fault_callback == NULL);
-    expander_main->mux_vconn_fault_callback = callback;
-    expander_main->mux_vconn_fault_callback_context = context;
+    furi_check(expander_main->mux_vconn_fault.callback == NULL);
+    furi_bsp_set_callback(&expander_main->mux_vconn_fault, callback, context);
 }
 
 void furi_bsp_expander_main_attach_type_c_up_sw_pg_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
-    furi_check(expander_main->type_c_up_sw_pg_callback == NULL);
-    expander_main->type_c_up_sw_pg_callback = callback;
-    expander_main->type_c_up_sw_pg_callback_context = context;
+    furi_check(expander_main->type_c_up_sw_pg.callback == NULL);
+    furi_bsp_set_callback(&expander_main->type_c_up_sw_pg, callback, context);
 }
 
 void furi_bsp_expander_main_attach_type_a_up_sw_pg_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
-    furi_check(expander_main->type_a_up_sw_pg_callback == NULL);
-    expander_main->type_a_up_sw_pg_callback = callback;
-    expander_main->type_a_up_sw_pg_callback_context = context;
+    furi_check(expander_main->type_a_up_sw_pg.callback == NULL);
+    furi_bsp_set_callback(&expander_main->type_a_up_sw_pg, callback, context);
 }
 
 void furi_bsp_expander_main_attach_expander7_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
-    furi_check(expander_main->expander7_callback == NULL);
-    expander_main->expander7_callback = callback;
-    expander_main->expander7_callback_context = context;
+    furi_check(expander_main->expander7.callback == NULL);
+    furi_bsp_set_callback(&expander_main->expander7, callback, context);
 }
