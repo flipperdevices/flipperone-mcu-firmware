@@ -134,7 +134,7 @@ static void furi_bsp_expander_main_init(void) {
     expander_main = malloc(sizeof(ExpanderMain));
     expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
     tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
-    expander_main->control_state = FuriBspControlExpanderMainOn;
+    expander_main->control_state = FuriBspControlExpanderMainMcu;
     // Todo: Errata lay the I2C line
     furi_bsp_expander_main_write_output(OutputExpMainVcc5v0DevS0En);
     tca6416a_write_mode(expander_main->handle, InputExpMainInputMask);
@@ -149,13 +149,13 @@ void furi_bsp_main_reset(void) {
     tca6416a_deinit(expander_main->handle);
 
     furi_hal_gpio_write_open_drain(&gpio_main_board_reset, false);
-    furi_delay_ms(10);
+    furi_delay_ms(50);
     furi_hal_gpio_write_open_drain(&gpio_main_board_reset, true);
     furi_delay_ms(10);
 
     tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
     tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
-    expander_main->control_state = FuriBspControlExpanderMainOn;
+    expander_main->control_state = FuriBspControlExpanderMainMcu;
     // Todo: Errata lay the I2C line
     furi_bsp_expander_main_write_output(OutputExpMainVcc5v0DevS0En);
     tca6416a_write_mode(expander_main->handle, InputExpMainInputMask);
@@ -205,12 +205,12 @@ void furi_bsp_expander_main_set_control(FuriBspControlExpanderMain control) {
     if(control == expander_main->control_state) {
         return;
     }
-    if(control == FuriBspControlExpanderMainOn) {
+    if(control == FuriBspControlExpanderMainMcu) {
         tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
-        expander_main->control_state = FuriBspControlExpanderMainOn;
+        expander_main->control_state = FuriBspControlExpanderMainMcu;
     } else {
         tca6416a_set_input_callback(expander_main->handle, NULL, NULL);
-        expander_main->control_state = FuriBspControlExpanderMainOff;
+        expander_main->control_state = FuriBspControlExpanderMainCpu;
     }
 }
 

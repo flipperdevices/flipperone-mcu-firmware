@@ -206,16 +206,14 @@ static void linux_app_message_logic(FuriEventLoopObject* object, void* context) 
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
         case LinuxAppMessageTypeStart:
+        case LinuxAppMessageTypeReset:
             furi_hal_bsp_linux_reset();
+            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             furi_hal_bsp_linux_start();
             break;
         case LinuxAppMessageTypeStop:
             furi_hal_bsp_linux_reset();
             furi_hal_bsp_linux_stop();
-            break;
-        case LinuxAppMessageTypeReset:
-            furi_hal_bsp_linux_reset();
-            furi_hal_bsp_linux_start();
             break;
         case LinuxAppMessageTypeClose:
             furi_hal_bsp_linux_reset();
