@@ -7,6 +7,7 @@
 #include <task_control_block.h>
 #include <time.h>
 #include <args.h>
+#include "furi_bsp.h"
 
 static void cli_command_help(Cli* cli, FuriString* args, void* context) {
     UNUSED(args);
@@ -236,6 +237,98 @@ void cli_command_i2c(Cli* cli, FuriString* args, void* context) {
     cli_scan_i2c_bus(&furi_hal_i2c_handle_external, "external");
 }
 
+static void cli_command_expander_ext_help(Cli* cli, FuriString* args, void* context) {
+    UNUSED(cli);
+    UNUSED(args);
+    UNUSED(context);
+    printf(
+        "Usage: expander_ext <GPIO_OUT_NUMBER> <VALUE>\r\n"
+        "Where <GPIO_OUT_NUMBER> is:\r\n"
+        "\tUSB2.0_SEL \t\t0 \r\n"
+        "\tHUB_PWR_EN \t\t1\r\n"
+        "\tTYPE-A_UP_SW_EN \t2 \r\n"
+        "\tVCC5V0_DEVICE_S0_EN \t3 \r\n"
+        "\tVCC5V0_SYS_S5_EN \t4 \r\n"
+        "\tGPIO_5V0_EN \t\t5 \r\n"
+        "\tGPIO_3V3_EN \t\t6 \r\n"
+        "\tEXPANDER_P17 \t\t7 \r\n"
+        "Where <VALUE> is:\r\n"
+        "\t0 — Set output low\r\n"
+        "\t1 — Set output high\r\n");
+}
+
+static OutputExpMain cli_command_expander_ext_set(OutputExpMain expander_gpio_out_read, OutputExpMain expander_gpio_out, int expander_gpio_out_value) {
+    if(expander_gpio_out_value == 1) {
+        expander_gpio_out_read |= expander_gpio_out;
+    } else {
+        expander_gpio_out_read &= ~expander_gpio_out;
+    }
+    return expander_gpio_out_read;
+}
+
+static void cli_command_expander_ext(Cli* cli, FuriString* args, void* context) {
+    UNUSED(cli);
+    UNUSED(context);
+
+    if(furi_string_size(args) < 2) {
+        cli_command_expander_ext_help(cli, args, context);
+        return;
+    }
+
+    int expander_gpio_out_number = 0;
+    if(!args_read_int_and_trim(args, &expander_gpio_out_number)) {
+        cli_command_expander_ext_help(cli, args, context);
+        return;
+    }
+    if(expander_gpio_out_number < 0 || expander_gpio_out_number > 7) {
+        cli_command_expander_ext_help(cli, args, context);
+        return;
+    }
+
+    int expander_gpio_out_value = 0;
+    if(!args_read_int_and_trim(args, &expander_gpio_out_value)) {
+        cli_command_expander_ext_help(cli, args, context);
+        return;
+    }
+    if(expander_gpio_out_value != 0 && expander_gpio_out_value != 1) {
+        cli_command_expander_ext_help(cli, args, context);
+        return;
+    }
+
+    printf("Setting expander GPIO out %d to %d\r\n", expander_gpio_out_number, expander_gpio_out_value);
+
+    OutputExpMain output = furi_bsp_expander_main_read_output();
+
+    switch(expander_gpio_out_number) {
+    case 0:
+        output = cli_command_expander_ext_set(output, OutputExpMainUsb20Sel, expander_gpio_out_value);
+        break;
+    case 1:
+        output = cli_command_expander_ext_set(output, OutputExpMainHubPwrEn, expander_gpio_out_value);
+        break;
+    case 2:
+        output = cli_command_expander_ext_set(output, OutputExpMainTypeAUpSwEn, expander_gpio_out_value);
+        break;
+    case 3:
+        output = cli_command_expander_ext_set(output, OutputExpMainVcc5v0DevS0En, expander_gpio_out_value);
+        break;
+    case 4:
+        output = cli_command_expander_ext_set(output, OutputExpMainVcc5v0SysS5En, expander_gpio_out_value);
+        break;
+    case 5:
+        output = cli_command_expander_ext_set(output, OutputExpMainGpio5v0En, expander_gpio_out_value);
+        break;
+    case 6:
+        output = cli_command_expander_ext_set(output, OutputExpMainGpio3v3En, expander_gpio_out_value);
+        break;
+    case 7:
+        output = cli_command_expander_ext_set(output, OutputExpMainExpander17, expander_gpio_out_value);
+        break;
+    }
+
+    furi_bsp_expander_main_write_output(output);
+}
+
 void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "?", CliCommandFlagParallelSafe, cli_command_help, NULL);
     cli_add_command(cli, "help", CliCommandFlagParallelSafe, cli_command_help, NULL);
@@ -247,4 +340,5 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "free_blocks", CliCommandFlagParallelSafe, cli_command_free_blocks, NULL);
 
     cli_add_command(cli, "i2c", CliCommandFlagParallelSafe, cli_command_i2c, NULL);
+    cli_add_command(cli, "expander_ext", CliCommandFlagParallelSafe, cli_command_expander_ext, NULL);
 }

@@ -44,7 +44,7 @@ typedef enum {
     InputExpMainGpio3v3Flt = (1 << 1),
     InputExpMainBq25798Int = (1 << 2),
     InputExpMainFusb302Int = (1 << 3),
-    InputExpMainMuxVconFault = (1 << 4),
+    InputExpMainMuxVconnFault = (1 << 4),
     InputExpMainTypeCUpSwPg = (1 << 5),
     InputExpMainTypeAUpSwPg = (1 << 6),
     InputExpMainExpander7 = (1 << 7),
