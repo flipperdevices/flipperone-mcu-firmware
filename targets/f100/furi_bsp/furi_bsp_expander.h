@@ -8,9 +8,9 @@ extern "C" {
 #endif
 
 typedef enum {
-    FuriBsbControlExpanderMainOn,
-    FuriBsbControlExpanderMainOff,
-} FuriBsbControlExpanderMain;
+    FuriBspControlExpanderMainOn,
+    FuriBspControlExpanderMainOff,
+} FuriBspControlExpanderMain;
 
 /** Init all expander related hardware
  */
@@ -50,12 +50,12 @@ OutputExpMain furi_bsp_expander_main_read_output(void);
 /** Control the main expander interrupt handler
  * @param control - whether to turn on or off the interrupt handler
  */
-void furi_bsp_expander_main_set_control(FuriBsbControlExpanderMain control);
+void furi_bsp_expander_main_set_control(FuriBspControlExpanderMain control);
 
 /** Get the current state of the main expander interrupt handler
- * @return FuriBsbControlExpanderMain - whether the interrupt handler is on or off
+ * @return FuriBspControlExpanderMain - whether the interrupt handler is on or off
  */
-FuriBsbControlExpanderMain furi_bsp_expander_main_get_control_state(void);
+FuriBspControlExpanderMain furi_bsp_expander_main_get_control_state(void);
 
 /** Attach callbacks for main expander input events
  * @param callback - function to call on GPIO 5V0 fault events
