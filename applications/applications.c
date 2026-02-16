@@ -16,6 +16,7 @@ extern int32_t desktop_srv(void* p);
 extern int32_t status_lights_srv(void* p);
 extern int32_t usb_srv(void* p);
 extern int32_t cli_srv(void* p);
+extern int32_t fusb302_srv(void* p);
 extern int32_t power_menu(void* p);
 
 // applications
@@ -34,6 +35,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = input_srv,
         .name = "InputSrv",
         .appid = "input_srv",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = fusb302_srv,
+        .name = "Fusb302Srv",
+        .appid = "fusb302",
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },

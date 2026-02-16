@@ -11,7 +11,7 @@
 #define JD9853_QSPI_CMD_4_LINE_MODE (0x10001100u) // Quad SPI command 0x32
 #define JD9853_QSPI_CMD_4_LINE_RAMWR (0x00111000u) // Quad SPI data 0x2C
 
-//https://github.com/flipperdevices/one-rp2350-control/blob/main/docs/GWT-2.39-256144-AWMN-04-FS-1.1.pdf
+//https://github.com/flipperdevices/flipperone-mcu-firmware/blob/main/docs/GWT-2.39-256144-AWMN-04-FS-1.1.pdf
 
 typedef enum {
     nop = 0x00, /* No Operation */

@@ -63,14 +63,17 @@ Tca6416a* tca6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
 void tca6416a_deinit(Tca6416a* instance) {
     furi_check(instance);
     furi_hal_gpio_remove_int_callback(instance->pin_interrupt);
+    furi_hal_gpio_init_ex(instance->pin_interrupt, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(instance->pin_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     free(instance);
 }
 
 void tca6416a_set_input_callback(Tca6416a* instance, Tca6416aCallbackInput callback, void* context) {
     furi_check(instance);
+    FURI_CRITICAL_ENTER();
     instance->input_callback = callback;
     instance->callback_context = context;
+    FURI_CRITICAL_EXIT();
 }
 
 static FURI_ALWAYS_INLINE int tca6416a_write_reg(Tca6416a* instance, Tca6416aReg reg, uint16_t data) {

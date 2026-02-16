@@ -39,6 +39,31 @@ typedef enum {
     StatusLedPowerMask = (0xE000),
 } StatusLedPower;
 
+typedef enum {
+    InputExpMainGpio5v0Flt = (1 << 0),
+    InputExpMainGpio3v3Flt = (1 << 1),
+    InputExpMainBq25798Int = (1 << 2),
+    InputExpMainFusb302Int = (1 << 3),
+    InputExpMainMuxVconnFault = (1 << 4),
+    InputExpMainTypeCUpSwPg = (1 << 5),
+    InputExpMainTypeAUpSwPg = (1 << 6),
+    InputExpMainExpander7 = (1 << 7),
+
+    InputExpMainInputMask = (0x00FF),
+} InputExpMain;
+
+typedef enum {
+    OutputExpMainUsb20Sel = (1 << 8),
+    OutputExpMainHubPwrEn = (1 << 9),
+    OutputExpMainTypeAUpSwEn = (1 << 10),
+    OutputExpMainVcc5v0DevS0En = (1 << 11),
+    OutputExpMainVcc5v0SysS5En = (1 << 12),
+    OutputExpMainGpio5v0En = (1 << 13),
+    OutputExpMainGpio3v3En = (1 << 14),
+    OutputExpMainExpander17 = (1 << 15),
+    OutputExpMainMask = (0xFF00),
+} OutputExpMain;
+
 typedef struct {
     const InputKey key;
     const bool inverted;
@@ -110,7 +135,7 @@ extern const GpioPin gpio_cpu_adc_in0_boot;
 extern const GpioPin gpio_mcu_gpio0;
 extern const GpioPin gpio_mcu_gpio1;
 
-extern const GpioPin gpio_main_board_res;
+extern const GpioPin gpio_main_board_reset;
 extern const GpioPin gpio_main_expander_int;
 
 extern const GpioPin gpio_uart0_tx;
