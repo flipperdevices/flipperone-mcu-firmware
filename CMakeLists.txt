@@ -30,7 +30,7 @@ set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include("lib/sdk/pico_sdk_import.cmake")
 
-project(one-rp2350-control C CXX ASM)
+project(flipperone-mcu-firmware C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
@@ -71,11 +71,11 @@ file(GLOB_RECURSE SOURCES
     "targets/f100/src/*.c*" 
 )
 
-add_executable(one-rp2350-control 
+add_executable(${PROJECT_NAME} 
     ${SOURCES}
 )
 
-target_compile_definitions(one-rp2350-control PRIVATE 
+target_compile_definitions(${PROJECT_NAME} PRIVATE 
     PICO_DEFAULT_UART_TX_PIN=0
     PICO_DEFAULT_UART_RX_PIN=1
     PICO_DEFAULT_UART_BAUD_RATE=230400
@@ -91,15 +91,15 @@ target_compile_definitions(one-rp2350-control PRIVATE
 )
 
 
-pico_set_program_name(one-rp2350-control "one-rp2350-control")
-pico_set_program_version(one-rp2350-control "0.1")
+pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
+pico_set_program_version(${PROJECT_NAME} "0.1")
 
 # Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(one-rp2350-control 0)
-pico_enable_stdio_usb(one-rp2350-control 0)
+pico_enable_stdio_uart(${PROJECT_NAME} 0)
+pico_enable_stdio_usb(${PROJECT_NAME} 0)
 
 # Add the standard include files to the build
-target_include_directories(one-rp2350-control PRIVATE
+target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/applications
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
@@ -122,7 +122,7 @@ add_subdirectory(lib/pico-kvstore)
 add_subdirectory(assets)
 
 # Add the standard library to the build
-target_link_libraries(one-rp2350-control
+target_link_libraries(${PROJECT_NAME}
     cmsis_core
     pico_stdlib
     hardware_pwm
@@ -144,4 +144,4 @@ target_link_libraries(one-rp2350-control
     kvstore_default
 )
 
-pico_add_extra_outputs(one-rp2350-control)
+pico_add_extra_outputs(${PROJECT_NAME})
