@@ -162,7 +162,7 @@ void furi_bsp_expander_init(void) {
     furi_bsp_expander_main_init();
 }
 
-InputKey furi_bsp_expander_control_read_buttons(void) {
+uint16_t furi_bsp_expander_control_read_buttons(void) {
     furi_assert(expander_control != NULL);
     return tca6416a_read_input(expander_control->handle) & InputKeyMask;
 }
@@ -174,22 +174,22 @@ void furi_bsp_expander_control_attach_buttons_callback(FuriCallback callback, vo
     tca6416a_set_input_callback(expander_control->handle, callback, context);
 }
 
-void furi_bsp_expander_control_led_power(StatusLedPower led_mask) {
+void furi_bsp_expander_control_led_power(uint16_t led_mask) {
     furi_check(expander_control != NULL);
     tca6416a_write_output(expander_control->handle, led_mask & StatusLedPowerMask);
 }
 
-void furi_bsp_expander_main_write_output(OutputExpMain output_mask) {
+void furi_bsp_expander_main_write_output(uint16_t output_mask) {
     furi_check(expander_main != NULL);
     tca6416a_write_output(expander_main->handle, output_mask & OutputExpMainMask);
 }
 
-OutputExpMain furi_bsp_expander_main_read_output(void) {
+uint16_t furi_bsp_expander_main_read_output(void) {
     furi_check(expander_main != NULL);
     return tca6416a_read_input(expander_main->handle) & OutputExpMainMask;
 }
 
-InputExpMain furi_bsp_expander_main_read_input(void) {
+uint16_t furi_bsp_expander_main_read_input(void) {
     furi_assert(expander_main != NULL);
     return tca6416a_read_input(expander_main->handle) & InputExpMainInputMask;
 }

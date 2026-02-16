@@ -17,9 +17,9 @@ typedef enum {
 void furi_bsp_expander_init(void);
 
 /** Returns the current state of buttons from the expander
- * @return InputKey - bitmask of button states
+ * @return uint16_t - bitmask of button states (InputKey)
  */
-InputKey furi_bsp_expander_control_read_buttons(void);
+uint16_t furi_bsp_expander_control_read_buttons(void);
 
 /** Attach a callback for button events
  * @param callback - function to call on button events
@@ -28,24 +28,24 @@ InputKey furi_bsp_expander_control_read_buttons(void);
 void furi_bsp_expander_control_attach_buttons_callback(FuriCallback callback, void* context);
 
 /** Control power to status LED lines
- * @param led_mask - bitmask of LED lines to power on
+ * @param led_mask - bitmask of LED lines to power on (StatusLedPower)
  */
-void furi_bsp_expander_control_led_power(StatusLedPower led_mask);
+void furi_bsp_expander_control_led_power(uint16_t led_mask);
 
 /** Returns the current state of inputs from the main expander
- * @return InputExpMain - bitmask of input states
+ * @return uint16_t - bitmask of input states (InputExpMain)
  */
-InputExpMain furi_bsp_expander_main_read_input(void);
+uint16_t furi_bsp_expander_main_read_input(void);
 
 /** Control outputs on the main expander
- * @param output_mask - bitmask of outputs to set high
+ * @param output_mask - bitmask of outputs to set high (OutputExpMain)
  */
-void furi_bsp_expander_main_write_output(OutputExpMain output_mask);
+void furi_bsp_expander_main_write_output(uint16_t output_mask);
 
 /** Returns the current state of outputs from the main expander
- * @return OutputExpMain - bitmask of output states
+ * @return uint16_t - bitmask of output states (OutputExpMain)
  */
-OutputExpMain furi_bsp_expander_main_read_output(void);
+uint16_t furi_bsp_expander_main_read_output(void);
 
 /** Control the main expander interrupt handler
  * @param control - whether to turn on or off the interrupt handler
