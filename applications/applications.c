@@ -22,7 +22,7 @@ extern int32_t power_menu(void* p);
 // applications
 extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
-extern int32_t linux_app(void* p);
+extern int32_t cpu_app(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -114,9 +114,9 @@ const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);
 
 const FlipperInternalApplication FLIPPER_APPS[] = {
     {
-        .app = linux_app,
-        .name = "Linux",
-        .appid = "linux",
+        .app = cpu_app,
+        .name = "CPU",
+        .appid = "cpu",
         .stack_size = 4096,
         .flags = FlipperInternalApplicationFlagDefault,
     },
