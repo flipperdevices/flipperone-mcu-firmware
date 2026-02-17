@@ -34,7 +34,7 @@ typedef struct {
 
 #define EXPANDER_MAIN_THREAD_FLAG_ISR 0x00000001
 
-#define EXPANDER_DEBUG_ENABLE
+// #define EXPANDER_DEBUG_ENABLE
 
 #ifdef EXPANDER_DEBUG_ENABLE
 #define EXPANDER_DEBUG(...) FURI_LOG_I(TAG, __VA_ARGS__)
@@ -133,6 +133,12 @@ static void furi_bsp_expander_main_init(void) {
     furi_check(expander_main == NULL);
     expander_main = malloc(sizeof(ExpanderMain));
     expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
+
+    if(expander_main->handle == NULL) {
+        FURI_LOG_E(TAG, "Failed to initialize expander on Main PCB");
+        return;
+    }
+
     tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
     expander_main->control_state = FuriBspControlExpanderMainMcu;
     // Todo: Errata lay the I2C line
@@ -146,6 +152,8 @@ static void furi_bsp_expander_main_init(void) {
 
 void furi_bsp_main_reset(void) {
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
+
     tca6416a_deinit(expander_main->handle);
 
     furi_hal_gpio_write_open_drain(&gpio_main_board_reset, false);
@@ -187,21 +195,26 @@ void furi_bsp_expander_control_led_power(uint16_t led_mask) {
 
 void furi_bsp_expander_main_write_output(uint16_t output_mask) {
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     tca6416a_write_output(expander_main->handle, output_mask & OutputExpMainMask);
 }
 
 uint16_t furi_bsp_expander_main_read_output(void) {
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     return tca6416a_read_input(expander_main->handle) & OutputExpMainMask;
 }
 
 uint16_t furi_bsp_expander_main_read_input(void) {
     furi_assert(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     return tca6416a_read_input(expander_main->handle) & InputExpMainInputMask;
 }
 
 void furi_bsp_expander_main_set_control(FuriBspControlExpanderMain control) {
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
+
     if(control == expander_main->control_state) {
         return;
     }
@@ -216,12 +229,14 @@ void furi_bsp_expander_main_set_control(FuriBspControlExpanderMain control) {
 
 FuriBspControlExpanderMain furi_bsp_expander_main_get_control_state(void) {
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     return expander_main->control_state;
 }
 
 void furi_bsp_expander_main_attach_gpio_5v0_flt_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     furi_check(expander_main->gpio_5v0_flt.callback == NULL);
     furi_bsp_set_callback(&expander_main->gpio_5v0_flt, callback, context);
 }
@@ -229,6 +244,7 @@ void furi_bsp_expander_main_attach_gpio_5v0_flt_callback(FuriCallback callback, 
 void furi_bsp_expander_main_attach_gpio_3v3_flt_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     furi_check(expander_main->gpio_3v3_flt.callback == NULL);
     furi_bsp_set_callback(&expander_main->gpio_3v3_flt, callback, context);
 }
@@ -236,6 +252,7 @@ void furi_bsp_expander_main_attach_gpio_3v3_flt_callback(FuriCallback callback, 
 void furi_bsp_expander_main_attach_bq25798_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     furi_check(expander_main->bq25798.callback == NULL);
     furi_bsp_set_callback(&expander_main->bq25798, callback, context);
 }
@@ -243,6 +260,7 @@ void furi_bsp_expander_main_attach_bq25798_callback(FuriCallback callback, void*
 void furi_bsp_expander_main_attach_fusb302_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     furi_check(expander_main->fusb302.callback == NULL);
     furi_bsp_set_callback(&expander_main->fusb302, callback, context);
 }
@@ -250,6 +268,7 @@ void furi_bsp_expander_main_attach_fusb302_callback(FuriCallback callback, void*
 void furi_bsp_expander_main_attach_mux_vconn_fault_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     furi_check(expander_main->mux_vconn_fault.callback == NULL);
     furi_bsp_set_callback(&expander_main->mux_vconn_fault, callback, context);
 }
@@ -257,6 +276,7 @@ void furi_bsp_expander_main_attach_mux_vconn_fault_callback(FuriCallback callbac
 void furi_bsp_expander_main_attach_type_c_up_sw_pg_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     furi_check(expander_main->type_c_up_sw_pg.callback == NULL);
     furi_bsp_set_callback(&expander_main->type_c_up_sw_pg, callback, context);
 }
@@ -264,6 +284,7 @@ void furi_bsp_expander_main_attach_type_c_up_sw_pg_callback(FuriCallback callbac
 void furi_bsp_expander_main_attach_type_a_up_sw_pg_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     furi_check(expander_main->type_a_up_sw_pg.callback == NULL);
     furi_bsp_set_callback(&expander_main->type_a_up_sw_pg, callback, context);
 }
@@ -271,6 +292,7 @@ void furi_bsp_expander_main_attach_type_a_up_sw_pg_callback(FuriCallback callbac
 void furi_bsp_expander_main_attach_expander7_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
+    furi_check(expander_main->handle != NULL);
     furi_check(expander_main->expander7.callback == NULL);
     furi_bsp_set_callback(&expander_main->expander7, callback, context);
 }
