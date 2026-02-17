@@ -4,7 +4,7 @@
 
 static volatile GpioInterrupt gpio_interrupt[GPIO_NUMBER];
 
-void furi_hal_gpio_callback(uint gpio, uint32_t event_mask);
+void __isr __not_in_flash_func(furi_hal_gpio_callback)(uint gpio, uint32_t event_mask);
 
 void furi_hal_gpio_init_simple(const GpioPin* gpio, const GpioMode mode) {
     furi_hal_gpio_init(gpio, mode, GpioPullNo, GpioSpeedLow);
