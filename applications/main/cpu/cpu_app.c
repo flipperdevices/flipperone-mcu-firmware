@@ -22,6 +22,7 @@ static const char* cpu_app_menu_items[] = {
     [CpuAppMenuItemReset] = "Reset",
     [CpuAppMenuItemClose] = "Close",
 };
+
 static size_t cpu_app_menu_items_count = COUNT_OF(cpu_app_menu_items);
 
 typedef struct {
@@ -134,22 +135,26 @@ static void cpu_app_input_menu(CpuApp* instance, size_t selected_index) {
     }
 }
 
-static void cpu_app_model_menu_next(CpuAppModel* model, void* context) {
+static bool cpu_app_model_menu_next(CpuAppModel* model, void* context) {
     model->selected_index = (model->selected_index + 1) % cpu_app_menu_items_count;
+    return true;
 }
 
-static void cpu_app_model_menu_previous(CpuAppModel* model, void* context) {
+static bool cpu_app_model_menu_prev(CpuAppModel* model, void* context) {
     model->selected_index = (model->selected_index - 1 + cpu_app_menu_items_count) % cpu_app_menu_items_count;
+    return true;
 }
 
-static void cpu_app_input_menu_get_selected_index(CpuAppModel* model, void* context) {
+static bool cpu_app_input_menu_get_selected_index(CpuAppModel* model, void* context) {
     furi_check(context);
     size_t* selected_index = context;
     *selected_index = model->selected_index;
+    return false;
 }
 
-static void cpu_app_model_apply(CpuApp* instance, bool update, void (*callback)(CpuAppModel* model, void* context), void* context) {
-    with_view_model(instance->view, CpuAppModel * model, { callback(model, context); }, update);
+static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* model, void* context), void* context) {
+    bool update;
+    with_view_model(instance->view, CpuAppModel * model, { update = callback(model, context); }, update);
 }
 
 static bool cpu_app_input(InputEvent* event, void* context) {
@@ -165,12 +170,12 @@ static bool cpu_app_input(InputEvent* event, void* context) {
 
     if(event->type == InputTypePress) {
         if(event->key == InputKeyUp) {
-            cpu_app_model_apply(instance, true, cpu_app_model_menu_previous, NULL);
+            cpu_app_model_apply(instance, cpu_app_model_menu_prev, NULL);
         } else if(event->key == InputKeyDown) {
-            cpu_app_model_apply(instance, true, cpu_app_model_menu_next, NULL);
+            cpu_app_model_apply(instance, cpu_app_model_menu_next, NULL);
         } else if(event->key == InputKeyOk) {
             size_t selected_index;
-            cpu_app_model_apply(instance, false, cpu_app_input_menu_get_selected_index, &selected_index);
+            cpu_app_model_apply(instance, cpu_app_input_menu_get_selected_index, &selected_index);
             cpu_app_input_menu(instance, selected_index);
         }
     }
