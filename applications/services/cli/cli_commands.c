@@ -9,6 +9,8 @@
 #include <args.h>
 #include "furi_bsp.h"
 #include <status_lights/status_lights.h>
+#include <drivers/ina219/ina219.h>
+#include <furi_hal_i2c_config.h>
 
 static void cli_command_help(Cli* cli, FuriString* args, void* context) {
     UNUSED(args);
@@ -415,7 +417,7 @@ static void cli_command_set_led(Cli* cli, FuriString* args, void* context) {
         return;
     }
 
-    if(furi_string_size(args) < 1 && cli_status_lights_types[led_type] != StatusLightsTypeLineAllOff) { 
+    if(furi_string_size(args) < 1 && cli_status_lights_types[led_type] != StatusLightsTypeLineAllOff) {
         cli_command_set_led_help(cli, args, context);
         return;
     }
@@ -436,6 +438,26 @@ static void cli_command_set_led(Cli* cli, FuriString* args, void* context) {
     furi_record_close(RECORD_STATUS_LIGHTS);
 }
 
+static void cli_command_power(Cli* cli, FuriString* args, void* context) {
+    UNUSED(cli);
+    UNUSED(context);
+    Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_external, INA219_ADDRESS, 0.004f, 9.0f); // 0.004 Ohm shunt, 0.4A max
+
+    float bus_v = 0;
+    float current_a = 0;
+    float power_w = 0;
+    float shunt_mv = 0;
+    while(!cli_cmd_interrupt_received(cli)) {
+        bus_v = ina219_get_bus_voltage_v(ina219);
+        current_a = ina219_get_current_a(ina219);
+        power_w = ina219_get_power_w(ina219);
+        shunt_mv = ina219_get_shunt_voltage_mv(ina219);
+        printf("Bus Voltage: %.3f V | Shunt Voltage: %.4f mV | Current: %.2f mA | Power: %.2f W\n", bus_v, shunt_mv, current_a * 1000.0f, power_w);
+        furi_delay_ms(500);
+    }
+    ina219_deinit(ina219);
+}
+
 void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "?", CliCommandFlagParallelSafe, cli_command_help, NULL);
     cli_add_command(cli, "help", CliCommandFlagParallelSafe, cli_command_help, NULL);
@@ -449,4 +471,5 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "i2c", CliCommandFlagParallelSafe, cli_command_i2c, NULL);
     cli_add_command(cli, "expander_ext", CliCommandFlagParallelSafe, cli_command_expander_ext, NULL);
     cli_add_command(cli, "set_led", CliCommandFlagParallelSafe, cli_command_set_led, NULL);
+    cli_add_command(cli, "power", CliCommandFlagParallelSafe, cli_command_power, NULL);
 }
