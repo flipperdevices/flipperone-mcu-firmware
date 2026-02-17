@@ -15,6 +15,12 @@ typedef enum {
     Bq25792StatusUnknown = -3,
 } Bq25792Status;
 
+typedef enum {
+    Bq25792PowerIdle = 0b00, /** Normal operation (default) */
+    Bq25792PowerShutdown = 0b01, /** Shutdown mode*/
+    Bq25792PowerShipMode = 0b10, /** Ship mode*/
+    Bq25792PowerReset = 0b11, /** System power reset*/
+} Bq25792PowerSwitch;
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,6 +28,7 @@ extern "C" {
 
 Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, const GpioPin* pin_interrupt);
 void bq25792_deinit(Bq25792* instance);
+Bq25792Status bq25792_set_power_switch(Bq25792* instance, Bq25792PowerSwitch power_switch);
 
 #ifdef __cplusplus
 }

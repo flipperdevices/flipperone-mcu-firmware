@@ -6,6 +6,9 @@
 
 #define TAG "Bq25792"
 
+#define BQ25792_DEVICE_PART_NUMBER 0b001 //BQ25792
+#define BQ25792_DEVICE_REVISION    0b000 //Revision
+
 #define BQ25792_DEBUG_ENABLE
 #ifdef BQ25792_DEBUG_ENABLE
 #define BQ25792_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
@@ -100,26 +103,60 @@ static Bq25792Status bq25792_read_reg8(Bq25792* instance, Bq25792Reg reg, uint8_
     return bq25792_check_status(ret);
 }
 
-static Bq25792Status bq25792_read_reg16(Bq25792* instance, Bq25792Reg reg, uint16_t* data) {
+// static Bq25792Status bq25792_read_reg16(Bq25792* instance, Bq25792Reg reg, uint16_t* data) {
+//     furi_check(instance);
+//     furi_check(data);
+
+//     furi_hal_i2c_acquire(instance->i2c_handle);
+//     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
+//     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
+//         uint8_t buffer[2] = {0};
+//         ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
+//         if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+//             FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
+//         } else {
+//             *data = (buffer[0] << 8) | buffer[1];
+//         }
+//     } else {
+//         FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+//     }
+//     furi_hal_i2c_release(instance->i2c_handle);
+
+//     return bq25792_check_status(ret);
+// }
+
+static Bq25792Status bq25792_load_config(Bq25792* instance) {
     furi_check(instance);
-    furi_check(data);
-
-    furi_hal_i2c_acquire(instance->i2c_handle);
-    int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
-    if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
-        uint8_t buffer[2] = {0};
-        ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
-        if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
-            FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
-        } else {
-            *data = (buffer[0] << 8) | buffer[1];
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        Bq25792TerminationControlRegBits termination_control = {.reg_rst = 1}; // Reset all registers to default values
+        res = bq25792_write_reg8(instance, Bq25792RegTerminationControl, *(uint8_t*)&termination_control);
+        if(res != Bq25792StatusOk) {
+            break;
         }
-    } else {
-        FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
-    }
-    furi_hal_i2c_release(instance->i2c_handle);
 
-    return bq25792_check_status(ret);
+        Bq25792AdcControlRegBits adc_control = {0};
+        res = bq25792_read_reg8(instance, Bq25792RegADCControl, (uint8_t*)&adc_control);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        adc_control.adc_en = 1; // Enable ADC
+        res = bq25792_write_reg8(instance, Bq25792RegADCControl, *(uint8_t*)&adc_control);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        Bq25792ChargerControl5RegBits charger_control_5 = {0};
+        bq25792_read_reg8(instance, Bq25792RegChargerControl5, (uint8_t*)&charger_control_5);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_5.sfet_present = 1; // Enable Sfet presence detection
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl5, *(uint8_t*)&charger_control_5);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to load config!");
+    }
+    return res;
 }
 
 Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, const GpioPin* pin_interrupt) {
@@ -140,67 +177,12 @@ Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
 
         Bq25792PartInformationRegBits device_info = {0};
         bq25792_read_reg8(instance, Bq25792RegPartInformation, (uint8_t*)&device_info);
-        BQ25792_DEBUG(TAG, "Device ID: %02X, Revision ID: %02X", device_info.pn, device_info.dev_rev);
-
-        Bq25792AdcControlRegBits adc_control = {0};
-        bq25792_read_reg8(instance, Bq25792RegADCControl, (uint8_t*)&adc_control);
-        adc_control.adc_en = 1;
-        bq25792_write_reg8(instance, Bq25792RegADCControl, *(uint8_t*)&adc_control);
-        furi_delay_ms(100);
-
-        for(int i = 0; i < 10; i++) {
-            furi_delay_ms(1000);
-
-            Bq25792VsysAdcRegBits vsys_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegVSYSADC, (uint16_t*)&vsys_adc);
-            BQ25792_DEBUG(TAG, "VSYS ADC: %0.4f V", (float)vsys_adc.vsys_adc / 1000.0f);
-
-            Bq25792VbatAdcRegBits vbat_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegVBATADC, (uint16_t*)&vbat_adc);
-            BQ25792_DEBUG(TAG, "VBAT ADC: %0.4f V", (float)vbat_adc.vbat_adc / 1000.0f);
-
-            Bq25792VbusAdcRegBits vbus_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegVBUSADC, (uint16_t*)&vbus_adc);
-            BQ25792_DEBUG(TAG, "VBUS ADC: %0.4f V", (float)vbus_adc.vbus_adc / 1000.0f);
-
-            Bq25792IbatAdcRegBits ibat_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegIBATADC, (uint16_t*)&ibat_adc);
-            BQ25792_DEBUG(TAG, "IBAT ADC: %0.4f A", (float)ibat_adc.ibat_adc / 1000.0f);
-
-            Bq25792IbusAdcRegBits ibus_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegIBUSADC, (uint16_t*)&ibus_adc);
-            BQ25792_DEBUG(TAG, "IBUS ADC: %0.4f A", (float)ibus_adc.ibus_adc / 1000.0f);
-
-            BQ25792_DEBUG(TAG, "----");
+        if(device_info.pn != BQ25792_DEVICE_PART_NUMBER || device_info.dev_rev != BQ25792_DEVICE_REVISION) {
+            furi_crash("BQ25792 device ID mismatch!");
         }
-            Bq25792ChargerControl2RegBits charger_control_2 = {0};
-            bq25792_read_reg8(instance, Bq25792RegChargerControl2, (uint8_t*)&charger_control_2);
-            charger_control_2.sdrv_ctrl = 1;
-            bq25792_write_reg8(instance, Bq25792RegChargerControl2, *(uint8_t*)&charger_control_2);
-                for(int i = 0; i < 10; i++) {
-            furi_delay_ms(1000);
 
-            Bq25792VsysAdcRegBits vsys_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegVSYSADC, (uint16_t*)&vsys_adc);
-            BQ25792_DEBUG(TAG, "VSYS ADC: %0.4f V", (float)vsys_adc.vsys_adc / 1000.0f);
-
-            Bq25792VbatAdcRegBits vbat_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegVBATADC, (uint16_t*)&vbat_adc);
-            BQ25792_DEBUG(TAG, "VBAT ADC: %0.4f V", (float)vbat_adc.vbat_adc / 1000.0f);
-
-            Bq25792VbusAdcRegBits vbus_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegVBUSADC, (uint16_t*)&vbus_adc);
-            BQ25792_DEBUG(TAG, "VBUS ADC: %0.4f V", (float)vbus_adc.vbus_adc / 1000.0f);
-
-            Bq25792IbatAdcRegBits ibat_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegIBATADC, (uint16_t*)&ibat_adc);
-            BQ25792_DEBUG(TAG, "IBAT ADC: %0.4f A", (float)ibat_adc.ibat_adc / 1000.0f);
-
-            Bq25792IbusAdcRegBits ibus_adc = {0};
-            bq25792_read_reg16(instance, Bq25792RegIBUSADC, (uint16_t*)&ibus_adc);
-            BQ25792_DEBUG(TAG, "IBUS ADC: %0.4f A", (float)ibus_adc.ibus_adc / 1000.0f);
-
-            BQ25792_DEBUG(TAG, "----");
+        if(bq25792_load_config(instance) != Bq25792StatusOk) {
+            furi_crash("BQ25792 failed to load config");
         }
 
     } else {
@@ -219,4 +201,22 @@ void bq25792_deinit(Bq25792* instance) {
         furi_hal_gpio_init_ex(instance->pin_interrupt, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     }
     free(instance);
+}
+
+Bq25792Status bq25792_set_power_switch(Bq25792* instance, Bq25792PowerSwitch power_switch) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        Bq25792ChargerControl2RegBits charger_control_2 = {0};
+        bq25792_read_reg8(instance, Bq25792RegChargerControl2, (uint8_t*)&charger_control_2);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_2.sdrv_ctrl = power_switch; // Set power switch
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl2, *(uint8_t*)&charger_control_2);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set power switch!");
+    }
+    return res;
 }

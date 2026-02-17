@@ -18,6 +18,7 @@
 #include <drivers/tps62868x/tps62868x.h>
 #include <drivers/fusb302/fusb302.h>
 #include <display/display.h>
+#include <hardware/gpio.h>
 #include <input/input.h>
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/display/display_jd9853_reg.h>
@@ -170,6 +171,9 @@ int32_t test_peref_srv(void* p) {
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
 
     while(true) {
+        furi_delay_ms(5000);
+        bq25792_set_power_switch(bq25792, Bq25792PowerShipMode);
+        FURI_LOG_I(TAG, "BQ25792 set to shutdown mode");
         //    furi_hal_i2c_acquire(&furi_hal_i2c_handle_external);
         //     furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_external);
         //    furi_hal_i2c_release(&furi_hal_i2c_handle_external);
