@@ -82,6 +82,7 @@ void furi_hal_gpio_add_int_callback(const GpioPin* gpio, GpioCondition condition
     furi_check(cb);
 
     FURI_CRITICAL_ENTER();
+
     furi_check(gpio_interrupt[gpio->pin].callback == NULL);
     gpio_interrupt[gpio->pin].callback = cb;
     gpio_interrupt[gpio->pin].context = ctx;
@@ -134,6 +135,7 @@ void furi_hal_gpio_remove_int_callback(const GpioPin* gpio) {
     furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
     FURI_CRITICAL_ENTER();
+
     gpio_set_irq_enabled(
         gpio->pin,
         (gpio_interrupt[gpio->pin].condition == GpioConditionRise)     ? GPIO_IRQ_EDGE_RISE :
