@@ -62,6 +62,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/iqs7211e/*.c*"
     "lib/drivers/spi_get_frame/*.c*"
     "lib/drivers/ina219/*.c*"
+    "lib/drivers/bq25792/*.c*"
     "lib/drivers/fusb302/*.c*"
     "lib/drivers/i2c_multi_slave/*.c*"
     "lib/tusb/*.c*"

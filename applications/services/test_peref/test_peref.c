@@ -14,6 +14,7 @@
 #include <furi_hal_i2c_config.h>
 #include <drivers/iqs7211e/iqs7211e.h>
 #include <drivers/ina219/ina219.h>
+#include <drivers/bq25792/bq25792.h>
 #include <drivers/tps62868x/tps62868x.h>
 #include <drivers/fusb302/fusb302.h>
 #include <display/display.h>
@@ -164,8 +165,7 @@ int32_t test_peref_srv(void* p) {
     // FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
 
     StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
-
-    furi_delay_ms(2000);
+    Bq25792* bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
 
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
 
