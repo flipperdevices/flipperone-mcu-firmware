@@ -140,7 +140,7 @@ Ina219* ina219_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, floa
 
         // Configure the INA219 with default settings
         Ina219ConfigRegBits config = {0};
-        config.brng = Ina219Range32V;
+        config.brng = Ina219Range16V;
         config.pg = instance->v_shunt_max;
         config.badc = Ina219BusRes12bit;
         config.sadc = Ina219ShuntRes12bit8S4260ms;

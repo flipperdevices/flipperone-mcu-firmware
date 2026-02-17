@@ -153,7 +153,7 @@ int32_t test_peref_srv(void* p) {
     // //furi_delay_ms(1000);
     // uint8_t index_led[3] = {0};
 
-    //Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_internal, INA219_ADDRESS, 0.1f, 0.4f); // 0.1 Ohm shunt, 2A max
+   // Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_external, INA219_ADDRESS, 0.004f, 9.0f); // 0.004 Ohm shunt, 0.4A max
 
     //display_h = furi_record_open(RECORD_DISPLAY);
 
@@ -164,8 +164,6 @@ int32_t test_peref_srv(void* p) {
     // FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
 
     StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
-
-    furi_delay_ms(2000);
 
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
 
@@ -234,7 +232,17 @@ int32_t test_peref_srv(void* p) {
         // display_jd9853_qspi_write_buffer((DisplayJd9853QSPI*)display_h, data, width * height);
         // free(data);
 
-        furi_delay_ms(500);
+        furi_delay_ms(1000);
+
+        // float bus_v = ina219_get_bus_voltage_v(ina219);
+        // float current_a = ina219_get_current_a(ina219);
+        // float power_w = ina219_get_power_w(ina219);
+        // float shunt_mv = ina219_get_shunt_voltage_mv(ina219);
+        // FURI_LOG_I("Ina219", "Bus Voltage: %.3f V | Shunt Voltage: %.4f mV | Current: %.2f mA | Power: %.2f W",
+        //     bus_v,
+        //     shunt_mv,
+        //     current_a * 1000.0f,
+        //     power_w);
 
         // StatusLightsColor color = {.r = 127, .g = 30, .b = 30};
 

@@ -3,7 +3,7 @@
 #include <furi_hal_i2c_types.h>
 #include <furi_hal_gpio.h>
 
-#define INA219_ADDRESS 0x40
+#define INA219_ADDRESS 0x45
 
 typedef struct Ina219 Ina219;
 typedef void (*Ina219CallbackInput)(void* context);
