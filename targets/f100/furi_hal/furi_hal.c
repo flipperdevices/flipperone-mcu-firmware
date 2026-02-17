@@ -1,6 +1,7 @@
 #include <furi_hal.h>
 #include <furi_hal_power.h>
 #include <furi_hal_nvm.h>
+#include <furi_hal_gpio.h>
 
 #define TAG "FuriHal"
 
@@ -36,6 +37,7 @@ void furi_hal_init(void) {
     // furi_hal_mpu_init();
     // furi_hal_clock_init();
     // // furi_hal_psram_init();
+    furi_hal_gpio_interrupt_init();
     // furi_hal_sdmmc_init(false);
     // furi_hal_random_init();
     furi_hal_serial_control_init();
