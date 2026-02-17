@@ -148,17 +148,31 @@ Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
         bq25792_write_reg8(instance, Bq25792RegADCControl, *(uint8_t*)&adc_control);
         furi_delay_ms(100);
 
-        Bq25792VsysAdcRegBits vsys_adc = {0};
-        bq25792_read_reg16(instance, Bq25792RegVSYSADC, (uint16_t*)&vsys_adc);
-        BQ25792_DEBUG(TAG, "VSYS ADC: %0.4f V", (float)vsys_adc.vsys_adc/1000.0f);
+        for(int i = 0; i < 2000; i++) {
+            furi_delay_ms(2000);
 
-        Bq25792VbatAdcRegBits vbat_adc = {0};
-        bq25792_read_reg16(instance, Bq25792RegVBATADC, (uint16_t*)&vbat_adc);
-        BQ25792_DEBUG(TAG, "VBAT ADC: %0.4f V", (float)vbat_adc.vbat_adc/1000.0f);
+            Bq25792VsysAdcRegBits vsys_adc = {0};
+            bq25792_read_reg16(instance, Bq25792RegVSYSADC, (uint16_t*)&vsys_adc);
+            BQ25792_DEBUG(TAG, "VSYS ADC: %0.4f V", (float)vsys_adc.vsys_adc / 1000.0f);
 
-        Bq25792VbusAdcRegBits vbus_adc = {0};
-        bq25792_read_reg16(instance, Bq25792RegVBUSADC, (uint16_t*)&vbus_adc);
-        BQ25792_DEBUG(TAG, "VBUS ADC: %0.4f V", (float)vbus_adc.vbus_adc/1000.0f);
+            Bq25792VbatAdcRegBits vbat_adc = {0};
+            bq25792_read_reg16(instance, Bq25792RegVBATADC, (uint16_t*)&vbat_adc);
+            BQ25792_DEBUG(TAG, "VBAT ADC: %0.4f V", (float)vbat_adc.vbat_adc / 1000.0f);
+
+            Bq25792VbusAdcRegBits vbus_adc = {0};
+            bq25792_read_reg16(instance, Bq25792RegVBUSADC, (uint16_t*)&vbus_adc);
+            BQ25792_DEBUG(TAG, "VBUS ADC: %0.4f V", (float)vbus_adc.vbus_adc / 1000.0f);
+
+            Bq25792IbatAdcRegBits ibat_adc = {0};
+            bq25792_read_reg16(instance, Bq25792RegIBATADC, (uint16_t*)&ibat_adc);
+            BQ25792_DEBUG(TAG, "IBAT ADC: %0.4f A", (float)ibat_adc.ibat_adc / 1000.0f);
+
+            Bq25792IbusAdcRegBits ibus_adc = {0};
+            bq25792_read_reg16(instance, Bq25792RegIBUSADC, (uint16_t*)&ibus_adc);
+            BQ25792_DEBUG(TAG, "IBUS ADC: %0.4f A", (float)ibus_adc.ibus_adc / 1000.0f);
+
+            BQ25792_DEBUG(TAG, "----");
+        }
 
     } else {
         FURI_LOG_E(TAG, "BQ25792 device not ready at address 0x%02X", instance->address);
