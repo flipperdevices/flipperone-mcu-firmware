@@ -1,6 +1,8 @@
 #include <furi.h>
+#include <furi_hal_i2c_config.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
+#include <drivers/bq25792/bq25792.h>
 #include <status_lights/status_lights_notification.h>
 
 #define TAG              "PowerMenu"
@@ -32,6 +34,7 @@ typedef struct {
     View* view;
     FuriEventLoop* event_loop;
     size_t selected_notification_index;
+    Bq25792* bq25792;
 } PowerMenu;
 
 static const StatusLightsNotification** notifications[] = {
@@ -148,12 +151,14 @@ static void power_menu_model_apply(PowerMenu* instance, bool (*callback)(PowerMe
 static void power_menu_input_menu(PowerMenu* instance, size_t selected_index) {
     switch(selected_index) {
     case PowerMenuActionPowerOff:
+        bq25792_set_power_switch(instance->bq25792, Bq25792PowerShipMode);
         break;
     case PowerMenuActionLeds:
         instance->selected_notification_index = (instance->selected_notification_index + 1) % notifications_count;
         status_lights_notification_send(notifications[instance->selected_notification_index]);
         break;
     case PowerMenuActionReboot:
+        bq25792_set_power_switch(instance->bq25792, Bq25792PowerReset);
         break;
     case PowerMenuActionCancel:
         power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
@@ -203,6 +208,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
 
 static PowerMenu* power_menu_alloc(void) {
     PowerMenu* instance = malloc(sizeof(PowerMenu));
+    instance->bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
 
