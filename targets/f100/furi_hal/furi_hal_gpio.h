@@ -96,6 +96,11 @@ typedef struct {
 } GpioPin;
 
 /**
+ * Initialize GPIO interrupts
+ */
+void furi_hal_gpio_interrupt_init(void);
+
+/**
  * GPIO initialization function, simple version
  * @param gpio  GpioPin
  * @param mode  GpioMode
