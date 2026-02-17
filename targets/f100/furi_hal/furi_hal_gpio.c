@@ -102,7 +102,7 @@ void furi_hal_gpio_add_int_callback(const GpioPin* gpio, GpioCondition condition
 void furi_hal_gpio_enable_int_callback(const GpioPin* gpio) {
     furi_check(gpio->pin <= NUM_BANK0_GPIOS);
 
-    FURI_CRITICAL_ENTER()
+    FURI_CRITICAL_ENTER();
 
     gpio_set_irq_enabled(
         gpio->pin,
