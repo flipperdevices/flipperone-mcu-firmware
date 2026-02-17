@@ -4,10 +4,16 @@
 #include "font/fonts.h"
 #include <drivers/display/display_jd9853_reg.h>
 
-#define TAG "render"
+#define TAG "Render"
 
 #define CANARY_VALUE 0xDEADBEEF
 #define DATA_SIZE    (JD9853_WIDTH * JD9853_HEIGHT)
+
+#ifdef RENDER_DEBUG_ENABLE
+#define RENDER_DEBUG(...) RENDER_DEBUG(__VA_ARGS__)
+#else
+#define RENDER_DEBUG(...)
+#endif
 
 typedef uint8_t Color;
 
@@ -267,9 +273,9 @@ static void render_rectangle(Clay_BoundingBox* bb, Clay_RectangleRenderData* rec
     uint32_t r_bottom_left = render_clamp_corner_radius(bb->height, rect_data->cornerRadius.bottomLeft);
     uint8_t color = render_color(rect_data->backgroundColor);
 
-    FURI_LOG_D(TAG, "Rectangle");
-    FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, color);
-    FURI_LOG_D(TAG, "    [%lu, %lu, %lu, %lu]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
+    RENDER_DEBUG(TAG, "Rectangle");
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, color);
+    RENDER_DEBUG(TAG, "    [%lu, %lu, %lu, %lu]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
 
     if(!r_top_left && !r_top_right && !r_bottom_right && !r_bottom_left) {
         render_fill_rectangle(bb->x, bb->y, bb->width, bb->height, color);
@@ -310,10 +316,10 @@ static void render_border(Clay_BoundingBox* bb, Clay_BorderRenderData* border_da
     uint32_t r_bottom_left = render_clamp_corner_radius(bb->height, border_data->cornerRadius.bottomLeft);
     uint8_t color = render_color(border_data->color);
 
-    FURI_LOG_D(TAG, "Border");
-    FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, color);
-    FURI_LOG_D(TAG, "    [%lu, %lu, %lu, %lu]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
-    FURI_LOG_D(TAG, "    [%d, %d, %d, %d]", border_data->width.top, border_data->width.right, border_data->width.bottom, border_data->width.left);
+    RENDER_DEBUG(TAG, "Border");
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, color);
+    RENDER_DEBUG(TAG, "    [%lu, %lu, %lu, %lu]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
+    RENDER_DEBUG(TAG, "    [%d, %d, %d, %d]", border_data->width.top, border_data->width.right, border_data->width.bottom, border_data->width.left);
 
     if(border_data->width.top > 0) {
         render_draw_arc(bb->x + r_top_left, bb->y + r_top_left, r_top_left, 180.f, 270.f, color);
@@ -339,9 +345,9 @@ static void render_border(Clay_BoundingBox* bb, Clay_BorderRenderData* border_da
 }
 
 static void render_text(Clay_BoundingBox* bb, Clay_TextRenderData* text_data) {
-    FURI_LOG_D(TAG, "Text: '%.*s'", (int)text_data->stringContents.length, text_data->stringContents.chars);
-    FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(text_data->textColor));
-    FURI_LOG_D(TAG, "    i[d: %d, size: %d, spacing: %d, line: %d]", text_data->fontId, text_data->fontSize, text_data->letterSpacing, text_data->lineHeight);
+    RENDER_DEBUG(TAG, "Text: '%.*s'", (int)text_data->stringContents.length, text_data->stringContents.chars);
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(text_data->textColor));
+    RENDER_DEBUG(TAG, "    i[d: %d, size: %d, spacing: %d, line: %d]", text_data->fontId, text_data->fontSize, text_data->letterSpacing, text_data->lineHeight);
 
     uint8_t color = render_color(text_data->textColor);
     const void* font = render_get_font_by_id((Font)text_data->fontId);
@@ -354,16 +360,16 @@ static void render_image(Clay_BoundingBox* bb, Clay_ImageRenderData* image_data)
     Image* image = (Image*)image_data->imageData;
     furi_check(image);
 
-    FURI_LOG_D(TAG, "Image");
-    FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(image_data->backgroundColor));
-    FURI_LOG_D(
+    RENDER_DEBUG(TAG, "Image");
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(image_data->backgroundColor));
+    RENDER_DEBUG(
         TAG,
         "    [%.1f, %.1f, %.1f, %.1f]",
         image_data->cornerRadius.topLeft,
         image_data->cornerRadius.topRight,
         image_data->cornerRadius.bottomRight,
         image_data->cornerRadius.bottomLeft);
-    FURI_LOG_D(TAG, "    [img w: %lu, h: %lu]", image->width, image->height);
+    RENDER_DEBUG(TAG, "    [img w: %lu, h: %lu]", image->width, image->height);
 
     uint8_t* data = image->data;
     switch(image->format) {
@@ -382,8 +388,8 @@ static void render_image(Clay_BoundingBox* bb, Clay_ImageRenderData* image_data)
 }
 
 static void render_scissor_start(Clay_BoundingBox* bb) {
-    FURI_LOG_D(TAG, "Scissor start");
-    FURI_LOG_D(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f]", bb->x, bb->y, bb->width, bb->height);
+    RENDER_DEBUG(TAG, "Scissor start");
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f]", bb->x, bb->y, bb->width, bb->height);
     render_data.scissors_x0 = bb->x;
     render_data.scissors_y0 = bb->y;
     render_data.scissors_x1 = bb->x + bb->width;
@@ -397,7 +403,7 @@ static void render_scissor_start(Clay_BoundingBox* bb) {
 }
 
 static void render_scissor_end(void) {
-    FURI_LOG_D(TAG, "Scissor end");
+    RENDER_DEBUG(TAG, "Scissor end");
     render_data.scissors_x0 = 0;
     render_data.scissors_y0 = 0;
     render_data.scissors_x1 = JD9853_WIDTH;
