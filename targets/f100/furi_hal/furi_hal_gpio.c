@@ -148,7 +148,7 @@ void furi_hal_gpio_remove_int_callback(const GpioPin* gpio) {
 }
 
 FURI_ALWAYS_INLINE static void furi_hal_gpio_int_call(uint16_t pin_num) {
-    if(gpio_interrupt[pin_num].callback && gpio_interrupt[pin_num].condition ) {
+    if(gpio_interrupt[pin_num].callback) {
         gpio_interrupt[pin_num].callback(gpio_interrupt[pin_num].context);
     }
 }
