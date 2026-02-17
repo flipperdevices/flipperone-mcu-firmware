@@ -4,13 +4,10 @@ const char* FLIPPER_AUTORUN_APP_NAME = "";
 
 // services
 extern int32_t haptic_srv(void* p);
-extern int32_t test_srv(void* p);
 extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
-extern int32_t test_input_srv(void* p);
 extern int32_t uart_echo_app(void* p);
 extern int32_t input_touch_srv(void* p);
-extern int32_t display_srv(void* p);
 extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
 extern int32_t status_lights_srv(void* p);
