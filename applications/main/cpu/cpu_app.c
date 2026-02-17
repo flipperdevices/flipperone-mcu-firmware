@@ -73,7 +73,7 @@ static bool cpu_app_layout(void* _model) {
                     },
             }) {
             CLAY_AUTO_ID({.layout = {.padding = {8, 8, 4, 4}, .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER}}}) {
-                CLAY_TEXT(CLAY_STRING("Linux"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
+                CLAY_TEXT(CLAY_STRING("CPU"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
             }
         }
         CLAY(

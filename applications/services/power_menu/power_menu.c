@@ -1,16 +1,25 @@
 #include <furi.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
+#include <status_lights/status_lights_notification.h>
 
 #define TAG              "PowerMenu"
 #define POWER_MENU_ID(x) CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
 
+typedef enum {
+    PowerMenuActionPowerOff,
+    PowerMenuActionLeds,
+    PowerMenuActionReboot,
+    PowerMenuActionCancel,
+} PowerMenuAction;
+
 static const char* power_menu_items[] = {
-    "Power Off",
-    "Restart",
-    "Sleep",
-    "Cancel",
+    [PowerMenuActionPowerOff] = "Power Off",
+    [PowerMenuActionLeds] = "LEDs",
+    [PowerMenuActionReboot] = "Reboot",
+    [PowerMenuActionCancel] = "Cancel",
 };
+
 static size_t power_menu_items_count = COUNT_OF(power_menu_items);
 
 typedef struct {
@@ -22,7 +31,17 @@ typedef struct {
     Gui* gui;
     View* view;
     FuriEventLoop* event_loop;
+    size_t selected_notification_index;
 } PowerMenu;
+
+static const StatusLightsNotification** notifications[] = {
+    notification_all_leds_off,
+    notification_power_red,
+    notification_all_leds_on,
+    notification_all_leds_white,
+};
+
+static const size_t notifications_count = COUNT_OF(notifications);
 
 static bool power_menu_layout(void* _model) {
     furi_assert(_model);
@@ -87,43 +106,95 @@ static bool power_menu_layout(void* _model) {
     return false;
 }
 
+static bool power_menu_model_menu_next(PowerMenuModel* model, void* context) {
+    model->selected_index = (model->selected_index + 1) % power_menu_items_count;
+    return true;
+}
+
+static bool power_menu_model_menu_prev(PowerMenuModel* model, void* context) {
+    model->selected_index = (model->selected_index - 1 + power_menu_items_count) % power_menu_items_count;
+    return true;
+}
+
+static bool power_menu_input_menu_get_selected_index(PowerMenuModel* model, void* context) {
+    furi_check(context);
+    size_t* selected_index = context;
+    *selected_index = model->selected_index;
+    return false;
+}
+
+static bool power_menu_input_menu_get_visible(PowerMenuModel* model, void* context) {
+    furi_check(context);
+    bool* visible = context;
+    *visible = model->visible;
+    return false;
+}
+
+static bool power_menu_input_menu_show(PowerMenuModel* model, void* context) {
+    model->visible = true;
+    return true;
+}
+
+static bool power_menu_input_menu_hide(PowerMenuModel* model, void* context) {
+    model->visible = false;
+    return true;
+}
+
+static void power_menu_model_apply(PowerMenu* instance, bool (*callback)(PowerMenuModel* model, void* context), void* context) {
+    bool update;
+    with_view_model(instance->view, PowerMenuModel * model, { update = callback(model, context); }, update);
+}
+
+static void power_menu_input_menu(PowerMenu* instance, size_t selected_index) {
+    switch(selected_index) {
+    case PowerMenuActionPowerOff:
+        break;
+    case PowerMenuActionLeds:
+        instance->selected_notification_index = (instance->selected_notification_index + 1) % notifications_count;
+        status_lights_notification_send(notifications[instance->selected_notification_index]);
+        break;
+    case PowerMenuActionReboot:
+        break;
+    case PowerMenuActionCancel:
+        power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
+        break;
+    }
+}
+
 static bool power_menu_input(InputEvent* event, void* context) {
     furi_check(context);
     PowerMenu* instance = context;
     bool consumed = false;
     bool visible;
-    with_view_model(instance->view, PowerMenuModel * model, { visible = model->visible; }, false);
-
-    if(event->key == InputKey3) {
-        if(event->type == InputTypeLong) {
-            with_view_model(instance->view, PowerMenuModel * model, { model->visible = !model->visible; }, true);
-            consumed = true;
-        }
-    }
+    power_menu_model_apply(instance, power_menu_input_menu_get_visible, &visible);
 
     if(visible) {
         if(event->type == InputTypePress) {
             if(event->key == InputKeyUp) {
-                with_view_model(
-                    instance->view,
-                    PowerMenuModel * model,
-                    { model->selected_index = (model->selected_index - 1 + power_menu_items_count) % power_menu_items_count; },
-                    true);
+                power_menu_model_apply(instance, power_menu_model_menu_prev, NULL);
             } else if(event->key == InputKeyDown) {
-                with_view_model(
-                    instance->view, PowerMenuModel * model, { model->selected_index = (model->selected_index + 1) % power_menu_items_count; }, true);
+                power_menu_model_apply(instance, power_menu_model_menu_next, NULL);
             } else if(event->key == InputKeyOk) {
-                with_view_model(instance->view, PowerMenuModel * model, { model->visible = false; }, true);
+                size_t selected_index;
+                power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
+                power_menu_input_menu(instance, selected_index);
             } else if(event->key == InputKeyBack) {
-                with_view_model(instance->view, PowerMenuModel * model, { model->visible = false; }, true);
+                power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
             } else if(event->key == InputKey3) {
-                with_view_model(instance->view, PowerMenuModel * model, { model->visible = false; }, true);
+                power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
             }
         }
 
-        // Consume all events when visible except for release events
+        // Consume all events when visible, except for release events
         if(event->type != InputTypeRelease) {
             consumed = true;
+        }
+    } else {
+        if(event->key == InputKey3) {
+            if(event->type == InputTypeLong) {
+                power_menu_model_apply(instance, power_menu_input_menu_show, NULL);
+                consumed = true;
+            }
         }
     }
 
