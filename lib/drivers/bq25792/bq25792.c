@@ -208,11 +208,13 @@ Bq25792Status bq25792_set_power_switch(Bq25792* instance, Bq25792PowerSwitch pow
     Bq25792Status res = Bq25792StatusUnknown;
     do {
         Bq25792ChargerControl2RegBits charger_control_2 = {0};
-        bq25792_read_reg8(instance, Bq25792RegChargerControl2, (uint8_t*)&charger_control_2);
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl2, (uint8_t*)&charger_control_2);
         if(res != Bq25792StatusOk) {
             break;
         }
         charger_control_2.sdrv_ctrl = power_switch; // Set power switch
+        charger_control_2.sdrv_dly = 1; // Set power switch
+
         res = bq25792_write_reg8(instance, Bq25792RegChargerControl2, *(uint8_t*)&charger_control_2);
     } while(0);
     if(res != Bq25792StatusOk) {
