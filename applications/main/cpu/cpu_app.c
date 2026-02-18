@@ -30,6 +30,7 @@ static size_t cpu_app_menu_items_count = COUNT_OF(cpu_app_menu_items);
 typedef struct {
     size_t selected_index;
     Image frame;
+    bool menu_visible;
 } CpuAppModel;
 
 typedef enum {
@@ -113,42 +114,44 @@ static bool cpu_app_layout(void* _model) {
                 }
             }
         }
-        CLAY(
-            CLAY_APP_ID("MainContent"),
-            {
-                .backgroundColor = COLOR_WHITE,
-                .layout =
-                    {
-                        .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                        .childGap = 8,
-                        .padding = {4, 4, 4, 4},
-                        .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0)},
-                        .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_CENTER},
-                    },
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-                .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
-                .cornerRadius = CLAY_CORNER_RADIUS(4),
-            }) {
-            for(uint32_t i = 0; i < cpu_app_menu_items_count; i++) {
-                bool selected = (i == model->selected_index);
-                CLAY(
-                    cpu_app_MENU_ID(i),
-                    {
-                        .layout =
-                            {
-                                .sizing = {.width = CLAY_SIZING_FIXED(80), .height = CLAY_SIZING_FIXED(13)},
-                                .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                            },
-                        .backgroundColor = selected ? COLOR_BLACK : COLOR_WHITE,
-                        .cornerRadius = CLAY_CORNER_RADIUS(2),
-                    }) {
-                    CLAY_TEXT(
-                        clay_helper_string_from_chars(cpu_app_menu_items[i]),
-                        CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
+        if(model->menu_visible) {
+            CLAY(
+                CLAY_APP_ID("MainContent"),
+                {
+                    .backgroundColor = COLOR_WHITE,
+                    .layout =
+                        {
+                            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                            .childGap = 8,
+                            .padding = {4, 4, 4, 4},
+                            .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0)},
+                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_CENTER},
+                        },
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                    .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
+                    .cornerRadius = CLAY_CORNER_RADIUS(4),
+                }) {
+                for(uint32_t i = 0; i < cpu_app_menu_items_count; i++) {
+                    bool selected = (i == model->selected_index);
+                    CLAY(
+                        cpu_app_MENU_ID(i),
+                        {
+                            .layout =
+                                {
+                                    .sizing = {.width = CLAY_SIZING_FIXED(80), .height = CLAY_SIZING_FIXED(13)},
+                                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                                },
+                            .backgroundColor = selected ? COLOR_BLACK : COLOR_WHITE,
+                            .cornerRadius = CLAY_CORNER_RADIUS(2),
+                        }) {
+                        CLAY_TEXT(
+                            clay_helper_string_from_chars(cpu_app_menu_items[i]),
+                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
+                    }
                 }
             }
         }
@@ -186,7 +189,7 @@ static bool cpu_app_model_init(CpuAppModel* model, void* context) {
         .height = JD9853_HEIGHT,
         .data = NULL,
     };
-
+    model->menu_visible = true;
     return false;
 }
 
@@ -202,6 +205,11 @@ static bool cpu_app_model_menu_next(CpuAppModel* model, void* context) {
 
 static bool cpu_app_model_menu_prev(CpuAppModel* model, void* context) {
     model->selected_index = (model->selected_index - 1 + cpu_app_menu_items_count) % cpu_app_menu_items_count;
+    return true;
+}
+
+static bool cpu_app_model_menu_toggle(CpuAppModel* model, void* context) {
+    model->menu_visible = !model->menu_visible;
     return true;
 }
 
@@ -229,7 +237,9 @@ static bool cpu_app_input(InputEvent* event, void* context) {
     }
 
     if(event->type == InputTypePress) {
-        if(event->key == InputKeyUp) {
+        if(event->key == InputKey3) {
+            cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
+        } else if(event->key == InputKeyUp) {
             cpu_app_model_apply(instance, cpu_app_model_menu_prev, NULL);
         } else if(event->key == InputKeyDown) {
             cpu_app_model_apply(instance, cpu_app_model_menu_next, NULL);
@@ -280,7 +290,6 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             break;
         case CpuAppMessageTypeNewFrame:
-            FURI_LOG_I(TAG, "Received new frame data: %p (size: %zu)", message.as.new_frame.data, message.as.new_frame.size);
             cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
             break;
         default:
