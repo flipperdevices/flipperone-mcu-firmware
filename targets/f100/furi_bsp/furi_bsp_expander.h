@@ -8,8 +8,8 @@ extern "C" {
 #endif
 
 typedef enum {
-    FuriBspControlExpanderMainOn,
-    FuriBspControlExpanderMainOff,
+    FuriBspControlExpanderMainMcu,
+    FuriBspControlExpanderMainCpu,
 } FuriBspControlExpanderMain;
 
 /** Init all expander related hardware

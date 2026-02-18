@@ -82,9 +82,8 @@ static void fusb302_custom_event_callback(uint32_t events, void* context) {
     if(events & Fusb302EventTypeIsr) {
         fusb302_read_role(instance->fusb302_header);
 
-
         // fusb302_pd_reset_hard(instance->fusb302_header);
-        
+
         // fusb302_cc_orientation_set(instance->fusb302_header, Fusb302TypeCcOrientationNormal);
         // fusb302_pd_reset_logic(instance->fusb302_header);
         // fusb302_pd_autogoodcrc_set(instance->fusb302_header, true);
@@ -106,7 +105,6 @@ static void fusb302_custom_event_callback(uint32_t events, void* context) {
         //     }
         //     furi_delay_ms(50);
         // }
-
     }
 }
 
@@ -123,9 +121,15 @@ static Fusb302* fusb302_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(FUSB302_MAX_MESSAGES, sizeof(Fusb302Message));
     instance->fusb302_header = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, NULL);
+
+    if(!instance->fusb302_header) {
+        FURI_LOG_E(TAG, "Failed to initialize FUSB302");
+        furi_delay_ms(FuriWaitForever);
+    }
+
     furi_bsp_expander_main_attach_fusb302_callback(fusb302_event_isr, instance);
     instance->mode = Fusb302ModeOff;
-    
+
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, fusb302_message_queue_callback, instance);
     furi_event_loop_set_custom_event_callback(instance->event_loop, fusb302_custom_event_callback, instance);
 

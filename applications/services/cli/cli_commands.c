@@ -3,6 +3,7 @@
 #include <core/thread.h>
 #include <core/thread_list.h>
 #include <furi_hal.h>
+#include <furi_hal_i2c_config.h>
 #include <task_control_block.h>
 #include <time.h>
 #include <args.h>
@@ -202,6 +203,41 @@ static void cli_command_free_blocks(Cli* cli, FuriString* args, void* context) {
     UNUSED(context);
 
     memmgr_heap_printf_free_blocks();
+}
+
+static void cli_scan_i2c_bus(const FuriHalI2cBusHandle* handle, const char* bus_name) {
+    furi_hal_i2c_acquire(handle);
+    furi_check(handle);
+
+    printf("Scanning %s bus (I2C%d):\r\n", bus_name, i2c_get_index(handle->bus->i2c));
+    printf("     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\r\n");
+    printf("    -----------------------------------------------\r\n");
+
+    for(uint8_t addr = 0; addr < 128; addr++) {
+        if(addr % 16 == 0) {
+            printf("%02x | ", addr);
+        }
+
+        // Perform a 1-byte dummy read from the probe address. If a slave
+        // acknowledges this address, the function returns the number of bytes
+        // transferred. If the address byte is ignored, the function returns
+        // -1.
+
+        // Skip over any reserved addresses.
+        bool ret = furi_hal_i2c_device_ready(handle, addr, FURI_HAL_I2C_TIMEOUT_US);
+        printf(ret ? "@" : ".");
+        printf(addr % 16 == 15 ? "\r\n" : "  ");
+    }
+    furi_hal_i2c_release(handle);
+}
+
+void cli_command_i2c(Cli* cli, FuriString* args, void* context) {
+    UNUSED(cli);
+    UNUSED(args);
+    UNUSED(context);
+    cli_scan_i2c_bus(&furi_hal_i2c_handle_internal, "internal");
+    printf("\r\n");
+    cli_scan_i2c_bus(&furi_hal_i2c_handle_external, "external");
 }
 
 static void cli_command_expander_ext_help(Cli* cli, FuriString* args, void* context) {
@@ -431,6 +467,8 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "top", CliCommandFlagParallelSafe, cli_command_top, NULL);
     cli_add_command(cli, "free", CliCommandFlagParallelSafe, cli_command_free, NULL);
     cli_add_command(cli, "free_blocks", CliCommandFlagParallelSafe, cli_command_free_blocks, NULL);
+
+    cli_add_command(cli, "i2c", CliCommandFlagParallelSafe, cli_command_i2c, NULL);
     cli_add_command(cli, "expander_ext", CliCommandFlagParallelSafe, cli_command_expander_ext, NULL);
     cli_add_command(cli, "set_led", CliCommandFlagParallelSafe, cli_command_set_led, NULL);
     cli_add_command(cli, "power", CliCommandFlagParallelSafe, cli_command_power, NULL);
