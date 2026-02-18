@@ -19,6 +19,7 @@ struct Haptic {
 
 typedef enum {
     HapticMessageTypeEffectPlay,
+    HapticMessageTypeNotifyPlay,
 } HapticMessageType;
 
 typedef struct {
@@ -27,6 +28,7 @@ typedef struct {
     bool* result;
     union {
         Drv2605lEffect effect_index;
+        bool notify_play;
     };
 } HapticMessage;
 
@@ -57,6 +59,11 @@ static void haptic_message_queue_callback(FuriEventLoopObject* object, void* con
     case HapticMessageTypeEffectPlay:
         haptic_start_off_timer(instance);
         drv2605l_trigger_set_effect_and_play(instance->haptic_header, msg.effect_index);
+        result = true;
+        break;
+    case HapticMessageTypeNotifyPlay:
+        haptic_start_off_timer(instance);
+        drv2605l_trigger_go(instance->haptic_header, msg.notify_play);
         result = true;
         break;
     default:
@@ -106,13 +113,24 @@ int32_t haptic_srv(void* p) {
     return 0;
 }
 
-void haptic_notification(Haptic* instance, Drv2605lEffect effect_index) {
+void haptic_notification_effect(Haptic* instance, Drv2605lEffect effect_index) {
     furi_check(instance);
     furi_check(effect_index < Drv2605lEffectCountMax);
 
     const HapticMessage msg = {
         .type = HapticMessageTypeEffectPlay,
         .effect_index = effect_index,
+    };
+
+    haptic_send_message(instance, &msg);
+}
+
+void haptic_notification_play(Haptic* instance, bool notify_play) {
+    furi_check(instance);
+
+    const HapticMessage msg = {
+        .type = HapticMessageTypeNotifyPlay,
+        .notify_play = notify_play,
     };
 
     haptic_send_message(instance, &msg);

@@ -228,13 +228,12 @@ void drv2605l_trigger_set_effect(Drv2605l* instance, Drv2605lModeTrigger trigger
     drv2605l_write_reg(instance, Drv2605lRegWaveSeq1, (uint8_t*)&wawe_seq_reg);
 }
 
-void drv2605l_trigger_go(Drv2605l* instance) {
+void drv2605l_trigger_go(Drv2605l* instance, bool play) {
     furi_check(instance);
 
     Drv2605lGo go_reg = {
-        .go_bit = 1, //Start effect
+        .go_bit = play ? 1 : 0, //Start/Stop effect
     };
-
     drv2605l_write_reg(instance, Drv2605lRegGo, (uint8_t*)&go_reg);
 }
 
