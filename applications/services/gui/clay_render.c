@@ -250,8 +250,6 @@ static void render_draw_pixel_bg(int32_t x, int32_t y, void* context) {
     UNUSED(context);
     UNUSED(x);
     UNUSED(y);
-
-    // render_set_pixel(x, y, render_data.bg_color);
 }
 
 static float render_clamp_corner_radius(float y_size, float radius) {
