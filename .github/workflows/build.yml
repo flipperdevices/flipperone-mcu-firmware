@@ -10,7 +10,7 @@ on:
 
 jobs:
     test_build:
-        name: Build example blink program
+        name: Build firmware
         runs-on: ubuntu-latest
         permissions:
             contents: read
