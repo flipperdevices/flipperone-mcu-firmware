@@ -1,0 +1,41 @@
+name: 'Build'
+
+on:
+  push:
+    branches:
+      - dev
+    tags:
+      - '*'
+  pull_request:
+
+jobs:
+    test_build:
+        name: Build example blink program
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+
+        steps:
+            - name: Clean
+              run: |
+                echo "Cleaning up previous run"
+                rm -rf "${{ github.workspace }}"
+                mkdir -p "${{ github.workspace }}"
+
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                fetch-depth: 1
+
+            - name: Build
+              id: build
+              uses: samyarsadat/Pico-Build-Action@v1.3.0
+              with:
+                  source_dir: "."
+                  cmake_args: "-DCMAKE_BUILD_TYPE=Debug"
+
+            - name: Upload
+              uses: actions/upload-artifact@v4
+              with:
+                  name: workspace_artifacts
+                  path: ${{steps.build.outputs.output_dir}}
