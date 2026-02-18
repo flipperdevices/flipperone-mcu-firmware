@@ -59,13 +59,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 768,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    {
-        .app = test_peref_srv,
-        .name = "TestPerefSrv",
-        .appid = "test_peref",
-        .stack_size = 1024,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
+    // {
+    //     .app = test_peref_srv,
+    //     .name = "TestPerefSrv",
+    //     .appid = "test_peref",
+    //     .stack_size = 1024,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    // },
     {
         .app = gui_srv,
         .name = "GuiSrv",
@@ -73,13 +73,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024 * 16,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    // {
-    //     .app = desktop_srv,
-    //     .name = "DesktopSrv",
-    //     .appid = "desktop_srv",
-    //     .stack_size = 1024 * 16,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
+    {
+        .app = desktop_srv,
+        .name = "DesktopSrv",
+        .appid = "desktop_srv",
+        .stack_size = 1024 * 16,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
     {
         .app = status_lights_srv,
         .name = "StatusLightsSrv",
@@ -101,13 +101,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    // {
-    //     .app = power_menu,
-    //     .name = "PowerMenu",
-    //     .appid = "power_menu",
-    //     .stack_size = 1024 * 4,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
+    {
+        .app = power_menu,
+        .name = "PowerMenu",
+        .appid = "power_menu",
+        .stack_size = 1024 * 4,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
 };
 const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);
 

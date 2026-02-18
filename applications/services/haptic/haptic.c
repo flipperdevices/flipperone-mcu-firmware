@@ -8,7 +8,7 @@
 #define TAG "Haptic"
 
 #define HAPTIC_MAX_MESSAGES   (8)
-#define HAPTIC_TIMEOUT_OFF_MS (1000)
+#define HAPTIC_TIMEOUT_OFF_MS (3000)
 
 struct Haptic {
     FuriEventLoop* event_loop;
@@ -27,15 +27,18 @@ typedef struct {
     FuriApiLock lock;
     bool* result;
     union {
-        Drv2605lEffect effect_index;
+        struct {
+            Drv2605lEffect effect_index;
+            uint32_t play_time_ms;
+        } play_effect;
         bool notify_play;
     };
 } HapticMessage;
 
-static FURI_ALWAYS_INLINE void haptic_start_off_timer(Haptic* instance) {
+static FURI_ALWAYS_INLINE void haptic_start_off_timer(Haptic* instance, uint32_t play_time_ms) {
     furi_assert(instance);
     drv2605l_enable(instance->haptic_header);
-    furi_event_loop_timer_start(instance->timer, HAPTIC_TIMEOUT_OFF_MS);
+    furi_event_loop_timer_start(instance->timer, play_time_ms);
 }
 
 static void haptic_timer_callback(void* context) {
@@ -57,12 +60,12 @@ static void haptic_message_queue_callback(FuriEventLoopObject* object, void* con
 
     switch(msg.type) {
     case HapticMessageTypeEffectPlay:
-        haptic_start_off_timer(instance);
-        drv2605l_trigger_set_effect_and_play(instance->haptic_header, msg.effect_index);
+        haptic_start_off_timer(instance, msg.play_effect.play_time_ms);
+        drv2605l_trigger_set_effect_and_play(instance->haptic_header, msg.play_effect.effect_index);
         result = true;
         break;
     case HapticMessageTypeNotifyPlay:
-        haptic_start_off_timer(instance);
+        haptic_start_off_timer(instance, HAPTIC_TIMEOUT_OFF_MS);
         drv2605l_trigger_go(instance->haptic_header, msg.notify_play);
         result = true;
         break;
@@ -113,13 +116,17 @@ int32_t haptic_srv(void* p) {
     return 0;
 }
 
-void haptic_notification_effect(Haptic* instance, Drv2605lEffect effect_index) {
+void haptic_notification_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t play_time_ms) {
     furi_check(instance);
     furi_check(effect_index < Drv2605lEffectCountMax);
 
     const HapticMessage msg = {
         .type = HapticMessageTypeEffectPlay,
-        .effect_index = effect_index,
+        .play_effect =
+            {
+                .effect_index = effect_index,
+                .play_time_ms = play_time_ms <= 1 ? HAPTIC_TIMEOUT_OFF_MS : play_time_ms,
+            },
     };
 
     haptic_send_message(instance, &msg);

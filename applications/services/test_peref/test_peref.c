@@ -225,9 +225,7 @@ int32_t test_peref_srv(void* p) {
 
     while(true) {
             FURI_LOG_I(TAG, "Playing effect %ld", efect_index);
-            haptic_notification_effect(haptic, (Drv2605lEffect)(efect_index));
-            furi_delay_ms(efect_play_time);
-            haptic_notification_play(haptic, false);
+            haptic_notification_effect(haptic, (Drv2605lEffect)(efect_index), efect_play_time);
             if(efect_play_time!=0){
                 furi_delay_ms(500);
             } else {

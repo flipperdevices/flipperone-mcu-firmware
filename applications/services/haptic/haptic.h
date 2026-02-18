@@ -17,7 +17,7 @@ typedef enum {
 extern "C" {
 #endif
 
-void haptic_notification_effect(Haptic* instance, Drv2605lEffect effect_index);
+void haptic_notification_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t play_time_ms);
 void haptic_notification_play(Haptic* instance, bool notify_play);
 
 #ifdef __cplusplus
