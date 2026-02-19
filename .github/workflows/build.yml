@@ -7,36 +7,61 @@ on:
     tags:
       - '*'
   pull_request:
+    
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
 
 jobs:
-    test_build:
-        name: Build firmware
-        runs-on: ubuntu-latest
-        permissions:
-            contents: read
+  build:
+    runs-on: ubuntu-latest
 
-        steps:
-            - name: Clean
-              run: |
-                echo "Cleaning up previous run"
-                rm -rf "${{ github.workspace }}"
-                mkdir -p "${{ github.workspace }}"
+    steps:
+    - name: Clean workspace
+      run: |
+        echo "Cleaning up previous run"
+        rm -rf "${{ github.workspace }}"
+        mkdir -p "${{ github.workspace }}"
 
-            - name: Checkout
-              uses: actions/checkout@v4
-              with:
-                fetch-depth: 1
-                submodules: recursive
+    - name: Checkout firmware
+      uses: actions/checkout@v6
+      with:
+        path: firmware
+        submodules: recursive
 
-            - name: Build
-              id: build
-              uses: samyarsadat/Pico-Build-Action@v1.3.0
-              with:
-                  source_dir: "."
-                  cmake_args: "-DCMAKE_BUILD_TYPE=Debug"
+    - name: Checkout pico-sdk/2.2.0
+      uses: actions/checkout@v6
+      with:
+        repository: raspberrypi/pico-sdk
+        ref: 2.2.0
+        path: pico-sdk
 
-            - name: Upload
-              uses: actions/upload-artifact@v4
-              with:
-                  name: workspace_artifacts
-                  path: ${{steps.build.outputs.output_dir}}
+    - name: Checkout pico-sdk submodules
+      working-directory: ${{github.workspace}}/pico-sdk
+      run: git submodule update --init
+
+    - name: Create Build Environment
+      # Some projects don't allow in-source building, so create a separate build directory
+      # We'll use this as our working directory for all subsequent commands
+      working-directory: ${{github.workspace}}/firmware
+      run:  cmake -E make_directory ${{github.workspace}}/firmware/build
+
+    - name: Configure CMake
+      # Use a bash shell so we can use the same syntax for environment variable
+      # access regardless of the host operating system
+      shell: bash
+      working-directory: ${{github.workspace}}/firmware/build
+      # Note the current convention is to use the -S and -B options here to specify source 
+      # and build directories, but this is only available with CMake 3.13 and higher.  
+      # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
+      run: PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    - name: Get core count
+      id: core_count
+      run : cat /proc/cpuinfo  | grep processor | wc -l
+
+    - name: Build
+      working-directory: ${{github.workspace}}/firmware/build
+      shell: bash
+      # Execute the build.  You can specify a specific target with "--target <NAME>"
+      run: cmake --build . --config $BUILD_TYPE --parallel $(nproc)
