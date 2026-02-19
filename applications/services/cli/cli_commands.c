@@ -10,6 +10,7 @@
 #include <status_lights/status_lights.h>
 #include <drivers/ina219/ina219.h>
 #include <furi_hal_i2c_config.h>
+#include <furi_hal_clock.h>
 
 static void cli_command_help(Cli* cli, FuriString* args, void* context) {
     UNUSED(args);
@@ -422,6 +423,94 @@ static void cli_command_power(Cli* cli, FuriString* args, void* context) {
     ina219_deinit(ina219);
 }
 
+FuriHalClockSource cli_clock_sources[] = {
+    FuriHalClockSourceNone,
+    FuriHalClockSourcePllSys,
+    // FuriHalClockSourceGpin0,
+    // FuriHalClockSourceGpin1,
+    FuriHalClockSourcePllUsb,
+    FuriHalClockSourcePllUsbPrimaryRefOpcg,
+    FuriHalClockSourceRosc,
+    FuriHalClockSourceXosc,
+    FuriHalClockSourceLposc,
+    FuriHalClockSourceSys,
+    FuriHalClockSourceUsb,
+    FuriHalClockSourceAdc,
+    FuriHalClockSourceRef,
+    FuriHalClockSourcePeri,
+    FuriHalClockSourceHstx,
+    FuriHalClockSourceOtp2fc,
+    FuriHalClockSourceMax,
+};
+
+static void cli_command_clock_out_help(Cli* cli, FuriString* args, void* context) {
+    UNUSED(cli);
+    UNUSED(args);
+    UNUSED(context);
+    printf(
+        "Usage: Outputting clock to GPIO13 with divider <CLOCK_SOURCE> <DIV>\r\n"
+        "Where <CLOCK_SOURCE> is:\r\n"
+        "\tNone \t\t\t0\r\n"
+        "\tPllSys \t\t\t1\r\n"
+        "\tPllUsb \t\t\t2\r\n"
+        "\tPllUsbPrimaryRefOpcg \t3\r\n"
+        "\tRosc \t\t\t4\r\n"
+        "\tXosc \t\t\t5\r\n"
+        "\tLposc \t\t\t6\r\n"
+        "\tSys \t\t\t7\r\n"
+        "\tUsb \t\t\t8\r\n"
+        "\tAdc \t\t\t9\r\n"
+        "\tRef \t\t\t10\r\n"
+        "\tPeri \t\t\t11\r\n"
+        "\tHstx \t\t\t12\r\n"
+        "\tOtp2fc \t\t\t13\r\n");
+    printf(
+        "Where <DIV> is: a divider for the clock, for example 1, 2, 4, 8, \r\n"
+        "\tetc. The output frequency will be CLOCK_SOURCE_FREQ / DIV\r\n");
+}
+
+static void cli_command_clock_out(Cli* cli, FuriString* args, void* context) {
+    UNUSED(cli);
+    UNUSED(context);
+
+    if(furi_string_size(args) < 1) {
+        cli_command_clock_out_help(cli, args, context);
+        return;
+    }
+
+    int source = 0;
+    int div = 0;
+    if(!args_read_int_and_trim(args, &source)) {
+        cli_command_clock_out_help(cli, args, context);
+        return;
+    }
+    if(source < 0 || source >= sizeof(cli_clock_sources) / sizeof(FuriHalClockSource)) {
+        cli_command_clock_out_help(cli, args, context);
+        return;
+    }
+
+    if(furi_string_size(args) < 1 && cli_clock_sources[source] != FuriHalClockSourceNone) {
+        cli_command_clock_out_help(cli, args, context);
+        return;
+    }
+
+    if(cli_clock_sources[source] != FuriHalClockSourceNone) {
+        if(!args_read_int_and_trim(args, &div)) {
+            cli_command_clock_out_help(cli, args, context);
+            return;
+        }
+        if(div < 0) {
+            cli_command_clock_out_help(cli, args, context);
+            return;
+        }
+        printf("Outputting clock %d to GPIO13 with divider %d\r\n", source, div);
+    } else {
+        printf("Disabling clock output to GPIO13\r\n");
+    }
+
+    furi_hal_clock_out_to_gpio13(cli_clock_sources[source], (float)div);
+}
+
 void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "?", CliCommandFlagParallelSafe, cli_command_help, NULL);
     cli_add_command(cli, "help", CliCommandFlagParallelSafe, cli_command_help, NULL);
@@ -434,4 +523,5 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "expander_ext", CliCommandFlagParallelSafe, cli_command_expander_ext, NULL);
     cli_add_command(cli, "set_led", CliCommandFlagParallelSafe, cli_command_set_led, NULL);
     cli_add_command(cli, "power", CliCommandFlagParallelSafe, cli_command_power, NULL);
+    cli_add_command(cli, "clock_out", CliCommandFlagParallelSafe, cli_command_clock_out, NULL);
 }
