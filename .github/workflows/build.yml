@@ -29,7 +29,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get install cmake
-        sudo apt install gcc-arm-none-eabi=14.2.1
+        sudo apt install gcc-arm-none-eabi
 
     - name: Checkout firmware
       uses: actions/checkout@v6
