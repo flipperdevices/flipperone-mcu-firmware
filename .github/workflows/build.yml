@@ -23,6 +23,12 @@ jobs:
         rm -rf "${{ github.workspace }}"
         mkdir -p "${{ github.workspace }}"
 
+    - name: Install dependencies
+      run: |
+        sudo apt-get install cmake
+        # install gcc-arm-none-eabi 14.2.1
+        sudo apt install gcc-arm-none-eabi=14.2.1-1~20.04
+
     - name: Checkout firmware
       uses: actions/checkout@v6
       with:
