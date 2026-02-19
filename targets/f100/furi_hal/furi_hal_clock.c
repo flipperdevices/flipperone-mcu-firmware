@@ -58,8 +58,6 @@ void furi_hal_clock_resume_tick(void) {
 const uint furi_hal_clock_source[FuriHalClockSourceMax] = {
     [FuriHalClockSourceNone] = 0xFF,
     [FuriHalClockSourcePllSys] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
-    // [FuriHalClockSourceGpin0] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_GPIN0,
-    // [FuriHalClockSourceGpin1] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_GPIN1,
     [FuriHalClockSourcePllUsb] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
     [FuriHalClockSourcePllUsbPrimaryRefOpcg] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB_PRIMARY_REF_OPCG,
     [FuriHalClockSourceRosc] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_ROSC_CLKSRC,

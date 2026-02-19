@@ -426,8 +426,6 @@ static void cli_command_power(Cli* cli, FuriString* args, void* context) {
 FuriHalClockSource cli_clock_sources[] = {
     FuriHalClockSourceNone,
     FuriHalClockSourcePllSys,
-    // FuriHalClockSourceGpin0,
-    // FuriHalClockSourceGpin1,
     FuriHalClockSourcePllUsb,
     FuriHalClockSourcePllUsbPrimaryRefOpcg,
     FuriHalClockSourceRosc,

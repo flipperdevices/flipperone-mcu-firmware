@@ -7,8 +7,6 @@ extern "C" {
 typedef enum {
     FuriHalClockSourceNone,
     FuriHalClockSourcePllSys,
-    // FuriHalClockSourceGpin0,
-    // FuriHalClockSourceGpin1,
     FuriHalClockSourcePllUsb,
     FuriHalClockSourcePllUsbPrimaryRefOpcg,
     FuriHalClockSourceRosc,
