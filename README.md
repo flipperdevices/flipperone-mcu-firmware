@@ -15,7 +15,7 @@ This repository contains the firmware for the Flipper One MCU — the low-power 
 * **High-Performance Linux CPU** (Rockchip RK3576)  
   This processor runs Linux, and all high-level peripherals are connected to it: USB, HDMI, M.2, Wi-Fi, Ethernet, and audio.
 
-The MCU and CPU are interconnected via several interfaces: SPI, I²C, and UART. Additional GPIO lines are used for BOOT_1, BOOT_2, and IRQ signals.
+The MCU and CPU are interconnected via several interfaces: SPI, I²C, and UART. Additional GPIO lines are used for BOOT_0, BOOT_1, and IRQ signals.
 
 ## Join development
 
