@@ -1,6 +1,6 @@
 #pragma once
 
-typedef struct StatusLightsNotification StatusLightsNotification;
+#include <status_lights/status_lights.h>
 
 void status_lights_notification_send(const StatusLightsNotification** notifications);
 

@@ -47,11 +47,22 @@ typedef enum {
     StatusLightsTypeLineAllOff,
 } StatusLightsType;
 
+typedef struct {
+    const StatusLightsType status_lights_type;
+    const StatusLightsColor color;
+} StatusLightsNotificationSuqeueItem;
+
+typedef struct {
+    const StatusLightsNotificationSuqeueItem** notifications;
+    const size_t notification_count;
+} StatusLightsNotification;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-void status_lights_notification(StatusLights* instance, StatusLightsType status_lights_type, StatusLightsColor color);
+void status_lights_notification_led(StatusLights* instance, StatusLightsType status_lights_type, StatusLightsColor color);
+void status_lights_notification(StatusLights* instance, const StatusLightsNotification** notifications);
 
 #ifdef __cplusplus
 }

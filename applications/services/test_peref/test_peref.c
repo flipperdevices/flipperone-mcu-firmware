@@ -24,6 +24,7 @@
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/display/jd9853_reg.h>
 #include <status_lights/status_lights.h>
+#include <status_lights/status_lights_notification.h>
 #include <tusb.h>
 #include <furi_hal_nvm.h>
 
@@ -165,15 +166,22 @@ int32_t test_peref_srv(void* p) {
     // FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
     // FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
 
-    StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
-    Bq25792* bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
+    //StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
+    //Bq25792* bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
 
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
 
     while(true) {
-        furi_delay_ms(5000);
-        bq25792_set_power_switch(bq25792, Bq25792PowerShipMode);
-        FURI_LOG_I(TAG, "BQ25792 set to shutdown mode");
+        furi_delay_ms(2000);
+
+        status_lights_notification_send(notification_all_leds_on);
+        furi_delay_ms(2000);
+
+        status_lights_notification_send(notification_all_leds_white);
+
+
+        // bq25792_set_power_switch(bq25792, Bq25792PowerShipMode);
+        // FURI_LOG_I(TAG, "BQ25792 set to shutdown mode");
         //    furi_hal_i2c_acquire(&furi_hal_i2c_handle_external);
         //     furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_external);
         //    furi_hal_i2c_release(&furi_hal_i2c_handle_external);

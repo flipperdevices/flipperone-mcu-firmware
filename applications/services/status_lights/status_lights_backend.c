@@ -33,6 +33,7 @@ struct StatusLights {
 
 typedef enum {
     StatusLightsMessageTypeSetColor,
+    StatusLightsMessageTypeNotification,
 } StatusLightsMessageType;
 
 typedef struct {
@@ -44,6 +45,9 @@ typedef struct {
             StatusLightsType status_lights_type;
             StatusLightsColor color;
         } set_color;
+        struct {
+            const StatusLightsNotification** notifications;
+        } notification;
     };
 } StatusLightsMessage;
 
@@ -72,6 +76,37 @@ static FURI_ALWAYS_INLINE bool status_lights_start_off_timer(StatusLights* insta
         }
     }
     return instance->status_lights_stat.mask_power & line_power;
+}
+
+static void status_lights_off_line(StatusLights* instance, StatusLightsType line_off_type) {
+    switch(line_off_type) {
+    case StatusLightsTypeLine1Off:
+        //turn off line 1
+        memset(&instance->status_lights_stat.line1, 0x00, sizeof(instance->status_lights_stat.line1));
+        instance->status_lights_stat.mask_power &= ~StatusLedPowerLine1;
+        break;
+    case StatusLightsTypeLine2Off:
+        //turn off line 2
+        memset(&instance->status_lights_stat.line2, 0x00, sizeof(instance->status_lights_stat.line2));
+        instance->status_lights_stat.mask_power &= ~StatusLedPowerLine2;
+        break;
+    case StatusLightsTypeLine3Off:
+        //turn off line 3
+        memset(&instance->status_lights_stat.line3, 0x00, sizeof(instance->status_lights_stat.line3));
+        instance->status_lights_stat.mask_power &= ~StatusLedPowerLine3;
+        break;
+    case StatusLightsTypeLineAllOff:
+        //turn off all lines
+        memset(&instance->status_lights_stat.line1, 0x00, sizeof(instance->status_lights_stat.line1));
+        memset(&instance->status_lights_stat.line2, 0x00, sizeof(instance->status_lights_stat.line2));
+        memset(&instance->status_lights_stat.line3, 0x00, sizeof(instance->status_lights_stat.line3));
+        instance->status_lights_stat.mask_power &= ~(StatusLedPowerLine1 | StatusLedPowerLine2 | StatusLedPowerLine3);
+        break;
+    default:
+        furi_crash();
+        break;
+    }
+    furi_bsp_expander_control_led_power(instance->status_lights_stat.mask_power);
 }
 
 static void status_lights_message_queue_callback(FuriEventLoopObject* object, void* context) {
@@ -114,36 +149,41 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
                    instance, status_lights_check_need_power(instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT), StatusLedPowerLine3))
                 ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE3_INDEX, instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
         } else {
-            switch(msg.set_color.status_lights_type) {
-            case StatusLightsTypeLine1Off:
-                //turn off line 1
-                memset(&instance->status_lights_stat.line1, 0x00, sizeof(instance->status_lights_stat.line1));
-                instance->status_lights_stat.mask_power &= ~StatusLedPowerLine1;
-                break;
-            case StatusLightsTypeLine2Off:
-                //turn off line 2
-                memset(&instance->status_lights_stat.line2, 0x00, sizeof(instance->status_lights_stat.line2));
-                instance->status_lights_stat.mask_power &= ~StatusLedPowerLine2;
-                break;
-            case StatusLightsTypeLine3Off:
-                //turn off line 3
-                memset(&instance->status_lights_stat.line3, 0x00, sizeof(instance->status_lights_stat.line3));
-                instance->status_lights_stat.mask_power &= ~StatusLedPowerLine3;
-                break;
-            case StatusLightsTypeLineAllOff:
-                //turn off all lines
-                memset(&instance->status_lights_stat.line1, 0x00, sizeof(instance->status_lights_stat.line1));
-                memset(&instance->status_lights_stat.line2, 0x00, sizeof(instance->status_lights_stat.line2));
-                memset(&instance->status_lights_stat.line3, 0x00, sizeof(instance->status_lights_stat.line3));
-                instance->status_lights_stat.mask_power &= ~(StatusLedPowerLine1 | StatusLedPowerLine2 | StatusLedPowerLine3);
-                break;
-            default:
-                furi_crash();
-                break;
-            }
-            furi_bsp_expander_control_led_power(instance->status_lights_stat.mask_power);
+            status_lights_off_line(instance, msg.set_color.status_lights_type);
         }
         result = true;
+        break;
+    case StatusLightsMessageTypeNotification:
+        StatusLightsNotification* notification = *(StatusLightsNotification**)msg.notification.notifications;
+
+        for(size_t i = 0; i < notification->notification_count; i++) {
+            if(notification->notifications[i]->status_lights_type < StatusLightsTypePower) { //line 1
+                instance->status_lights_stat.line1[notification->notifications[i]->status_lights_type] =
+                    ws2812_urgb_u32(notification->notifications[i]->color.r, notification->notifications[i]->color.g, notification->notifications[i]->color.b);
+            } else if(notification->notifications[i]->status_lights_type < StatusLightsTypeUsbCharging) { //line 2
+                instance->status_lights_stat.line2[notification->notifications[i]->status_lights_type - StatusLightsTypePower] =
+                    ws2812_urgb_u32(notification->notifications[i]->color.r, notification->notifications[i]->color.g, notification->notifications[i]->color.b);
+                if(notification->notifications[i]->status_lights_type == StatusLightsTypeBatteryOutline) {
+                    //outline is 2 leds
+                    instance->status_lights_stat.line2[notification->notifications[i]->status_lights_type - StatusLightsTypePower + 1] = ws2812_urgb_u32(
+                        notification->notifications[i]->color.r, notification->notifications[i]->color.g, notification->notifications[i]->color.b);
+                }
+            } else if(notification->notifications[i]->status_lights_type < StatusLightsTypeLine1Off) { //line 3
+                instance->status_lights_stat.line3[notification->notifications[i]->status_lights_type - StatusLightsTypeUsbCharging] =
+                    ws2812_urgb_u32(notification->notifications[i]->color.r, notification->notifications[i]->color.g, notification->notifications[i]->color.b);
+            } else {
+                status_lights_off_line(instance, notification->notifications[i]->status_lights_type);
+            }
+        }
+        if(status_lights_start_off_timer(
+               instance, status_lights_check_need_power(instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT), StatusLedPowerLine1))
+            ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE1_INDEX, instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT);
+        if(status_lights_start_off_timer(
+               instance, status_lights_check_need_power(instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT), StatusLedPowerLine2))
+            ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE2_INDEX, instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT);
+        if(status_lights_start_off_timer(
+               instance, status_lights_check_need_power(instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT), StatusLedPowerLine3))
+            ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE3_INDEX, instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
         break;
     default:
         furi_crash("Invalid message type");
@@ -198,7 +238,7 @@ int32_t status_lights_srv(void* p) {
     return 0;
 }
 
-void status_lights_notification(StatusLights* instance, StatusLightsType status_lights_type, StatusLightsColor color) {
+void status_lights_notification_led(StatusLights* instance, StatusLightsType status_lights_type, StatusLightsColor color) {
     furi_check(instance);
 
     const StatusLightsMessage msg = {
@@ -207,6 +247,19 @@ void status_lights_notification(StatusLights* instance, StatusLightsType status_
             {
                 .status_lights_type = status_lights_type,
                 .color = color,
+            },
+    };
+    status_lights_send_message(instance, &msg);
+}
+
+void status_lights_notification(StatusLights* instance, const StatusLightsNotification** notifications) {
+    furi_check(instance);
+
+    const StatusLightsMessage msg = {
+        .type = StatusLightsMessageTypeNotification,
+        .notification =
+            {
+                .notifications = notifications,
             },
     };
     status_lights_send_message(instance, &msg);

@@ -1,27 +1,37 @@
-#include <status_lights/status_lights.h>
 #include <status_lights/status_lights_notification.h>
 
-#define NOTIFICATION_DECLARE(...) \
-    &(StatusLightsNotification) { \
-        __VA_ARGS__               \
+#define NOTIFICATION_DECLARE(...)           \
+    &(StatusLightsNotificationSuqeueItem) { \
+        __VA_ARGS__                         \
     }
 
-struct StatusLightsNotification {
-    const StatusLightsType status_lights_type;
-    const StatusLightsColor color;
+const StatusLightsNotificationSuqeueItem* notification_all_leds_off_suqeue_item[] = {
+    NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeLineAllOff),
 };
+
+const size_t notification_all_leds_off_count = sizeof(notification_all_leds_off_suqeue_item) / sizeof(StatusLightsNotificationSuqeueItem*);
 
 const StatusLightsNotification* notification_all_leds_off[] = {
-    NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeLineAllOff),
-    NULL,
+    &(StatusLightsNotification){
+        .notifications = notification_all_leds_off_suqeue_item,
+        .notification_count = notification_all_leds_off_count,
+    },
 };
+
+const StatusLightsNotificationSuqeueItem* notification_power_red_suqeue_item[] = {
+    NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypePower, .color = STATUS_LIGHTS_COLOR_RED),
+};
+
+const size_t notification_power_red_count = sizeof(notification_power_red_suqeue_item) / sizeof(StatusLightsNotificationSuqeueItem*);
 
 const StatusLightsNotification* notification_power_red[] = {
-    NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypePower, .color = STATUS_LIGHTS_COLOR_RED),
-    NULL,
+    &(StatusLightsNotification){
+        .notifications = notification_power_red_suqeue_item,
+        .notification_count = notification_power_red_count,
+    },
 };
 
-const StatusLightsNotification* notification_all_leds_on[] = {
+const StatusLightsNotificationSuqeueItem* notification_all_leds_on_suqeue_item[] = {
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeNet, .color = (StatusLightsColor){0, 0, 255}),
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeWiFi, .color = (StatusLightsColor){0, 0, 255}),
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeEth2, .color = (StatusLightsColor){0, 0, 255}),
@@ -38,10 +48,18 @@ const StatusLightsNotification* notification_all_leds_on[] = {
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeUsbWatt3, .color = (StatusLightsColor){255, 255, 0}),
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeUsbWatt4, .color = (StatusLightsColor){0, 255, 0}),
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeBatteryCenter, .color = (StatusLightsColor){0, 255, 0}),
-    NULL,
 };
 
-const StatusLightsNotification* notification_all_leds_white[] = {
+const size_t notification_all_leds_on_count = sizeof(notification_all_leds_on_suqeue_item) / sizeof(StatusLightsNotificationSuqeueItem*);
+
+const StatusLightsNotification* notification_all_leds_on[] = {
+    &(StatusLightsNotification){
+        .notifications = notification_all_leds_on_suqeue_item,
+        .notification_count = notification_all_leds_on_count,
+    },
+};
+
+const StatusLightsNotificationSuqeueItem* notification_all_leds_white_suqeue_item[] = {
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeNet, .color = (StatusLightsColor){255, 255, 255}),
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeWiFi, .color = (StatusLightsColor){255, 255, 255}),
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeEth2, .color = (StatusLightsColor){255, 255, 255}),
@@ -58,16 +76,19 @@ const StatusLightsNotification* notification_all_leds_white[] = {
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeUsbWatt3, .color = (StatusLightsColor){255, 255, 255}),
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeUsbWatt4, .color = (StatusLightsColor){255, 255, 255}),
     NOTIFICATION_DECLARE(.status_lights_type = StatusLightsTypeBatteryCenter, .color = (StatusLightsColor){255, 255, 255}),
-    NULL,
+};
+
+const size_t notification_all_leds_white_count = sizeof(notification_all_leds_white_suqeue_item) / sizeof(StatusLightsNotificationSuqeueItem*);
+
+const StatusLightsNotification* notification_all_leds_white[] = {
+    &(StatusLightsNotification){
+        .notifications = notification_all_leds_white_suqeue_item,
+        .notification_count = notification_all_leds_white_count,
+    },
 };
 
 void status_lights_notification_send(const StatusLightsNotification** notifications) {
     StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
-    const StatusLightsNotification* notification = notifications[0];
-    while(notification) {
-        status_lights_notification(status_lights, notification->status_lights_type, notification->color);
-        notifications++;
-        notification = notifications[0];
-    }
+    status_lights_notification(status_lights, notifications);
     furi_record_close(RECORD_STATUS_LIGHTS);
 }
