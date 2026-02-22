@@ -62,6 +62,7 @@ static const size_t notifications_count = COUNT_OF(notifications);
 
 static const int8_t backlight_brightness_levels[] = {
     0,
+    2,
     5,
     20,
     50,
@@ -288,7 +289,7 @@ static PowerMenu* power_menu_alloc(void) {
     view_set_layout_callback(instance->view, power_menu_layout);
     view_set_input_callback(instance->view, power_menu_input, instance);
     gui_add_view(instance->gui, instance->view, GuiViewPriorityMenu);
-    instance->selected_backlight_index = 2;
+    instance->selected_backlight_index = 3; // 20%
     power_menu_apply_backlight(instance);
     return instance;
 }
