@@ -20,6 +20,7 @@ extern int32_t power_menu(void* p);
 extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
 extern int32_t cpu_app(void* p);
+extern int32_t haptic_test_app(void* p);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -128,6 +129,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .app = touchpad_test_app,
         .name = "Touchpad Test",
         .appid = "touchpad_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = haptic_test_app,
+        .name = "Haptic Test",
+        .appid = "haptic_test",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
