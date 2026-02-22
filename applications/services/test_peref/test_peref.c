@@ -1,4 +1,5 @@
 #include "test_peref.h"
+#include "core/log.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -25,14 +26,15 @@
 #include <drivers/display/jd9853_reg.h>
 #include <status_lights/status_lights.h>
 #include <status_lights/status_lights_notification.h>
+#include <haptic/haptic.h>
 #include <tusb.h>
 #include <furi_hal_nvm.h>
 
 #define TAG "PerefTest"
-DisplayJd9853QSPI* display_h = NULL;
+        DisplayJd9853QSPI* display_h = NULL;
 int mod = 1;
 bool eco = false;
-
+int32_t efect_play_time = 20;
 // static void input_events_callback(const void* value, void* ctx) {
 //     furi_assert(value);
 //     furi_assert(ctx);
@@ -77,6 +79,49 @@ bool eco = false;
 //         }
 //     }
 // }
+
+static void input_events_callback_effect(const void* value, void* ctx) {
+    furi_assert(value);
+    furi_assert(ctx);
+    uint32_t* efect_index = (uint32_t*)ctx;
+    const InputEvent* event = value;
+    if(event->type == InputTypePress) {
+        if(event->key == InputKeyUp) {
+            (*efect_index)++;
+        } else if(event->key == InputKeyDown) {
+            (*efect_index)--;
+        } else if(event->key == InputKeyLeft) {
+            efect_play_time--;
+        } else if(event->key == InputKeyRight) {
+            efect_play_time++;
+        }
+    }
+    if(event->type == InputTypeRepeat) {
+        if(event->key == InputKeyUp) {
+            (*efect_index)++;
+        } else if(event->key == InputKeyDown) {
+            (*efect_index)--;
+        } else if(event->key == InputKeyLeft) {
+            efect_play_time -= 10;
+        } else if(event->key == InputKeyRight) {
+            efect_play_time += 10;
+        }
+    }
+
+    if(*efect_index >= Drv2605lEffectCountMax) {
+        *efect_index = Drv2605lEffectCountMax;
+    }
+    if(*efect_index < 0) {
+        *efect_index = 0;
+    }
+    if(efect_play_time < 0) {
+        efect_play_time = 0;
+    }
+    if(efect_play_time > 3000) {
+        efect_play_time = 3000;
+    }
+    FURI_LOG_I(TAG, "Set effect %ld, play time: %ld", *efect_index, efect_play_time);
+}
 
 void test_nvm(void) {
     FuriHalNvmStorage res;
@@ -156,17 +201,22 @@ int32_t test_peref_srv(void* p) {
     // //furi_delay_ms(1000);
     // uint8_t index_led[3] = {0};
 
-   // Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_external, INA219_ADDRESS, 0.004f, 9.0f); // 0.004 Ohm shunt, 0.4A max
+    // Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_external, INA219_ADDRESS, 0.004f, 9.0f); // 0.004 Ohm shunt, 0.4A max
 
     //display_h = furi_record_open(RECORD_DISPLAY);
 
     // display_h = display_jd9853_qspi_init();
     // display_jd9853_qspi_set_brightness(display_h, 20);
 
-    // FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
+    int32_t efect_index = Drv2605lEffectStrongClick_100;
+    FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
+    FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback_effect, &efect_index);
     // FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
 
     //StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
+    StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
+
+    // Haptic* haptic = furi_record_open(RECORD_HAPTIC);
     //Bq25792* bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
 
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
@@ -179,7 +229,15 @@ int32_t test_peref_srv(void* p) {
 
         status_lights_notification_send(notification_all_leds_white);
 
+        // FURI_LOG_I(TAG, "Playing effect %ld", efect_index);
+        // haptic_play_effect(haptic, (Drv2605lEffect)(efect_index), efect_play_time);
+        // if(efect_play_time != 0) {
+        //     furi_delay_ms(500);
+        // } else {
+        //     furi_delay_ms(1000);
+        // }
 
+        // furi_delay_ms(5000);
         // bq25792_set_power_switch(bq25792, Bq25792PowerShipMode);
         // FURI_LOG_I(TAG, "BQ25792 set to shutdown mode");
         //    furi_hal_i2c_acquire(&furi_hal_i2c_handle_external);
@@ -245,8 +303,6 @@ int32_t test_peref_srv(void* p) {
         // }
         // display_jd9853_qspi_write_buffer((DisplayJd9853QSPI*)display_h, data, width * height);
         // free(data);
-
-        furi_delay_ms(1000);
 
         // float bus_v = ina219_get_bus_voltage_v(ina219);
         // float current_a = ina219_get_current_a(ina219);

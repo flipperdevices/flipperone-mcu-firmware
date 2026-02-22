@@ -4,6 +4,24 @@
 extern "C" {
 #endif
 
+typedef enum {
+    FuriHalClockSourceNone,
+    FuriHalClockSourcePllSys,
+    FuriHalClockSourcePllUsb,
+    FuriHalClockSourcePllUsbPrimaryRefOpcg,
+    FuriHalClockSourceRosc,
+    FuriHalClockSourceXosc,
+    FuriHalClockSourceLposc,
+    FuriHalClockSourceSys,
+    FuriHalClockSourceUsb,
+    FuriHalClockSourceAdc,
+    FuriHalClockSourceRef,
+    FuriHalClockSourcePeri,
+    FuriHalClockSourceHstx,
+    FuriHalClockSourceOtp2fc,
+    FuriHalClockSourceMax,
+} FuriHalClockSource;
+
 /** Disable the ring oscillator */
 void furi_hal_clock_rosc_disable(void);
 
@@ -24,6 +42,9 @@ void furi_hal_clock_suspend_tick(void);
 
 /** Continue SysTick counter operation */
 void furi_hal_clock_resume_tick(void);
+
+/** Output clock to GPIO13 */
+void furi_hal_clock_out_to_gpio13(FuriHalClockSource clk_src, float div);
 
 #ifdef __cplusplus
 }
