@@ -89,25 +89,21 @@ static void input_events_callback_effect(const void* value, void* ctx) {
             (*efect_index)++;
         } else if(event->key == InputKeyDown) {
             (*efect_index)--;
-        }
-        else if(event->key == InputKeyLeft) {
+        } else if(event->key == InputKeyLeft) {
             efect_play_time--;
-        }
-        else if(event->key == InputKeyRight) {
+        } else if(event->key == InputKeyRight) {
             efect_play_time++;
         }
     }
-    if( event->type == InputTypeRepeat) {
+    if(event->type == InputTypeRepeat) {
         if(event->key == InputKeyUp) {
             (*efect_index)++;
         } else if(event->key == InputKeyDown) {
             (*efect_index)--;
-        }
-        else if(event->key == InputKeyLeft) {
-            efect_play_time-=10;
-        }
-        else if(event->key == InputKeyRight) {
-            efect_play_time+=10;
+        } else if(event->key == InputKeyLeft) {
+            efect_play_time -= 10;
+        } else if(event->key == InputKeyRight) {
+            efect_play_time += 10;
         }
     }
 
@@ -117,12 +113,12 @@ static void input_events_callback_effect(const void* value, void* ctx) {
     if(*efect_index < 0) {
         *efect_index = 0;
     }
-        if(efect_play_time < 0) {
-            efect_play_time = 0;
-        }
-        if(efect_play_time > 3000) {
-            efect_play_time = 3000;
-        }
+    if(efect_play_time < 0) {
+        efect_play_time = 0;
+    }
+    if(efect_play_time > 3000) {
+        efect_play_time = 3000;
+    }
     FURI_LOG_I(TAG, "Set effect %ld, play time: %ld", *efect_index, efect_play_time);
 }
 
@@ -224,13 +220,13 @@ int32_t test_peref_srv(void* p) {
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
 
     while(true) {
-            FURI_LOG_I(TAG, "Playing effect %ld", efect_index);
-            haptic_notification_effect(haptic, (Drv2605lEffect)(efect_index), efect_play_time);
-            if(efect_play_time!=0){
-                furi_delay_ms(500);
-            } else {
-                furi_delay_ms(1000);
-            }
+        FURI_LOG_I(TAG, "Playing effect %ld", efect_index);
+        haptic_play_effect(haptic, (Drv2605lEffect)(efect_index), efect_play_time);
+        if(efect_play_time != 0) {
+            furi_delay_ms(500);
+        } else {
+            furi_delay_ms(1000);
+        }
 
         // furi_delay_ms(5000);
         // bq25792_set_power_switch(bq25792, Bq25792PowerShipMode);
@@ -298,7 +294,6 @@ int32_t test_peref_srv(void* p) {
         // }
         // display_jd9853_qspi_write_buffer((DisplayJd9853QSPI*)display_h, data, width * height);
         // free(data);
-
 
         // float bus_v = ina219_get_bus_voltage_v(ina219);
         // float current_a = ina219_get_current_a(ina219);

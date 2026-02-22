@@ -18,8 +18,9 @@ struct Haptic {
 };
 
 typedef enum {
-    HapticMessageTypeEffectPlay,
-    HapticMessageTypeNotifyPlay,
+    HapticMessageTypePlayEffect,
+    HapticMessageTypeStart,
+    HapticMessageTypeStop,
 } HapticMessageType;
 
 typedef struct {
@@ -29,10 +30,9 @@ typedef struct {
     union {
         struct {
             Drv2605lEffect effect_index;
-            uint32_t play_time_ms;
+            uint32_t time_ms;
         } play_effect;
-        bool notify_play;
-    };
+    } as;
 } HapticMessage;
 
 static FURI_ALWAYS_INLINE void haptic_start_off_timer(Haptic* instance, uint32_t play_time_ms) {
@@ -59,14 +59,19 @@ static void haptic_message_queue_callback(FuriEventLoopObject* object, void* con
     bool result = false;
 
     switch(msg.type) {
-    case HapticMessageTypeEffectPlay:
-        haptic_start_off_timer(instance, msg.play_effect.play_time_ms);
-        drv2605l_trigger_set_effect_and_play(instance->haptic_header, msg.play_effect.effect_index);
+    case HapticMessageTypePlayEffect:
+        haptic_start_off_timer(instance, msg.as.play_effect.time_ms);
+        drv2605l_trigger_set_effect_and_play(instance->haptic_header, msg.as.play_effect.effect_index);
         result = true;
         break;
-    case HapticMessageTypeNotifyPlay:
+    case HapticMessageTypeStart:
         haptic_start_off_timer(instance, HAPTIC_TIMEOUT_OFF_MS);
-        drv2605l_trigger_go(instance->haptic_header, msg.notify_play);
+        drv2605l_trigger_go(instance->haptic_header, true);
+        result = true;
+        break;
+    case HapticMessageTypeStop:
+        haptic_start_off_timer(instance, HAPTIC_TIMEOUT_OFF_MS);
+        drv2605l_trigger_go(instance->haptic_header, false);
         result = true;
         break;
     default:
@@ -116,28 +121,37 @@ int32_t haptic_srv(void* p) {
     return 0;
 }
 
-void haptic_notification_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t play_time_ms) {
+void haptic_play_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t time_ms) {
     furi_check(instance);
     furi_check(effect_index < Drv2605lEffectCountMax);
 
     const HapticMessage msg = {
-        .type = HapticMessageTypeEffectPlay,
-        .play_effect =
+        .type = HapticMessageTypePlayEffect,
+        .as.play_effect =
             {
                 .effect_index = effect_index,
-                .play_time_ms = play_time_ms <= 1 ? HAPTIC_TIMEOUT_OFF_MS : play_time_ms,
+                .time_ms = time_ms <= 1 ? HAPTIC_TIMEOUT_OFF_MS : time_ms,
             },
     };
 
     haptic_send_message(instance, &msg);
 }
 
-void haptic_notification_play(Haptic* instance, bool notify_play) {
+void haptic_start(Haptic* instance) {
     furi_check(instance);
 
     const HapticMessage msg = {
-        .type = HapticMessageTypeNotifyPlay,
-        .notify_play = notify_play,
+        .type = HapticMessageTypeStart,
+    };
+
+    haptic_send_message(instance, &msg);
+}
+
+void haptic_stop(Haptic* instance) {
+    furi_check(instance);
+
+    const HapticMessage msg = {
+        .type = HapticMessageTypeStop,
     };
 
     haptic_send_message(instance, &msg);
