@@ -4,6 +4,8 @@
 #include <hardware/structs/systick.h>
 #include <pico/runtime_init.h>
 #include <hardware/structs/rosc.h>
+#include <hardware/clocks.h>
+#include <furi_hal_gpio.h>
 
 #define TAG "FuriHalClock"
 
@@ -51,4 +53,30 @@ void furi_hal_clock_suspend_tick(void) {
 
 void furi_hal_clock_resume_tick(void) {
     systick_hw->csr |= SysTick_CTRL_ENABLE_Msk;
+}
+
+const uint furi_hal_clock_source[FuriHalClockSourceMax] = {
+    [FuriHalClockSourceNone] = 0xFF,
+    [FuriHalClockSourcePllSys] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_PLL_SYS,
+    [FuriHalClockSourcePllUsb] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB,
+    [FuriHalClockSourcePllUsbPrimaryRefOpcg] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLKSRC_PLL_USB_PRIMARY_REF_OPCG,
+    [FuriHalClockSourceRosc] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_ROSC_CLKSRC,
+    [FuriHalClockSourceXosc] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC,
+    [FuriHalClockSourceLposc] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_LPOSC_CLKSRC,
+    [FuriHalClockSourceSys] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_SYS,
+    [FuriHalClockSourceUsb] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_USB,
+    [FuriHalClockSourceAdc] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_ADC,
+    [FuriHalClockSourceRef] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_REF,
+    [FuriHalClockSourcePeri] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_PERI,
+    [FuriHalClockSourceHstx] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_CLK_HSTX,
+    [FuriHalClockSourceOtp2fc] = CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_OTP_CLK2FC,
+};
+
+void furi_hal_clock_out_to_gpio13(FuriHalClockSource clk_src, float div) {
+    if(clk_src != FuriHalClockSourceNone) {
+        clock_gpio_init(13, furi_hal_clock_source[clk_src], div);
+    } else {
+        GpioPin gpio = {.pin = 13};
+        furi_hal_gpio_init_ex(&gpio, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    }
 }
