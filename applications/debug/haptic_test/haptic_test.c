@@ -68,22 +68,54 @@ static bool haptic_test_layout(void* _model) {
                 .clip = {.vertical = true},
                 .layout =
                     {
-                        .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                        .layoutDirection = CLAY_LEFT_TO_RIGHT,
                         .childGap = 8,
                         .padding = {6, 6, 6, 6},
                         .sizing = layout_expand,
                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                     },
             }) {
-            CLAY_AUTO_ID({.layout = layout_row}) {
-                CLAY_AUTO_ID({.layout = {.padding = {8, 8, 4, 4}}}) {
-                    CLAY_TEXT(CLAY_STRING("Effect"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
+            CLAY(
+                CLAY_APP_ID("Content1"),
+                {
+                    //.border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
+                    .clip = {.vertical = true},
+                    .layout =
+                        {
+                            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                            .childGap = 8,
+                            .sizing = {.width = CLAY_SIZING_FIXED(60), .height = CLAY_SIZING_GROW(0)},
+                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_LEFT},
+                        },
+                }) {
+                CLAY_AUTO_ID({.layout = layout_row}) {
+                    CLAY_TEXT(
+                        CLAY_STRING("Effect"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK, .textAlignment = CLAY_TEXT_ALIGN_RIGHT}));
                 }
-                CLAY_TEXT(clay_helper_string_from(model->effect_name), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
+                CLAY_AUTO_ID({.layout = layout_row}) {
+                    CLAY_TEXT(CLAY_STRING("Play_time"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
+                }
             }
-            CLAY_AUTO_ID({.layout = layout_row}) {
-                CLAY_TEXT(CLAY_STRING("Play time"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
-                CLAY_TEXT(clay_helper_string_from(model->play_time_ms_str), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
+
+            CLAY(
+                CLAY_APP_ID("Content2"),
+                {
+                    //.border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
+                    .clip = {.vertical = true},
+                    .layout =
+                        {
+                            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                            .childGap = 8,
+                            .sizing = layout_expand,
+                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_LEFT},
+                        },
+                }) {
+                CLAY_AUTO_ID({.layout = layout_row}) {
+                    CLAY_TEXT(clay_helper_string_from(model->effect_name), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
+                }
+                CLAY_AUTO_ID({.layout = layout_row}) {
+                    CLAY_TEXT(clay_helper_string_from(model->play_time_ms_str), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
+                }
             }
         }
     }
