@@ -38,7 +38,7 @@ jobs:
       run: |
         sudo apt-get install cmake
 
-    - name: Install ARM GCC toolchain
+    - name: Install ARM GCC {{ env.ARM_NONE_EABI_GCC_VERSION }}
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         wget https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${{ env.ARM_NONE_EABI_GCC_VERSION }}/xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
