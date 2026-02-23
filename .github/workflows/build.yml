@@ -1,0 +1,107 @@
+name: 'Build'
+
+on:
+  push:
+    branches:
+      - dev
+    tags:
+      - '*'
+  pull_request:
+    
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+  ARM_NONE_EABI_GCC_VERSION: 14.2.1-1.1
+  PICO_SDK_VERSION: 2.2.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clean workspace
+      run: |
+        echo "Cleaning up previous run"
+        rm -rf "${{ github.workspace }}"
+        mkdir -p "${{ github.workspace }}"
+
+    - name: Restore cached toolchain and pico-sdk
+      id: cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          arm-none-eabi-gcc
+          pico-sdk
+        key: gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-pico-sdk-${{ env.PICO_SDK_VERSION }}
+
+    - name: Install cmake
+      run: |
+        sudo apt-get install cmake
+
+    - name: Install ARM GCC {{ env.ARM_NONE_EABI_GCC_VERSION }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        wget https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${{ env.ARM_NONE_EABI_GCC_VERSION }}/xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
+        tar -xzf xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
+        mv xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }} arm-none-eabi-gcc
+
+    - name: Add ARM GCC to PATH
+      run: |
+        export PATH=$PWD/arm-none-eabi-gcc/bin:$PATH
+        echo "$PWD/arm-none-eabi-gcc/bin" >> $GITHUB_PATH
+        arm-none-eabi-gcc --version
+
+    - name: Checkout firmware
+      uses: actions/checkout@v6
+      with:
+        path: firmware
+        submodules: recursive
+
+    - name: Checkout pico-sdk/${{ env.PICO_SDK_VERSION }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/checkout@v6
+      with:
+        repository: raspberrypi/pico-sdk
+        ref: ${{ env.PICO_SDK_VERSION }}
+        path: pico-sdk
+
+    - name: Checkout pico-sdk submodules
+      if: steps.cache.outputs.cache-hit != 'true'
+      working-directory: ${{github.workspace}}/pico-sdk
+      run: git submodule update --init
+
+    - name: Create Build Environment
+      # Some projects don't allow in-source building, so create a separate build directory
+      # We'll use this as our working directory for all subsequent commands
+      working-directory: ${{github.workspace}}/firmware
+      run:  cmake -E make_directory ${{github.workspace}}/firmware/build
+
+    - name: Configure CMake
+      # Use a bash shell so we can use the same syntax for environment variable
+      # access regardless of the host operating system
+      shell: bash
+      working-directory: ${{github.workspace}}/firmware/build
+      # Note the current convention is to use the -S and -B options here to specify source 
+      # and build directories, but this is only available with CMake 3.13 and higher.  
+      # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
+      run: PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+
+    - name: Get core count
+      id: core_count
+      run : cat /proc/cpuinfo  | grep processor | wc -l
+
+    - name: Build
+      working-directory: ${{github.workspace}}/firmware/build
+      shell: bash
+      # Execute the build.  You can specify a specific target with "--target <NAME>"
+      run: cmake --build . --config $BUILD_TYPE --parallel $(nproc)
+  
+    - name: Save Cache
+      id: cache-save
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          arm-none-eabi-gcc
+          pico-sdk
+        key: ${{ steps.cache.outputs.cache-primary-key }}

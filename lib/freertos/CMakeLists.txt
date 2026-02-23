@@ -17,7 +17,7 @@ target_compile_options(${PROJECT_NAME} INTERFACE
 
 target_include_directories(${PROJECT_NAME} INTERFACE ${INCLUDES})
 
-add_subdirectory(FreeRTOS-Kernel/portable/ThirdParty/GCC/RP2350_ARM_NTZ)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS-Kernel/portable/ThirdParty/GCC/RP2350_ARM_NTZ)
 
 target_link_libraries(${PROJECT_NAME} INTERFACE
     FreeRTOS-Kernel

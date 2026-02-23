@@ -107,7 +107,7 @@ static void input_touch_event_isr(void* context) {
             INPUT_TOUCH_DEBUG("Charging Mode: Low Power 2");
             break;
         default:
-            FURI_LOG_E(TAG, "Unknown Charging Mode: %03b", charging_mode);
+            FURI_LOG_E(TAG, "Unknown Charging Mode: %03x", charging_mode);
             break;
         }
     }

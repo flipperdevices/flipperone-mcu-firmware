@@ -44,6 +44,9 @@ add_compile_options(-Werror -Wall)
 add_compile_options(-Wno-unused-variable)
 add_compile_options(-Wno-unused-but-set-variable)
 
+# clay.c has some warnings also
+add_compile_options(-Wno-unknown-pragmas)
+
 # Add executable. Default name is the project name, version 0.1
 file(GLOB_RECURSE SOURCES
     "lib/furi/*.c*" 
