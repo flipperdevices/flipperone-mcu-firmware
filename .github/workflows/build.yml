@@ -26,7 +26,10 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get install cmake
-        sudo apt install gcc-arm-none-eabi
+        wget https://github.com/xpack-dev-tools/gcc-xpack/releases/download/v14.3.0-1/xpack-gcc-14.3.0-1-linux-x64.tar.gz
+        tar -xzf xpack-gcc-14.3.0-1-linux-x64.tar.gz
+        export PATH=$PWD/xpack-gcc-14.3.0-1-linux-x64/bin:$PATH
+        echo "$PWD/xpack-gcc-14.3.0-1-linux-x64/bin" >> $GITHUB_PATH
 
     - name: Checkout firmware
       uses: actions/checkout@v6
