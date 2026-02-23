@@ -98,6 +98,7 @@ jobs:
   
     - name: Save Cache
       id: cache-save
+      if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v5
       with:
         path: |
