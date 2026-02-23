@@ -3,6 +3,7 @@
 #include <furi_hal_power.h>
 #include <furi_hal_clock.h>
 #include <FreeRTOS.h>
+#include <stdbool.h>
 #include <task.h>
 #include <furi_hal_debug.h>
 #include <furi_hal_gpio.h>
@@ -16,6 +17,11 @@ void furi_hal_os_init(void) {
     // Disable NBOOT control with the RTT button
     furi_hal_gpio_init_simple(&gpio_nboot_disable, GpioModeOutputPushPull);
     furi_hal_gpio_write(&gpio_nboot_disable, true);
+
+    furi_hal_gpio_init_simple(&gpio_mcu_gpio0, GpioModeOutputPushPull);
+    furi_hal_gpio_write(&gpio_mcu_gpio0, false);
+    furi_hal_gpio_init_simple(&gpio_mcu_gpio1, GpioModeOutputPushPull);
+    furi_hal_gpio_write(&gpio_mcu_gpio1, false);
     FURI_LOG_I(TAG, "Init OK");
 }
 
