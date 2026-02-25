@@ -1,6 +1,6 @@
 # Flipper One MCU Firmware
 
-This repository contains the firmware for the Flipper One MCU — the low-power co-processor that controls the LCD, buttons, and battery.
+This repository is part of [Flipper One MCU Firmware](https://github.com/orgs/flipperdevices/projects/8) sub-project and contains issue tracking and firmware sources for the Flipper One MCU — the low-power co-processor that controls the LCD, buttons, and battery.
 
 <img width="1474" height="450" alt="Flipper One MCU and CPI interconnection" src="https://github.com/user-attachments/assets/67d4810f-38b0-49af-8321-11bbc84ed04d" />
 
