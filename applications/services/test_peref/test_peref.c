@@ -215,29 +215,52 @@ int32_t test_peref_srv(void* p) {
     StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
 
     Haptic* haptic = furi_record_open(RECORD_HAPTIC);
-    //Bq25792* bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
+    Bq25792* bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
 
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
 
     while(true) {
-        FURI_LOG_I(TAG, "Playing effect %ld", efect_index);
-        haptic_play_effect(haptic, (Drv2605lEffect)(efect_index), efect_play_time);
-        if(efect_play_time != 0) {
-            furi_delay_ms(500);
-        } else {
-            furi_delay_ms(1000);
-        }
+        furi_delay_ms(500);
 
-        // furi_delay_ms(5000);
+        uint16_t bat_v; // Battery voltage (mV)
+        int16_t bat_i; // Battery current (mA)
+        uint16_t usb_v; // USB voltage (mV)
+        int16_t usb_i; // USB voltage (mA)
+        uint16_t sys_v; // System voltage (mV)
+        float temp_bat_pct; // Battery NTC (%)
+        float temp_bat_celsius; // Battery temperature (°C)
+        float temp_charger; // Charger die temperature (°C)
+
+        bq25792_get_ibus_ma(bq25792, &usb_i);
+        bq25792_get_ibat_ma(bq25792, &bat_i);
+        bq25792_get_vbus_mv(bq25792, &usb_v);
+        bq25792_get_vbat_mv(bq25792, &bat_v);
+        bq25792_get_vsys_mv(bq25792, &sys_v);
+        bq25792_get_bat_pct(bq25792, &temp_bat_pct);
+        bq25792_get_temperature_battery_celsius(bq25792, &temp_bat_celsius);
+        bq25792_get_charger_temperature(bq25792, &temp_charger);
+
+        FURI_LOG_I(
+            TAG,
+            "Battery: %d mV, %d mA | USB: %d mV, %d mA | System: %d mV | Battery NTC: %.2f %% | Battery Temp: %.2f °C | Charger Temp: %.2f °C",
+            bat_v,
+            bat_i,
+            usb_v,
+            usb_i,
+            sys_v,
+            temp_bat_pct,
+            temp_bat_celsius,
+            temp_charger);
+
         // bq25792_set_power_switch(bq25792, Bq25792PowerShipMode);
         // FURI_LOG_I(TAG, "BQ25792 set to shutdown mode");
         //    furi_hal_i2c_acquire(&furi_hal_i2c_handle_external);
         //     furi_hal_i2c_bus_scan_print(&furi_hal_i2c_handle_external);
         //    furi_hal_i2c_release(&furi_hal_i2c_handle_external);
         // fusb302_read_cc_status(fusb302,1);
-        //if(fusb302_read_role(fusb302)) {
+        // if(fusb302_read_role(fusb302)) {
         // FURI_LOG_I(TAG, "Role toggle completed!");
-        //fusb302_pd_reset(fusb302);
+        // fusb302_pd_reset(fusb302);
         // } else {
         // FURI_LOG_I(TAG, "Role toggle not completed yet...");
         // }

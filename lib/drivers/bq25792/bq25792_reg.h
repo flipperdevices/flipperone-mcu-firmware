@@ -1529,7 +1529,7 @@ _Static_assert(
     "Size check for 'Bq25792AdcFunctionDisable1RegBits' failed.");
  
 typedef struct {
-    uint16_t ibus_adc;  // IBUS ADC reading
+    int16_t ibus_adc;   // IBUS ADC reading
                         // Reported in 2's Complement.
                         // When the current is flowing from VBUS to PMID, IBUS ADC reports positive value, and when the current is flowing from PMID to VBUS, IBUS ADC reports negative value.
                         // Type : R
@@ -1543,7 +1543,7 @@ _Static_assert(
     "Size check for 'Bq25792IbusAdcRegBits' failed.");
  
 typedef struct {
-    uint16_t ibat_adc;  // IBAT ADC reading
+    int16_t ibat_adc;   // IBAT ADC reading
                         // Reported in 2's Complement.
                         // The IBAT ADC reports positive value for the battery charging current, and negative value for the battery discharging current if EN_IBAT in REG0x14[5] = 1.
                         // Type : R
@@ -1629,7 +1629,7 @@ _Static_assert(
     "Size check for 'Bq25792TsAdcRegBits' failed.");
  
 typedef struct {
-    uint16_t tdie_adc;  // TDIE ADC reading
+    int16_t tdie_adc;   // TDIE ADC reading
                         // Reported in 2's Complement.
                         // Type : R
                         // POR: 0°C (0h)

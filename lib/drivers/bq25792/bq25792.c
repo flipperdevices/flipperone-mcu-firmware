@@ -3,6 +3,7 @@
 #include <furi.h>
 
 #include <furi_hal_i2c.h>
+#include <stdint.h>
 
 #define TAG "Bq25792"
 
@@ -103,27 +104,27 @@ static Bq25792Status bq25792_read_reg8(Bq25792* instance, Bq25792Reg reg, uint8_
     return bq25792_check_status(ret);
 }
 
-// static Bq25792Status bq25792_read_reg16(Bq25792* instance, Bq25792Reg reg, uint16_t* data) {
-//     furi_check(instance);
-//     furi_check(data);
+static Bq25792Status bq25792_read_reg16(Bq25792* instance, Bq25792Reg reg, uint16_t* data) {
+    furi_check(instance);
+    furi_check(data);
 
-//     furi_hal_i2c_acquire(instance->i2c_handle);
-//     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
-//     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
-//         uint8_t buffer[2] = {0};
-//         ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
-//         if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
-//             FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
-//         } else {
-//             *data = (buffer[0] << 8) | buffer[1];
-//         }
-//     } else {
-//         FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
-//     }
-//     furi_hal_i2c_release(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle);
+    int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
+    if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
+        uint8_t buffer[2] = {0};
+        ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
+        if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+            FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
+        } else {
+            *data = (buffer[0] << 8) | buffer[1];
+        }
+    } else {
+        FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+    }
+    furi_hal_i2c_release(instance->i2c_handle);
 
-//     return bq25792_check_status(ret);
-// }
+    return bq25792_check_status(ret);
+}
 
 static Bq25792Status bq25792_load_config(Bq25792* instance) {
     furi_check(instance);
@@ -219,6 +220,105 @@ Bq25792Status bq25792_set_power_switch(Bq25792* instance, Bq25792PowerSwitch pow
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to set power switch!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_ibus_ma(Bq25792* instance, int16_t* ibus) {
+    furi_check(instance);
+    furi_check(ibus);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegIBUSADC, (uint16_t*)ibus);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get IBUS!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_ibat_ma(Bq25792* instance, int16_t* ibat) {
+    furi_check(instance);
+    furi_check(ibat);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegIBATADC, (uint16_t*)ibat);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get IBAT!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_vbus_mv(Bq25792* instance, uint16_t* vbus) {
+    furi_check(instance);
+    furi_check(vbus);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegVBUSADC, vbus);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get VBUS!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_vbat_mv(Bq25792* instance, uint16_t* vbat) {
+    furi_check(instance);
+    furi_check(vbat);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegVBATADC, vbat);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get VBAT!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_vsys_mv(Bq25792* instance, uint16_t* vsys) {
+    furi_check(instance);
+    furi_check(vsys);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegVSYSADC, vsys);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get VSYS!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_bat_pct(Bq25792* instance, float* bat_pct) {
+    furi_check(instance);
+    furi_check(bat_pct);
+    Bq25792Status res = Bq25792StatusUnknown;
+    uint16_t raw_bat_pct = 0;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegTSADC, &raw_bat_pct);
+        if(res == Bq25792StatusOk) {
+            *bat_pct = raw_bat_pct * 0.0976563f; // Convert to percentage (0.09765625% per LSB)
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get battery percentage!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_charger_temperature(Bq25792* instance, float* temperature) {
+    furi_check(instance);
+    furi_check(temperature);
+    Bq25792Status res = Bq25792StatusUnknown;
+    uint16_t raw_temperature = 0;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegTDIEADC, &raw_temperature);
+        if(res == Bq25792StatusOk) {
+            *temperature = raw_temperature * 0.5f; // Convert to temperature (0.5°C per LSB)
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get charger temperature!");
     }
     return res;
 }
