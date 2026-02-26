@@ -144,15 +144,13 @@ int32_t input_touch_srv(void* p) {
     instance->event_pubsub = furi_pubsub_alloc();
     instance->iqs7211e = iqs7211e_init(&furi_hal_i2c_handle_internal, &gpio_touchpad_rdy, IQS7211E_ADDRESS);
 
-    if(!instance->iqs7211e) {
-        while(1) {
-            FURI_LOG_E(TAG, "Failed to initialize IQS7211E touchpad");
-            furi_delay_ms(1000);
-        }
-    }
-
     furi_record_create(RECORD_INPUT_TOUCH_EVENTS, instance->event_pubsub);
-    iqs7211e_set_input_callback(instance->iqs7211e, input_touch_isr, input_touch_event_isr, instance);
+
+    if(instance->iqs7211e) {
+        iqs7211e_set_input_callback(instance->iqs7211e, input_touch_isr, input_touch_event_isr, instance);
+    } else {
+        FURI_LOG_E(TAG, "Failed to set input callback for IQS7211E touchpad");
+    }
 
 #ifdef SRV_CLI
     CliRegistry* registry = furi_record_open(RECORD_CLI);
