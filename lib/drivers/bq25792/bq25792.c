@@ -153,6 +153,22 @@ static Bq25792Status bq25792_load_config(Bq25792* instance) {
             break;
         }
 
+        // Wait for reset to complete
+        furi_delay_ms(10);
+
+        Bq25792ChargerControl1RegBits charger_control_1 = {0};
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl1, (uint8_t*)&charger_control_1);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        // ToDo: Implement a watchdog reset mechanism
+        charger_control_1.wd_rst = 1; // Reset watchdog timer
+        charger_control_1.watchdog = 0; // Enable watchdog timer
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl1, *(uint8_t*)&charger_control_1);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+
         Bq25792AdcControlRegBits adc_control = {0};
         res = bq25792_read_reg8(instance, Bq25792RegADCControl, (uint8_t*)&adc_control);
         if(res != Bq25792StatusOk) {
@@ -481,6 +497,44 @@ Bq25792Status bq25792_get_charger_irq_flags(Bq25792* instance, Bq25792ChargerFla
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to get charger irq flags!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_adc_enable(Bq25792* instance, bool enable) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+
+    Bq25792AdcControlRegBits adc_control = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegADCControl, (uint8_t*)&adc_control);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        adc_control.adc_en = enable ? 1 : 0; // Enable or disable ADC
+        res = bq25792_write_reg8(instance, Bq25792RegADCControl, *(uint8_t*)&adc_control);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set ADC enable!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_watchdog_reset(Bq25792* instance) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+
+    Bq25792ChargerControl1RegBits charger_control_1 = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl1, (uint8_t*)&charger_control_1);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_1.wd_rst = 1; // Reset watchdog timer
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl1, *(uint8_t*)&charger_control_1);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to reset watchdog!");
     }
     return res;
 }

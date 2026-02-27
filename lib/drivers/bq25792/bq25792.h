@@ -48,6 +48,8 @@ Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable);
 Bq25792Status bq25792_get_charger_status(Bq25792* instance, Bq25792ChargerStatusReg* status);
 Bq25792Status bq25792_get_charger_fault(Bq25792* instance, Bq25792FaultStatusReg* fault);
 Bq25792Status bq25792_get_charger_irq_flags(Bq25792* instance, Bq25792ChargerFlagReg* irq_flags);
+Bq25792Status bq25792_adc_enable(Bq25792* instance, bool enable);
+Bq25792Status bq25792_watchdog_reset(Bq25792* instance);
 #ifdef __cplusplus
 }
 #endif
