@@ -9,7 +9,7 @@
 #include <args.h>
 #include "furi_bsp.h"
 #include <status_lights/status_lights.h>
-#include <drivers/ina219/ina219.h>
+#include <power/power.h>
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_clock.h>
 
@@ -442,21 +442,21 @@ static void cli_command_set_led(Cli* cli, FuriString* args, void* context) {
 static void cli_command_power(Cli* cli, FuriString* args, void* context) {
     UNUSED(cli);
     UNUSED(context);
-    Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_external, INA219_ADDRESS, 0.004f, 9.0f); // 0.004 Ohm shunt, 0.4A max
-
+   // Ina219* ina219 = ina219_init(&furi_hal_i2c_handle_external, INA219_ADDRESS, 0.004f, 9.0f); // 0.004 Ohm shunt, 0.4A max
+    Power* power = furi_record_open(RECORD_POWER);
     float bus_v = 0;
     float current_a = 0;
     float power_w = 0;
     float shunt_mv = 0;
     while(!cli_cmd_interrupt_received(cli)) {
-        bus_v = ina219_get_bus_voltage_v(ina219);
-        current_a = ina219_get_current_a(ina219);
-        power_w = ina219_get_power_w(ina219);
-        shunt_mv = ina219_get_shunt_voltage_mv(ina219);
+        bus_v = power_ina219_get_voltage_v(power);
+        current_a = power_ina219_get_current_a(power);
+        power_w = power_ina219_get_power_w(power);
+        shunt_mv = power_ina219_get_shunt_voltage_mv(power);
         printf("Bus Voltage: %.3f V | Shunt Voltage: %.4f mV | Current: %.2f mA | Power: %.2f W\n", bus_v, shunt_mv, current_a * 1000.0f, power_w);
         furi_delay_ms(500);
     }
-    ina219_deinit(ina219);
+    furi_record_close(RECORD_POWER);
 }
 
 FuriHalClockSource cli_clock_sources[] = {

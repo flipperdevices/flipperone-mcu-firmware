@@ -1,4 +1,5 @@
 #include "furi.h"
+#include "services/power/power.h"
 #include "applications.h"
 const char* FLIPPER_AUTORUN_APP_NAME = "";
 
@@ -15,6 +16,7 @@ extern int32_t usb_srv(void* p);
 extern int32_t cli_srv(void* p);
 extern int32_t fusb302_srv(void* p);
 extern int32_t power_menu(void* p);
+extern int32_t power_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -33,6 +35,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = input_srv,
         .name = "InputSrv",
         .appid = "input_srv",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = power_srv,
+        .name = "PowerSrv",
+        .appid = "power",
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
