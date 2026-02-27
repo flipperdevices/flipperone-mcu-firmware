@@ -22,12 +22,12 @@ static bool cli_command_gpio_parse_value(FuriString* args, uint8_t* value) {
 
 static const CliGpioPinNamePair gpios[] = {
     {
-        .name = "mcu_gpio0",
-        .pin = &gpio_mcu_gpio0,
+        .name = "m40",
+        .pin = &gpio_m40,
     },
     {
-        .name = "mcu_gpio1",
-        .pin = &gpio_mcu_gpio1,
+        .name = "m41",
+        .pin = &gpio_m41,
     },
 };
 

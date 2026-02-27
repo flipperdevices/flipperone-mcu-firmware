@@ -57,8 +57,8 @@ const GpioPin gpio_cpu_i3c0_scl = {.pin = 3};
 
 const GpioPin gpio_cpu_adc_in0_boot = {.pin = 4};
 
-const GpioPin gpio_mcu_gpio0 = {.pin = 40};
-const GpioPin gpio_mcu_gpio1 = {.pin = 41};
+const GpioPin gpio_m40 = {.pin = 40};
+const GpioPin gpio_m41 = {.pin = 41};
 
 const GpioPin gpio_main_board_reset = {.pin = 38};
 const GpioPin gpio_main_expander_int = {.pin = 39};

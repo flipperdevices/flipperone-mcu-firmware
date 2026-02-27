@@ -18,10 +18,10 @@ void furi_hal_os_init(void) {
     furi_hal_gpio_init_simple(&gpio_nboot_disable, GpioModeOutputPushPull);
     furi_hal_gpio_write(&gpio_nboot_disable, true);
 
-    furi_hal_gpio_init_simple(&gpio_mcu_gpio0, GpioModeOutputPushPull);
-    furi_hal_gpio_write(&gpio_mcu_gpio0, false);
-    furi_hal_gpio_init_simple(&gpio_mcu_gpio1, GpioModeOutputPushPull);
-    furi_hal_gpio_write(&gpio_mcu_gpio1, false);
+    furi_hal_gpio_init_simple(&gpio_m40, GpioModeOutputPushPull);
+    furi_hal_gpio_write(&gpio_m40, false);
+    furi_hal_gpio_init_simple(&gpio_m41, GpioModeOutputPushPull);
+    furi_hal_gpio_write(&gpio_m41, false);
     FURI_LOG_I(TAG, "Init OK");
 }
 
