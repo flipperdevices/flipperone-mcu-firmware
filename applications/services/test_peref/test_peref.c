@@ -1,5 +1,4 @@
 #include "test_peref.h"
-#include "core/log.h"
 #include <furi.h>
 
 #include <furi_hal_resources.h>
@@ -26,6 +25,8 @@
 #include <drivers/display/jd9853_reg.h>
 #include <status_lights/status_lights.h>
 #include <haptic/haptic.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <tusb.h>
 #include <furi_hal_nvm.h>
 
@@ -79,48 +80,48 @@ int32_t efect_play_time = 20;
 //     }
 // }
 
-static void input_events_callback_effect(const void* value, void* ctx) {
-    furi_assert(value);
-    furi_assert(ctx);
-    uint32_t* efect_index = (uint32_t*)ctx;
-    const InputEvent* event = value;
-    if(event->type == InputTypePress) {
-        if(event->key == InputKeyUp) {
-            (*efect_index)++;
-        } else if(event->key == InputKeyDown) {
-            (*efect_index)--;
-        } else if(event->key == InputKeyLeft) {
-            efect_play_time--;
-        } else if(event->key == InputKeyRight) {
-            efect_play_time++;
-        }
-    }
-    if(event->type == InputTypeRepeat) {
-        if(event->key == InputKeyUp) {
-            (*efect_index)++;
-        } else if(event->key == InputKeyDown) {
-            (*efect_index)--;
-        } else if(event->key == InputKeyLeft) {
-            efect_play_time -= 10;
-        } else if(event->key == InputKeyRight) {
-            efect_play_time += 10;
-        }
-    }
+// static void input_events_callback_effect(const void* value, void* ctx) {
+//     furi_assert(value);
+//     furi_assert(ctx);
+//     uint32_t* efect_index = (uint32_t*)ctx;
+//     const InputEvent* event = value;
+//     if(event->type == InputTypePress) {
+//         if(event->key == InputKeyUp) {
+//             (*efect_index)++;
+//         } else if(event->key == InputKeyDown) {
+//             (*efect_index)--;
+//         } else if(event->key == InputKeyLeft) {
+//             efect_play_time--;
+//         } else if(event->key == InputKeyRight) {
+//             efect_play_time++;
+//         }
+//     }
+//     if(event->type == InputTypeRepeat) {
+//         if(event->key == InputKeyUp) {
+//             (*efect_index)++;
+//         } else if(event->key == InputKeyDown) {
+//             (*efect_index)--;
+//         } else if(event->key == InputKeyLeft) {
+//             efect_play_time -= 10;
+//         } else if(event->key == InputKeyRight) {
+//             efect_play_time += 10;
+//         }
+//     }
 
-    if(*efect_index >= Drv2605lEffectCountMax) {
-        *efect_index = Drv2605lEffectCountMax;
-    }
-    if(*efect_index < 0) {
-        *efect_index = 0;
-    }
-    if(efect_play_time < 0) {
-        efect_play_time = 0;
-    }
-    if(efect_play_time > 3000) {
-        efect_play_time = 3000;
-    }
-    FURI_LOG_I(TAG, "Set effect %ld, play time: %ld", *efect_index, efect_play_time);
-}
+//     if(*efect_index >= Drv2605lEffectCountMax) {
+//         *efect_index = Drv2605lEffectCountMax;
+//     }
+//     if(*efect_index < 0) {
+//         *efect_index = 0;
+//     }
+//     if(efect_play_time < 0) {
+//         efect_play_time = 0;
+//     }
+//     if(efect_play_time > 3000) {
+//         efect_play_time = 3000;
+//     }
+//     FURI_LOG_I(TAG, "Set effect %ld, play time: %ld", *efect_index, efect_play_time);
+// }
 
 void test_nvm(void) {
     FuriHalNvmStorage res;
@@ -207,17 +208,20 @@ int32_t test_peref_srv(void* p) {
     // display_h = display_jd9853_qspi_init();
     // display_jd9853_qspi_set_brightness(display_h, 20);
 
-    int32_t efect_index = Drv2605lEffectStrongClick_100;
     FuriPubSub* input = furi_record_open(RECORD_INPUT_EVENTS);
-    FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback_effect, &efect_index);
+    //FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback_effect, &efect_index);
     // FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
 
     StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
 
-    Haptic* haptic = furi_record_open(RECORD_HAPTIC);
     Bq25792* bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
 
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
+    bq25792_set_charge_voltage_limit_ma(bq25792, 8500);
+    bq25792_set_charge_current_limit_ma(bq25792, 100);
+
+    uint8_t index = 0;
+    bool toggle = false;
 
     while(true) {
         furi_delay_ms(500);
@@ -251,6 +255,35 @@ int32_t test_peref_srv(void* p) {
             temp_bat_pct,
             temp_bat_celsius,
             temp_charger);
+
+        uint16_t input_current_limit;
+        bq25792_get_input_current_limit_ma(bq25792, &input_current_limit);
+        FURI_LOG_I(TAG, "Input Current Limit: %d mA", input_current_limit);
+        //     input_current_limit = 100;
+        // bq25792_set_input_current_limit_ma(bq25792, input_current_limit);
+        // bq25792_get_input_current_limit_ma(bq25792, &input_current_limit);
+        // FURI_LOG_I(TAG, "Input Current Limit: %d mA", input_current_limit);
+
+        uint16_t charge_voltage_limit;
+        bq25792_get_charge_voltage_limit_ma(bq25792, &charge_voltage_limit);
+        FURI_LOG_I(TAG, "Charge Voltage Limit: %d mV", charge_voltage_limit);
+
+        bq25792_get_charge_current_limit_ma(bq25792, &input_current_limit);
+        FURI_LOG_I(TAG, "Charge Current Limit: %d mA", input_current_limit);
+
+        if(index == 10) {
+            index = 0;
+            toggle = !toggle;
+            bq25792_charge_enable(bq25792, toggle);
+        }
+        index++;
+
+        Bq25792ChargerStatusReg charger_status = {0};
+        bq25792_get_charger_status(bq25792, &charger_status);
+        Bq25792FaultStatusReg fault_status = {0};
+        bq25792_get_charger_fault(bq25792, &fault_status);
+        Bq25792ChargerFlagReg irq_flags = {0};
+        bq25792_get_charger_irq_flags(bq25792, &irq_flags);
 
         // bq25792_set_power_switch(bq25792, Bq25792PowerShipMode);
         // FURI_LOG_I(TAG, "BQ25792 set to shutdown mode");

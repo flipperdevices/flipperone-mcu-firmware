@@ -2,6 +2,7 @@
 
 #include <furi_hal_i2c_types.h>
 #include <furi_hal_gpio.h>
+#include "bq25792_reg.h"
 
 #define BQ25792_ADDRESS 0x6B
 
@@ -37,7 +38,16 @@ Bq25792Status bq25792_get_vsys_mv(Bq25792* instance, uint16_t* vsys);
 Bq25792Status bq25792_get_bat_pct(Bq25792* instance, float* bat_pct);
 Bq25792Status bq25792_get_charger_temperature(Bq25792* instance, float* temperature);
 Bq25792Status bq25792_get_temperature_battery_celsius(Bq25792* instance, float* bat_temperature);
-
+Bq25792Status bq25792_get_input_current_limit_ma(Bq25792* instance, uint16_t* input_current_limit);
+Bq25792Status bq25792_set_input_current_limit_ma(Bq25792* instance, uint16_t input_current_limit);
+Bq25792Status bq25792_get_charge_voltage_limit_ma(Bq25792* instance, uint16_t* charge_voltage_limit);
+Bq25792Status bq25792_set_charge_voltage_limit_ma(Bq25792* instance, uint16_t charge_voltage_limit);
+Bq25792Status bq25792_get_charge_current_limit_ma(Bq25792* instance, uint16_t* charge_current_limit);
+Bq25792Status bq25792_set_charge_current_limit_ma(Bq25792* instance, uint16_t charge_current_limit);
+Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable);
+Bq25792Status bq25792_get_charger_status(Bq25792* instance, Bq25792ChargerStatusReg* status);
+Bq25792Status bq25792_get_charger_fault(Bq25792* instance, Bq25792FaultStatusReg* fault);
+Bq25792Status bq25792_get_charger_irq_flags(Bq25792* instance, Bq25792ChargerFlagReg* irq_flags);
 #ifdef __cplusplus
 }
 #endif

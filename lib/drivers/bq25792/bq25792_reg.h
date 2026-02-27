@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <core/common_defines.h>
 //https://www.ti.com/lit/ds/symlink/bq25792.pdf
 
 /* clang-format off */
@@ -1707,5 +1708,51 @@ typedef struct {
 _Static_assert(
     sizeof(Bq25792PartInformationRegBits) == 1,
     "Size check for 'Bq25792PartInformationRegBits' failed.");
+
+typedef struct {
+    union {
+        struct {
+            // STATUS 0
+            Bq25792ChargerStatus0RegBits stat0;
+            // STATUS 1
+            Bq25792ChargerStatus1RegBits stat1;
+            // STATUS 2
+            Bq25792ChargerStatus2RegBits stat2;
+            // STATUS 3
+            Bq25792ChargerStatus3RegBits stat3;
+            // STATUS 4
+            Bq25792ChargerStatus4RegBits stat4;
+        } FURI_PACKED;
+        uint8_t data[5];
+    };
+} FURI_PACKED Bq25792ChargerStatusReg;
+
+typedef struct {
+    union {
+        struct {
+            // FAULT 0
+            Bq25792FaultStatus0RegBits fault0;
+            // FAULT 1
+            Bq25792FaultStatus1RegBits fault1;
+        } FURI_PACKED;
+        uint8_t data[2];
+    };
+} FURI_PACKED Bq25792FaultStatusReg;
+
+typedef struct {
+    union {
+        struct {
+            // FLAG 0
+            Bq25792ChargerFlag0RegBits flag0;
+            // FLAG 1
+            Bq25792ChargerFlag1RegBits flag1;
+            // FLAG 2
+            Bq25792ChargerFlag2RegBits flag2;
+            // FLAG 3
+            Bq25792ChargerFlag3RegBits flag3;
+        } FURI_PACKED;
+        uint8_t data[4];
+    };
+} FURI_PACKED Bq25792ChargerFlagReg;
 
 /* clang-format on */

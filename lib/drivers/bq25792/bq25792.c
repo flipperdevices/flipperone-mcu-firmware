@@ -1,9 +1,7 @@
-#include "bq25792_reg.h"
 #include "bq25792.h"
 #include <furi.h>
 
 #include <furi_hal_i2c.h>
-#include <stdint.h>
 
 #define TAG "Bq25792"
 
@@ -64,23 +62,23 @@ static Bq25792Status bq25792_write_reg8(Bq25792* instance, Bq25792Reg reg, uint8
     return bq25792_check_status(ret);
 }
 
-// static Bq25792Status bq25792_write_reg16(Bq25792* instance, Bq25792Reg reg, uint16_t data) {
-//     furi_check(instance);
+static Bq25792Status bq25792_write_reg16(Bq25792* instance, Bq25792Reg reg, uint16_t data) {
+    furi_check(instance);
 
-//     uint8_t buffer[3] = {reg, data >> 8, data & 0xFF};
+    uint8_t buffer[3] = {reg, data >> 8, data & 0xFF};
 
-//     furi_hal_i2c_acquire(instance->i2c_handle);
-//     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
-//     furi_hal_i2c_release(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle);
+    int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
+    furi_hal_i2c_release(instance->i2c_handle);
 
-//     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
-//         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
-//     } else {
-//         BQ25792_DEBUG(TAG, "Wrote reg 0x%02X: %016b", reg, data);
-//     }
+    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+        FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
+    } else {
+        BQ25792_DEBUG(TAG, "Wrote reg 0x%02X: %016b", reg, data);
+    }
 
-//     return bq25792_check_status(ret);
-// }
+    return bq25792_check_status(ret);
+}
 
 static Bq25792Status bq25792_read_reg8(Bq25792* instance, Bq25792Reg reg, uint8_t* data) {
     furi_check(instance);
@@ -117,6 +115,25 @@ static Bq25792Status bq25792_read_reg16(Bq25792* instance, Bq25792Reg reg, uint1
             FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
         } else {
             *data = (buffer[0] << 8) | buffer[1];
+        }
+    } else {
+        FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+    }
+    furi_hal_i2c_release(instance->i2c_handle);
+
+    return bq25792_check_status(ret);
+}
+
+static Bq25792Status bq25792_read_mem(Bq25792* instance, Bq25792Reg reg, uint8_t* data, size_t length) {
+    furi_check(instance);
+    furi_check(data);
+
+    furi_hal_i2c_acquire(instance->i2c_handle);
+    int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
+    if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
+        ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, data, length, FURI_HAL_I2C_TIMEOUT_US);
+        if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+            FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
         }
     } else {
         FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
@@ -319,6 +336,151 @@ Bq25792Status bq25792_get_charger_temperature(Bq25792* instance, float* temperat
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to get charger temperature!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_input_current_limit_ma(Bq25792* instance, uint16_t* input_current_limit) {
+    furi_check(instance);
+    furi_check(input_current_limit);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegInputCurrentLimit, input_current_limit);
+        if(res == Bq25792StatusOk) {
+            *input_current_limit = *input_current_limit * 10; // Convert to input current limit (10 mA per LSB)
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get input current limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_set_input_current_limit_ma(Bq25792* instance, uint16_t input_current_limit) {
+    furi_check(instance);
+    furi_check(input_current_limit <= 3300); // Max input current limit is 3300 mA
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        input_current_limit = input_current_limit / 10; // Convert to register value (10 mA per LSB)
+        res = bq25792_write_reg16(instance, Bq25792RegInputCurrentLimit, input_current_limit);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set input current limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_charge_voltage_limit_ma(Bq25792* instance, uint16_t* charge_voltage_limit) {
+    furi_check(instance);
+    furi_check(charge_voltage_limit);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegChargeVoltageLimit, charge_voltage_limit);
+        if(res == Bq25792StatusOk) {
+            *charge_voltage_limit = *charge_voltage_limit * 10; // Convert to charge voltage limit (10 mV per LSB)
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get charge voltage limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_set_charge_voltage_limit_ma(Bq25792* instance, uint16_t charge_voltage_limit) {
+    furi_check(instance);
+    furi_check(charge_voltage_limit >= 8000 && charge_voltage_limit <= 8800); // Max charge voltage limit is 8800 mV
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        charge_voltage_limit = charge_voltage_limit / 10; // Convert to register value (10 mV per LSB)
+        res = bq25792_write_reg16(instance, Bq25792RegChargeVoltageLimit, charge_voltage_limit);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set charge voltage limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_charge_current_limit_ma(Bq25792* instance, uint16_t* charge_current_limit) {
+    furi_check(instance);
+    furi_check(charge_current_limit);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegChargeCurrentLimit, charge_current_limit);
+        if(res == Bq25792StatusOk) {
+            *charge_current_limit = *charge_current_limit * 10; // Convert to charge current limit (10 mA per LSB)
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get charge current limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_set_charge_current_limit_ma(Bq25792* instance, uint16_t charge_current_limit) {
+    furi_check(instance);
+    furi_check(charge_current_limit <= 5000); // Max charge current limit is 5000 mA
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        charge_current_limit = charge_current_limit / 10; // Convert to register value (10 mA per LSB)
+        res = bq25792_write_reg16(instance, Bq25792RegChargeCurrentLimit, charge_current_limit);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set charge current limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792ChargerControl0RegBits charger_control_0 = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl0, (uint8_t*)&charger_control_0);
+        FURI_LOG_E(TAG, "Read ChargerControl0: %08b", *(uint8_t*)&charger_control_0);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_0.en_chg = enable ? 1 : 0;
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl0, *(uint8_t*)&charger_control_0);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set charge enable!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_charger_status(Bq25792* instance, Bq25792ChargerStatusReg* status) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_mem(instance, Bq25792RegChargerStatus0, status->data, sizeof(status->data));
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get charger status!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_charger_fault(Bq25792* instance, Bq25792FaultStatusReg* fault) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_mem(instance, Bq25792RegChargerStatus0, fault->data, sizeof(fault->data));
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get charger fault!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_charger_irq_flags(Bq25792* instance, Bq25792ChargerFlagReg* irq_flags) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_read_mem(instance, Bq25792RegChargerFlag0, irq_flags->data, sizeof(irq_flags->data));
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get charger irq flags!");
     }
     return res;
 }
