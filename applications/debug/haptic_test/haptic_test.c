@@ -25,24 +25,13 @@ typedef struct {
 static bool haptic_test_layout(void* _model) {
     furi_assert(_model);
     HapticTestModel* model = (HapticTestModel*)_model;
-    UNUSED(model);
-    Clay_Sizing layout_expand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
-    Clay_LayoutConfig layout_row = {
-        .sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
-        .childGap = 8,
-        .childAlignment =
-            {
-                .y = CLAY_ALIGN_Y_CENTER,
-                .x = CLAY_ALIGN_X_CENTER,
-            },
-    };
 
     CLAY(
         CLAY_APP_ID("OuterContainer"),
         {.backgroundColor = COLOR_WHITE,
          .layout = {
              .layoutDirection = CLAY_TOP_TO_BOTTOM,
-             .sizing = layout_expand,
+             .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
              .padding = {4, 4, 4, 3},
              .childGap = 4,
          }}) {
@@ -71,63 +60,46 @@ static bool haptic_test_layout(void* _model) {
                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
                         .childGap = 8,
                         .padding = {6, 6, 6, 6},
-                        .sizing = layout_expand,
+                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                     },
             }) {
             CLAY(
-                CLAY_APP_ID("Content1"),
+                CLAY_APP_ID("LeftContent"),
                 {
-                    //.border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
                     .clip = {.vertical = true},
                     .layout =
                         {
                             .layoutDirection = CLAY_TOP_TO_BOTTOM,
                             .childGap = 8,
-                            .sizing = {.width = CLAY_SIZING_FIXED(60), .height = CLAY_SIZING_GROW(0)},
-                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_LEFT},
+                            .sizing = {.width = CLAY_SIZING_PERCENT(0.35f), .height = CLAY_SIZING_GROW(0)},
+                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_RIGHT},
                         },
                 }) {
-                CLAY_AUTO_ID({.layout = layout_row}) {
-                    CLAY_TEXT(
-                        CLAY_STRING("Effect"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK, .textAlignment = CLAY_TEXT_ALIGN_RIGHT}));
-                }
-                CLAY_AUTO_ID({.layout = layout_row}) {
-                    CLAY_TEXT(CLAY_STRING("Play_time"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
-                }
+                CLAY_TEXT(CLAY_STRING("Effect:"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
+                CLAY_TEXT(CLAY_STRING("Duration:"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
             }
 
             CLAY(
-                CLAY_APP_ID("Content2"),
+                CLAY_APP_ID("RightContent"),
                 {
-                    //.border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
                     .clip = {.vertical = true},
                     .layout =
                         {
                             .layoutDirection = CLAY_TOP_TO_BOTTOM,
                             .childGap = 8,
-                            .sizing = layout_expand,
+                            .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                             .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_LEFT},
                         },
                 }) {
-                CLAY_AUTO_ID({.layout = layout_row}) {
-                    CLAY_TEXT(clay_helper_string_from(model->effect_name), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
-                }
-                CLAY_AUTO_ID({.layout = layout_row}) {
-                    CLAY_TEXT(clay_helper_string_from(model->play_time_ms_str), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
-                }
+                CLAY_TEXT(clay_helper_string_from(model->effect_name), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
+                CLAY_TEXT(clay_helper_string_from(model->play_time_ms_str), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
         }
     }
 
     return false;
 }
-
-// static Drv2605lEffect haptic_test_get_play_effect(HapticTest* instance) {
-//     Drv2605lEffect effect = 0;
-//     with_view_model(instance->view, HapticTestModel * model, { effect = model->effect_index; }, false);
-//     return effect;
-// }
 
 static bool haptic_test_input(InputEvent* event, void* context) {
     furi_check(context);
