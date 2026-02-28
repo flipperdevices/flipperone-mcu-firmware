@@ -24,8 +24,8 @@
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/display/jd9853_reg.h>
-#include <status_lights/status_lights.h>
-#include <status_lights/status_lights_notification.h>
+#include <led/led.h>
+#include <led/led_batch.h>
 #include <haptic/haptic.h>
 #include <tusb.h>
 #include <furi_hal_nvm.h>
@@ -213,8 +213,8 @@ int32_t test_peref_srv(void* p) {
     FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback_effect, &efect_index);
     // FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input, input_events_callback, NULL);
 
-    //StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
-    StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
+    //Led* led = furi_record_open(RECORD_LEDS);
+    Led* led = furi_record_open(RECORD_LEDS);
 
     // Haptic* haptic = furi_record_open(RECORD_HAPTIC);
     //Bq25792* bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
@@ -224,10 +224,10 @@ int32_t test_peref_srv(void* p) {
     while(true) {
         furi_delay_ms(2000);
 
-        status_lights_notification_send(&notification_all_leds_on);
+        led_set_color_batch_simple(&led_batch_all_on);
         furi_delay_ms(2000);
 
-        status_lights_notification_send(&notification_all_leds_white);
+        led_set_color_batch_simple(&led_batch_all_white);
 
         // FURI_LOG_I(TAG, "Playing effect %ld", efect_index);
         // haptic_play_effect(haptic, (Drv2605lEffect)(efect_index), efect_play_time);
@@ -314,42 +314,42 @@ int32_t test_peref_srv(void* p) {
         //     current_a * 1000.0f,
         //     power_w);
 
-        // StatusLightsColor color = {.r = 127, .g = 30, .b = 30};
+        // LedColor color = {.r = 127, .g = 30, .b = 30};
 
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeNet, color);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeUsbWatt4, color);
+        // led_set_color_batch(led, LedTypeNet, color);
+        // led_set_color_batch(led, LedTypePower, (LedColor){.r = 0, .g = 255, .b = 0});
+        // led_set_color_batch(led, LedTypeBatteryOutline, (LedColor){.r = 0, .g = 0, .b = 255});
+        // led_set_color_batch(led, LedTypeUsbWatt4, color);
 
         // furi_delay_ms(500);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeNet, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // led_set_color_batch(led, LedTypeNet, (LedColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(100);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // led_set_color_batch(led, LedTypePower, (LedColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(100);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // led_set_color_batch(led, LedTypeBatteryOutline, (LedColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(100);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeUsbWatt4, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // led_set_color_batch(led, LedTypeUsbWatt4, (LedColor){.r = 0, .g = 0, .b = 0});
 
         // furi_delay_ms(500);
 
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeNet, color);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeUsbWatt3, color);
+        // led_set_color_batch(led, LedTypeNet, color);
+        // led_set_color_batch(led, LedTypeBatteryWatt1, (LedColor){.r = 0, .g = 255, .b = 0});
+        // led_set_color_batch(led, LedTypeBatteryOutline, (LedColor){.r = 0, .g = 0, .b = 255});
+        // led_set_color_batch(led, LedTypeUsbWatt3, color);
         // furi_delay_ms(500);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeLine1Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // led_set_color_batch(led, LedTypeLine1Off, (LedColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(500);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeLine2Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // led_set_color_batch(led, LedTypeLine2Off, (LedColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(500);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeLine3Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // led_set_color_batch(led, LedTypeLine3Off, (LedColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(500);
 
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeEth2, color);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryWatt4, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeUsbWatt2, color);
+        // led_set_color_batch(led, LedTypeEth2, color);
+        // led_set_color_batch(led, LedTypeBatteryWatt4, (LedColor){.r = 0, .g = 255, .b = 0});
+        // led_set_color_batch(led, LedTypeBatteryWatt1, (LedColor){.r = 0, .g = 0, .b = 255});
+        // led_set_color_batch(led, LedTypeUsbWatt2, color);
         // furi_delay_ms(500);
-        // status_lights_set_color_batch(status_lights, StatusLightsTypeLineAllOff, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // led_set_color_batch(led, LedTypeLineAllOff, (LedColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(500);
     }
     furi_crash();

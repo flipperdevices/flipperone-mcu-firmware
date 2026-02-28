@@ -3,7 +3,7 @@
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include <drivers/bq25792/bq25792.h>
-#include <status_lights/status_lights_notification.h>
+#include <led/led_batch.h>
 
 #define TAG              "PowerMenu"
 #define POWER_MENU_ID(x) CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
@@ -38,27 +38,27 @@ typedef struct {
     View* view;
     FuriEventLoop* event_loop;
     Bq25792* bq25792;
-    size_t selected_notification_index;
+    size_t selected_led_batch_index;
     size_t selected_backlight_index;
 } PowerMenu;
 
-static const StatusLightsNotification* notifications[] = {
-    &notification_all_leds_off,
-    &notification_power_red,
-    &notification_all_leds_on,
-    &notification_all_leds_white,
+static const LedBatch* items[] = {
+    &led_batch_all_off,
+    &led_batch_power_red,
+    &led_batch_all_on,
+    &led_batch_all_white,
 };
 
-static const char* notifications_text[] = {
+static const char* led_batch_names[] = {
     " Off",
     " Pw Red",
     " On",
     " White",
 };
 
-static_assert(COUNT_OF(notifications) == COUNT_OF(notifications_text));
+static_assert(COUNT_OF(items) == COUNT_OF(led_batch_names));
 
-static const size_t notifications_count = COUNT_OF(notifications);
+static const size_t led_batch_count = COUNT_OF(items);
 
 static const int8_t backlight_brightness_levels[] = {
     0,
@@ -146,7 +146,7 @@ static bool power_menu_layout(void* _model) {
 
 static bool power_menu_model_init(PowerMenuModel* model, void* context) {
     model->backlight_text = furi_string_alloc();
-    model->led_text = notifications_text[0];
+    model->led_text = led_batch_names[0];
     return false;
 }
 
@@ -163,8 +163,8 @@ static bool power_menu_model_set_backlight_text(PowerMenuModel* model, void* con
 }
 
 static bool power_menu_model_set_led_text(PowerMenuModel* model, void* context) {
-    size_t* notification_index = context;
-    model->led_text = notifications_text[*notification_index];
+    size_t* led_batch_index = context;
+    model->led_text = led_batch_names[*led_batch_index];
     return true;
 }
 
@@ -220,9 +220,9 @@ static void power_menu_input_menu(PowerMenu* instance, size_t selected_index) {
         power_menu_apply_backlight(instance);
         break;
     case PowerMenuActionLeds:
-        instance->selected_notification_index = (instance->selected_notification_index + 1) % notifications_count;
-        status_lights_notification_send(notifications[instance->selected_notification_index]);
-        power_menu_model_apply(instance, power_menu_model_set_led_text, &instance->selected_notification_index);
+        instance->selected_led_batch_index = (instance->selected_led_batch_index + 1) % led_batch_count;
+        led_set_color_batch_simple(items[instance->selected_led_batch_index]);
+        power_menu_model_apply(instance, power_menu_model_set_led_text, &instance->selected_led_batch_index);
         break;
     case PowerMenuActionPowerOff:
         bq25792_set_power_switch(instance->bq25792, Bq25792PowerShipMode);
@@ -303,7 +303,7 @@ static void power_menu_free(PowerMenu* instance) {
     free(instance);
 }
 
-int32_t power_menu(void* p) {
+int32_t power_menu_srv(void* p) {
     UNUSED(p);
     PowerMenu* instance = power_menu_alloc();
     furi_event_loop_run(instance->event_loop);
