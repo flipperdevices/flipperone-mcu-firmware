@@ -157,7 +157,7 @@ void power_cli(Cli* cli, FuriString* args, void* context) {
             get_charge_current_limit_ma);
 
         printf(
-            "Charger Status0: \t%08b \t| VBUS_PRESENT_STAT: %d | AC1_PRESENT_STAT: %d | AC2_PRESENT_STAT: %d | PG_STAT : %d | POORSRC_STAT : %d| WD_STAT : %d| VINDPM_STAT: %d | IINDPM_STAT: %d\r\n"
+            "Charger Status0: \t%08b \t| VBUS_PRESENT_STAT: %d | AC1_PRESENT_STAT: %d | AC2_PRESENT_STAT: %d | PG_STAT : %d | POORSRC_STAT : %d | WD_STAT : %d | VINDPM_STAT: %d | IINDPM_STAT: %d\r\n"
             "Charger Status1: \t%08b \t| BC1.2_DONE_STAT: %d | VBUS_STAT: %s | CHG_STAT: %s\r\n"
             "Charger Status2: \t%08b \t| VBAT_PRESENT_STAT: %d | DPDM_STAT: %d | TREG_STAT: %d | ICO_STAT: %s\r\n"
             "Charger Status3: \t%08b \t| PRECHG_TMR_STAT: %d | TRICHG_TMR_STAT: %d | CHG_TMR_STAT: %d | VSYS_STAT: %d | ADC_DONE_STAT: %d | ACRB1_STAT: %d | ACRB2_STAT: %d\r\n"
