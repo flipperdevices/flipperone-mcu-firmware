@@ -31,7 +31,7 @@
 #include <furi_hal_nvm.h>
 
 #define TAG "PerefTest"
-        DisplayJd9853QSPI* display_h = NULL;
+DisplayJd9853QSPI* display_h = NULL;
 int mod = 1;
 bool eco = false;
 int32_t efect_play_time = 20;
@@ -224,10 +224,10 @@ int32_t test_peref_srv(void* p) {
     while(true) {
         furi_delay_ms(2000);
 
-        status_lights_notification_send(notification_all_leds_on);
+        status_lights_notification_send(&notification_all_leds_on);
         furi_delay_ms(2000);
 
-        status_lights_notification_send(notification_all_leds_white);
+        status_lights_notification_send(&notification_all_leds_white);
 
         // FURI_LOG_I(TAG, "Playing effect %ld", efect_index);
         // haptic_play_effect(haptic, (Drv2605lEffect)(efect_index), efect_play_time);
@@ -316,40 +316,40 @@ int32_t test_peref_srv(void* p) {
 
         // StatusLightsColor color = {.r = 127, .g = 30, .b = 30};
 
-        // status_lights_notification(status_lights, StatusLightsTypeNet, color);
-        // status_lights_notification(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
-        // status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
-        // status_lights_notification(status_lights, StatusLightsTypeUsbWatt4, color);
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeNet, color);
+        // status_lights_set_color_batch(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeUsbWatt4, color);
 
         // furi_delay_ms(500);
-        // status_lights_notification(status_lights, StatusLightsTypeNet, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeNet, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(100);
-        // status_lights_notification(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypePower, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(100);
-        // status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(100);
-        // status_lights_notification(status_lights, StatusLightsTypeUsbWatt4, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeUsbWatt4, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
 
         // furi_delay_ms(500);
 
-        // status_lights_notification(status_lights, StatusLightsTypeNet, color);
-        // status_lights_notification(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
-        // status_lights_notification(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
-        // status_lights_notification(status_lights, StatusLightsTypeUsbWatt3, color);
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeNet, color);
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryOutline, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeUsbWatt3, color);
         // furi_delay_ms(500);
-        // status_lights_notification(status_lights, StatusLightsTypeLine1Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeLine1Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(500);
-        // status_lights_notification(status_lights, StatusLightsTypeLine2Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeLine2Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(500);
-        // status_lights_notification(status_lights, StatusLightsTypeLine3Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeLine3Off, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(500);
 
-        // status_lights_notification(status_lights, StatusLightsTypeEth2, color);
-        // status_lights_notification(status_lights, StatusLightsTypeBatteryWatt4, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
-        // status_lights_notification(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
-        // status_lights_notification(status_lights, StatusLightsTypeUsbWatt2, color);
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeEth2, color);
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryWatt4, (StatusLightsColor){.r = 0, .g = 255, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeBatteryWatt1, (StatusLightsColor){.r = 0, .g = 0, .b = 255});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeUsbWatt2, color);
         // furi_delay_ms(500);
-        // status_lights_notification(status_lights, StatusLightsTypeLineAllOff, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
+        // status_lights_set_color_batch(status_lights, StatusLightsTypeLineAllOff, (StatusLightsColor){.r = 0, .g = 0, .b = 0});
         // furi_delay_ms(500);
     }
     furi_crash();

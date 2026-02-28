@@ -16,6 +16,7 @@ typedef struct {
 #define STATUS_LIGHTS_COLOR_YELLOW     (StatusLightsColor){255, 255, 0}
 #define STATUS_LIGHTS_COLOR_ORANGE     (StatusLightsColor){255, 165, 0}
 #define STATUS_LIGHTS_COLOR_LIGHT_BLUE (StatusLightsColor){0x12, 0xCD, 0xD4}
+#define STATUS_LIGHTS_COLOR_WHITE      (StatusLightsColor){255, 255, 255}
 #define STATUS_LIGHTS_COLOR_BLACK      (StatusLightsColor){0, 0, 0}
 
 typedef enum {
@@ -50,10 +51,10 @@ typedef enum {
 typedef struct {
     const StatusLightsType status_lights_type;
     const StatusLightsColor color;
-} StatusLightsNotificationSuqeueItem;
+} StatusLightsNotificationItem;
 
 typedef struct {
-    const StatusLightsNotificationSuqeueItem** notifications;
+    const StatusLightsNotificationItem* notifications;
     const size_t notification_count;
 } StatusLightsNotification;
 
@@ -61,8 +62,8 @@ typedef struct {
 extern "C" {
 #endif
 
-void status_lights_notification_led(StatusLights* instance, StatusLightsType status_lights_type, StatusLightsColor color);
-void status_lights_notification(StatusLights* instance, const StatusLightsNotification** notifications);
+void status_lights_set_color_single(StatusLights* instance, StatusLightsType status_lights_type, StatusLightsColor color);
+void status_lights_set_color_batch(StatusLights* instance, const StatusLightsNotification* notifications);
 
 #ifdef __cplusplus
 }

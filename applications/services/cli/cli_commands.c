@@ -435,7 +435,7 @@ static void cli_command_set_led(Cli* cli, FuriString* args, void* context) {
     }
 
     StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
-    status_lights_notification_led(status_lights, cli_status_lights_types[led_type], cli_status_lights_colors[color]);
+    status_lights_set_color_single(status_lights, cli_status_lights_types[led_type], cli_status_lights_colors[color]);
     furi_record_close(RECORD_STATUS_LIGHTS);
 }
 

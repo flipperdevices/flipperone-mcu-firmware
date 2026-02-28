@@ -32,22 +32,26 @@ struct StatusLights {
 };
 
 typedef enum {
-    StatusLightsMessageTypeSetColor,
-    StatusLightsMessageTypeNotification,
+    StatusLightsMessageTypeSetColorSingle,
+    StatusLightsMessageTypeSetColorBatch,
 } StatusLightsMessageType;
+
+typedef struct {
+    StatusLightsType status_lights_type;
+    StatusLightsColor color;
+} StatusLightsMessageSetColorSingle;
+
+typedef struct {
+    const StatusLightsNotification* notifications;
+} StatusLightsMessageSetColorBatch;
 
 typedef struct {
     StatusLightsMessageType type;
     FuriApiLock lock;
     bool* result;
     union {
-        struct {
-            StatusLightsType status_lights_type;
-            StatusLightsColor color;
-        } set_color;
-        struct {
-            const StatusLightsNotification** notifications;
-        } notification;
+        StatusLightsMessageSetColorSingle set_color_single;
+        StatusLightsMessageSetColorBatch set_color_batch;
     };
 } StatusLightsMessage;
 
@@ -120,59 +124,59 @@ static void status_lights_message_queue_callback(FuriEventLoopObject* object, vo
     bool result = false;
 
     switch(msg.type) {
-    case StatusLightsMessageTypeSetColor:
-        if(msg.set_color.status_lights_type < StatusLightsTypePower) { //line 1
-            instance->status_lights_stat.line1[msg.set_color.status_lights_type] =
-                ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
+    case StatusLightsMessageTypeSetColorSingle:
+        StatusLightsType status_lights_type = msg.set_color_single.status_lights_type;
+        StatusLightsColor color = msg.set_color_single.color;
+
+        if(status_lights_type < StatusLightsTypePower) { //line 1
+            instance->status_lights_stat.line1[status_lights_type] = ws2812_urgb_u32(color.r, color.g, color.b);
 
             if(status_lights_start_off_timer(
                    instance, status_lights_check_need_power(instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT), StatusLedPowerLine1))
                 ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE1_INDEX, instance->status_lights_stat.line1, STATUS_LIGHTS_LINES_1_LED_COUNT);
 
-        } else if(msg.set_color.status_lights_type < StatusLightsTypeUsbCharging) { //line 2
-            instance->status_lights_stat.line2[msg.set_color.status_lights_type - StatusLightsTypePower] =
-                ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
-            if(msg.set_color.status_lights_type == StatusLightsTypeBatteryOutline) {
+        } else if(status_lights_type < StatusLightsTypeUsbCharging) { //line 2
+            instance->status_lights_stat.line2[status_lights_type - StatusLightsTypePower] = ws2812_urgb_u32(color.r, color.g, color.b);
+            if(status_lights_type == StatusLightsTypeBatteryOutline) {
                 //outline is 2 leds
-                instance->status_lights_stat.line2[msg.set_color.status_lights_type - StatusLightsTypePower + 1] =
-                    ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
+                instance->status_lights_stat.line2[status_lights_type - StatusLightsTypePower + 1] = ws2812_urgb_u32(color.r, color.g, color.b);
             }
 
             if(status_lights_start_off_timer(
                    instance, status_lights_check_need_power(instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT), StatusLedPowerLine2))
                 ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE2_INDEX, instance->status_lights_stat.line2, STATUS_LIGHTS_LINES_2_LED_COUNT);
-        } else if(msg.set_color.status_lights_type < StatusLightsTypeLine1Off) { //line 3
-            instance->status_lights_stat.line3[msg.set_color.status_lights_type - StatusLightsTypeUsbCharging] =
-                ws2812_urgb_u32(msg.set_color.color.r, msg.set_color.color.g, msg.set_color.color.b);
+        } else if(status_lights_type < StatusLightsTypeLine1Off) { //line 3
+            instance->status_lights_stat.line3[status_lights_type - StatusLightsTypeUsbCharging] = ws2812_urgb_u32(color.r, color.g, color.b);
 
             if(status_lights_start_off_timer(
                    instance, status_lights_check_need_power(instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT), StatusLedPowerLine3))
                 ws2812_write_buffer_dma(instance->ws2812, STATUS_LIGHTS_LINE3_INDEX, instance->status_lights_stat.line3, STATUS_LIGHTS_LINES_3_LED_COUNT);
         } else {
-            status_lights_off_line(instance, msg.set_color.status_lights_type);
+            status_lights_off_line(instance, status_lights_type);
         }
         result = true;
         break;
-    case StatusLightsMessageTypeNotification:
-        StatusLightsNotification* notification = *(StatusLightsNotification**)msg.notification.notifications;
+    case StatusLightsMessageTypeSetColorBatch:
+        const StatusLightsNotificationItem* notifications = msg.set_color_batch.notifications->notifications;
+        const size_t notification_count = msg.set_color_batch.notifications->notification_count;
 
-        for(size_t i = 0; i < notification->notification_count; i++) {
-            if(notification->notifications[i]->status_lights_type < StatusLightsTypePower) { //line 1
-                instance->status_lights_stat.line1[notification->notifications[i]->status_lights_type] =
-                    ws2812_urgb_u32(notification->notifications[i]->color.r, notification->notifications[i]->color.g, notification->notifications[i]->color.b);
-            } else if(notification->notifications[i]->status_lights_type < StatusLightsTypeUsbCharging) { //line 2
-                instance->status_lights_stat.line2[notification->notifications[i]->status_lights_type - StatusLightsTypePower] =
-                    ws2812_urgb_u32(notification->notifications[i]->color.r, notification->notifications[i]->color.g, notification->notifications[i]->color.b);
-                if(notification->notifications[i]->status_lights_type == StatusLightsTypeBatteryOutline) {
+        for(size_t i = 0; i < notification_count; i++) {
+            if(notifications[i].status_lights_type < StatusLightsTypePower) { //line 1
+                instance->status_lights_stat.line1[notifications[i].status_lights_type] =
+                    ws2812_urgb_u32(notifications[i].color.r, notifications[i].color.g, notifications[i].color.b);
+            } else if(notifications[i].status_lights_type < StatusLightsTypeUsbCharging) { //line 2
+                instance->status_lights_stat.line2[notifications[i].status_lights_type - StatusLightsTypePower] =
+                    ws2812_urgb_u32(notifications[i].color.r, notifications[i].color.g, notifications[i].color.b);
+                if(notifications[i].status_lights_type == StatusLightsTypeBatteryOutline) {
                     //outline is 2 leds
-                    instance->status_lights_stat.line2[notification->notifications[i]->status_lights_type - StatusLightsTypePower + 1] = ws2812_urgb_u32(
-                        notification->notifications[i]->color.r, notification->notifications[i]->color.g, notification->notifications[i]->color.b);
+                    instance->status_lights_stat.line2[notifications[i].status_lights_type - StatusLightsTypePower + 1] =
+                        ws2812_urgb_u32(notifications[i].color.r, notifications[i].color.g, notifications[i].color.b);
                 }
-            } else if(notification->notifications[i]->status_lights_type < StatusLightsTypeLine1Off) { //line 3
-                instance->status_lights_stat.line3[notification->notifications[i]->status_lights_type - StatusLightsTypeUsbCharging] =
-                    ws2812_urgb_u32(notification->notifications[i]->color.r, notification->notifications[i]->color.g, notification->notifications[i]->color.b);
+            } else if(notifications[i].status_lights_type < StatusLightsTypeLine1Off) { //line 3
+                instance->status_lights_stat.line3[notifications[i].status_lights_type - StatusLightsTypeUsbCharging] =
+                    ws2812_urgb_u32(notifications[i].color.r, notifications[i].color.g, notifications[i].color.b);
             } else {
-                status_lights_off_line(instance, notification->notifications[i]->status_lights_type);
+                status_lights_off_line(instance, notifications[i].status_lights_type);
             }
         }
         if(status_lights_start_off_timer(
@@ -238,29 +242,33 @@ int32_t status_lights_srv(void* p) {
     return 0;
 }
 
-void status_lights_notification_led(StatusLights* instance, StatusLightsType status_lights_type, StatusLightsColor color) {
+void status_lights_set_color_single(StatusLights* instance, StatusLightsType status_lights_type, StatusLightsColor color) {
     furi_check(instance);
 
     const StatusLightsMessage msg = {
-        .type = StatusLightsMessageTypeSetColor,
-        .set_color =
+        .type = StatusLightsMessageTypeSetColorSingle,
+
+        .set_color_single =
             {
                 .status_lights_type = status_lights_type,
                 .color = color,
             },
+
     };
     status_lights_send_message(instance, &msg);
 }
 
-void status_lights_notification(StatusLights* instance, const StatusLightsNotification** notifications) {
+void status_lights_set_color_batch(StatusLights* instance, const StatusLightsNotification* notifications) {
     furi_check(instance);
 
     const StatusLightsMessage msg = {
-        .type = StatusLightsMessageTypeNotification,
-        .notification =
+        .type = StatusLightsMessageTypeSetColorBatch,
+
+        .set_color_batch =
             {
                 .notifications = notifications,
             },
+
     };
     status_lights_send_message(instance, &msg);
 }

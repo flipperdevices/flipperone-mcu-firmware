@@ -42,16 +42,16 @@ typedef struct {
     size_t selected_backlight_index;
 } PowerMenu;
 
-static const StatusLightsNotification** notifications[] = {
-    notification_all_leds_off,
-    notification_power_red,
-    notification_all_leds_on,
-    notification_all_leds_white,
+static const StatusLightsNotification* notifications[] = {
+    &notification_all_leds_off,
+    &notification_power_red,
+    &notification_all_leds_on,
+    &notification_all_leds_white,
 };
 
 static const char* notifications_text[] = {
     " Off",
-    " PRed",
+    " Pw Red",
     " On",
     " White",
 };
