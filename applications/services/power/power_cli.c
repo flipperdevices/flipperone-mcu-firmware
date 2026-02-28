@@ -157,11 +157,11 @@ void power_cli(Cli* cli, FuriString* args, void* context) {
             get_charge_current_limit_ma);
 
         printf(
-            "Charger Status0: \t%08b \t| VBUS_PRESENT_STAT: %d | AC1_PRESENT_STAT: %d | AC2_PRESENT_STAT: %d | PG_STAT : %d | POORSRC_STAT : %d | WD_STAT : %d | VINDPM_STAT: %d | IINDPM_STAT: %d\r\n"
-            "Charger Status1: \t%08b \t| BC1.2_DONE_STAT: %d | VBUS_STAT: %s | CHG_STAT: %s\r\n"
-            "Charger Status2: \t%08b \t| VBAT_PRESENT_STAT: %d | DPDM_STAT: %d | TREG_STAT: %d | ICO_STAT: %s\r\n"
-            "Charger Status3: \t%08b \t| PRECHG_TMR_STAT: %d | TRICHG_TMR_STAT: %d | CHG_TMR_STAT: %d | VSYS_STAT: %d | ADC_DONE_STAT: %d | ACRB1_STAT: %d | ACRB2_STAT: %d\r\n"
-            "Charger Status4: \t%08b \t| TS_HOT_STAT: %d | TS_WARM_STAT: %d | TS_COOL_STAT: %d | TS_COLD_STAT: %d | VBATOTG_LOW_STAT: %d\r\n",
+            "Charger Status0: \t%08b \t| VBUS_PRESENT_STAT: %d | AC1_PRESENT_STAT: %d | AC2_PRESENT_STAT: %d | PG_STAT : %d     | POORSRC_STAT : %d | WD_STAT : %d   | VINDPM_STAT: %d | IINDPM_STAT: %d\r\n"
+            "Charger Status1: \t%08b \t| BC1.2_DONE_STAT: %d   | VBUS_STAT: %s        | CHG_STAT: %s\r\n"
+            "Charger Status2: \t%08b \t| VBAT_PRESENT_STAT: %d | DPDM_STAT: %d        | TREG_STAT: %d        | ICO_STAT: %s\r\n"
+            "Charger Status3: \t%08b \t| PRECHG_TMR_STAT: %d   | TRICHG_TMR_STAT: %d  | CHG_TMR_STAT: %d     | VSYS_STAT: %d    | ADC_DONE_STAT: %d | ACRB1_STAT: %d | ACRB2_STAT: %d\r\n"
+            "Charger Status4: \t%08b \t| TS_HOT_STAT: %d       | TS_WARM_STAT: %d     | TS_COOL_STAT: %d     | TS_COLD_STAT: %d | VBATOTG_LOW_STAT: %d\r\n\r\n",
             get_charger_status.data[0],
             get_charger_status.stat0.vbus_present_stat,
             get_charger_status.stat0.ac1_present_stat,
@@ -195,8 +195,8 @@ void power_cli(Cli* cli, FuriString* args, void* context) {
             get_charger_status.stat4.ts_cold_stat,
             get_charger_status.stat4.vbatotg_low_stat);
         printf(
-            "Charger Fault0: \t%08b \t| VAC1_OVP_STAT: %d | VAC2_OVP_STAT: %d | CONV_OCP_STAT: %d | IBAT_OCP_STAT: %d | IBUS_OCP_STAT: %d | VBAT_OVP_STAT: %d | VBUS_OVP_STAT: %d | IBAT_REG_STAT: %d\r\n"
-            "Charger Fault1: \t%08b \t| TSHUT_STAT: %d | OTG_UVP_STAT: %d | OTG_OVP_STAT: %d | VSYS_OVP_STAT: %d | VSYS_SHORT_STAT: %d\r\n",
+            "Charger Fault0: \t%08b \t| VAC1_OVP_STAT: %d     | VAC2_OVP_STAT: %d    | CONV_OCP_STAT: %d   | IBAT_OCP_STAT: %d | IBUS_OCP_STAT: %d | VBAT_OVP_STAT: %d | VBUS_OVP_STAT: %d | IBAT_REG_STAT: %d\r\n"
+            "Charger Fault1: \t%08b \t| TSHUT_STAT: %d        | OTG_UVP_STAT: %d     | OTG_OVP_STAT: %d    | VSYS_OVP_STAT: %d | VSYS_SHORT_STAT: %d\r\n\r\n",
             get_charger_fault.data[0],
             get_charger_fault.fault0.vac1_ovp_stat,
             get_charger_fault.fault0.vac2_ovp_stat,
@@ -213,10 +213,10 @@ void power_cli(Cli* cli, FuriString* args, void* context) {
             get_charger_fault.fault1.vsys_ovp_stat,
             get_charger_fault.fault1.vsys_short_stat);
         printf(
-            "Charger IRQ Flags0:\t%08b \t| VBUS_PRESENT_FLAG: %d | AC1_PRESENT_FLAG: %d | AC2_PRESENT_FLAG: %d | PG_FLAG: %d | POORSRC_FLAG: %d | WD_FLAG: %d | VINDPM_FLAG: %d | IINDPM_FLAG: %d\r\n"
-            "Charger IRQ Flags1:\t%08b \t| BC1.2_DONE_FLAG: %d | VBAT_PRESENT_FLAG: %d | TREG_FLAG: %d | VBUS_FLAG: %d | ICO_FLAG: %d | CHG_FLAG: %d\r\n"
-            "Charger IRQ Flags2:\t%08b \t| TOPOFF_TMR_FLAG: %d | PRECHG_TMR_FLAG: %d | TRICHG_TMR_FLAG: %d | CHG_TMR_FLAG: %d | VSYS_FLAG: %d | ADC_DONE_FLAG: %d | DPDM_DONE_FLAG: %d\r\n"
-            "Charger IRQ Flags3:\t%08b \t| TS_HOT_FLAG: %d | TS_WARM_FLAG: %d | TS_COOL_FLAG: %d | TS_COLD_FLAG: %d | VBATOTG_LOW_FLAG: %d\r\n",
+            "Charger IRQ Flags0:\t%08b \t| VBUS_PRESENT_FLAG: %d | AC1_PRESENT_FLAG: %d  | AC2_PRESENT_FLAG: %d | PG_FLAG: %d      | POORSRC_FLAG: %d    | WD_FLAG: %d       | VINDPM_FLAG: %d    | IINDPM_FLAG: %d\r\n"
+            "Charger IRQ Flags1:\t%08b \t| BC1.2_DONE_FLAG: %d   | VBAT_PRESENT_FLAG: %d | TREG_FLAG: %d        | VBUS_FLAG: %d    | ICO_FLAG: %d        | CHG_FLAG: %d\r\n"
+            "Charger IRQ Flags2:\t%08b \t| TOPOFF_TMR_FLAG: %d   | PRECHG_TMR_FLAG: %d   | TRICHG_TMR_FLAG: %d  | CHG_TMR_FLAG: %d | VSYS_FLAG: %d       | ADC_DONE_FLAG: %d | DPDM_DONE_FLAG: %d\r\n"
+            "Charger IRQ Flags3:\t%08b \t| TS_HOT_FLAG: %d       | TS_WARM_FLAG: %d      | TS_COOL_FLAG: %d     | TS_COLD_FLAG: %d | VBATOTG_LOW_FLAG: %d\r\n",
             get_charger_irq_flags.data[0],
             get_charger_irq_flags.flag0.vbus_present_flag,
             get_charger_irq_flags.flag0.ac1_present_flag,
