@@ -23,6 +23,9 @@ extern int32_t touchpad_test_app(void* p);
 extern int32_t cpu_app(void* p);
 extern int32_t haptic_test_app(void* p);
 
+// CLI commands
+extern void power_cli(Cli* cli, FuriString* args, void* context);
+
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
         .app = haptic_srv,
@@ -105,7 +108,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = cli_srv,
         .name = "CliSrv",
         .appid = "cli",
-        .stack_size = 1024 * 4,
+        .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
@@ -140,12 +143,15 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    {
-        .app = haptic_test_app,
-        .name = "Haptic Test",
-        .appid = "haptic_test",
-        .stack_size = 2048,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
+
+const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
+    {
+        .callback = power_cli,
+        .name = "power",
+        .stack_size = 1048,
+        .flags = CliCommandFlagParallelSafe,
+    },
+};
+const size_t FLIPPER_CLI_COMMANDS_COUNT = COUNT_OF(FLIPPER_CLI_COMMANDS);
