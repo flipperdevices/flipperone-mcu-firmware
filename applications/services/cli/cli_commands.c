@@ -5,11 +5,10 @@
 #include <task_control_block.h>
 #include <time.h>
 #include <args.h>
-#include "furi_bsp.h"
+#include <furi_bsp.h>
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_clock.h>
 #include "cli_command_gpio.h"
-#include <applications.h>
 
 static void cli_command_help(Cli* cli, FuriString* args, void* context) {
     UNUSED(args);
@@ -432,7 +431,4 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "clock_out", CliCommandFlagParallelSafe, cli_command_clock_out, NULL);
     cli_add_command(cli, "gpio", CliCommandFlagParallelSafe, cli_command_gpio, NULL);
 
-    for(size_t i = 0; i < FLIPPER_CLI_COMMANDS_COUNT; i++) {
-        cli_add_command(cli, FLIPPER_CLI_COMMANDS[i].name, FLIPPER_CLI_COMMANDS[i].flags, FLIPPER_CLI_COMMANDS[i].callback, NULL);
-    }
 }
