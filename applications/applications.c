@@ -1,5 +1,4 @@
 #include "furi.h"
-#include "services/power/power.h"
 #include "applications.h"
 const char* FLIPPER_AUTORUN_APP_NAME = "";
 
@@ -13,10 +12,10 @@ extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
 extern int32_t status_lights_srv(void* p);
 extern int32_t usb_srv(void* p);
+extern int32_t power_srv(void* p);
 extern int32_t cli_srv(void* p);
 extern int32_t fusb302_srv(void* p);
 extern int32_t power_menu(void* p);
-extern int32_t power_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -66,13 +65,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 768,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    {
-        .app = test_peref_srv,
-        .name = "TestPerefSrv",
-        .appid = "test_peref",
-        .stack_size = 1024,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
+    // {
+    //     .app = test_peref_srv,
+    //     .name = "TestPerefSrv",
+    //     .appid = "test_peref",
+    //     .stack_size = 1024,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    // },
     {
         .app = gui_srv,
         .name = "GuiSrv",
@@ -105,7 +104,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = cli_srv,
         .name = "CliSrv",
         .appid = "cli",
-        .stack_size = 1024 * 2,
+        .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {

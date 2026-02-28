@@ -218,7 +218,8 @@ int32_t test_peref_srv(void* p) {
 
     // Fusb302* fusb302 = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, &gpio_mcu_gpio0);
     bq25792_set_charge_voltage_limit_ma(bq25792, 8500);
-    bq25792_set_charge_current_limit_ma(bq25792, 100);
+    bq25792_set_charge_current_limit_ma(bq25792, 500);
+    
 
     uint8_t index = 0;
     bool toggle = false;
