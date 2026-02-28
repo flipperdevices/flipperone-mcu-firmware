@@ -1,7 +1,5 @@
 #include "cli_commands.h"
 
-#include <core/thread.h>
-#include <core/thread_list.h>
 #include <furi_hal.h>
 #include <furi_hal_i2c_config.h>
 #include <task_control_block.h>
@@ -12,6 +10,7 @@
 #include <power/power.h>
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_clock.h>
+#include "cli_command_gpio.h"
 
 static void cli_command_help(Cli* cli, FuriString* args, void* context) {
     UNUSED(args);
@@ -630,4 +629,5 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "set_led", CliCommandFlagParallelSafe, cli_command_set_led, NULL);
     cli_add_command(cli, "power", CliCommandFlagParallelSafe, cli_command_power, NULL);
     cli_add_command(cli, "clock_out", CliCommandFlagParallelSafe, cli_command_clock_out, NULL);
+    cli_add_command(cli, "gpio", CliCommandFlagParallelSafe, cli_command_gpio, NULL);
 }
