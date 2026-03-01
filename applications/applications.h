@@ -26,7 +26,6 @@ typedef void (*FlipperInternalOnStartHook)(void);
 typedef struct {
     const CliCallback callback;
     const char* name;
-    const size_t stack_size;
     const CliCommandFlag flags;
 } FlipperInternalCommandApplication;
 

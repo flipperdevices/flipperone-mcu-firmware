@@ -25,7 +25,7 @@ extern int32_t haptic_test_app(void* p);
 
 // CLI commands
 extern void power_cli(Cli* cli, FuriString* args, void* context);
-extern void status_lights_cli(Cli* cli, FuriString* args, void* context);
+extern void led_cli(Cli* cli, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -151,13 +151,11 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = power_cli,
         .name = "power",
-        .stack_size = 1048,
         .flags = CliCommandFlagParallelSafe,
     },
     {
-        .callback = status_lights_cli,
-        .name = "status_lights",
-        .stack_size = 1048,
+        .callback = led_cli,
+        .name = "led",
         .flags = CliCommandFlagParallelSafe,
     },
 };

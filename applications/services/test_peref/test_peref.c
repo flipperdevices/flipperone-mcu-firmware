@@ -129,7 +129,8 @@ int32_t test_peref_srv(void* p) {
         power_bq25792_get_charger_fault(power, &get_charger_fault);
         power_bq25792_get_charger_irq_flags(power, &get_charger_irq_flags);
 
-        FURI_LOG_I(TAG,
+        FURI_LOG_I(
+            TAG,
             "BQ25792\t VSYS: %.3f V | VBUS: %.3f V | IBUS: %d mA | VBAT: %.3f V | IBAT: %d mA \r\nCharger Temp: %.2f C | Battery Temp: %.2f C | Input Current Limit: %d mA | Charge Voltage Limit: %d mV | Charge Current Limit: %d mA\n",
             (float_t)get_vsys_mv / 1000.0f,
             (float_t)get_vbus_mv / 1000.0f,
@@ -142,7 +143,8 @@ int32_t test_peref_srv(void* p) {
             get_charge_voltage_limit_ma,
             get_charge_current_limit_ma);
 
-        FURI_LOG_I(TAG,
+        FURI_LOG_I(
+            TAG,
             "Charger Status0: %08b\r\n"
             "Charger Status1: %08b\r\n"
             "Charger Status2: %08b\r\n"
@@ -153,12 +155,14 @@ int32_t test_peref_srv(void* p) {
             get_charger_status.data[2],
             get_charger_status.data[3],
             get_charger_status.data[4]);
-        FURI_LOG_I(TAG,
+        FURI_LOG_I(
+            TAG,
             "Charger Fault0: %08b\r\n"
             "Charger Fault1: %08b\r\n",
             get_charger_fault.data[0],
             get_charger_fault.data[1]);
-        FURI_LOG_I(TAG,
+        FURI_LOG_I(
+            TAG,
             "Charger IRQ Flags0: %08b\r\n"
             "Charger IRQ Flags1: %08b\r\n"
             "Charger IRQ Flags2: %08b\r\n"
