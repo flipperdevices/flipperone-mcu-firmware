@@ -42,7 +42,7 @@ typedef enum {
 typedef enum {
     InputExpMainGpio5v0Flt = (1 << 0),
     InputExpMainGpio3v3Flt = (1 << 1),
-    InputExpMainBq25798Int = (1 << 2),
+    InputExpMainBq25792Int = (1 << 2),
     InputExpMainFusb302Int = (1 << 3),
     InputExpMainMuxVconnFault = (1 << 4),
     InputExpMainTypeCUpSwPg = (1 << 5),

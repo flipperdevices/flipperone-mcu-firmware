@@ -1,6 +1,8 @@
 #pragma once
 
 #include <stdint.h>
+#include <core/common_defines.h>
+#include "bq25792_helper.h"
 //https://www.ti.com/lit/ds/symlink/bq25792.pdf
 
 /* clang-format off */
@@ -731,36 +733,36 @@ typedef struct {
                                  // POR: 0b
                                  // 0h = BC1.2 or non-standard detection NOT complete
                                  // 1h = BC1.2 or non-standard detection complete
-    uint8_t vbus_stat      : 4; // VBUS status bits
-                                 // Type : R
-                                 // POR: 0h
-                                 // 0h: No Input or BHOT or BCOLD in OTG mode
-                                 // 1h: USB SDP (500mA)
-                                 // 2h: USB CDP (1.5A)
-                                 // 3h: USB DCP (3.25A)
-                                 // 4h: Adjustable High Voltage DCP (HVDCP) (1.5A)
-                                 // 5h: Unknown adaptor (3A)
-                                 // 6h: Non-Standard Adapter (1A/2A/2.1A/2.4A)
-                                 // 7h: In OTG mode
-                                 // 8h: Not qualified adaptor
-                                 // 9h: Reserved
-                                 // Ah: Reserved
-                                 // Bh: Device directly powered from VBUS
-                                 // Ch: Reserved
-                                 // Dh: Reserved
-                                 // Eh: Reserved
-                                 // Fh: Reserved
-    uint8_t chg_stat       : 3; // Charge Status bits
-                                 // Type : R
-                                 // POR: 000b
-                                 // 0h = Not Charging
-                                 // 1h = Trickle Charge
-                                 // 2h = Pre-charge
-                                 // 3h = Fast charge (CC mode)
-                                 // 4h = Taper Charge (CV mode)
-                                 // 5h = Reserved
-                                 // 6h = Top-off Timer Active Charging
-                                 // 7h = Charge Termination Done
+    Bq25792ChargerStatus1Vbus vbus_stat        : 4; // VBUS status bits
+                                                    // Type : R
+                                                    // POR: 0h
+                                                    // 0h: No Input or BHOT or BCOLD in OTG mode
+                                                    // 1h: USB SDP (500mA)
+                                                    // 2h: USB CDP (1.5A)
+                                                    // 3h: USB DCP (3.25A)
+                                                    // 4h: Adjustable High Voltage DCP (HVDCP) (1.5A)
+                                                    // 5h: Unknown adaptor (3A)
+                                                    // 6h: Non-Standard Adapter (1A/2A/2.1A/2.4A)
+                                                    // 7h: In OTG mode
+                                                    // 8h: Not qualified adaptor
+                                                    // 9h: Reserved
+                                                    // Ah: Reserved
+                                                    // Bh: Device directly powered from VBUS
+                                                    // Ch: Reserved
+                                                    // Dh: Reserved
+                                                    // Eh: Reserved
+                                                    // Fh: Reserved
+    Bq25792ChargerStatus1Charge chg_stat       : 3; // Charge Status bits
+                                                    // Type : R
+                                                    // POR: 000b
+                                                    // 0h = Not Charging
+                                                    // 1h = Trickle Charge
+                                                    // 2h = Pre-charge
+                                                    // 3h = Fast charge (CC mode)
+                                                    // 4h = Taper Charge (CV mode)
+                                                    // 5h = Reserved
+                                                    // 6h = Top-off Timer Active Charging
+                                                    // 7h = Charge Termination Done
 } Bq25792ChargerStatus1RegBits;
 _Static_assert(
     sizeof(Bq25792ChargerStatus1RegBits) == 1,
@@ -783,13 +785,13 @@ typedef struct {
                                     // 0h = Normal
                                     // 1h = Device in thermal regulation
     uint8_t                   : 3; // RESERVED
-    uint8_t ico_stat          : 2; // Input Current Optimizer (ICO) status
-                                    // Type : R
-                                    // POR: 00b
-                                    // 0h = ICO disabled
-                                    // 1h = ICO optimization in progress
-                                    // 2h = Maximum input current detected
-                                    // 3h = Reserved
+    Bq25792ChargerStatus2Ico ico_stat          : 2; // Input Current Optimizer (ICO) status
+                                                        // Type : R
+                                                        // POR: 00b
+                                                        // 0h = ICO disabled
+                                                        // 1h = ICO optimization in progress
+                                                        // 2h = Maximum input current detected
+                                                        // 3h = Reserved
 } Bq25792ChargerStatus2RegBits;
 _Static_assert(
     sizeof(Bq25792ChargerStatus2RegBits) == 1,
@@ -839,32 +841,32 @@ _Static_assert(
     "Size check for 'Bq25792ChargerStatus3RegBits' failed.");
 
 typedef struct {
-    uint8_t ts_hot_stat     : 1;   // The TS temperature is in the hot range, higher than T5.
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = TS status is NOT in hot range
-                                    // 1h = TS status is in hot range
-    uint8_t ts_warm_stat   : 1;   // The TS temperature is in the warm range, between T3 and T5.
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = TS status is NOT in warm range
-                                    // 1h = TS status is in warm range
-    uint8_t ts_cool_stat   : 1;   // The TS temperature is in the cool range, between T1 and T2.
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = TS status is NOT in cool range
-                                    // 1h = TS status is in cool range
-    uint8_t ts_cold_stat   : 1;   // The TS temperature is in the cold range, lower than T1.
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = TS status is NOT in cold range
-                                    // 1h = TS status is in cold range
-    uint8_t vbatotg_low_stat : 1; // The battery voltage is too low to enable OTG mode.
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = The battery voltage is high enough to enable the OTG operation
-                                    // 1h = The battery volage is too low to enable the OTG operation
-    uint8_t                 : 3;   // RESERVED
+    uint8_t ts_hot_stat      : 1;   // The TS temperature is in the hot range, higher than T5.
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = TS status is NOT in hot range
+                                     // 1h = TS status is in hot range
+    uint8_t ts_warm_stat     : 1;   // The TS temperature is in the warm range, between T3 and T5.
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = TS status is NOT in warm range
+                                     // 1h = TS status is in warm range
+    uint8_t ts_cool_stat     : 1;   // The TS temperature is in the cool range, between T1 and T2.
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = TS status is NOT in cool range
+                                     // 1h = TS status is in cool range
+    uint8_t ts_cold_stat     : 1;   // The TS temperature is in the cold range, lower than T1.
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = TS status is NOT in cold range
+                                     // 1h = TS status is in cold range
+    uint8_t vbatotg_low_stat : 1;   // The battery voltage is too low to enable OTG mode.
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = The battery voltage is high enough to enable the OTG operation
+                                     // 1h = The battery volage is too low to enable the OTG operation
+    uint8_t                  : 3;   // RESERVED
 
 } Bq25792ChargerStatus4RegBits;
 _Static_assert(
@@ -952,53 +954,53 @@ _Static_assert(
     "Size check for 'Bq25792FaultStatus1RegBits' failed.");
 
 typedef struct {
-    uint8_t vbus_present_flag : 1; // VBUS present flag
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = Normal
-                                    // 1h = VBUS present status changed
+    uint8_t vbus_present_flag  : 1; // VBUS present flag
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = Normal
+                                     // 1h = VBUS present status changed
     uint8_t ac1_present_flag   : 1; // VAC1 present flag
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = Normal
-                                    // 1h = VAC1 present status changed
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = Normal
+                                     // 1h = VAC1 present status changed
     uint8_t ac2_present_flag   : 1; // VAC2 present flag
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = Normal
-                                    // 1h = VAC2 present status changed
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = Normal
+                                     // 1h = VAC2 present status changed
     uint8_t pg_flag            : 1; // Power good flag
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = Normal
-                                    // 1h = Any change in PG_STAT even (adapter good qualification or adapter good going away)
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = Normal
+                                     // 1h = Any change in PG_STAT even (adapter good qualification or adapter good going away)
     uint8_t poorsrc_flag       : 1; // Poor source detection flag
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = Normal
-                                    // 1h = Poor source status rising edge detected
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = Normal
+                                     // 1h = Poor source status rising edge detected
     uint8_t wd_flag            : 1; // I2C watchdog timer flag
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = Normal
-                                    // 1h = WD timer signal rising edge detected
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = Normal
+                                     // 1h = WD timer signal rising edge detected
     uint8_t vindpm_flag        : 1; // VINDPM / VOTG Flag
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = Normal
-                                    // 1h = VINDPM / VOTG regulation signal rising edge detected
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = Normal
+                                     // 1h = VINDPM / VOTG regulation signal rising edge detected
     uint8_t iindpm_flag        : 1; // IINDPM / IOTG flag
-                                    // Type : R
-                                    // POR: 0b
-                                    // 0h = Normal
-                                    // 1h = IINDPM / IOTG signal rising edge detected
+                                     // Type : R
+                                     // POR: 0b
+                                     // 0h = Normal
+                                     // 1h = IINDPM / IOTG signal rising edge detected
 } Bq25792ChargerFlag0RegBits;
 _Static_assert(
     sizeof(Bq25792ChargerFlag0RegBits) == 1,
     "Size check for 'Bq25792ChargerFlag0RegBits' failed.");
 
 typedef struct {
-    uint8_t bc12_done_flag   : 1; // BC1.2 status Flag
+    uint8_t bc12_done_flag    : 1; // BC1.2 status Flag
                                     // Type : R
                                     // POR: 0b
                                     // 0h = Normal
@@ -1529,7 +1531,7 @@ _Static_assert(
     "Size check for 'Bq25792AdcFunctionDisable1RegBits' failed.");
  
 typedef struct {
-    uint16_t ibus_adc;  // IBUS ADC reading
+    int16_t ibus_adc;   // IBUS ADC reading
                         // Reported in 2's Complement.
                         // When the current is flowing from VBUS to PMID, IBUS ADC reports positive value, and when the current is flowing from PMID to VBUS, IBUS ADC reports negative value.
                         // Type : R
@@ -1543,7 +1545,7 @@ _Static_assert(
     "Size check for 'Bq25792IbusAdcRegBits' failed.");
  
 typedef struct {
-    uint16_t ibat_adc;  // IBAT ADC reading
+    int16_t ibat_adc;   // IBAT ADC reading
                         // Reported in 2's Complement.
                         // The IBAT ADC reports positive value for the battery charging current, and negative value for the battery discharging current if EN_IBAT in REG0x14[5] = 1.
                         // Type : R
@@ -1629,7 +1631,7 @@ _Static_assert(
     "Size check for 'Bq25792TsAdcRegBits' failed.");
  
 typedef struct {
-    uint16_t tdie_adc;  // TDIE ADC reading
+    int16_t tdie_adc;   // TDIE ADC reading
                         // Reported in 2's Complement.
                         // Type : R
                         // POR: 0°C (0h)
@@ -1707,5 +1709,51 @@ typedef struct {
 _Static_assert(
     sizeof(Bq25792PartInformationRegBits) == 1,
     "Size check for 'Bq25792PartInformationRegBits' failed.");
+
+typedef struct {
+    union {
+        struct {
+            // STATUS 0
+            Bq25792ChargerStatus0RegBits stat0;
+            // STATUS 1
+            Bq25792ChargerStatus1RegBits stat1;
+            // STATUS 2
+            Bq25792ChargerStatus2RegBits stat2;
+            // STATUS 3
+            Bq25792ChargerStatus3RegBits stat3;
+            // STATUS 4
+            Bq25792ChargerStatus4RegBits stat4;
+        } FURI_PACKED;
+        uint8_t data[5];
+    };
+} FURI_PACKED Bq25792ChargerStatusReg;
+
+typedef struct {
+    union {
+        struct {
+            // FAULT 0
+            Bq25792FaultStatus0RegBits fault0;
+            // FAULT 1
+            Bq25792FaultStatus1RegBits fault1;
+        } FURI_PACKED;
+        uint8_t data[2];
+    };
+} FURI_PACKED Bq25792FaultStatusReg;
+
+typedef struct {
+    union {
+        struct {
+            // FLAG 0
+            Bq25792ChargerFlag0RegBits flag0;
+            // FLAG 1
+            Bq25792ChargerFlag1RegBits flag1;
+            // FLAG 2
+            Bq25792ChargerFlag2RegBits flag2;
+            // FLAG 3
+            Bq25792ChargerFlag3RegBits flag3;
+        } FURI_PACKED;
+        uint8_t data[4];
+    };
+} FURI_PACKED Bq25792ChargerFlagReg;
 
 /* clang-format on */

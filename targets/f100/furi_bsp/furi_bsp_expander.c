@@ -22,7 +22,7 @@ typedef struct {
 
     ExpanderCallbackStorage gpio_5v0_flt;
     ExpanderCallbackStorage gpio_3v3_flt;
-    ExpanderCallbackStorage bq25798;
+    ExpanderCallbackStorage bq25792;
     ExpanderCallbackStorage fusb302;
     ExpanderCallbackStorage mux_vconn_fault;
     ExpanderCallbackStorage type_c_up_sw_pg;
@@ -88,10 +88,10 @@ static int32_t furi_bsp_expander_callback_thread(void* context) {
                 instance->gpio_3v3_flt.callback(instance->gpio_3v3_flt.context);
             }
         }
-        if(changed & InputExpMainBq25798Int) {
-            EXPANDER_DEBUG("BQ25798 Interrupt Detected");
-            if(instance->bq25798.callback) {
-                instance->bq25798.callback(instance->bq25798.context);
+        if(changed & InputExpMainBq25792Int) {
+            EXPANDER_DEBUG("BQ25792 Interrupt Detected");
+            if(instance->bq25792.callback) {
+                instance->bq25792.callback(instance->bq25792.context);
             }
         }
         if(changed & InputExpMainFusb302Int) {
@@ -249,12 +249,12 @@ void furi_bsp_expander_main_attach_gpio_3v3_flt_callback(FuriCallback callback, 
     furi_bsp_set_callback(&expander_main->gpio_3v3_flt, callback, context);
 }
 
-void furi_bsp_expander_main_attach_bq25798_callback(FuriCallback callback, void* context) {
+void furi_bsp_expander_main_attach_bq25792_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);
     furi_check(expander_main->handle != NULL);
-    furi_check(expander_main->bq25798.callback == NULL);
-    furi_bsp_set_callback(&expander_main->bq25798, callback, context);
+    furi_check(expander_main->bq25792.callback == NULL);
+    furi_bsp_set_callback(&expander_main->bq25792, callback, context);
 }
 
 void furi_bsp_expander_main_attach_fusb302_callback(FuriCallback callback, void* context) {

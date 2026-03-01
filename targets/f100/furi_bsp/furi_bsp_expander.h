@@ -70,10 +70,10 @@ void furi_bsp_expander_main_attach_gpio_5v0_flt_callback(FuriCallback callback, 
 void furi_bsp_expander_main_attach_gpio_3v3_flt_callback(FuriCallback callback, void* context);
 
 /** Attach callbacks for main expander input events
- * @param callback - function to call on BQ25798 interrupt events
+ * @param callback - function to call on BQ25792 interrupt events
  * @param context - context to pass to the callback
  */
-void furi_bsp_expander_main_attach_bq25798_callback(FuriCallback callback, void* context);
+void furi_bsp_expander_main_attach_bq25792_callback(FuriCallback callback, void* context);
 
 /** Attach callbacks for main expander input events
  * @param callback - function to call on FUSB302 interrupt events

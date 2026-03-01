@@ -12,6 +12,7 @@ extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
 extern int32_t led_srv(void* p);
 extern int32_t usb_srv(void* p);
+extern int32_t power_srv(void* p);
 extern int32_t cli_srv(void* p);
 extern int32_t fusb302_srv(void* p);
 extern int32_t power_menu_srv(void* p);
@@ -21,6 +22,10 @@ extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
 extern int32_t cpu_app(void* p);
 extern int32_t haptic_test_app(void* p);
+
+// CLI commands
+extern void power_cli(Cli* cli, FuriString* args, void* context);
+extern void led_cli(Cli* cli, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -34,6 +39,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = input_srv,
         .name = "InputSrv",
         .appid = "input_srv",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = power_srv,
+        .name = "PowerSrv",
+        .appid = "power",
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
@@ -132,12 +144,19 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    {
-        .app = haptic_test_app,
-        .name = "Haptic Test",
-        .appid = "haptic_test",
-        .stack_size = 2048,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
+
+const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
+    {
+        .callback = power_cli,
+        .name = "power",
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = led_cli,
+        .name = "led",
+        .flags = CliCommandFlagParallelSafe,
+    },
+};
+const size_t FLIPPER_CLI_COMMANDS_COUNT = COUNT_OF(FLIPPER_CLI_COMMANDS);

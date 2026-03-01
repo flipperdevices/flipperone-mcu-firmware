@@ -453,10 +453,10 @@ int32_t cli_srv(void* p) {
     }
 #endif
 
-    // // Load system applications
-    // for(size_t i = 0; i < FLIPPER_ON_SYSTEM_START_COUNT; i++) {
-    //     FLIPPER_ON_SYSTEM_START[i]();
-    // }
+    // Load system applications
+    for(size_t i = 0; i < FLIPPER_CLI_COMMANDS_COUNT; i++) {
+        cli_add_command(cli, FLIPPER_CLI_COMMANDS[i].name, FLIPPER_CLI_COMMANDS[i].flags, FLIPPER_CLI_COMMANDS[i].callback, NULL);
+    }
 
     while(1) {
         if(cli->session != NULL) {
