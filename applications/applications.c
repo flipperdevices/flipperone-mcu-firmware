@@ -70,13 +70,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 768,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    {
-        .app = test_peref_srv,
-        .name = "TestPerefSrv",
-        .appid = "test_peref",
-        .stack_size = 1024,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
+    // {
+    //     .app = test_peref_srv,
+    //     .name = "TestPerefSrv",
+    //     .appid = "test_peref",
+    //     .stack_size = 1024,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    // },
     {
         .app = gui_srv,
         .name = "GuiSrv",
