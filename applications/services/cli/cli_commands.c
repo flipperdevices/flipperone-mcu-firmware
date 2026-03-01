@@ -6,7 +6,7 @@
 #include <time.h>
 #include <args.h>
 #include "furi_bsp.h"
-#include <status_lights/status_lights.h>
+#include <led/led.h>
 #include <drivers/ina219/ina219.h>
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_clock.h>
@@ -367,34 +367,34 @@ static void cli_command_set_led_help(Cli* cli, FuriString* args, void* context) 
         "\tblack \t\t6\r\n");
 }
 
-StatusLightsType cli_status_lights_types[] = {
-    StatusLightsTypeNet,
-    StatusLightsTypeWiFi,
-    StatusLightsTypeEth2,
-    StatusLightsTypeEth1,
-    StatusLightsTypePower,
-    StatusLightsTypeBatteryOutline,
-    StatusLightsTypeBatteryWatt1,
-    StatusLightsTypeBatteryWatt2,
-    StatusLightsTypeBatteryWatt3,
-    StatusLightsTypeBatteryWatt4,
-    StatusLightsTypeUsbCharging,
-    StatusLightsTypeUsbWatt1,
-    StatusLightsTypeUsbWatt2,
-    StatusLightsTypeUsbWatt3,
-    StatusLightsTypeUsbWatt4,
-    StatusLightsTypeBatteryCenter,
-    StatusLightsTypeLineAllOff,
+LedType cli_led_types[] = {
+    LedTypeNet,
+    LedTypeWiFi,
+    LedTypeEth2,
+    LedTypeEth1,
+    LedTypePower,
+    LedTypeBatteryOutline,
+    LedTypeBatteryWatt1,
+    LedTypeBatteryWatt2,
+    LedTypeBatteryWatt3,
+    LedTypeBatteryWatt4,
+    LedTypeUsbCharging,
+    LedTypeUsbWatt1,
+    LedTypeUsbWatt2,
+    LedTypeUsbWatt3,
+    LedTypeUsbWatt4,
+    LedTypeBatteryCenter,
+    LedTypeLineAllOff,
 };
 
-StatusLightsColor cli_status_lights_colors[] = {
-    STATUS_LIGHTS_COLOR_RED,
-    STATUS_LIGHTS_COLOR_GREEN,
-    STATUS_LIGHTS_COLOR_BLUE,
-    STATUS_LIGHTS_COLOR_YELLOW,
-    STATUS_LIGHTS_COLOR_ORANGE,
-    STATUS_LIGHTS_COLOR_LIGHT_BLUE,
-    STATUS_LIGHTS_COLOR_BLACK,
+LedColor cli_led_colors[] = {
+    LED_COLOR_RED,
+    LED_COLOR_GREEN,
+    LED_COLOR_BLUE,
+    LED_COLOR_YELLOW,
+    LED_COLOR_ORANGE,
+    LED_COLOR_LIGHT_BLUE,
+    LED_COLOR_BLACK,
 };
 
 static void cli_command_set_led(Cli* cli, FuriString* args, void* context) {
@@ -412,30 +412,30 @@ static void cli_command_set_led(Cli* cli, FuriString* args, void* context) {
         cli_command_set_led_help(cli, args, context);
         return;
     }
-    if(led_type < 0 || led_type >= sizeof(cli_status_lights_types) / sizeof(StatusLightsType)) {
+    if(led_type < 0 || led_type >= sizeof(cli_led_types) / sizeof(LedType)) {
         cli_command_set_led_help(cli, args, context);
         return;
     }
 
-    if(furi_string_size(args) < 1 && cli_status_lights_types[led_type] != StatusLightsTypeLineAllOff) {
+    if(furi_string_size(args) < 1 && cli_led_types[led_type] != LedTypeLineAllOff) {
         cli_command_set_led_help(cli, args, context);
         return;
     }
 
-    if(cli_status_lights_types[led_type] != StatusLightsTypeLineAllOff) {
+    if(cli_led_types[led_type] != LedTypeLineAllOff) {
         if(!args_read_int_and_trim(args, &color)) {
             cli_command_set_led_help(cli, args, context);
             return;
         }
-        if(color < 0 || color >= sizeof(cli_status_lights_colors) / sizeof(StatusLightsColor)) {
+        if(color < 0 || color >= sizeof(cli_led_colors) / sizeof(LedColor)) {
             cli_command_set_led_help(cli, args, context);
             return;
         }
     }
 
-    StatusLights* status_lights = furi_record_open(RECORD_STATUS_LIGHTS);
-    status_lights_notification(status_lights, cli_status_lights_types[led_type], cli_status_lights_colors[color]);
-    furi_record_close(RECORD_STATUS_LIGHTS);
+    Led* led = furi_record_open(RECORD_LEDS);
+    led_set_color_single(led, cli_led_types[led_type], cli_led_colors[color]);
+    furi_record_close(RECORD_LEDS);
 }
 
 static void cli_command_power(Cli* cli, FuriString* args, void* context) {
