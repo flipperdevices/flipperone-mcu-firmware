@@ -10,12 +10,12 @@ extern int32_t uart_echo_app(void* p);
 extern int32_t input_touch_srv(void* p);
 extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
-extern int32_t status_lights_srv(void* p);
+extern int32_t led_srv(void* p);
 extern int32_t usb_srv(void* p);
 extern int32_t power_srv(void* p);
 extern int32_t cli_srv(void* p);
 extern int32_t fusb302_srv(void* p);
-extern int32_t power_menu(void* p);
+extern int32_t power_menu_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -31,7 +31,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
         .app = haptic_srv,
         .name = "HapticSrv",
-        .appid = "haptic",
+        .appid = "haptic_srv",
         .stack_size = 768,
         .flags = FlipperInternalApplicationFlagDefault,
     },
@@ -52,7 +52,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
         .app = fusb302_srv,
         .name = "Fusb302Srv",
-        .appid = "fusb302",
+        .appid = "fusb302_srv",
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
@@ -66,14 +66,14 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
         .app = input_touch_srv,
         .name = "InputTouchSrv",
-        .appid = "input_touch",
+        .appid = "input_touch_srv",
         .stack_size = 768,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     // {
     //     .app = test_peref_srv,
     //     .name = "TestPerefSrv",
-    //     .appid = "test_peref",
+    //     .appid = "test_peref_srv",
     //     .stack_size = 1024,
     //     .flags = FlipperInternalApplicationFlagDefault,
     // },
@@ -92,30 +92,30 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = status_lights_srv,
-        .name = "StatusLightsSrv",
-        .appid = "status_lights",
+        .app = led_srv,
+        .name = "LedSrv",
+        .appid = "led_srv",
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
         .app = usb_srv,
         .name = "UsbSrv",
-        .appid = "usb",
+        .appid = "usb_srv",
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
         .app = cli_srv,
         .name = "CliSrv",
-        .appid = "cli",
+        .appid = "cli_srv",
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = power_menu,
-        .name = "PowerMenu",
-        .appid = "power_menu",
+        .app = power_menu_srv,
+        .name = "PowerMenuSrv",
+        .appid = "power_menu_srv",
         .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
     },
