@@ -27,6 +27,7 @@
 #include <led/led.h>
 #include <led/led_batch.h>
 #include <haptic/haptic.h>
+#include <stdio.h>
 #include <tusb.h>
 #include <furi_hal_nvm.h>
 
@@ -175,6 +176,34 @@ void test_nvm(void) {
     FURI_LOG_I(TAG, "Get bool result: %d, value_set: %d value_get: %d", res, bool_value, read_bool_value);
 }
 
+
+const LedItem led_batch_power_red_items1[] = {
+    {.type = LedTypeEth1, .color = LED_COLOR_RED},
+};
+
+const LedBatch led_batch_power_red1 = {
+    .items = led_batch_power_red_items1,
+    .count = COUNT_OF(led_batch_power_red_items1),
+};
+
+const LedItem led_batch_power_red_items2[] = {
+    {.type = LedTypePower, .color = LED_COLOR_RED},
+};
+
+const LedBatch led_batch_power_red2 = {
+    .items = led_batch_power_red_items2,
+    .count = COUNT_OF(led_batch_power_red_items2),
+};
+
+const LedItem led_batch_power_red_items3[] = {
+    {.type = LedTypeBatteryCenter, .color = LED_COLOR_RED},
+};
+
+const LedBatch led_batch_power_red3 = {
+    .items = led_batch_power_red_items3,
+    .count = COUNT_OF(led_batch_power_red_items3),
+};
+
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
 
@@ -224,10 +253,23 @@ int32_t test_peref_srv(void* p) {
     while(true) {
         furi_delay_ms(2000);
 
-        led_set_color_batch_simple(&led_batch_all_on);
+        led_set_color_batch_simple(&led_batch_power_red1);
         furi_delay_ms(2000);
-
-        led_set_color_batch_simple(&led_batch_all_white);
+        led_set_color_single(led, LedTypeLine1Off, LED_COLOR_RED);
+        furi_delay_ms(2000);
+        led_set_color_batch_simple(&led_batch_power_red2);
+        furi_delay_ms(2000);
+        led_set_color_single(led, LedTypeLine2Off, LED_COLOR_RED);
+        furi_delay_ms(2000);
+        led_set_color_batch_simple(&led_batch_power_red3);
+        furi_delay_ms(2000);
+        led_set_color_single(led, LedTypeLine3Off, LED_COLOR_RED);
+        furi_delay_ms(2000);
+        led_set_color_batch_simple(&led_batch_power_red1);
+        led_set_color_batch_simple(&led_batch_power_red2);
+        led_set_color_batch_simple(&led_batch_power_red3);
+        furi_delay_ms(2000);
+        led_set_color_batch_simple(&led_batch_all_off);
 
         // FURI_LOG_I(TAG, "Playing effect %ld", efect_index);
         // haptic_play_effect(haptic, (Drv2605lEffect)(efect_index), efect_play_time);

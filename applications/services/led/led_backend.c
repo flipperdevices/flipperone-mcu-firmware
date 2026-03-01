@@ -36,6 +36,12 @@ typedef enum {
     LedMessageTypeSetColorBatch,
 } LedMessageType;
 
+typedef enum {
+    LedUpdateLine1 = (1 << 0U),
+    LedUpdateLine2 = (1 << 1U),
+    LedUpdateLine3 = (1 << 2U),
+} LedUpdateLine;
+
 typedef struct {
     LedType type;
     LedColor color;
@@ -82,43 +88,14 @@ static FURI_ALWAYS_INLINE bool led_start_off_timer(Led* instance, bool check_lin
     return instance->led_state.mask_power & line_power;
 }
 
-static void led_off_line(Led* instance, LedType line_off_type) {
-    switch(line_off_type) {
-    case LedTypeLine1Off:
-        //turn off line 1
-        memset(&instance->led_state.line1, 0x00, sizeof(instance->led_state.line1));
-        instance->led_state.mask_power &= ~StatusLedPowerLine1;
-        break;
-    case LedTypeLine2Off:
-        //turn off line 2
-        memset(&instance->led_state.line2, 0x00, sizeof(instance->led_state.line2));
-        instance->led_state.mask_power &= ~StatusLedPowerLine2;
-        break;
-    case LedTypeLine3Off:
-        //turn off line 3
-        memset(&instance->led_state.line3, 0x00, sizeof(instance->led_state.line3));
-        instance->led_state.mask_power &= ~StatusLedPowerLine3;
-        break;
-    case LedTypeLineAllOff:
-        //turn off all lines
-        memset(&instance->led_state.line1, 0x00, sizeof(instance->led_state.line1));
-        memset(&instance->led_state.line2, 0x00, sizeof(instance->led_state.line2));
-        memset(&instance->led_state.line3, 0x00, sizeof(instance->led_state.line3));
-        instance->led_state.mask_power &= ~(StatusLedPowerLine1 | StatusLedPowerLine2 | StatusLedPowerLine3);
-        break;
-    default:
-        furi_crash();
-        break;
-    }
-    furi_bsp_expander_control_led_power(instance->led_state.mask_power);
-}
-
 static void led_process_set_color_batch(Led* instance, LedItem* items, size_t count) {
+    LedUpdateLine update_line = 0;
     for(size_t i = 0; i < count; i++) {
         switch(items[i].type) {
         // line 1
         case LedTypeNet ... LedTypeEth1:
             instance->led_state.line1[items[i].type] = ws2812_urgb_u32(items[i].color.r, items[i].color.g, items[i].color.b);
+            update_line |= LedUpdateLine1;
             break;
         // line 2
         case LedTypePower ... LedTypeBatteryWatt4:
@@ -127,22 +104,50 @@ static void led_process_set_color_batch(Led* instance, LedItem* items, size_t co
                 //outline is 2 leds
                 instance->led_state.line2[items[i].type - LedTypePower + 1] = ws2812_urgb_u32(items[i].color.r, items[i].color.g, items[i].color.b);
             }
+            update_line |= LedUpdateLine2;
             break;
         // line 3
         case LedTypeUsbCharging ... LedTypeBatteryCenter:
             instance->led_state.line3[items[i].type - LedTypeUsbCharging] = ws2812_urgb_u32(items[i].color.r, items[i].color.g, items[i].color.b);
+            update_line |= LedUpdateLine3;
             break;
-        case LedTypeLine1Off ... LedTypeLineAllOff:
-            led_off_line(instance, items[i].type);
+        case LedTypeLine1Off:
+            //turn off line 1
+            memset(&instance->led_state.line1, 0x00, sizeof(instance->led_state.line1));
+            update_line |= LedUpdateLine1;
+            break;
+        case LedTypeLine2Off:
+            //turn off line 2
+            memset(&instance->led_state.line2, 0x00, sizeof(instance->led_state.line2));
+            update_line |= LedUpdateLine2;
+            break;
+        case LedTypeLine3Off:
+            //turn off line 3
+            memset(&instance->led_state.line3, 0x00, sizeof(instance->led_state.line3));
+            update_line |= LedUpdateLine3;
+            break;
+        case LedTypeLineAllOff:
+            //turn off all lines
+            memset(&instance->led_state.line1, 0x00, sizeof(instance->led_state.line1));
+            memset(&instance->led_state.line2, 0x00, sizeof(instance->led_state.line2));
+            memset(&instance->led_state.line3, 0x00, sizeof(instance->led_state.line3));
+            update_line |= (LedUpdateLine1 | LedUpdateLine2 | LedUpdateLine3);
             break;
         }
     }
-    if(led_start_off_timer(instance, led_line_is_wanna_power(instance->led_state.line1, LED_LINE_1_LEDS_COUNT), StatusLedPowerLine1))
-        ws2812_write_buffer_dma(instance->ws2812, LED_LINE1_INDEX, instance->led_state.line1, LED_LINE_1_LEDS_COUNT);
-    if(led_start_off_timer(instance, led_line_is_wanna_power(instance->led_state.line2, LED_LINE_2_LEDS_COUNT), StatusLedPowerLine2))
-        ws2812_write_buffer_dma(instance->ws2812, LED_LINE2_INDEX, instance->led_state.line2, LED_LINE_2_LEDS_COUNT);
-    if(led_start_off_timer(instance, led_line_is_wanna_power(instance->led_state.line3, LED_LINE_3_LEDS_COUNT), StatusLedPowerLine3))
-        ws2812_write_buffer_dma(instance->ws2812, LED_LINE3_INDEX, instance->led_state.line3, LED_LINE_3_LEDS_COUNT);
+
+    if(update_line & LedUpdateLine1) {
+        if(led_start_off_timer(instance, led_line_is_wanna_power(instance->led_state.line1, LED_LINE_1_LEDS_COUNT), StatusLedPowerLine1))
+            ws2812_write_buffer_dma(instance->ws2812, LED_LINE1_INDEX, instance->led_state.line1, LED_LINE_1_LEDS_COUNT);
+    }
+    if(update_line & LedUpdateLine2) {
+        if(led_start_off_timer(instance, led_line_is_wanna_power(instance->led_state.line2, LED_LINE_2_LEDS_COUNT), StatusLedPowerLine2))
+            ws2812_write_buffer_dma(instance->ws2812, LED_LINE2_INDEX, instance->led_state.line2, LED_LINE_2_LEDS_COUNT);
+    }
+    if(update_line & LedUpdateLine3) {
+        if(led_start_off_timer(instance, led_line_is_wanna_power(instance->led_state.line3, LED_LINE_3_LEDS_COUNT), StatusLedPowerLine3))
+            ws2812_write_buffer_dma(instance->ws2812, LED_LINE3_INDEX, instance->led_state.line3, LED_LINE_3_LEDS_COUNT);
+    }
 }
 
 static void led_message_queue_callback(FuriEventLoopObject* object, void* context) {
