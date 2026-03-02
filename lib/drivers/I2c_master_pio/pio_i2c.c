@@ -1,7 +1,5 @@
 #include "pio_i2c.h"
-#include <pico/time.h>
-#include <pico/types.h>
-#include <stdint.h>
+#include "core/check.h"
 
 struct I2cMasterPio {
     const GpioPin* sda_pin;
@@ -11,31 +9,47 @@ struct I2cMasterPio {
     uint offset;
 };
 
-static I2cMasterPio* i2c_master_pio_instance = NULL;
-
 const int PIO_I2C_ICOUNT_LSB = 10;
 const int PIO_I2C_FINAL_LSB = 9;
 const int PIO_I2C_DATA_LSB = 1;
 const int PIO_I2C_NAK_LSB = 0;
 
+void pio_i2c_gpio_init(I2cMasterPio* instance) {
+    furi_check(instance);
+    i2c_program_gpio_init(instance->pio, instance->sda_pin->pin, instance->scl_pin->pin);
+}
+
+void pio_i2c_gpio_deinit(I2cMasterPio* instance) {
+    furi_check(instance);
+    i2c_program_gpio_deinit(instance->pio, instance->sda_pin->pin, instance->scl_pin->pin);
+}
+
 I2cMasterPio* pio_i2c_init(const GpioPin* sda_pin, const GpioPin* scl_pin, uint32_t speed) {
-    furi_check(!i2c_master_pio_instance); //only one instance allowed
     I2cMasterPio* instance = malloc(sizeof(I2cMasterPio));
 
     instance->sda_pin = sda_pin;
     instance->scl_pin = scl_pin;
     bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&i2c_program, &instance->pio, &instance->sm, &instance->offset, sda_pin->pin, 2, true);
     furi_check(success);
-    i2c_program_init(instance->pio, instance->sm, instance->offset, sda_pin->pin, scl_pin->pin);
+    i2c_program_init(instance->pio, instance->sm, instance->offset, sda_pin->pin, scl_pin->pin, speed);
 
     return instance;
 }
 
+void pio_i2c_deinit(I2cMasterPio* instance) {
+    furi_check(instance);
+    pio_i2c_gpio_deinit(instance);
+    i2c_program_deinit(instance->pio, instance->sm, instance->sda_pin->pin, instance->scl_pin->pin);
+    free(instance);
+}
+
 bool pio_i2c_check_error(I2cMasterPio* instance) {
+    furi_check(instance);
     return pio_interrupt_get(instance->pio, instance->sm);
 }
 
 void pio_i2c_resume_after_error(I2cMasterPio* instance) {
+    furi_check(instance);
     pio_sm_drain_tx_fifo(instance->pio, instance->sm);
     pio_sm_exec(
         instance->pio, instance->sm, (instance->pio->sm[instance->sm].execctrl & PIO_SM0_EXECCTRL_WRAP_BOTTOM_BITS) >> PIO_SM0_EXECCTRL_WRAP_BOTTOM_LSB);
@@ -43,6 +57,7 @@ void pio_i2c_resume_after_error(I2cMasterPio* instance) {
 }
 
 void pio_i2c_rx_enable(I2cMasterPio* instance, bool en) {
+    furi_check(instance);
     if(en)
         hw_set_bits(&instance->pio->sm[instance->sm].shiftctrl, PIO_SM0_SHIFTCTRL_AUTOPUSH_BITS);
     else
@@ -50,6 +65,7 @@ void pio_i2c_rx_enable(I2cMasterPio* instance, bool en) {
 }
 
 static inline void pio_i2c_put16(I2cMasterPio* instance, uint16_t data) {
+    furi_check(instance);
     while(pio_sm_is_tx_fifo_full(instance->pio, instance->sm))
         ;
     // some versions of GCC dislike this
@@ -65,6 +81,7 @@ static inline void pio_i2c_put16(I2cMasterPio* instance, uint16_t data) {
 
 // If I2C is ok, block and push data. Otherwise fall straight through.
 void pio_i2c_put_or_err(I2cMasterPio* instance, uint16_t data) {
+    furi_check(instance);
     while(pio_sm_is_tx_fifo_full(instance->pio, instance->sm))
         if(pio_i2c_check_error(instance)) return;
     if(pio_i2c_check_error(instance)) return;
@@ -80,10 +97,12 @@ void pio_i2c_put_or_err(I2cMasterPio* instance, uint16_t data) {
 }
 
 uint8_t pio_i2c_get(I2cMasterPio* instance) {
+    furi_check(instance);
     return (uint8_t)pio_sm_get(instance->pio, instance->sm);
 }
 
 void pio_i2c_start(I2cMasterPio* instance) {
+    furi_check(instance);
     pio_i2c_put_or_err(instance, 2u << PIO_I2C_ICOUNT_LSB); // Escape code for 3 instruction sequence
     pio_i2c_put_or_err(instance, set_scl_sda_program_instructions[I2C_SC1_SD0]); // We are already in idle state, just pull SDA low
     pio_i2c_put_or_err(instance, set_scl_sda_program_instructions[I2C_SC0_SD0]); // Also pull clock low so we can present data
@@ -91,6 +110,7 @@ void pio_i2c_start(I2cMasterPio* instance) {
 }
 
 void pio_i2c_stop(I2cMasterPio* instance) {
+    furi_check(instance);
     pio_i2c_put_or_err(instance, 2u << PIO_I2C_ICOUNT_LSB);
     pio_i2c_put_or_err(instance, set_scl_sda_program_instructions[I2C_SC0_SD0]); // SDA is unknown; pull it down
     pio_i2c_put_or_err(instance, set_scl_sda_program_instructions[I2C_SC1_SD0]); // Release clock
@@ -98,6 +118,7 @@ void pio_i2c_stop(I2cMasterPio* instance) {
 }
 
 void pio_i2c_repstart(I2cMasterPio* instance) {
+    furi_check(instance);
     pio_i2c_put_or_err(instance, 4u << PIO_I2C_ICOUNT_LSB);
     pio_i2c_put_or_err(instance, set_scl_sda_program_instructions[I2C_SC0_SD1]);
     pio_i2c_put_or_err(instance, set_scl_sda_program_instructions[I2C_SC1_SD1]);
@@ -107,6 +128,7 @@ void pio_i2c_repstart(I2cMasterPio* instance) {
 }
 
 static void pio_i2c_wait_idle(I2cMasterPio* instance) {
+    furi_check(instance);
     // Finished when TX runs dry or SM hits an IRQ
     instance->pio->fdebug = 1u << (PIO_FDEBUG_TXSTALL_LSB + instance->sm);
     while(!(instance->pio->fdebug & 1u << (PIO_FDEBUG_TXSTALL_LSB + instance->sm) || pio_i2c_check_error(instance)))
@@ -114,6 +136,7 @@ static void pio_i2c_wait_idle(I2cMasterPio* instance) {
 }
 
 int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* txbuf, uint len) {
+    furi_check(instance);
     int err = 0;
     pio_i2c_start(instance);
     pio_i2c_rx_enable(instance, false);
@@ -135,6 +158,7 @@ int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* txbuf,
 }
 
 int pio_i2c_read_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* rxbuf, uint len) {
+    furi_check(instance);
     int err = 0;
     pio_i2c_start(instance);
     pio_i2c_rx_enable(instance, true);

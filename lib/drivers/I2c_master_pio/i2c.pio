@@ -77,8 +77,25 @@ do_exec:
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 
+static inline void i2c_program_gpio_init(PIO pio, uint pin_sda, uint pin_scl) {
+    gpio_set_pulls(pin_scl, true, false);
+    gpio_set_pulls(pin_sda, true, false);
+    pio_gpio_init(pio, pin_sda);
+    gpio_set_oeover(pin_sda, GPIO_OVERRIDE_INVERT);
+    pio_gpio_init(pio, pin_scl);
+    gpio_set_oeover(pin_scl, GPIO_OVERRIDE_INVERT);
+}
 
-static inline void i2c_program_init(PIO pio, uint sm, uint offset, uint pin_sda, uint pin_scl) {
+static inline void i2c_program_gpio_deinit(PIO pio, uint pin_sda, uint pin_scl) {
+    gpio_set_oeover(pin_sda, GPIO_OVERRIDE_NORMAL);
+    gpio_set_oeover(pin_scl, GPIO_OVERRIDE_NORMAL);
+    gpio_set_pulls(pin_scl, false, false);
+    gpio_set_pulls(pin_sda, false, false);
+    gpio_set_function(pin_scl, GPIO_FUNC_NULL);
+    gpio_set_function(pin_sda, GPIO_FUNC_NULL);
+}
+
+static inline void i2c_program_init(PIO pio, uint sm, uint offset, uint pin_sda, uint pin_scl, uint32_t speed) {
     assert(pin_scl == pin_sda + 1);
     pio_sm_config c = i2c_program_get_default_config(offset);
 
@@ -92,21 +109,15 @@ static inline void i2c_program_init(PIO pio, uint sm, uint offset, uint pin_sda,
     sm_config_set_out_shift(&c, false, true, 16);
     sm_config_set_in_shift(&c, false, true, 8);
 
-    float div = (float)clock_get_hz(clk_sys) / (32 * 100000);
+    float div = (float)clock_get_hz(clk_sys) / (32 * speed);
     sm_config_set_clkdiv(&c, div);
 
     // Try to avoid glitching the bus while connecting the IOs. Get things set
     // up so that pin is driven down when PIO asserts OE low, and pulled up
     // otherwise.
-    gpio_pull_up(pin_scl);
-    gpio_pull_up(pin_sda);
     uint32_t both_pins = (1u << pin_sda) | (1u << pin_scl);
     pio_sm_set_pins_with_mask(pio, sm, both_pins, both_pins);
     pio_sm_set_pindirs_with_mask(pio, sm, both_pins, both_pins);
-    pio_gpio_init(pio, pin_sda);
-    gpio_set_oeover(pin_sda, GPIO_OVERRIDE_INVERT);
-    pio_gpio_init(pio, pin_scl);
-    gpio_set_oeover(pin_scl, GPIO_OVERRIDE_INVERT);
     pio_sm_set_pins_with_mask(pio, sm, 0, both_pins);
 
     // Clear IRQ flag before starting, and make sure flag doesn't actually
@@ -118,6 +129,18 @@ static inline void i2c_program_init(PIO pio, uint sm, uint offset, uint pin_sda,
     // Configure and start SM
     pio_sm_init(pio, sm, offset + i2c_offset_entry_point, &c);
     pio_sm_set_enabled(pio, sm, true);
+
+    i2c_program_gpio_init(pio, pin_sda, pin_scl);
+}
+
+static inline void i2c_program_deinit(PIO pio, uint sm, uint pin_sda, uint pin_scl) {
+    i2c_program_gpio_deinit(pio, pin_sda, pin_scl);
+    pio_set_irq0_source_enabled(pio, sm, false);
+    pio_set_irq1_source_enabled(pio, sm, false);
+    pio_sm_set_enabled(pio, sm, false);
+    pio_sm_clear_fifos(pio, sm);
+    pio_clear_instruction_memory(pio);
+    pio_sm_unclaim(pio, sm);
 }
 
 %}

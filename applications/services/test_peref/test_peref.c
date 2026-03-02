@@ -100,10 +100,20 @@ int32_t test_peref_srv(void* p) {
     // i2c_program_init(pio, sm, offset, 22, 23);
 
  I2cMasterPio *pio_i2c = pio_i2c_init(&gpio_i2c1_sda, &gpio_i2c1_scl, 100000);
+//pio_i2c_gpio_init(pio_i2c);
+// pio_i2c_gpio_deinit(pio_i2c);
+// pio_i2c_gpio_init(pio_i2c);
+
+
+ pio_i2c_deinit(pio_i2c);
+ pio_i2c = pio_i2c_init(&gpio_i2c1_sda, &gpio_i2c1_scl, 100000);
+// pio_i2c_gpio_init(pio_i2c);
+
+
 
     while(true) {
         furi_delay_ms(500);
-
+pio_i2c_gpio_init(pio_i2c);
             printf("\nPIO I2C Bus Scan\n");
     printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
         uint8_t rxdata = 0;
@@ -124,7 +134,7 @@ int32_t test_peref_srv(void* p) {
         printf(addr % 16 == 15 ? "\n" : "  ");
     }
     printf("Done.\n");
-
+pio_i2c_gpio_deinit(pio_i2c);
         // float bus_v = 0;
         // float current_a = 0;
         // float power_w = 0;
