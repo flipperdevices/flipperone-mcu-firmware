@@ -120,6 +120,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 add_subdirectory(lib/mlib)
 add_subdirectory(lib/drivers/ws2812)
+add_subdirectory(lib/drivers/i2c_master_pio)
 add_subdirectory(lib/drivers/i2c_multi_slave)
 add_subdirectory(lib/freertos)
 add_subdirectory(lib/pico-kvstore)
@@ -140,6 +141,7 @@ target_link_libraries(${PROJECT_NAME}
     pico_unique_id
     tinyusb_device
     ws2812
+    pio_i2c
     i2c_multi
     freertos
     assets
