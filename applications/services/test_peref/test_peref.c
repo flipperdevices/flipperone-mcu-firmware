@@ -13,6 +13,10 @@
 #include <power/power.h>
 
 #include <drivers/i2c_master_pio/pio_i2c.h>
+#include <drivers/fusb302/fusb302_reg.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <string.h>
 
 #define TAG "PerefTest"
 
@@ -75,6 +79,28 @@ bool reserved_addr(uint8_t addr) {
 // #define PIN_SDA &gpio_i2c1_sda.pin
 // #define PIN_SCL &gpio_i2c1_scl.pin
 
+// static Fusb302Status fusb302_read_reg(Fusb302* instance, Fusb302Reg reg, uint8_t* data) {
+//     furi_check(instance);
+//     furi_check(data);
+
+//     furi_hal_i2c_acquire(instance->i2c_handle);
+//     int ret = furi_hal_i2c_master_tx_blocking_nostop(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
+//     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
+//         uint8_t buffer[1] = {0};
+//         ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
+//         if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+//             FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
+//         } else {
+//             *data = buffer[0];
+//         }
+//     } else {
+//         FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+//     }
+//     furi_hal_i2c_release(instance->i2c_handle);
+
+//     return fusb302_check_status(ret);
+// }
+
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
 
@@ -93,48 +119,65 @@ int32_t test_peref_srv(void* p) {
     Power* power = furi_record_open(RECORD_POWER);
 
     furi_delay_ms(2000);
-    
+
     // PIO pio = pio0;
     // uint sm = 0;
     // uint offset = pio_add_program(pio, &i2c_program);
     // i2c_program_init(pio, sm, offset, 22, 23);
 
- I2cMasterPio *pio_i2c = pio_i2c_init(&gpio_i2c1_sda, &gpio_i2c1_scl, 100000);
-//pio_i2c_gpio_init(pio_i2c);
-// pio_i2c_gpio_deinit(pio_i2c);
-// pio_i2c_gpio_init(pio_i2c);
+    I2cMasterPio* pio_i2c = NULL;
+    //pio_i2c_gpio_init(pio_i2c);
+    // pio_i2c_gpio_deinit(pio_i2c);
+    // pio_i2c_gpio_init(pio_i2c);
 
-
- pio_i2c_deinit(pio_i2c);
- pio_i2c = pio_i2c_init(&gpio_i2c1_sda, &gpio_i2c1_scl, 100000);
-// pio_i2c_gpio_init(pio_i2c);
-
-
+    //  pio_i2c_deinit(pio_i2c);
+    //  pio_i2c = pio_i2c_init(&gpio_i2c1_sda, &gpio_i2c1_scl, 100000);
+    // pio_i2c_gpio_init(pio_i2c);
 
     while(true) {
         furi_delay_ms(500);
-pio_i2c_gpio_init(pio_i2c);
-            printf("\nPIO I2C Bus Scan\n");
-    printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
-        uint8_t rxdata = 0;
-    for (int addr = 0; addr < (1 << 7); ++addr) {
-        if (addr % 16 == 0) {
-            printf("%02x ", addr);
-        }
-        // Perform a 0-byte read from the probe address. The read function
-        // returns a negative result NAK'd any time other than the last data
-        // byte. Skip over reserved addresses.
-        int result;
-        if (reserved_addr(addr))
-            result = -1;
-        else
-            result = pio_i2c_write_blocking(pio_i2c, addr, &rxdata, 1);
+        // pio_i2c_gpio_init(pio_i2c);
+        //             printf("\nPIO I2C Bus Scan\n");
+        //     printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
+        //         uint8_t rxdata = 0;
+        //     for (int addr = 0; addr < (1 << 7); ++addr) {
+        //         if (addr % 16 == 0) {
+        //             printf("%02x ", addr);
+        //         }
+        //         // Perform a 0-byte read from the probe address. The read function
+        //         // returns a negative result NAK'd any time other than the last data
+        //         // byte. Skip over reserved addresses.
+        //         int result;
+        //         if (reserved_addr(addr))
+        //             result = -1;
+        //         else
+        //             result = pio_i2c_write_blocking(pio_i2c, addr, &rxdata, 1,false, 1000);
 
-        printf(result < 0 ? "." : "@");
-        printf(addr % 16 == 15 ? "\n" : "  ");
-    }
-    printf("Done.\n");
-pio_i2c_gpio_deinit(pio_i2c);
+        //         printf(result < 0 ? "." : "@");
+        //         printf(addr % 16 == 15 ? "\n" : "  ");
+        //     }
+        //     printf("Done.\n");
+        // pio_i2c_gpio_deinit(pio_i2c);
+pio_i2c = pio_i2c_init(&gpio_i2c1_sda, &gpio_i2c1_scl, 100000);
+        Fusb302DeviceIdRegBits device_id = {0};
+       // fusb302_read_reg(instance, Fusb302RegDeviceId, (uint8_t*)&device_id);
+        uint8_t reg = Fusb302RegDeviceId;
+
+        int ret = pio_i2c_write_blocking(pio_i2c, 0x22, (uint8_t*)&reg, 1, true, FURI_HAL_I2C_TIMEOUT_US);
+        if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
+            uint8_t buffer[1] = {0};
+            ret = pio_i2c_read_blocking(pio_i2c, 0x22, buffer, sizeof(buffer), false, FURI_HAL_I2C_TIMEOUT_US);
+            if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+                FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
+            } else {
+                *(uint8_t*)&device_id = buffer[0];
+            }
+        } else {
+            FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+        }
+pio_i2c_deinit(pio_i2c);
+        FURI_LOG_W(TAG, "Version ID: %02X, Product ID: %02X", device_id.version_id, device_id.product_id);
+
         // float bus_v = 0;
         // float current_a = 0;
         // float power_w = 0;
