@@ -1,33 +1,10 @@
 #pragma once
-
-#include <hardware/i2c.h>
-#include <drivers/i2c_master_pio/pio_i2c.h>
+#include <furi.h>
+#include "pico.h"
+#include "pico/time.h"
 
 typedef struct FuriHalI2cBus FuriHalI2cBus;
 typedef struct FuriHalI2cBusHandle FuriHalI2cBusHandle;
-
-/**
- * I2C channels
- */
-typedef enum {
-    FuriHalI2cIdI2c0 = 0,
-    FuriHalI2cIdI2c1,
-    FuriHalI2cIdPio,
-
-    FuriHalI2cIdMax,
-} FuriHalI2cId;
-
-typedef enum {
-    FuriHalI2cPinSda,
-    FuriHalI2cPinScl,
-
-    FuriHalI2cPinMax,
-} FuriHalI2cPin;
-
-// typedef enum {
-//     FuriHalI2cModeMaster,
-//     FuriHalI2cModeSlave,
-// } FuriHalI2cMode;
 
 /** FuriHal i2c bus states */
 typedef enum {
@@ -57,13 +34,17 @@ struct FuriHalI2cBusHandle {
     FuriHalI2cBusHandleEventCallback callback;
 };
 
+typedef struct {
+    int (*read_blocking)(void* instance, uint8_t addr, uint8_t* rxbuf, uint len, bool nostop, absolute_time_t until);
+    int (*write_blocking)(void* instance, uint8_t addr, const uint8_t* src, size_t len, bool nostop, absolute_time_t until);
+} FuriHalI2cBusAPI;
+
 /** FuriHal i2c bus */
 struct FuriHalI2cBus {
-    union {
-        i2c_inst_t* i2c;
-        I2cMasterPio* pio_i2c;
-    } as;
-    FuriHalI2cId id;
+    void* data;
+    const char* name;
     const FuriHalI2cBusHandle* current_handle;
     FuriHalI2cBusEventCallback callback;
+    FuriMutex* mutex;
+    FuriHalI2cBusAPI api;
 };

@@ -31,6 +31,8 @@ int furi_hal_i2c_master_trx_blocking(
     size_t rx_size,
     uint32_t timeout_us);
 
+const char* furi_hal_i2c_bus_name(const FuriHalI2cBus* bus);
+
 #ifdef __cplusplus
 }
 #endif
