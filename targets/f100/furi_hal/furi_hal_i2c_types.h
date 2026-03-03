@@ -19,6 +19,12 @@ typedef enum {
 /** FuriHal i2c bus event callback */
 typedef void (*FuriHalI2cBusEventCallback)(FuriHalI2cBus* bus, FuriHalI2cBusEvent event);
 
+/** FuriHal i2c bus write callback */
+typedef int (*FuriHalI2cBusWriteCallback)(void* instance, uint8_t addr, const uint8_t* src, size_t len, bool nostop, absolute_time_t until);
+
+/** FuriHal i2c bus read callback */
+typedef int (*FuriHalI2cBusReadCallback)(void* instance, uint8_t addr, uint8_t* rxbuf, uint len, bool nostop, absolute_time_t until);
+
 /** FuriHal i2c handle states */
 typedef enum {
     FuriHalI2cBusHandleEventActivate, /**< Handle activate: connect gpio and apply bus config */
@@ -34,9 +40,11 @@ struct FuriHalI2cBusHandle {
     FuriHalI2cBusHandleEventCallback callback;
 };
 
+/** FuriHal i2c bus API */
 typedef struct {
-    int (*read_blocking)(void* instance, uint8_t addr, uint8_t* rxbuf, uint len, bool nostop, absolute_time_t until);
-    int (*write_blocking)(void* instance, uint8_t addr, const uint8_t* src, size_t len, bool nostop, absolute_time_t until);
+    FuriHalI2cBusEventCallback event;
+    FuriHalI2cBusReadCallback read_blocking;
+    FuriHalI2cBusWriteCallback write_blocking;
 } FuriHalI2cBusAPI;
 
 /** FuriHal i2c bus */
@@ -44,7 +52,6 @@ struct FuriHalI2cBus {
     void* data;
     const char* name;
     const FuriHalI2cBusHandle* current_handle;
-    FuriHalI2cBusEventCallback callback;
     FuriMutex* mutex;
     FuriHalI2cBusAPI api;
 };

@@ -33,10 +33,10 @@ static int furi_hal_i2c_bus_pio_write_blocking(void* instance, uint8_t addr, con
 
 FuriHalI2cBus furi_hal_i2c_bus_external = {
     .data = NULL,
-    .callback = furi_hal_i2c_bus_common_event,
     .name = "PIO I2C",
     .api =
         {
+            .event = furi_hal_i2c_bus_common_event,
             .read_blocking = furi_hal_i2c_bus_pio_read_blocking,
             .write_blocking = furi_hal_i2c_bus_pio_write_blocking,
         },
@@ -81,10 +81,10 @@ static int furi_hal_i2c_bus_i2c_write_blocking(void* instance, uint8_t addr, con
 
 FuriHalI2cBus furi_hal_i2c_bus_internal = {
     .data = i2c0,
-    .callback = furi_hal_i2c_bus_i2c_event,
     .name = "I2C0",
     .api =
         {
+            .event = furi_hal_i2c_bus_i2c_event,
             .read_blocking = furi_hal_i2c_bus_i2c_read_blocking,
             .write_blocking = furi_hal_i2c_bus_i2c_write_blocking,
         },
