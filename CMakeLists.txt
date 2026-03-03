@@ -118,13 +118,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
 )
 
-add_subdirectory(lib/mlib)
-add_subdirectory(lib/drivers/ws2812)
-add_subdirectory(lib/drivers/i2c_master_pio)
-add_subdirectory(lib/drivers/i2c_multi_slave)
-add_subdirectory(lib/freertos)
-add_subdirectory(lib/pico-kvstore)
-add_subdirectory(assets)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/mlib)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/ws2812)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_multi_slave)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
 
 # Add the standard library to the build
 target_link_libraries(${PROJECT_NAME}
