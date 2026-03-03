@@ -62,17 +62,23 @@ static Fusb302Status fusb302_read_reg(Fusb302* instance, Fusb302Reg reg, uint8_t
     furi_check(data);
 
     furi_hal_i2c_acquire(instance->i2c_handle);
-    int ret = furi_hal_i2c_master_tx_blocking_nostop(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
-    if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
-        uint8_t buffer[1] = {0};
-        ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
-        if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
-            FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
-        } else {
-            *data = buffer[0];
-        }
+    // int ret = furi_hal_i2c_master_tx_blocking_nostop(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
+    // if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
+    //     uint8_t buffer[1] = {0};
+    //     ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
+    //     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+    //         FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
+    //     } else {
+    //         *data = buffer[0];
+    //     }
+    // } else {
+    //     FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+    // }
+    int ret = furi_hal_i2c_master_trx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, data, 1, FURI_HAL_I2C_TIMEOUT_US);
+    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+        FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
     } else {
-        FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+        FUSB302_DEBUG(TAG, "Read reg 0x%02X: %08b", reg, *data);
     }
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -83,14 +89,20 @@ static Fusb302Status fusb302_write_buf(Fusb302* instance, Fusb302Reg reg, uint8_
     furi_check(instance);
     furi_check(data);
     furi_hal_i2c_acquire(instance->i2c_handle);
-    int ret = furi_hal_i2c_master_tx_blocking_nostop(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
-    if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
-        ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, data, length, FURI_HAL_I2C_TIMEOUT_US);
-        if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
-            FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
-        }
+    // int ret = furi_hal_i2c_master_tx_blocking_nostop(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
+    // if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
+    //     ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, data, length, FURI_HAL_I2C_TIMEOUT_US);
+    //     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+    //         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
+    //     }
+    // } else {
+    //     FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for writing", reg);
+    // }
+    int ret = furi_hal_i2c_master_trx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, data, length, FURI_HAL_I2C_TIMEOUT_US);
+    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+        FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
     } else {
-        FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for writing", reg);
+        FUSB302_DEBUG(TAG, "Wrote reg 0x%02X: %d bytes", reg, length);
     }
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -102,14 +114,20 @@ static Fusb302Status fusb302_read_buf(Fusb302* instance, Fusb302Reg reg, uint8_t
     furi_check(data);
 
     furi_hal_i2c_acquire(instance->i2c_handle);
-    int ret = furi_hal_i2c_master_tx_blocking_nostop(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
-    if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
-        ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, data, length, FURI_HAL_I2C_TIMEOUT_US);
-        if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
-            FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
-        }
+    // int ret = furi_hal_i2c_master_tx_blocking_nostop(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
+    // if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
+    //     ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, data, length, FURI_HAL_I2C_TIMEOUT_US);
+    //     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+    //         FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
+    //     }
+    // } else {
+    //     FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+    // }
+    int ret = furi_hal_i2c_master_trx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, data, length, FURI_HAL_I2C_TIMEOUT_US);
+    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+        FURI_LOG_E(TAG, "Failed to read reg 0x%02X", reg);
     } else {
-        FURI_LOG_E(TAG, "Failed to write reg address 0x%02X for reading", reg);
+        FUSB302_DEBUG(TAG, "Read reg 0x%02X: %d bytes", reg, length);
     }
     furi_hal_i2c_release(instance->i2c_handle);
 
