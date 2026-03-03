@@ -27,5 +27,5 @@ uint8_t pio_i2c_get(I2cMasterPio* instance);
 // ----------------------------------------------------------------------------
 // Transaction-level functions
 
-int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* txbuf, uint len, bool nostop, uint32_t timeout_ms);
-int pio_i2c_read_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t *rxbuf, uint len, bool nostop, uint32_t timeout_ms);
+int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, const uint8_t* txbuf, uint len, bool nostop, absolute_time_t until);
+int pio_i2c_read_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t *rxbuf, uint len, bool nostop, absolute_time_t until);

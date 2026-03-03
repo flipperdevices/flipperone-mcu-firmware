@@ -1,6 +1,7 @@
 #pragma once
 
 #include <hardware/i2c.h>
+#include <drivers/i2c_master_pio/pio_i2c.h>
 
 typedef struct FuriHalI2cBus FuriHalI2cBus;
 typedef struct FuriHalI2cBusHandle FuriHalI2cBusHandle;
@@ -11,10 +12,10 @@ typedef struct FuriHalI2cBusHandle FuriHalI2cBusHandle;
 typedef enum {
     FuriHalI2cIdI2c0 = 0,
     FuriHalI2cIdI2c1,
+    FuriHalI2cIdPio,
 
     FuriHalI2cIdMax,
 } FuriHalI2cId;
-
 
 typedef enum {
     FuriHalI2cPinSda,
@@ -48,9 +49,7 @@ typedef enum {
 } FuriHalI2cBusHandleEvent;
 
 /** FuriHal i2c handle event callback */
-typedef void (*FuriHalI2cBusHandleEventCallback)(
-    const FuriHalI2cBusHandle* handle,
-    FuriHalI2cBusHandleEvent event);
+typedef void (*FuriHalI2cBusHandleEventCallback)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusHandleEvent event);
 
 /** FuriHal i2c handle */
 struct FuriHalI2cBusHandle {
@@ -60,9 +59,11 @@ struct FuriHalI2cBusHandle {
 
 /** FuriHal i2c bus */
 struct FuriHalI2cBus {
-    i2c_inst_t* i2c;
+    union {
+        i2c_inst_t* i2c;
+        I2cMasterPio* pio_i2c;
+    } as;
+    FuriHalI2cId id;
     const FuriHalI2cBusHandle* current_handle;
     FuriHalI2cBusEventCallback callback;
 };
-
-

@@ -33,7 +33,6 @@ I2cMasterPio* pio_i2c_init(const GpioPin* sda_pin, const GpioPin* scl_pin, uint3
     bool success = pio_claim_free_sm_and_add_program_for_gpio_range(&i2c_program, &instance->pio, &instance->sm, &instance->offset, sda_pin->pin, 2, true);
     furi_check(success);
     i2c_program_init(instance->pio, instance->sm, instance->offset, sda_pin->pin, scl_pin->pin, speed);
-
     return instance;
 }
 
@@ -136,11 +135,11 @@ static void pio_i2c_wait_idle(I2cMasterPio* instance) {
         tight_loop_contents();
 }
 
-int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* txbuf, uint len, bool nostop, uint32_t timeout_ms) {
+int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, const uint8_t* txbuf, uint len, bool nostop, absolute_time_t until) {
     furi_check(instance);
 
     //Todo: implement timeout
-    UNUSED(timeout_ms);
+    UNUSED(until);
     int err = 0;
 
     if(instance->previous_nostop) {
@@ -174,10 +173,10 @@ int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* txbuf,
     return err;
 }
 
-int pio_i2c_read_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* rxbuf, uint len, bool nostop, uint32_t timeout_ms) {
+int pio_i2c_read_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* rxbuf, uint len, bool nostop, absolute_time_t until) {
     furi_check(instance);
     //Todo: implement timeout
-    UNUSED(timeout_ms);
+    UNUSED(until);
 
     int err = 0;
 
