@@ -134,7 +134,6 @@ static inline void i2c_program_deinit(PIO pio, uint sm, uint pin_sda, uint pin_s
     pio_set_irq1_source_enabled(pio, sm, false);
     pio_sm_set_enabled(pio, sm, false);
     pio_sm_clear_fifos(pio, sm);
-    pio_clear_instruction_memory(pio);
     pio_sm_unclaim(pio, sm);
 }
 

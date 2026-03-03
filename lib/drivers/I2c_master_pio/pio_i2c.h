@@ -8,8 +8,6 @@ typedef struct I2cMasterPio I2cMasterPio;
 
 I2cMasterPio* pio_i2c_init(const GpioPin* sda_pin, const GpioPin* scl_pin, uint32_t speed);
 void pio_i2c_deinit(I2cMasterPio* instance);
-void pio_i2c_gpio_init(I2cMasterPio* instance);
-void pio_i2c_gpio_deinit(I2cMasterPio* instance);
 
 // ----------------------------------------------------------------------------
 // Low-level functions

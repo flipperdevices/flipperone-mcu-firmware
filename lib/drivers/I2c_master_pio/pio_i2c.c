@@ -14,16 +14,6 @@ const int PIO_I2C_FINAL_LSB = 9;
 const int PIO_I2C_DATA_LSB = 1;
 const int PIO_I2C_NAK_LSB = 0;
 
-void pio_i2c_gpio_init(I2cMasterPio* instance) {
-    furi_check(instance);
-    i2c_program_gpio_init(instance->pio, instance->sm, instance->sda_pin->pin, instance->scl_pin->pin);
-}
-
-void pio_i2c_gpio_deinit(I2cMasterPio* instance) {
-    furi_check(instance);
-    i2c_program_gpio_deinit(instance->pio, instance->sm, instance->sda_pin->pin, instance->scl_pin->pin);
-}
-
 I2cMasterPio* pio_i2c_init(const GpioPin* sda_pin, const GpioPin* scl_pin, uint32_t speed) {
     I2cMasterPio* instance = malloc(sizeof(I2cMasterPio));
 
@@ -38,8 +28,8 @@ I2cMasterPio* pio_i2c_init(const GpioPin* sda_pin, const GpioPin* scl_pin, uint3
 
 void pio_i2c_deinit(I2cMasterPio* instance) {
     furi_check(instance);
-    pio_i2c_gpio_deinit(instance);
     i2c_program_deinit(instance->pio, instance->sm, instance->sda_pin->pin, instance->scl_pin->pin);
+    pio_remove_program_and_unclaim_sm(&i2c_program, instance->pio, instance->sm, instance->offset);
     free(instance);
 }
 
