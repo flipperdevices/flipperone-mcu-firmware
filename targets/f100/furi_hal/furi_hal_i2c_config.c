@@ -47,7 +47,7 @@ void furi_hal_i2c_bus_handle_external_event(const FuriHalI2cBusHandle* handle, F
 
     if(event == FuriHalI2cBusHandleEventActivate) {
         furi_assert(handle->bus->data == NULL);
-        handle->bus->data = pio_i2c_init(&gpio_i2c1_sda, &gpio_i2c1_scl, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400);
+        handle->bus->data = pio_i2c_init(&gpio_i2c_periph_sda, &gpio_i2c_periph_scl, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400);
     } else if(event == FuriHalI2cBusHandleEventDeactivate) {
         furi_assert(handle->bus->data != NULL);
         pio_i2c_deinit(handle->bus->data);
