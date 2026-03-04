@@ -101,10 +101,10 @@ extern const GpioPin gpio_haptic_pwm;
 
 extern const GpioPin gpio_touchpad_rdy;
 
-extern const GpioPin gpio_i2c0_sda;
-extern const GpioPin gpio_i2c0_scl;
-extern const GpioPin gpio_i2c1_sda;
-extern const GpioPin gpio_i2c1_scl;
+extern const GpioPin gpio_i2c_control_sda;
+extern const GpioPin gpio_i2c_control_scl;
+extern const GpioPin gpio_i2c_main_sda;
+extern const GpioPin gpio_i2c_main_scl;
 
 extern const GpioPin gpio_status_led_line1;
 extern const GpioPin gpio_status_led_line2;

@@ -120,7 +120,6 @@ static void power_message_queue_callback(FuriEventLoopObject* object, void* cont
         *(msg.get_shunt_voltage_mv) = ina219_get_shunt_voltage_mv(instance->ina219_header);
         break;
 
-
     case PowerMessageTypeBq25792SetPowerSwitch:
         result = bq25792_set_power_switch(instance->bq25792_header, msg.power_switch) == Bq25792StatusOk;
         break;
@@ -215,8 +214,8 @@ static Power* power_alloc(void) {
     Power* instance = (Power*)malloc(sizeof(Power));
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(POWER_MAX_MESSAGES, sizeof(PowerMessage));
-    instance->bq25792_header = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
-    instance->ina219_header = ina219_init(&furi_hal_i2c_handle_external, INA219_ADDRESS, POWER_INA_SHUNT_RESISTOR_OHMS, POWER_INA_BUS_CURRENT_MAX);
+    instance->bq25792_header = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);
+    instance->ina219_header = ina219_init(&furi_hal_i2c_handle_main, INA219_ADDRESS, POWER_INA_SHUNT_RESISTOR_OHMS, POWER_INA_BUS_CURRENT_MAX);
 
     if(!instance->bq25792_header) {
         FURI_LOG_E(TAG, "Failed to initialize BQ25792");
@@ -297,7 +296,6 @@ float_t power_ina219_get_shunt_voltage_mv(Power* instance) {
     power_send_message(instance, &msg);
     return shunt_voltage;
 }
-
 
 bool power_bq25792_set_power_switch(Power* instance, Bq25792PowerSwitch power_switch) {
     furi_check(instance);

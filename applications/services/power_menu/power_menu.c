@@ -278,7 +278,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
 
 static PowerMenu* power_menu_alloc(void) {
     PowerMenu* instance = malloc(sizeof(PowerMenu));
-    instance->bq25792 = bq25792_init(&furi_hal_i2c_handle_external, BQ25792_ADDRESS, NULL);
+    instance->bq25792 = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
 

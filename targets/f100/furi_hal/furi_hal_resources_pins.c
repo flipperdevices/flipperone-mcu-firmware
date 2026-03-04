@@ -25,10 +25,10 @@ const GpioPin gpio_haptic_pwm = {.pin = 8};
 
 const GpioPin gpio_touchpad_rdy = {.pin = 9};
 
-const GpioPin gpio_i2c0_sda = {.pin = 20};
-const GpioPin gpio_i2c0_scl = {.pin = 21};
-const GpioPin gpio_i2c1_sda = {.pin = 22};
-const GpioPin gpio_i2c1_scl = {.pin = 23};
+const GpioPin gpio_i2c_control_sda = {.pin = 20};
+const GpioPin gpio_i2c_control_scl = {.pin = 21};
+const GpioPin gpio_i2c_main_sda = {.pin = 22};
+const GpioPin gpio_i2c_main_scl = {.pin = 23};
 
 const GpioPin gpio_status_led_line1 = {.pin = 29};
 const GpioPin gpio_status_led_line2 = {.pin = 30};

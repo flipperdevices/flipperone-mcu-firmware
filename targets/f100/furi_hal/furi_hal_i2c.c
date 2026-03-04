@@ -2,35 +2,26 @@
 #include <furi_hal_i2c_config.h>
 #include <furi_hal.h>
 #include <furi_hal_power.h>
+#include <hardware/i2c.h>
+#include <drivers/i2c_master_pio/pio_i2c.h>
 
 #define TAG "FuriHalI2c"
 
-void furi_hal_i2c_init_internal(void) {
-    furi_hal_i2c_bus_internal.callback(&furi_hal_i2c_bus_internal, FuriHalI2cBusEventInit);
-}
-
-void furi_hal_i2c_deinit_internal(void) {
-    furi_hal_i2c_bus_internal.callback(&furi_hal_i2c_bus_internal, FuriHalI2cBusEventDeinit);
-}
-
-void furi_hal_i2c_init_external(void) {
-    furi_hal_i2c_bus_external.callback(&furi_hal_i2c_bus_external, FuriHalI2cBusEventInit);
-}
-
-void furi_hal_i2c_deinit_external(void) {
-    furi_hal_i2c_bus_external.callback(&furi_hal_i2c_bus_external, FuriHalI2cBusEventDeinit);
+static inline void furi_hal_i2c_check_handle_is_acquired(const FuriHalI2cBusHandle* handle) {
+    furi_check(handle);
+    furi_check(handle->bus->current_handle == handle);
 }
 
 void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle) {
     furi_hal_power_insomnia_enter();
     // Lock bus access
-    handle->bus->callback(handle->bus, FuriHalI2cBusEventLock);
+    handle->bus->api.event(handle->bus, FuriHalI2cBusEventLock);
     // Ensure that no active handle set
     furi_check(handle->bus->current_handle == NULL);
     // Set current handle
     handle->bus->current_handle = handle;
     // Activate bus
-    handle->bus->callback(handle->bus, FuriHalI2cBusEventActivate);
+    handle->bus->api.event(handle->bus, FuriHalI2cBusEventActivate);
     // Activate handle
     handle->callback(handle, FuriHalI2cBusHandleEventActivate);
 }
@@ -43,18 +34,17 @@ void furi_hal_i2c_release(const FuriHalI2cBusHandle* handle) {
     // Deactivate handle
     handle->callback(handle, FuriHalI2cBusHandleEventDeactivate);
     // Deactivate bus
-    handle->bus->callback(handle->bus, FuriHalI2cBusEventDeactivate);
+    handle->bus->api.event(handle->bus, FuriHalI2cBusEventDeactivate);
     // Reset current handle
     handle->bus->current_handle = NULL;
     // Unlock bus
-    handle->bus->callback(handle->bus, FuriHalI2cBusEventUnlock);
+    handle->bus->api.event(handle->bus, FuriHalI2cBusEventUnlock);
     furi_hal_power_insomnia_exit();
 }
 
 int furi_hal_i2c_master_tx_blocking(const FuriHalI2cBusHandle* handle, uint8_t device_address, const uint8_t* tx_buffer, size_t size, uint32_t timeout_us) {
-    furi_check(handle);
-
-    return i2c_write_blocking_until(handle->bus->i2c, device_address, tx_buffer, size, false, make_timeout_time_us(timeout_us));
+    furi_hal_i2c_check_handle_is_acquired(handle);
+    return handle->bus->api.write_blocking(handle->bus->data, device_address, tx_buffer, size, false, make_timeout_time_us(timeout_us));
 }
 
 int furi_hal_i2c_master_tx_blocking_nostop(
@@ -63,21 +53,18 @@ int furi_hal_i2c_master_tx_blocking_nostop(
     const uint8_t* tx_buffer,
     size_t size,
     uint32_t timeout_us) {
-    furi_check(handle);
-
-    return i2c_write_blocking_until(handle->bus->i2c, device_address, tx_buffer, size, true, make_timeout_time_us(timeout_us));
+    furi_hal_i2c_check_handle_is_acquired(handle);
+    return handle->bus->api.write_blocking(handle->bus->data, device_address, tx_buffer, size, true, make_timeout_time_us(timeout_us));
 }
 
 int furi_hal_i2c_master_rx_blocking(const FuriHalI2cBusHandle* handle, uint8_t device_address, uint8_t* rx_buffer, size_t size, uint32_t timeout_us) {
-    furi_check(handle);
-
-    return i2c_read_blocking_until(handle->bus->i2c, device_address, rx_buffer, size, false, make_timeout_time_us(timeout_us));
+    furi_hal_i2c_check_handle_is_acquired(handle);
+    return handle->bus->api.read_blocking(handle->bus->data, device_address, rx_buffer, size, false, make_timeout_time_us(timeout_us));
 }
 
 int furi_hal_i2c_master_rx_blocking_nostop(const FuriHalI2cBusHandle* handle, uint8_t device_address, uint8_t* rx_buffer, size_t size, uint32_t timeout_us) {
-    furi_check(handle);
-
-    return i2c_read_blocking_until(handle->bus->i2c, device_address, rx_buffer, size, true, make_timeout_time_us(timeout_us));
+    furi_hal_i2c_check_handle_is_acquired(handle);
+    return handle->bus->api.read_blocking(handle->bus->data, device_address, rx_buffer, size, true, make_timeout_time_us(timeout_us));
 }
 
 int furi_hal_i2c_master_trx_blocking(
@@ -88,18 +75,14 @@ int furi_hal_i2c_master_trx_blocking(
     uint8_t* rx_buffer,
     size_t rx_size,
     uint32_t timeout_us) {
-    furi_check(handle);
-
-    int status = i2c_write_blocking_until(handle->bus->i2c, device_address, tx_buffer, tx_size, true, make_timeout_time_us(timeout_us));
-    if(status <= 0) {
+    int status = furi_hal_i2c_master_tx_blocking_nostop(handle, device_address, tx_buffer, tx_size, timeout_us);
+    if(status < 0) {
         return status;
     }
-    return i2c_read_blocking_until(handle->bus->i2c, device_address, rx_buffer, rx_size, false, make_timeout_time_us(timeout_us));
+    return furi_hal_i2c_master_rx_blocking(handle, device_address, rx_buffer, rx_size, timeout_us);
 }
 
 bool furi_hal_i2c_device_ready(const FuriHalI2cBusHandle* handle, uint8_t device_address, uint32_t timeout_us) {
-    furi_check(handle);
-
     int ret;
     uint8_t rxdata = 0;
     if((device_address & 0x78) == 0 || (device_address & 0x78) == 0x78)
@@ -108,4 +91,9 @@ bool furi_hal_i2c_device_ready(const FuriHalI2cBusHandle* handle, uint8_t device
         ret = furi_hal_i2c_master_tx_blocking(handle, device_address, &rxdata, 1, timeout_us);
 
     return ret < PICO_OK ? false : true;
+}
+
+const char* furi_hal_i2c_bus_name(const FuriHalI2cBusHandle* handle) {
+    furi_hal_i2c_check_handle_is_acquired(handle);
+    return handle->bus->name;
 }
