@@ -16,10 +16,6 @@ static void furi_hal_i2c_bus_common_event(FuriHalI2cBus* bus, FuriHalI2cBusEvent
         furi_check(furi_mutex_acquire(bus->mutex, FuriWaitForever) == FuriStatusOk);
     } else if(event == FuriHalI2cBusEventUnlock) {
         furi_check(furi_mutex_release(bus->mutex) == FuriStatusOk);
-    } else if(event == FuriHalI2cBusEventActivate) {
-        // Not need
-    } else if(event == FuriHalI2cBusEventDeactivate) {
-        // Not need
     }
 }
 
