@@ -12,22 +12,6 @@ static inline void furi_hal_i2c_check_handle_is_acquired(const FuriHalI2cBusHand
     furi_check(handle->bus->current_handle == handle);
 }
 
-void furi_hal_i2c_init_internal(void) {
-    furi_hal_i2c_bus_internal.api.event(&furi_hal_i2c_bus_internal, FuriHalI2cBusEventInit);
-}
-
-void furi_hal_i2c_deinit_internal(void) {
-    furi_hal_i2c_bus_internal.api.event(&furi_hal_i2c_bus_internal, FuriHalI2cBusEventDeinit);
-}
-
-void furi_hal_i2c_init_external(void) {
-    furi_hal_i2c_bus_external.api.event(&furi_hal_i2c_bus_external, FuriHalI2cBusEventInit);
-}
-
-void furi_hal_i2c_deinit_external(void) {
-    furi_hal_i2c_bus_external.api.event(&furi_hal_i2c_bus_external, FuriHalI2cBusEventDeinit);
-}
-
 void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle) {
     furi_hal_power_insomnia_enter();
     // Lock bus access

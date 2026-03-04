@@ -101,7 +101,7 @@ static Haptic* haptic_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(HAPTIC_MAX_MESSAGES, sizeof(HapticMessage));
 
-    instance->haptic_header = drv2605l_init(&furi_hal_i2c_handle_internal, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
+    instance->haptic_header = drv2605l_init(&furi_hal_i2c_handle_control, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, haptic_message_queue_callback, instance);
 

@@ -120,7 +120,7 @@ static Fusb302* fusb302_alloc(void) {
     Fusb302* instance = (Fusb302*)malloc(sizeof(Fusb302));
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(FUSB302_MAX_MESSAGES, sizeof(Fusb302Message));
-    instance->fusb302_header = fusb302_init(&furi_hal_i2c_handle_external, FUSB302_ADDRESS, NULL);
+    instance->fusb302_header = fusb302_init(&furi_hal_i2c_handle_main, FUSB302_ADDRESS, NULL);
 
     if(!instance->fusb302_header) {
         FURI_LOG_E(TAG, "Failed to initialize FUSB302");

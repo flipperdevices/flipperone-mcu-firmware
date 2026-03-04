@@ -1,7 +1,8 @@
 #pragma once
 #include <furi.h>
-#include "pico.h"
-#include "pico/time.h"
+#include <furi_hal_gpio.h>
+#include <pico.h>
+#include <pico/time.h>
 
 typedef struct FuriHalI2cBus FuriHalI2cBus;
 typedef struct FuriHalI2cBusHandle FuriHalI2cBusHandle;
@@ -52,6 +53,8 @@ struct FuriHalI2cBus {
     void* data;
     const char* name;
     const FuriHalI2cBusHandle* current_handle;
+    const GpioPin* sda;
+    const GpioPin* scl;
     FuriMutex* mutex;
     FuriHalI2cBusAPI api;
 };

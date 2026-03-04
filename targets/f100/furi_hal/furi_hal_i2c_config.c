@@ -6,6 +6,17 @@
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_100 100000
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400 400000
 
+extern FuriHalI2cBus furi_hal_i2c_bus_control;
+extern FuriHalI2cBus furi_hal_i2c_bus_main;
+
+void furi_hal_i2c_init_internal(void) {
+    furi_hal_i2c_bus_control.api.event(&furi_hal_i2c_bus_control, FuriHalI2cBusEventInit);
+}
+
+void furi_hal_i2c_deinit_internal(void) {
+    furi_hal_i2c_bus_control.api.event(&furi_hal_i2c_bus_control, FuriHalI2cBusEventDeinit);
+}
+
 static void furi_hal_i2c_bus_common_event(FuriHalI2cBus* bus, FuriHalI2cBusEvent event) {
     if(event == FuriHalI2cBusEventInit) {
         bus->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
@@ -27,9 +38,11 @@ static int furi_hal_i2c_bus_pio_write_blocking(void* instance, uint8_t addr, con
     return pio_i2c_write_blocking(instance, addr, src, len, nostop, until);
 }
 
-FuriHalI2cBus furi_hal_i2c_bus_external = {
+FuriHalI2cBus furi_hal_i2c_bus_main = {
     .data = NULL,
     .name = "PIO I2C",
+    .sda = &gpio_i2c_main_sda,
+    .scl = &gpio_i2c_main_scl,
     .api =
         {
             .event = furi_hal_i2c_bus_common_event,
@@ -43,7 +56,7 @@ void furi_hal_i2c_bus_handle_external_event(const FuriHalI2cBusHandle* handle, F
 
     if(event == FuriHalI2cBusHandleEventActivate) {
         furi_assert(handle->bus->data == NULL);
-        handle->bus->data = pio_i2c_init(&gpio_i2c_periph_sda, &gpio_i2c_periph_scl, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400);
+        handle->bus->data = pio_i2c_init(handle->bus->sda, handle->bus->scl, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400);
     } else if(event == FuriHalI2cBusHandleEventDeactivate) {
         furi_assert(handle->bus->data != NULL);
         pio_i2c_deinit(handle->bus->data);
@@ -51,10 +64,18 @@ void furi_hal_i2c_bus_handle_external_event(const FuriHalI2cBusHandle* handle, F
     }
 }
 
-const FuriHalI2cBusHandle furi_hal_i2c_handle_external = {
-    .bus = &furi_hal_i2c_bus_external,
+const FuriHalI2cBusHandle furi_hal_i2c_handle_main = {
+    .bus = &furi_hal_i2c_bus_main,
     .callback = furi_hal_i2c_bus_handle_external_event,
 };
+
+void furi_hal_i2c_init_external(void) {
+    furi_hal_i2c_bus_main.api.event(&furi_hal_i2c_bus_main, FuriHalI2cBusEventInit);
+}
+
+void furi_hal_i2c_deinit_external(void) {
+    furi_hal_i2c_bus_main.api.event(&furi_hal_i2c_bus_main, FuriHalI2cBusEventDeinit);
+}
 
 static void furi_hal_i2c_bus_i2c_event(FuriHalI2cBus* bus, FuriHalI2cBusEvent event) {
     i2c_inst_t* i2c = bus->data;
@@ -75,9 +96,11 @@ static int furi_hal_i2c_bus_i2c_write_blocking(void* instance, uint8_t addr, con
     return i2c_write_blocking_until(instance, addr, src, len, nostop, until);
 }
 
-FuriHalI2cBus furi_hal_i2c_bus_internal = {
+FuriHalI2cBus furi_hal_i2c_bus_control = {
     .data = i2c0,
     .name = "I2C0",
+    .sda = &gpio_i2c_control_sda,
+    .scl = &gpio_i2c_control_scl,
     .api =
         {
             .event = furi_hal_i2c_bus_i2c_event,
@@ -90,24 +113,24 @@ void furi_hal_i2c_bus_handle_internal_event(const FuriHalI2cBusHandle* handle, F
     if(event == FuriHalI2cBusHandleEventActivate) {
         i2c_init(handle->bus->data, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400);
 
-        furi_hal_gpio_init_ex(&gpio_i2c0_sda, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
-        furi_hal_gpio_set_drive_strength(&gpio_i2c0_sda, GpioDriveStrengthMedium);
+        furi_hal_gpio_init_ex(handle->bus->sda, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
+        furi_hal_gpio_set_drive_strength(handle->bus->sda, GpioDriveStrengthMedium);
 
-        furi_hal_gpio_init_ex(&gpio_i2c0_scl, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
-        furi_hal_gpio_set_drive_strength(&gpio_i2c0_scl, GpioDriveStrengthMedium);
+        furi_hal_gpio_init_ex(handle->bus->scl, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
+        furi_hal_gpio_set_drive_strength(handle->bus->scl, GpioDriveStrengthMedium);
 
     } else if(event == FuriHalI2cBusHandleEventDeactivate) {
         i2c_deinit(handle->bus->data);
 
-        furi_hal_gpio_init_ex(&gpio_i2c0_sda, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
-        furi_hal_gpio_init_ex(&gpio_i2c0_scl, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+        furi_hal_gpio_init_ex(handle->bus->sda, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+        furi_hal_gpio_init_ex(handle->bus->scl, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
 
-        furi_hal_gpio_write(&gpio_i2c0_sda, 1);
-        furi_hal_gpio_write(&gpio_i2c0_scl, 1);
+        furi_hal_gpio_write(handle->bus->sda, 1);
+        furi_hal_gpio_write(handle->bus->scl, 1);
     }
 }
 
-const FuriHalI2cBusHandle furi_hal_i2c_handle_internal = {
-    .bus = &furi_hal_i2c_bus_internal,
+const FuriHalI2cBusHandle furi_hal_i2c_handle_control = {
+    .bus = &furi_hal_i2c_bus_control,
     .callback = furi_hal_i2c_bus_handle_internal_event,
 };

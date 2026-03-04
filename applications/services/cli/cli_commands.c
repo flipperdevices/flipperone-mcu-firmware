@@ -235,9 +235,9 @@ void cli_command_i2c(Cli* cli, FuriString* args, void* context) {
     UNUSED(cli);
     UNUSED(args);
     UNUSED(context);
-    cli_scan_i2c_bus(&furi_hal_i2c_handle_internal, "internal");
+    cli_scan_i2c_bus(&furi_hal_i2c_handle_control, "control");
     printf("\r\n");
-    cli_scan_i2c_bus(&furi_hal_i2c_handle_external, "external");
+    cli_scan_i2c_bus(&furi_hal_i2c_handle_main, "main");
 }
 
 static void cli_command_expander_ext_help(Cli* cli, FuriString* args, void* context) {

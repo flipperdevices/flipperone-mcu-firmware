@@ -273,7 +273,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display->buffer_header.cmd[3] = 0;
 
     //tps62868x init
-    display->power_supply = tps62868x_init(&furi_hal_i2c_handle_internal, TPS62868_ADDRESS);
+    display->power_supply = tps62868x_init(&furi_hal_i2c_handle_control, TPS62868_ADDRESS);
     tps62868x_set_voltage(display->power_supply, 3.3f);
     tps62868x_get_voltage(display->power_supply);
 
