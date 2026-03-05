@@ -15,8 +15,9 @@ void furi_hal_init_early(void) {
     furi_hal_os_init();
     // furi_hal_spi_config_init_early();
     // furi_hal_i2c_init_early();
-    furi_hal_i2c_init_internal();
-    furi_hal_i2c_init_external();
+    furi_hal_i2c_init_control();
+    furi_hal_i2c_init_main();
+    furi_hal_i2c_init_cpu();
     // // furi_hal_light_init();
     // furi_hal_rtc_init_early();
 }
@@ -24,8 +25,9 @@ void furi_hal_init_early(void) {
 void furi_hal_deinit_early(void) {
     // furi_hal_rtc_deinit_early();
     // furi_hal_i2c_deinit_early();
-    furi_hal_i2c_deinit_internal();
-    furi_hal_i2c_deinit_external();
+    furi_hal_i2c_deinit_control();
+    furi_hal_i2c_deinit_main();
+    furi_hal_i2c_deinit_cpu();
     // // furi_hal_spi_config_deinit_early();
     // furi_hal_resources_deinit_early();
     // furi_hal_dma_deinit_early();

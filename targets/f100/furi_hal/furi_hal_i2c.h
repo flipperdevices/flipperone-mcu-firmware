@@ -9,10 +9,12 @@
 extern "C" {
 #endif
 
-void furi_hal_i2c_init_internal(void);
-void furi_hal_i2c_deinit_internal(void);
-void furi_hal_i2c_init_external(void);
-void furi_hal_i2c_deinit_external(void);
+void furi_hal_i2c_init_control(void);
+void furi_hal_i2c_deinit_control(void);
+void furi_hal_i2c_init_main(void);
+void furi_hal_i2c_deinit_main(void);
+void furi_hal_i2c_init_cpu(void);
+void furi_hal_i2c_deinit_cpu(void);
 
 void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle);
 void furi_hal_i2c_release(const FuriHalI2cBusHandle* handle);
@@ -32,6 +34,10 @@ int furi_hal_i2c_master_trx_blocking(
     uint32_t timeout_us);
 
 const char* furi_hal_i2c_bus_name(const FuriHalI2cBusHandle* handle);
+
+void furi_hal_i2c_slave_set_callback(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveCallback callback, void* context);
+void furi_hal_i2c_slave_write_blocking(const FuriHalI2cBusHandle* handle, uint8_t data);
+uint8_t furi_hal_i2c_slave_read_blocking(const FuriHalI2cBusHandle* handle);
 
 #ifdef __cplusplus
 }

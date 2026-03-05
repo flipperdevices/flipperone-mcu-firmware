@@ -143,6 +143,7 @@ target_link_libraries(${PROJECT_NAME}
     ws2812
     pio_i2c
     i2c_multi
+    pico_i2c_slave
     freertos
     assets
     mlib

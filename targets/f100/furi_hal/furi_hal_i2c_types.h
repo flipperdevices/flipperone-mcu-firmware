@@ -17,6 +17,12 @@ typedef enum {
     FuriHalI2cBusEventDeactivate, /**< Bus deactivation event, called after handle deactivation  */
 } FuriHalI2cBusEvent;
 
+typedef enum {
+    FuriHalI2cBusSlaveEventReceive, /**< Slave write event, called when master wants to write data from slave. */
+    FuriHalI2cBusSlaveEventRequest, /**< Slave read event, called when master wants to read data from slave. */
+    FuriHalI2cBusSlaveEventFinish, /**< Slave finish event, called when master finishes transaction with slave. */
+} FuriHalI2cBusSlaveEvent;
+
 /** FuriHal i2c bus event callback */
 typedef void (*FuriHalI2cBusEventCallback)(FuriHalI2cBus* bus, FuriHalI2cBusEvent event);
 
@@ -35,6 +41,15 @@ typedef enum {
 /** FuriHal i2c handle event callback */
 typedef void (*FuriHalI2cBusHandleEventCallback)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusHandleEvent event);
 
+/** FuriHal i2c bus slave callback */
+typedef void (*FuriHalI2cBusSlaveCallback)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveEvent event, void* context);
+
+/** FuriHal i2c bus slave write callback */
+typedef void (*FuriHalI2cBusSlaveWriteCallback)(const FuriHalI2cBusHandle* handle, uint8_t data);
+
+/** FuriHal i2c bus slave read callback */
+typedef uint8_t (*FuriHalI2cBusSlaveReadCallback)(const FuriHalI2cBusHandle* handle);
+
 /** FuriHal i2c handle */
 struct FuriHalI2cBusHandle {
     FuriHalI2cBus* bus;
@@ -44,9 +59,25 @@ struct FuriHalI2cBusHandle {
 /** FuriHal i2c bus API */
 typedef struct {
     FuriHalI2cBusEventCallback event;
-    FuriHalI2cBusReadCallback read_blocking;
-    FuriHalI2cBusWriteCallback write_blocking;
+    union {
+        struct {
+            FuriHalI2cBusReadCallback read_blocking;
+            FuriHalI2cBusWriteCallback write_blocking;
+        } master;
+        struct {
+            FuriHalI2cBusSlaveWriteCallback write_blocking;
+            FuriHalI2cBusSlaveReadCallback read_blocking;
+            FuriHalI2cBusSlaveCallback callback;
+            void* context;
+        } slave;
+    };
+
 } FuriHalI2cBusAPI;
+
+typedef enum {
+    FuriHalI2cModeMaster,
+    FuriHalI2cModeSlave,
+} FuriHalI2cMode;
 
 /** FuriHal i2c bus */
 struct FuriHalI2cBus {
@@ -55,6 +86,7 @@ struct FuriHalI2cBus {
     const FuriHalI2cBusHandle* current_handle;
     const GpioPin* sda;
     const GpioPin* scl;
+    const FuriHalI2cMode mode;
     FuriMutex* mutex;
     FuriHalI2cBusAPI api;
 };
