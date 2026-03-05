@@ -214,7 +214,7 @@ void furi_hal_i2c_bus_handle_cpu_event(const FuriHalI2cBusHandle* handle, FuriHa
         furi_hal_gpio_init_ex(handle->bus->scl, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
         furi_hal_gpio_set_drive_strength(handle->bus->scl, GpioDriveStrengthMedium);
 
-        i2c_slave_init(i2c0, FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS, &furi_hal_i2c_bus_cpu_slave_handler);
+        i2c_slave_init(handle->bus->data, FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS, &furi_hal_i2c_bus_cpu_slave_handler);
 
     } else if(event == FuriHalI2cBusHandleEventDeactivate) {
         i2c_slave_deinit(handle->bus->data);

@@ -108,7 +108,7 @@ const char* furi_hal_i2c_bus_name(const FuriHalI2cBusHandle* handle) {
 void furi_hal_i2c_slave_set_callback(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveCallback callback, void* context) {
     furi_hal_i2c_check_handle_is_acquired_slave(handle);
     furi_check(handle->bus->api.slave.callback == NULL);
-    //furi_check(callback);
+    furi_check(callback);
     handle->bus->api.slave.callback = callback;
     handle->bus->api.slave.context = context;
 }
