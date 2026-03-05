@@ -37,7 +37,7 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
 
         if(instance->state == I2cSlaveCpuStateIdle) {
             // High byte of memory address
-            instance->mem_address = furi_hal_i2c_slave_read_blocking(handle) << 8;
+            instance->mem_address = (uint16_t)(furi_hal_i2c_slave_read_blocking(handle) << 8);
             instance->state = I2cSlaveCpuStateReceivingAddressHighByte;
         } else if(instance->state == I2cSlaveCpuStateReceivingAddressHighByte) {
             // Low byte of memory address
@@ -46,7 +46,7 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
         } else {
             // Subsequent bytes are data to write to test buffer (for testing)
             uint8_t data = furi_hal_i2c_slave_read_blocking(handle);
-            instance->test_buffer[instance->mem_address % instance->test_buffer_size] = data;
+            instance->test_buffer[instance->mem_address & 0xFF] = data;
             instance->mem_address++;
         }
         break;
@@ -64,7 +64,7 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
             instance->state = I2cSlaveCpuStateReceivTransmitData;
         }
 
-        uint8_t data = instance->test_buffer[instance->mem_address % instance->test_buffer_size];
+        uint8_t data = instance->test_buffer[instance->mem_address & 0xFF];
         furi_hal_i2c_slave_write_blocking(handle, data);
         instance->mem_address++;
 
@@ -93,7 +93,7 @@ int32_t i2c_slave_cpu_srv(void* p) {
     furi_hal_i2c_acquire(&furi_hal_i2c_handle_cpu);
     furi_hal_i2c_slave_set_callback(&furi_hal_i2c_handle_cpu, i2c_slave_cpu_isr, instance);
     instance->state = I2cSlaveCpuStateIdle;
-    instance->mem_address = 0;
+    instance->mem_address = I2C_SLAVE_CPU_DEFAULT_ADDRESS_REGISTER;
 
     // Test buffer
     instance->test_buffer_size = 256;
