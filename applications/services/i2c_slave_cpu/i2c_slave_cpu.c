@@ -37,7 +37,8 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
 
         if(instance->state == I2cSlaveCpuStateIdle) {
             // High byte of memory address
-            instance->mem_address = (uint16_t)(furi_hal_i2c_slave_read_blocking(handle) << 8);
+            instance->mem_address = furi_hal_i2c_slave_read_blocking(handle);
+            instance->mem_address <<= 8;
             instance->state = I2cSlaveCpuStateReceivingAddressHighByte;
         } else if(instance->state == I2cSlaveCpuStateReceivingAddressHighByte) {
             // Low byte of memory address
