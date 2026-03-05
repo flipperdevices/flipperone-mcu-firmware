@@ -199,6 +199,8 @@ FuriHalI2cBus furi_hal_i2c_bus_cpu = {
              {
                  .read_blocking = furi_hal_i2c_bus_slave_read,
                  .write_blocking = furi_hal_i2c_bus_slave_write,
+                 .callback = NULL,
+                 .context = NULL,
              }},
 };
 
