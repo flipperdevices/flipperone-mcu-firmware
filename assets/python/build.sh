@@ -20,4 +20,10 @@ if ! python3 -c "import lz4" &> /dev/null; then
     pip install lz4
 fi
 
-python3 ../../lib/lvgl/lvgl/scripts/LVGLImage.py "$@"
+# install Pillow if not already installed
+if ! python3 -c "import PIL" &> /dev/null; then
+    echo "Installing Pillow..."
+    pip install pillow
+fi
+
+python3 $@
