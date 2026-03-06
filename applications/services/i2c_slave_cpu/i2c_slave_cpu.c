@@ -1,18 +1,19 @@
 #include "i2c_slave_cpu.h"
-#include "core/thread.h"
-#include <furi.h>
 
+#include "furi_hal_i2c_types.h"
+#include <furi.h>
 #include <furi_hal_i2c.h>
 #include <furi_hal_i2c_config.h>
-#include <stdint.h>
 
+
+#define TAG                                    "I2cSlaveCpu"
 #define I2C_SLAVE_CPUTHREAD_FLAG_ISR           0x00000001
 #define I2C_SLAVE_CPU_DEFAULT_ADDRESS_REGISTER 0x00
 
 typedef enum {
     I2cSlaveCpuStateIdle,
     I2cSlaveCpuStateReceivingAddressHighByte,
-    I2cSlaveCpuStateReceivingAddressLowByte,
+    //I2cSlaveCpuStateReceivingAddressLowByte,
     I2cSlaveCpuStateReceivTransmitData,
 } I2cSlaveCpuState;
 
@@ -30,7 +31,6 @@ typedef struct {
 
 void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveEvent event, void* context) {
     I2cSlaveCpu* instance = context;
-
     switch(event) {
     case FuriHalI2cBusSlaveEventReceive:
         // Master is writing data to slave
@@ -70,9 +70,11 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
         instance->mem_address++;
 
         break;
-
-    case FuriHalI2cBusSlaveEventFinish:
-        // Master has finished transaction with slave
+    case FuriHalI2cBusSlaveEventRepeatedStart:
+        // Master has repeated start transaction with slave
+        break;
+    case FuriHalI2cBusSlaveEventStop:
+        // Master has stopped transaction with slave
         instance->state = I2cSlaveCpuStateIdle;
         break;
 
@@ -80,7 +82,7 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
         break;
     }
 
-    //furi_thread_flags_set(instance->thread_id, I2C_SLAVE_CPUTHREAD_FLAG_ISR);
+    furi_thread_flags_set(instance->thread_id, I2C_SLAVE_CPUTHREAD_FLAG_ISR);
 }
 
 int32_t i2c_slave_cpu_srv(void* p) {

@@ -2,10 +2,11 @@
 #include <furi_hal_resources.h>
 #include <hardware/i2c.h>
 #include <drivers/i2c_master_pio/pio_i2c.h>
-#include <pico/i2c_slave.h>
+#include <drivers/i2c_slave/i2c_slave.h>
 
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_100   100000
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400   400000
+#define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_1000   1000000
 #define FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS 0x70
 
 extern FuriHalI2cBus furi_hal_i2c_bus_control;
@@ -165,21 +166,26 @@ static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle) {
     return data;
 }
 
-static void __isr __not_in_flash_func(furi_hal_i2c_bus_cpu_slave_handler)(i2c_inst_t* i2c, i2c_slave_event_t event) {
+static void __isr __not_in_flash_func(furi_hal_i2c_bus_cpu_slave_callback)(i2c_inst_t* i2c, I2cSlaveEvent event) {
     switch(event) {
-    case I2C_SLAVE_RECEIVE: // master has written some data
+    case I2cSlaveEventReceive: // master has written some data
         if(furi_hal_i2c_bus_cpu.api.slave.callback) {
             furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventReceive, furi_hal_i2c_bus_cpu.api.slave.context);
         }
         break;
-    case I2C_SLAVE_REQUEST: // master is reading data
+    case I2cSlaveEventRequest: // master is reading data
         if(furi_hal_i2c_bus_cpu.api.slave.callback) {
             furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventRequest, furi_hal_i2c_bus_cpu.api.slave.context);
         }
         break;
-    case I2C_SLAVE_FINISH: // master has signalled Stop
+    case I2cSlaveEventRepeatedStart: // master has signalled Repeated Start
         if(furi_hal_i2c_bus_cpu.api.slave.callback) {
-            furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventFinish, furi_hal_i2c_bus_cpu.api.slave.context);
+            furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventRepeatedStart, furi_hal_i2c_bus_cpu.api.slave.context);
+        }
+        break;
+    case I2cSlaveEventStop: // master has signalled Stop
+        if(furi_hal_i2c_bus_cpu.api.slave.callback) {
+            furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventStop, furi_hal_i2c_bus_cpu.api.slave.context);
         }
         break;
     default:
@@ -214,7 +220,7 @@ void furi_hal_i2c_bus_handle_cpu_event(const FuriHalI2cBusHandle* handle, FuriHa
         furi_hal_gpio_init_ex(handle->bus->scl, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
         furi_hal_gpio_set_drive_strength(handle->bus->scl, GpioDriveStrengthMedium);
 
-        i2c_slave_init(handle->bus->data, FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS, &furi_hal_i2c_bus_cpu_slave_handler);
+        i2c_slave_init(handle->bus->data, FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS, &furi_hal_i2c_bus_cpu_slave_callback);
 
     } else if(event == FuriHalI2cBusHandleEventDeactivate) {
         i2c_slave_deinit(handle->bus->data);

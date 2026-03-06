@@ -20,7 +20,8 @@ typedef enum {
 typedef enum {
     FuriHalI2cBusSlaveEventReceive, /**< Slave write event, called when master wants to write data from slave. */
     FuriHalI2cBusSlaveEventRequest, /**< Slave read event, called when master wants to read data from slave. */
-    FuriHalI2cBusSlaveEventFinish, /**< Slave finish event, called when master finishes transaction with slave. */
+    FuriHalI2cBusSlaveEventRepeatedStart, /**< Slave repeated start event, called when master sends a repeated start signal. */
+    FuriHalI2cBusSlaveEventStop, /**< Slave stop event, called when master finishes transaction with slave. */
 } FuriHalI2cBusSlaveEvent;
 
 /** FuriHal i2c bus event callback */

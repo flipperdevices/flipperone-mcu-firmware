@@ -68,6 +68,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/bq25792/*.c*"
     "lib/drivers/fusb302/*.c*"
     "lib/drivers/i2c_multi_slave/*.c*"
+    "lib/drivers/i2c_slave/*.c*"
     "lib/tusb/*.c*"
     "applications/*.c"
     "applications/services/*.c"
@@ -143,7 +144,6 @@ target_link_libraries(${PROJECT_NAME}
     ws2812
     pio_i2c
     i2c_multi
-    pico_i2c_slave
     freertos
     assets
     mlib
