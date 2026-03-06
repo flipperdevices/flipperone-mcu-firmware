@@ -278,6 +278,7 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_hal_bsp_linux_reset();
             furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             furi_hal_bsp_linux_start();
+            cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
             break;
         case CpuAppMessageTypeStop:
             furi_hal_bsp_linux_reset();
