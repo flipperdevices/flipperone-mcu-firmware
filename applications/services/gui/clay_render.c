@@ -398,11 +398,19 @@ static void render_image(Clay_BoundingBox* bb, Clay_ImageRenderData* image_data)
     }
 }
 
-static void render_set_scissors(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
-    render_data.scissors_x0 = x0 + display_offset_x;
-    render_data.scissors_y0 = y0 + display_offset_y;
-    render_data.scissors_x1 = x1 + display_offset_x;
-    render_data.scissors_y1 = y1 + display_offset_y;
+static void render_scissor_start(Clay_BoundingBox* bb) {
+    RENDER_DEBUG(TAG, "Scissor start");
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f]", bb->x, bb->y, bb->width, bb->height);
+
+    render_data.scissors_x0 = bb->x;
+    render_data.scissors_y0 = bb->y;
+    render_data.scissors_x1 = bb->x + bb->width;
+    render_data.scissors_y1 = bb->y + bb->height;
+
+    render_data.scissors_x0 += display_offset_x;
+    render_data.scissors_y0 += display_offset_y;
+    render_data.scissors_x1 += display_offset_x;
+    render_data.scissors_y1 += display_offset_y;
 
     // Clamp scissors to buffer dimensions
     if(render_data.scissors_x0 < 0) render_data.scissors_x0 = 0;
@@ -411,15 +419,12 @@ static void render_set_scissors(int32_t x0, int32_t y0, int32_t x1, int32_t y1) 
     if(render_data.scissors_y1 > (int32_t)JD9853_HEIGHT) render_data.scissors_y1 = JD9853_HEIGHT;
 }
 
-static void render_scissor_start(Clay_BoundingBox* bb) {
-    RENDER_DEBUG(TAG, "Scissor start");
-    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f]", bb->x, bb->y, bb->width, bb->height);
-    render_set_scissors(bb->x, bb->y, bb->x + bb->width, bb->y + bb->height);
-}
-
 static void render_scissor_end(void) {
     RENDER_DEBUG(TAG, "Scissor end");
-    render_set_scissors(0, 0, JD9853_WIDTH, JD9853_HEIGHT);
+    render_data.scissors_x0 = 0;
+    render_data.scissors_y0 = 0;
+    render_data.scissors_x1 = JD9853_WIDTH;
+    render_data.scissors_y1 = JD9853_HEIGHT;
 }
 
 void render_do_render(Clay_RenderCommandArray* renderCommands) {

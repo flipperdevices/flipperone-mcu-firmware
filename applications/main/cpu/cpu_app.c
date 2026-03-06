@@ -191,6 +191,8 @@ static bool cpu_app_model_init(CpuAppModel* model, void* context) {
 
 static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
     model->frame.data = context;
+    model->frame.width = JD9853_WIDTH;
+    model->frame.height = JD9853_HEIGHT;
     return true;
 }
 
