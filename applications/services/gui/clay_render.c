@@ -10,12 +10,15 @@
 #define DATA_SIZE    (JD9853_WIDTH * JD9853_HEIGHT)
 
 #ifdef RENDER_DEBUG_ENABLE
-#define RENDER_DEBUG(...) RENDER_DEBUG(__VA_ARGS__)
+#define RENDER_DEBUG(...) FURI_LOG_I(__VA_ARGS__)
 #else
 #define RENDER_DEBUG(...)
 #endif
 
 typedef uint8_t Color;
+
+const int32_t display_offset_x = 1;
+const int32_t display_offset_y = 0;
 
 struct RenderBuffer {
     uint32_t canary_pre;
@@ -52,8 +55,8 @@ static const void* render_get_font_by_id(Font font_id) {
     }
 }
 
-static inline Color render_color(Clay_Color textColor) {
-    return textColor.r;
+static inline Color render_color(Clay_Color color) {
+    return color.r;
 }
 
 static inline Color render_color_darken(Color color, Color tint) {
@@ -63,6 +66,8 @@ static inline Color render_color_darken(Color color, Color tint) {
 }
 
 static inline void render_set_pixel(int32_t x, int32_t y, Color color) {
+    x += display_offset_x;
+    y += display_offset_y;
     if(x < render_data.scissors_x0 || x >= render_data.scissors_x1 || y < render_data.scissors_y0 || y >= render_data.scissors_y1) {
         return;
     }
@@ -70,6 +75,10 @@ static inline void render_set_pixel(int32_t x, int32_t y, Color color) {
 }
 
 static inline void render_draw_hline(int32_t x0, int32_t y, int32_t x1, uint8_t color) {
+    x0 += display_offset_x;
+    x1 += display_offset_x;
+    y += display_offset_y;
+
     if(y < render_data.scissors_y0 || y >= render_data.scissors_y1) return;
     if(x0 < render_data.scissors_x0 && x1 < render_data.scissors_x0) return;
     if(x0 >= render_data.scissors_x1 && x1 >= render_data.scissors_x1) return;
@@ -83,6 +92,10 @@ static inline void render_draw_hline(int32_t x0, int32_t y, int32_t x1, uint8_t 
 }
 
 static inline void render_draw_vline(int32_t x, int32_t y0, int32_t y1, uint8_t color) {
+    x += display_offset_x;
+    y0 += display_offset_y;
+    y1 += display_offset_y;
+
     if(x < render_data.scissors_x0 || x >= render_data.scissors_x1) return;
     if(y0 < render_data.scissors_y0 && y1 < render_data.scissors_y0) return;
     if(y0 >= render_data.scissors_y1 && y1 >= render_data.scissors_y1) return;
@@ -369,7 +382,7 @@ static void render_image(Clay_BoundingBox* bb, Clay_ImageRenderData* image_data)
         image_data->cornerRadius.bottomLeft);
     RENDER_DEBUG(TAG, "    [img w: %lu, h: %lu]", image->width, image->height);
 
-    uint8_t* data = image->data;
+    const uint8_t* data = image->data;
     switch(image->format) {
     case ImageFormatRawGray8: {
         for(uint32_t y = 0; y < MIN(image->height, bb->height); y++) {
@@ -385,13 +398,11 @@ static void render_image(Clay_BoundingBox* bb, Clay_ImageRenderData* image_data)
     }
 }
 
-static void render_scissor_start(Clay_BoundingBox* bb) {
-    RENDER_DEBUG(TAG, "Scissor start");
-    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f]", bb->x, bb->y, bb->width, bb->height);
-    render_data.scissors_x0 = bb->x;
-    render_data.scissors_y0 = bb->y;
-    render_data.scissors_x1 = bb->x + bb->width;
-    render_data.scissors_y1 = bb->y + bb->height;
+static void render_set_scissors(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+    render_data.scissors_x0 = x0 + display_offset_x;
+    render_data.scissors_y0 = y0 + display_offset_y;
+    render_data.scissors_x1 = x1 + display_offset_x;
+    render_data.scissors_y1 = y1 + display_offset_y;
 
     // Clamp scissors to buffer dimensions
     if(render_data.scissors_x0 < 0) render_data.scissors_x0 = 0;
@@ -400,12 +411,15 @@ static void render_scissor_start(Clay_BoundingBox* bb) {
     if(render_data.scissors_y1 > (int32_t)JD9853_HEIGHT) render_data.scissors_y1 = JD9853_HEIGHT;
 }
 
+static void render_scissor_start(Clay_BoundingBox* bb) {
+    RENDER_DEBUG(TAG, "Scissor start");
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f]", bb->x, bb->y, bb->width, bb->height);
+    render_set_scissors(bb->x, bb->y, bb->x + bb->width, bb->y + bb->height);
+}
+
 static void render_scissor_end(void) {
     RENDER_DEBUG(TAG, "Scissor end");
-    render_data.scissors_x0 = 0;
-    render_data.scissors_y0 = 0;
-    render_data.scissors_x1 = JD9853_WIDTH;
-    render_data.scissors_y1 = JD9853_HEIGHT;
+    render_set_scissors(0, 0, JD9853_WIDTH, JD9853_HEIGHT);
 }
 
 void render_do_render(Clay_RenderCommandArray* renderCommands) {
