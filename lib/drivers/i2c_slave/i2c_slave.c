@@ -85,7 +85,8 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_RD_REQ_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS | I2C_IC_INTR_MASK_M_STOP_DET_BITS |
                     I2C_IC_INTR_MASK_M_START_DET_BITS | I2C_IC_INTR_MASK_M_RESTART_DET_BITS;
     // hw->enable = 0;
-    // hw->rx_tl = 1;
+    // hw->rx_tl = 32;
+    // hw->tx_tl = 32;
     // hw->enable = 1;
     // enable interrupt for current core
     uint32_t num = I2C0_IRQ + i2c_index;
