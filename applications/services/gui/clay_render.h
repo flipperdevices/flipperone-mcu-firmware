@@ -1,5 +1,6 @@
 #pragma once
 #include "clay.h"
+#include "image.h"
 
 typedef enum {
     FontBody,
@@ -8,17 +9,6 @@ typedef enum {
 } Font;
 
 typedef struct RenderBuffer RenderBuffer;
-
-typedef enum {
-    ImageFormatRawGray8,
-} ImageFormat;
-
-typedef struct {
-    ImageFormat format;
-    uint32_t width;
-    uint32_t height;
-    void* data;
-} Image;
 
 void render_clear_buffer(uint8_t color);
 

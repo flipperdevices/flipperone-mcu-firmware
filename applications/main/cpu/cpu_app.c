@@ -4,6 +4,7 @@
 #include <gui/clay_helper.h>
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/spi_get_frame/spi_get_frame.h>
+#include <assets.h>
 
 #define TAG "CpuApp"
 
@@ -183,18 +184,15 @@ static void cpu_app_input_menu(CpuApp* instance, size_t selected_index) {
 }
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
-    model->frame = (Image){
-        .format = ImageFormatRawGray8,
-        .width = JD9853_WIDTH,
-        .height = JD9853_HEIGHT,
-        .data = NULL,
-    };
+    model->frame = flipper_one_256x144_test_screen_v002;
     model->menu_visible = true;
     return false;
 }
 
 static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
     model->frame.data = context;
+    model->frame.width = JD9853_WIDTH;
+    model->frame.height = JD9853_HEIGHT;
     return true;
 }
 
@@ -280,6 +278,7 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_hal_bsp_linux_reset();
             furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             furi_hal_bsp_linux_start();
+            cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
             break;
         case CpuAppMessageTypeStop:
             furi_hal_bsp_linux_reset();
