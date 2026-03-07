@@ -1,10 +1,12 @@
 #include "i2c_slave.h"
 #include <hardware/irq.h>
 #include <furi_hal.h>
+#include <stdbool.h>
 
 typedef struct {
     I2cSlaveCallback callback;
     bool transfer_in_progress;
+    bool start_detected;
 } I2cSlave;
 
 static I2cSlave i2c_slaves[2];
@@ -19,17 +21,31 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
     if(intr_stat == 0) {
         return;
     }
+    do{
     bool do_finish_transfer = false;
-    if(intr_stat & I2C_IC_INTR_STAT_R_TX_ABRT_BITS) {
+    if(intr_stat & I2C_IC_INTR_STAT_R_TX_ABRT_BITS) {//
         hw->clr_tx_abrt;
         do_finish_transfer = true;
     }
     if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
         hw->clr_start_det;
+        if(!slave->start_detected) slave->callback(i2c, I2cSlaveEventStart);
+        slave->start_detected = true;
+        
+       //do_finish_transfer = true;
+        // if(slave->transfer_in_progress) {
+        //     slave->callback(i2c, I2cSlaveEventRepeatedStart);
+        // }
+    }
+    if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
+        hw->clr_restart_det;
         if(slave->transfer_in_progress) {
             slave->callback(i2c, I2cSlaveEventRepeatedStart);
         }
+        slave->start_detected = false;
     }
+
+
     if(intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) {
         hw->clr_stop_det;
         do_finish_transfer = true;
@@ -37,16 +53,19 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
     if(do_finish_transfer && slave->transfer_in_progress) {
         slave->callback(i2c, I2cSlaveEventStop);
         slave->transfer_in_progress = false;
+        slave->start_detected = false;
     }
     if(intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
         slave->transfer_in_progress = true;
-        slave->callback(i2c, I2cSlaveEventReceive);
+        slave->callback(i2c, I2cSlaveEventReceive); //
     }
     if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
         hw->clr_rd_req;
         slave->transfer_in_progress = true;
-        slave->callback(i2c, I2cSlaveEventRequest);
+        slave->callback(i2c, I2cSlaveEventRequest);//
     }
+    intr_stat = hw->intr_stat;
+    } while(intr_stat != 0);
 }
 
 void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback) {
@@ -64,11 +83,14 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     i2c_hw_t* hw = i2c_get_hw(i2c);
     // unmask necessary interrupts
     hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_RD_REQ_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS | I2C_IC_INTR_MASK_M_STOP_DET_BITS |
-                    I2C_IC_INTR_MASK_M_START_DET_BITS;
-
+                    I2C_IC_INTR_MASK_M_START_DET_BITS | I2C_IC_INTR_MASK_M_RESTART_DET_BITS;
+    // hw->enable = 0;
+    // hw->rx_tl = 1;
+    // hw->enable = 1;
     // enable interrupt for current core
     uint32_t num = I2C0_IRQ + i2c_index;
     irq_set_exclusive_handler(num, i2c_slave_irq_callback);
+    //irq_set_priority(num, PICO_HIGHEST_IRQ_PRIORITY);
     irq_set_enabled(num, true);
 }
 

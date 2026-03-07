@@ -6,7 +6,7 @@
 
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_100   100000
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400   400000
-#define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_1000   1000000
+#define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_1000  1000000
 #define FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS 0x70
 
 extern FuriHalI2cBus furi_hal_i2c_bus_control;
@@ -168,6 +168,11 @@ static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle) {
 
 static void __isr __not_in_flash_func(furi_hal_i2c_bus_cpu_slave_callback)(i2c_inst_t* i2c, I2cSlaveEvent event) {
     switch(event) {
+    case I2cSlaveEventStart: // master has sent a Start signal
+        if(furi_hal_i2c_bus_cpu.api.slave.callback) {
+            furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventStart, furi_hal_i2c_bus_cpu.api.slave.context);
+        }
+        break;
     case I2cSlaveEventReceive: // master has written some data
         if(furi_hal_i2c_bus_cpu.api.slave.callback) {
             furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventReceive, furi_hal_i2c_bus_cpu.api.slave.context);

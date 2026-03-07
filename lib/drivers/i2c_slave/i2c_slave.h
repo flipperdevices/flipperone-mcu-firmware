@@ -11,6 +11,7 @@ extern "C" {
  * \ingroup pico_i2c_slave
  */
 typedef enum {
+    I2cSlaveEventStart, ///< Master has sent a Start signal. Slave may prepare for the next transfer.
     I2cSlaveEventReceive, ///< Data from master is available for reading. Slave must read from Rx FIFO.
     I2cSlaveEventRequest, ///< Master is requesting data. Slave must write into Tx FIFO.
     I2cSlaveEventRepeatedStart, ///< Master has sent a Restart signal. Slave may prepare for the next transfer.
