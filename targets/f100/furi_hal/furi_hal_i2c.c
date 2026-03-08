@@ -113,12 +113,12 @@ void furi_hal_i2c_slave_set_callback(const FuriHalI2cBusHandle* handle, FuriHalI
     handle->bus->api.slave.context = context;
 }
 
-void furi_hal_i2c_slave_write_blocking(const FuriHalI2cBusHandle* handle, uint8_t data) {
+uint8_t furi_hal_i2c_slave_write_blocking(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
     furi_hal_i2c_check_handle_is_acquired_slave(handle);
-    handle->bus->api.slave.write_blocking(handle, data);
+    return handle->bus->api.slave.write_blocking(handle, data, size);
 }
 
-uint8_t furi_hal_i2c_slave_read_blocking(const FuriHalI2cBusHandle* handle) {
+uint8_t furi_hal_i2c_slave_read_blocking(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
     furi_hal_i2c_check_handle_is_acquired_slave(handle);
-    return handle->bus->api.slave.read_blocking(handle);
+    return handle->bus->api.slave.read_blocking(handle, data, size);
 }

@@ -156,14 +156,30 @@ void furi_hal_i2c_deinit_cpu(void) {
     furi_hal_i2c_bus_cpu.api.event(&furi_hal_i2c_bus_cpu, FuriHalI2cBusEventDeinit);
 }
 
-static void furi_hal_i2c_bus_slave_write(const FuriHalI2cBusHandle* handle, uint8_t data) {
-    i2c_write_byte_raw(handle->bus->data, data);
+static uint8_t furi_hal_i2c_bus_slave_write(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
+    furi_assert(handle);
+    furi_assert(data);
+    // max size write 16 bytes.
+    uint8_t len = 0;
+    i2c_inst_t* i2c = handle->bus->data;
+    while(i2c_get_write_available(i2c) && len < size) {
+        i2c_get_hw(i2c)->data_cmd = *data++;
+        len++;
+    }
+    return len;
 }
 
-static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle) {
-    uint8_t data;
-    data = i2c_read_byte_raw(handle->bus->data);
-    return data;
+static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
+    furi_assert(handle);
+    furi_assert(data);
+    // max size read 16 bytes.
+    uint8_t len = 0;
+    i2c_inst_t* i2c = handle->bus->data;
+    while(i2c_get_read_available(i2c) && len < size) {
+        *data++ = (uint8_t)i2c_get_hw(i2c)->data_cmd;
+        len++;
+    }
+    return len;
 }
 
 static void __isr __not_in_flash_func(furi_hal_i2c_bus_cpu_slave_callback)(i2c_inst_t* i2c, I2cSlaveEvent event) {

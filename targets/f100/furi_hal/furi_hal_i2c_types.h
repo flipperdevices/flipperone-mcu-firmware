@@ -47,10 +47,10 @@ typedef void (*FuriHalI2cBusHandleEventCallback)(const FuriHalI2cBusHandle* hand
 typedef void (*FuriHalI2cBusSlaveCallback)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveEvent event, void* context);
 
 /** FuriHal i2c bus slave write callback */
-typedef void (*FuriHalI2cBusSlaveWriteCallback)(const FuriHalI2cBusHandle* handle, uint8_t data);
+typedef uint8_t (*FuriHalI2cBusSlaveWriteCallback)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
 
 /** FuriHal i2c bus slave read callback */
-typedef uint8_t (*FuriHalI2cBusSlaveReadCallback)(const FuriHalI2cBusHandle* handle);
+typedef uint8_t (*FuriHalI2cBusSlaveReadCallback)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
 
 /** FuriHal i2c handle */
 struct FuriHalI2cBusHandle {

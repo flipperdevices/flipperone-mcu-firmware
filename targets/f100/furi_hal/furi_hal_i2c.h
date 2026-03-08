@@ -1,7 +1,6 @@
 #pragma once
 
 #include <furi_hal_i2c_types.h>
-#include <pico/error.h>
 
 #define FURI_HAL_I2C_TIMEOUT_US 1000 * 1000 // 1 second
 
@@ -36,8 +35,8 @@ int furi_hal_i2c_master_trx_blocking(
 const char* furi_hal_i2c_bus_name(const FuriHalI2cBusHandle* handle);
 
 void furi_hal_i2c_slave_set_callback(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveCallback callback, void* context);
-void furi_hal_i2c_slave_write_blocking(const FuriHalI2cBusHandle* handle, uint8_t data);
-uint8_t furi_hal_i2c_slave_read_blocking(const FuriHalI2cBusHandle* handle);
+uint8_t furi_hal_i2c_slave_write_blocking(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
+uint8_t furi_hal_i2c_slave_read_blocking(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
 
 #ifdef __cplusplus
 }
