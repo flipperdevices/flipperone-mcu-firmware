@@ -33,10 +33,7 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
     }
     if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
         hw->clr_restart_det;
-        if(slave->transfer_in_progress) {
-            slave->callback(i2c, I2cSlaveEventRepeatedStart);
-        }
-        slave->start_detected = false;
+        slave->callback(i2c, I2cSlaveEventRepeatedStart);
     }
     if(intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) {
         hw->clr_stop_det;
@@ -76,6 +73,9 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_RD_REQ_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS | I2C_IC_INTR_MASK_M_STOP_DET_BITS |
                     I2C_IC_INTR_MASK_M_START_DET_BITS | I2C_IC_INTR_MASK_M_RESTART_DET_BITS;
 
+    i2c->hw->enable = 0;
+    i2c->hw->rx_tl = 16;
+    i2c->hw->enable = 1;
     // enable interrupt for current core
     uint32_t num = I2C0_IRQ + i2c_index;
     irq_set_exclusive_handler(num, i2c_slave_irq_callback);

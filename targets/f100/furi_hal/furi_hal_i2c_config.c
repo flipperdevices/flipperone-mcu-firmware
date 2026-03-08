@@ -233,7 +233,7 @@ FuriHalI2cBus furi_hal_i2c_bus_cpu = {
 
 void furi_hal_i2c_bus_handle_cpu_event(const FuriHalI2cBusHandle* handle, FuriHalI2cBusHandleEvent event) {
     if(event == FuriHalI2cBusHandleEventActivate) {
-        i2c_init(handle->bus->data, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400);
+        i2c_init(handle->bus->data, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_1000);
 
         furi_hal_gpio_init_ex(handle->bus->sda, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
         furi_hal_gpio_set_drive_strength(handle->bus->sda, GpioDriveStrengthMedium);

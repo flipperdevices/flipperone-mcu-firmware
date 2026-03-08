@@ -7,7 +7,6 @@
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
 
-
 #define TAG                                    "I2cSlaveCpu"
 #define I2C_SLAVE_CPU_THREAD_FLAG_ISR          0x00000001
 #define I2C_SLAVE_CPU_DEFAULT_ADDRESS_REGISTER 0x00
@@ -17,6 +16,7 @@ typedef enum {
     I2cSlaveCpuStateStart,
     I2cSlaveCpuStateAddressSet,
     I2cSlaveCpuStateAddressNoSet,
+    I2cSlaveCpuStateDataTransmitted,
 } I2cSlaveCpuState;
 
 /** Input pin state */
@@ -78,7 +78,9 @@ static inline void i2c_slave_cpu_data_transmit(const FuriHalI2cBusHandle* handle
     do {
         uint8_t data = instance->test_buffer[instance->mem_address & 0xFF];
         len = furi_hal_i2c_slave_write_blocking(handle, &data, 1);
-        instance->mem_address++;
+        if(len) {
+            instance->mem_address++;
+        }
     } while(len);
 }
 
@@ -104,11 +106,30 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
         break;
 
     case FuriHalI2cBusSlaveEventReceive:
-        // Nothing
+        if(instance->state == I2cSlaveCpuStateStart) {
+#ifdef I2C_SLAVE_CPU_DEBUG
+            furi_hal_gpio_write(&gpio_m40, true);
+#endif
+            i2c_slave_cpu_is_address_received(handle, context);
+#ifdef I2C_SLAVE_CPU_DEBUG
+            wait(10);
+            furi_hal_gpio_write(&gpio_m40, false);
+#endif
+        }
+        if(instance->state == I2cSlaveCpuStateAddressSet) {
+#ifdef I2C_SLAVE_CPU_DEBUG
+            furi_hal_gpio_write(&gpio_m41, true);
+#endif
+            i2c_slave_cpu_data_received(handle, context);
+#ifdef I2C_SLAVE_CPU_DEBUG
+            furi_hal_gpio_write(&gpio_m41, false);
+#endif
+        }
         break;
 
     case FuriHalI2cBusSlaveEventRequest:
         // Master is requesting data from slave
+        instance->state = I2cSlaveCpuStateDataTransmitted;
 #ifdef I2C_SLAVE_CPU_DEBUG
         furi_hal_gpio_write(&gpio_m41, true);
 #endif
@@ -127,11 +148,12 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
         wait(30);
         furi_hal_gpio_write(&gpio_m41, false);
 #endif
-        if(instance->state == I2cSlaveCpuStateStart) {
+        if(instance->state == I2cSlaveCpuStateStart || instance->state == I2cSlaveCpuStateDataTransmitted) {
 #ifdef I2C_SLAVE_CPU_DEBUG
             furi_hal_gpio_write(&gpio_m40, true);
 #endif
             i2c_slave_cpu_is_address_received(handle, context);
+
 #ifdef I2C_SLAVE_CPU_DEBUG
             wait(10);
             furi_hal_gpio_write(&gpio_m40, false);
@@ -162,13 +184,18 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
             furi_hal_gpio_write(&gpio_m40, true);
 #endif
             i2c_slave_cpu_is_address_received(handle, context);
+
 #ifdef I2C_SLAVE_CPU_DEBUG
             wait(10);
             furi_hal_gpio_write(&gpio_m40, false);
-
+#endif
+        }
+        if(instance->state == I2cSlaveCpuStateAddressSet) {
+#ifdef I2C_SLAVE_CPU_DEBUG
             furi_hal_gpio_write(&gpio_m41, true);
 #endif
             i2c_slave_cpu_data_received(handle, context);
+
 #ifdef I2C_SLAVE_CPU_DEBUG
             furi_hal_gpio_write(&gpio_m41, false);
 #endif
