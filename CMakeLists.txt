@@ -6,6 +6,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(TARGET_HARDWARE "f100" CACHE STRING "Target hardware")
+
 # Initialise pico_sdk from installed location
 # (note this can come from environment, CMake cache etc)
 
@@ -49,30 +51,30 @@ add_compile_options(-Wno-unknown-pragmas)
 
 # Add executable. Default name is the project name, version 0.1
 file(GLOB_RECURSE SOURCES
-    "lib/furi/*.c*" 
-    "lib/furi/version/*.c*" 
-    "lib/furi/core/*.c*"
-    "lib/toolbox/*.c*"
-    "app/*.c"
-    "app/theme/*.c"
-    "app/fs/*.c"
-    "targets/f100/furi_hal/*.c*"
-    "targets/f100/furi_bsp/*.c*"
-    "lib/drivers/display/*.c*"  
-    "lib/drivers/tps62868x/*.c*"
-    "lib/drivers/tca6416a/*.c*"
-    "lib/drivers/drv2605l/*.c*"
-    "lib/drivers/iqs7211e/*.c*"
-    "lib/drivers/spi_get_frame/*.c*"
-    "lib/drivers/ina219/*.c*"
-    "lib/drivers/bq25792/*.c*"
-    "lib/drivers/fusb302/*.c*"
-    "lib/drivers/i2c_multi_slave/*.c*"
-    "lib/tusb/*.c*"
-    "applications/*.c"
-    "applications/services/*.c"
-    "applications/main/*.c"
-    "targets/f100/src/*.c*" 
+    lib/furi/*.c*
+    lib/furi/version/*.c*
+    lib/furi/core/*.c*
+    lib/toolbox/*.c*
+    app/*.c
+    app/theme/*.c
+    app/fs/*.c
+    targets/${TARGET_HARDWARE}/furi_hal/*.c*
+    targets/${TARGET_HARDWARE}/furi_bsp/*.c*
+    lib/drivers/display/*.c*
+    lib/drivers/tps62868x/*.c*
+    lib/drivers/tca6416a/*.c*
+    lib/drivers/drv2605l/*.c*
+    lib/drivers/iqs7211e/*.c*
+    lib/drivers/spi_get_frame/*.c*
+    lib/drivers/ina219/*.c*
+    lib/drivers/bq25792/*.c*
+    lib/drivers/fusb302/*.c*
+    lib/drivers/i2c_multi_slave/*.c*
+    lib/tusb/*.c*
+    applications/*.c
+    applications/services/*.c
+    applications/main/*.c
+    targets/${TARGET_HARDWARE}/src/*.c*
 )
 
 add_executable(${PROJECT_NAME} 
@@ -109,10 +111,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_hal
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_bsp
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/config
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/src
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_hal
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_bsp
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/config
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib

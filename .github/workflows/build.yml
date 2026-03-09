@@ -57,6 +57,19 @@ jobs:
         path: firmware
         submodules: recursive
 
+    - name: 'Get commit details'
+      id: names
+      run: |
+        if [[ ${{ github.event_name }} == 'pull_request' ]]; then
+          TYPE="pull"
+        elif [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
+          TYPE="tag"
+        else
+          TYPE="other"
+        fi
+        python3 firmware/scripts/get_env.py "--event_file=${{ github.event_path }}" "--type=$TYPE"
+        echo "event_type=$TYPE" >> $GITHUB_OUTPUT
+
     - name: Checkout pico-sdk/${{ env.PICO_SDK_VERSION }}
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/checkout@v6
@@ -105,3 +118,23 @@ jobs:
           arm-none-eabi-gcc
           pico-sdk
         key: ${{ steps.cache.outputs.cache-primary-key }}
+
+    - name: 'Make artifacts directory'
+      if: ${{ !github.event.pull_request.head.repo.fork }}
+      run: |
+        rm -rf artifacts
+        mkdir artifacts
+
+    - name: 'Move upload files'
+      if: ${{ !github.event.pull_request.head.repo.fork }}
+      run: |
+        mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipperone-mcu-firmware-f100-full-${SUFFIX}.uf2
+
+    - name: 'Upload artifacts to update server'
+      if: ${{ !github.event.pull_request.head.repo.fork }}
+      run: |
+        FILES=$(for CUR in $(ls artifacts/); do echo "-F files=@artifacts/$CUR"; done)
+        curl --fail -L -H "Token: ${{ secrets.INDEXER_TOKEN }}" \
+            -F "branch=${BRANCH_NAME}" \
+            ${FILES[@]} \
+            "${{ secrets.INDEXER_URL }}"/flipperone-mcu-firmware/uploadfiles
