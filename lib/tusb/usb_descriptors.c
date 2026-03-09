@@ -36,8 +36,8 @@
 
 // Todo: replace with your own VID
 #define USB_VID 0x37c1
-#define USB_PID 0x1337
-#define USB_BCD 0x0200
+#define USB_PID 0xF101
+#define USB_BCD 0x0100
 
 //--------------------------------------------------------------------+
 // Device Descriptors
@@ -211,15 +211,16 @@ enum {
     STRID_SERIAL,
 };
 
-// Must be less than 16 characters to fit in 32 bytes
-static char usbd_serial_str[] = "_one_xxxxxxxx_";
+#define PRODUCT_NAME "Flipper One MCU Debug"
+static char usbd_product_str[] = PRODUCT_NAME " 00112233445566778899";
+static const char* usbd_product_sn_pointer = usbd_product_str + sizeof(PRODUCT_NAME);
 
 // array of pointer to string descriptors
 static char const* usbd_desc_str[] = {
     (const char[]){0x09, 0x04}, // 0: is supported language is English (0x0409)
-    "Flipper Devices Inc.", // 1: Manufacturer
-    "Flipper One", // 2: Product
-    usbd_serial_str, // 3: Serials will use unique ID if possible
+    "Flipper FZCO", // 1: Manufacturer
+    usbd_product_str, // 2: Product
+    "flip_one_mcu", // 3: Serials will use unique ID if possible
     "CDC", // 4: CDC Interface
 };
 
@@ -238,32 +239,17 @@ static inline size_t _board_usb_get_serial(uint16_t desc_str1[], size_t max_char
 
 const uint16_t* tud_descriptor_string_cb(uint8_t index, __unused uint16_t langid) {
 #ifndef USBD_DESC_STR_MAX
-#define USBD_DESC_STR_MAX (32)
+#define USBD_DESC_STR_MAX (64)
 #elif USBD_DESC_STR_MAX > 127
 #error USBD_DESC_STR_MAX too high (max is 127).
 #elif USBD_DESC_STR_MAX < 17
 #error USBD_DESC_STR_MAX too low (min is 17).
 #endif
     static uint16_t desc_str[USBD_DESC_STR_MAX];
-    const size_t serial_start = 5;
 
     // Assign the SN using the unique flash id
-    if(usbd_serial_str[serial_start] == 'x') {
-        pico_unique_board_id_t id;
-        pico_get_unique_board_id(&id);
-
-        uint8_t id_xored[PICO_UNIQUE_BOARD_ID_SIZE_BYTES / 2];
-        for(size_t i = 0; i < sizeof(id_xored); i++) {
-            id_xored[i] = id.id[i] ^ id.id[i + PICO_UNIQUE_BOARD_ID_SIZE_BYTES / 2];
-        }
-
-        static_assert(sizeof(id_xored) == 4, "id_xored must be 4 bytes to fit in 8 hex characters");
-        for(size_t i = 0; i < sizeof(id_xored); i++) {
-            uint8_t nibble_hi = (id_xored[i] >> 4) & 0x0F;
-            uint8_t nibble_lo = id_xored[i] & 0x0F;
-            usbd_serial_str[serial_start + i * 2] = nibble_hi < 10 ? ('0' + nibble_hi) : ('a' + nibble_hi - 10);
-            usbd_serial_str[serial_start + i * 2 + 1] = nibble_lo < 10 ? ('0' + nibble_lo) : ('a' + nibble_lo - 10);
-        }
+    if(usbd_product_str[sizeof(PRODUCT_NAME)] == '0') {
+        pico_get_unique_board_id_string(usbd_product_sn_pointer, sizeof(usbd_product_str) - sizeof(PRODUCT_NAME) - 1);
     }
 
     uint8_t len;
