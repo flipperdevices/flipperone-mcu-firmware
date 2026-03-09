@@ -128,7 +128,7 @@ jobs:
     - name: 'Move upload files'
       if: ${{ !github.event.pull_request.head.repo.fork }}
       run: |
-        mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipperone-mcu-firmware-f100-full-${SUFFIX}.uf2
+        mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipper-one-mcu-firmware-f100-full-${SUFFIX}.uf2
 
     - name: 'Upload artifacts to update server'
       if: ${{ !github.event.pull_request.head.repo.fork }}
@@ -137,4 +137,4 @@ jobs:
         curl --fail -L -H "Token: ${{ secrets.INDEXER_TOKEN }}" \
             -F "branch=${BRANCH_NAME}" \
             ${FILES[@]} \
-            "${{ secrets.INDEXER_URL }}"/flipperone-mcu-firmware/uploadfiles
+            "${{ secrets.INDEXER_URL }}"/flipper-one-mcu/uploadfiles
