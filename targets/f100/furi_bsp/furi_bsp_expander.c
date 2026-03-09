@@ -55,7 +55,7 @@ static void furi_bsp_set_callback(ExpanderCallbackStorage* storage, FuriCallback
 static void furi_bsp_expander_control_init(void) {
     furi_check(expander_control == NULL);
     expander_control = malloc(sizeof(ExpanderControl));
-    expander_control->handle = tca6416a_init(&furi_hal_i2c_handle_internal, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
+    expander_control->handle = tca6416a_init(&furi_hal_i2c_handle_control, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
     tca6416a_write_mode(expander_control->handle, InputKeyMask);
 }
 
@@ -132,7 +132,7 @@ static int32_t furi_bsp_expander_callback_thread(void* context) {
 static void furi_bsp_expander_main_init(void) {
     furi_check(expander_main == NULL);
     expander_main = malloc(sizeof(ExpanderMain));
-    expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
+    expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
 
     if(expander_main->handle == NULL) {
         FURI_LOG_E(TAG, "Failed to initialize expander on Main PCB");
@@ -161,7 +161,7 @@ void furi_bsp_main_reset(void) {
     furi_hal_gpio_write_open_drain(&gpio_main_board_reset, true);
     furi_delay_ms(10);
 
-    tca6416a_init(&furi_hal_i2c_handle_external, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
+    tca6416a_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
     tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
     expander_main->control_state = FuriBspControlExpanderMainMcu;
     // Todo: Errata lay the I2C line

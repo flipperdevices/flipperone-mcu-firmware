@@ -6,13 +6,11 @@
 extern "C" {
 #endif
 
-extern FuriHalI2cBus furi_hal_i2c_bus_internal;
+extern const FuriHalI2cBusHandle furi_hal_i2c_handle_control;
 
-extern FuriHalI2cBus furi_hal_i2c_bus_external;
+extern const FuriHalI2cBusHandle furi_hal_i2c_handle_main;
 
-extern const FuriHalI2cBusHandle furi_hal_i2c_handle_internal;
-
-extern const FuriHalI2cBusHandle furi_hal_i2c_handle_external;
+extern const FuriHalI2cBusHandle furi_hal_i2c_handle_cpu;
 
 #ifdef __cplusplus
 }

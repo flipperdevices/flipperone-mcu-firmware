@@ -51,30 +51,31 @@ add_compile_options(-Wno-unknown-pragmas)
 
 # Add executable. Default name is the project name, version 0.1
 file(GLOB_RECURSE SOURCES
-    lib/furi/*.c*
-    lib/furi/version/*.c*
-    lib/furi/core/*.c*
-    lib/toolbox/*.c*
-    app/*.c
-    app/theme/*.c
-    app/fs/*.c
-    targets/${TARGET_HARDWARE}/furi_hal/*.c*
-    targets/${TARGET_HARDWARE}/furi_bsp/*.c*
-    lib/drivers/display/*.c*
-    lib/drivers/tps62868x/*.c*
-    lib/drivers/tca6416a/*.c*
-    lib/drivers/drv2605l/*.c*
-    lib/drivers/iqs7211e/*.c*
-    lib/drivers/spi_get_frame/*.c*
-    lib/drivers/ina219/*.c*
-    lib/drivers/bq25792/*.c*
-    lib/drivers/fusb302/*.c*
-    lib/drivers/i2c_multi_slave/*.c*
-    lib/tusb/*.c*
-    applications/*.c
-    applications/services/*.c
-    applications/main/*.c
-    targets/${TARGET_HARDWARE}/src/*.c*
+    "lib/furi/*.c*" 
+    "lib/furi/version/*.c*" 
+    "lib/furi/core/*.c*"
+    "lib/toolbox/*.c*"
+    "app/*.c"
+    "app/theme/*.c"
+    "app/fs/*.c"
+    "targets/${TARGET_HARDWARE}/furi_hal/*.c*"
+    "targets/${TARGET_HARDWARE}/furi_bsp/*.c*"
+    "lib/drivers/display/*.c*"  
+    "lib/drivers/tps62868x/*.c*"
+    "lib/drivers/tca6416a/*.c*"
+    "lib/drivers/drv2605l/*.c*"
+    "lib/drivers/iqs7211e/*.c*"
+    "lib/drivers/spi_get_frame/*.c*"
+    "lib/drivers/ina219/*.c*"
+    "lib/drivers/bq25792/*.c*"
+    "lib/drivers/fusb302/*.c*"
+    "lib/drivers/i2c_multi_slave/*.c*"
+    "lib/drivers/i2c_slave/*.c*"
+    "lib/tusb/*.c*"
+    "applications/*.c"
+    "applications/services/*.c"
+    "applications/main/*.c"
+    "targets/${TARGET_HARDWARE}/src/*.c*" 
 )
 
 add_executable(${PROJECT_NAME} 
@@ -120,12 +121,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
 )
 
-add_subdirectory(lib/mlib)
-add_subdirectory(lib/drivers/ws2812)
-add_subdirectory(lib/drivers/i2c_multi_slave)
-add_subdirectory(lib/freertos)
-add_subdirectory(lib/pico-kvstore)
-add_subdirectory(assets)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/mlib)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/ws2812)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_multi_slave)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
 
 # Add the standard library to the build
 target_link_libraries(${PROJECT_NAME}
@@ -142,6 +144,7 @@ target_link_libraries(${PROJECT_NAME}
     pico_unique_id
     tinyusb_device
     ws2812
+    pio_i2c
     i2c_multi
     freertos
     assets

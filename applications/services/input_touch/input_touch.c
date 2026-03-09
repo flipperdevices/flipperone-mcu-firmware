@@ -142,7 +142,7 @@ int32_t input_touch_srv(void* p) {
 
     instance->thread_id = furi_thread_get_current_id();
     instance->event_pubsub = furi_pubsub_alloc();
-    instance->iqs7211e = iqs7211e_init(&furi_hal_i2c_handle_internal, &gpio_touchpad_rdy, IQS7211E_ADDRESS);
+    instance->iqs7211e = iqs7211e_init(&furi_hal_i2c_handle_control, &gpio_touchpad_rdy, IQS7211E_ADDRESS);
 
     furi_record_create(RECORD_INPUT_TOUCH_EVENTS, instance->event_pubsub);
 
