@@ -134,6 +134,7 @@ jobs:
       if: ${{ !github.event.pull_request.head.repo.fork }}
       run: |
         FILES=$(for CUR in $(ls artifacts/); do echo "-F files=@artifacts/$CUR"; done)
+        echo "Uploading files: $FILES"
         curl --fail -L -H "Token: ${{ secrets.INDEXER_TOKEN }}" \
             -F "branch=${BRANCH_NAME}" \
             ${FILES[@]} \
