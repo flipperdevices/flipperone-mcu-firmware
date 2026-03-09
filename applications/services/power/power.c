@@ -1,6 +1,6 @@
 #include "power.h"
 
-#include "furi_bsp_expander.h"
+#include <furi_bsp_expander.h>
 #include <furi.h>
 #include <api_lock.h>
 #include <furi_hal_i2c_config.h>

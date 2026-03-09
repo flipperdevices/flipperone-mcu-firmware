@@ -1,6 +1,5 @@
 #pragma once
 #include <furi.h>
-#include "stdbool.h"
 #include <hardware/gpio.h>
 
 #ifdef __cplusplus

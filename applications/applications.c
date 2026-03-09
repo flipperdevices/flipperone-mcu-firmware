@@ -8,6 +8,7 @@ extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
 extern int32_t uart_echo_app(void* p);
 extern int32_t input_touch_srv(void* p);
+extern int32_t i2c_slave_cpu_srv(void* p);
 extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
 extern int32_t led_srv(void* p);
@@ -68,6 +69,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .name = "InputTouchSrv",
         .appid = "input_touch_srv",
         .stack_size = 768,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = i2c_slave_cpu_srv,
+        .name = "I2cSlaveCpuSrv",
+        .appid = "i2c_slave_cpu_srv",
+        .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     // {
