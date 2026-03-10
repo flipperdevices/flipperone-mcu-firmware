@@ -213,7 +213,7 @@ enum {
 
 #define PRODUCT_NAME "Flipper One MCU Debug"
 static char usbd_product_str[] = PRODUCT_NAME " 00112233445566778899";
-static const char* usbd_product_sn_pointer = usbd_product_str + sizeof(PRODUCT_NAME);
+static char* usbd_product_sn_pointer = usbd_product_str + sizeof(PRODUCT_NAME);
 
 // array of pointer to string descriptors
 static char const* usbd_desc_str[] = {
