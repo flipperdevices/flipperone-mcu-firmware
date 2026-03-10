@@ -156,5 +156,5 @@ jobs:
         issue-number: ${{ github.event.pull_request.number }}
         body: |
           **Compiled firmware for commit `${{steps.names.outputs.commit_sha}}`:**
-          - [📥 DFU file](https://update.flipperzero.one/builds/flipper-one-mcu/${{steps.names.outputs.branch_name}}/flipper-one-mcu-f100-firmware-${{steps.names.outputs.suffix}}.uf2)
+          - [🍓 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{steps.names.outputs.branch_name}}/flipper-one-mcu-f100-firmware-${{steps.names.outputs.suffix}}.uf2)
         edit-mode: replace
