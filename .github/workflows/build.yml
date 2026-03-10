@@ -128,13 +128,12 @@ jobs:
     - name: 'Move upload files'
       if: ${{ !github.event.pull_request.head.repo.fork }}
       run: |
-        mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipper-one-mcu-firmware-f100-full-${SUFFIX}.uf2
+        mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipper-one-mcu-f100-firmware-${SUFFIX}.uf2
 
     - name: 'Upload artifacts to update server'
       if: ${{ !github.event.pull_request.head.repo.fork }}
       run: |
         FILES=$(for CUR in $(ls artifacts/); do echo "-F files=@artifacts/$CUR"; done)
-        echo "Uploading files: $FILES"
         curl --fail -L -H "Token: ${{ secrets.INDEXER_TOKEN }}" \
             -F "branch=${BRANCH_NAME}" \
             ${FILES[@]} \
