@@ -122,3 +122,8 @@ uint8_t furi_hal_i2c_slave_read_blocking(const FuriHalI2cBusHandle* handle, uint
     furi_hal_i2c_check_handle_is_acquired_slave(handle);
     return handle->bus->api.slave.read_blocking(handle, data, size);
 }
+
+void furi_hal_i2c_slave_bus_reset(const FuriHalI2cBusHandle* handle) {
+    furi_hal_i2c_check_handle_is_acquired_slave(handle);
+    handle->bus->api.slave.bus_reset(handle);
+}

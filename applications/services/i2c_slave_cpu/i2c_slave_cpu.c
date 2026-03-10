@@ -10,6 +10,7 @@
 #define TAG                                    "I2cSlaveCpu"
 #define I2C_SLAVE_CPU_THREAD_FLAG_ISR          0x00000001
 #define I2C_SLAVE_CPU_DEFAULT_ADDRESS_REGISTER 0x00
+#define I2C_SLAVE_CPU_TIMEOUT_MS               700
 
 typedef enum {
     I2cSlaveCpuStateIdle,
@@ -21,8 +22,10 @@ typedef enum {
 
 /** Input pin state */
 typedef struct {
+    const FuriHalI2cBusHandle* bus_handle;
     FuriPubSub* event_pubsub;
     FuriThreadId thread_id;
+    alarm_id_t timeout_alarm;
 
     I2cSlaveCpuState state;
     uint16_t mem_address;
@@ -38,6 +41,29 @@ inline void wait(volatile uint32_t count) {
     }
 }
 #endif
+
+static int64_t __isr __not_in_flash_func(i2c_slave_cpu_timeout_callback)(alarm_id_t id, __unused void* user_data) {
+    UNUSED(id);
+    I2cSlaveCpu* instance = user_data;
+
+    instance->state = I2cSlaveCpuStateIdle;
+    furi_hal_i2c_slave_bus_reset(instance->bus_handle);
+
+#ifdef I2C_SLAVE_CPU_DEBUG
+    furi_hal_gpio_write(&gpio_m41, true);
+    furi_hal_gpio_write(&gpio_m40, true);
+    wait(30);
+    furi_hal_gpio_write(&gpio_m41, false);
+    furi_hal_gpio_write(&gpio_m40, false);
+    wait(30);
+    furi_hal_gpio_write(&gpio_m41, true);
+    furi_hal_gpio_write(&gpio_m40, true);
+    wait(30);
+    furi_hal_gpio_write(&gpio_m41, false);
+    furi_hal_gpio_write(&gpio_m40, false);
+#endif
+    return 0;
+}
 
 static inline void i2c_slave_cpu_is_address_received(const FuriHalI2cBusHandle* handle, void* context) {
     I2cSlaveCpu* instance = context;
@@ -98,6 +124,7 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
     case FuriHalI2cBusSlaveEventStart:
         // Master has sent a Start signal, prepare to receive address
         instance->state = I2cSlaveCpuStateStart;
+        instance->timeout_alarm = add_alarm_in_ms(I2C_SLAVE_CPU_TIMEOUT_MS, i2c_slave_cpu_timeout_callback, instance, true);
 #ifdef I2C_SLAVE_CPU_DEBUG
         furi_hal_gpio_write(&gpio_m41, true);
         wait(30);
@@ -202,7 +229,7 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
         }
 
         instance->state = I2cSlaveCpuStateIdle;
-
+        cancel_alarm(instance->timeout_alarm);
         break;
 
     default:
@@ -218,10 +245,11 @@ int32_t i2c_slave_cpu_srv(void* p) {
     I2cSlaveCpu* instance = (I2cSlaveCpu*)malloc(sizeof(I2cSlaveCpu));
     instance->thread_id = furi_thread_get_current_id();
     instance->event_pubsub = furi_pubsub_alloc();
+    instance->bus_handle = &furi_hal_i2c_handle_cpu;
 
     furi_record_create(RECORD_I2C_SLAVE_CPU, instance->event_pubsub);
-    furi_hal_i2c_acquire(&furi_hal_i2c_handle_cpu);
-    furi_hal_i2c_slave_set_callback(&furi_hal_i2c_handle_cpu, i2c_slave_cpu_isr, instance);
+    furi_hal_i2c_acquire(instance->bus_handle);
+    furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_slave_cpu_isr, instance);
     instance->state = I2cSlaveCpuStateIdle;
     instance->mem_address = I2C_SLAVE_CPU_DEFAULT_ADDRESS_REGISTER;
 
@@ -234,7 +262,7 @@ int32_t i2c_slave_cpu_srv(void* p) {
 
     while(1) {
         furi_thread_flags_wait(I2C_SLAVE_CPU_THREAD_FLAG_ISR, FuriFlagWaitAny, FuriWaitForever);
-        // Nothing
+        //Nothing
     }
 
     return 0;

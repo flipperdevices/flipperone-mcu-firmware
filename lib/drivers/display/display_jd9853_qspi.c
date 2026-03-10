@@ -10,12 +10,11 @@
 #include <hardware/structs/clocks.h>
 #include <hardware/structs/hstx_ctrl.h>
 #include <hardware/structs/hstx_fifo.h>
-#include <math.h>
 #include <pico/types.h>
 #include <hardware/dma.h>
 
 #include <hardware/clocks.h>
-#include <pico/stdlib.h>
+
 
 #define FIRST_HSTX_PIN                      12
 #define DISPLAY_JD9853_HSTX_END_TX_DELAY_US 5 //5us
