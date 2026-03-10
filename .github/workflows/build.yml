@@ -3,7 +3,7 @@ name: 'Build'
 on:
   push:
     branches:
-      - dev
+      - main
     tags:
       - '*'
   pull_request:
@@ -57,6 +57,19 @@ jobs:
         path: firmware
         submodules: recursive
 
+    - name: 'Get commit details'
+      id: names
+      run: |
+        if [[ ${{ github.event_name }} == 'pull_request' ]]; then
+          TYPE="pull"
+        elif [[ "${{ github.ref }}" == "refs/tags/"* ]]; then
+          TYPE="tag"
+        else
+          TYPE="other"
+        fi
+        python3 firmware/scripts/get_env.py "--event_file=${{ github.event_path }}" "--type=$TYPE"
+        echo "event_type=$TYPE" >> $GITHUB_OUTPUT
+
     - name: Checkout pico-sdk/${{ env.PICO_SDK_VERSION }}
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/checkout@v6
@@ -105,3 +118,43 @@ jobs:
           arm-none-eabi-gcc
           pico-sdk
         key: ${{ steps.cache.outputs.cache-primary-key }}
+
+    - name: 'Make artifacts directory'
+      if: ${{ !github.event.pull_request.head.repo.fork }}
+      run: |
+        rm -rf artifacts
+        mkdir artifacts
+
+    - name: 'Move upload files'
+      if: ${{ !github.event.pull_request.head.repo.fork }}
+      run: |
+        mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipper-one-mcu-f100-firmware-${SUFFIX}.uf2
+
+    - name: 'Upload artifacts to update server'
+      if: ${{ !github.event.pull_request.head.repo.fork }}
+      run: |
+        FILES=$(for CUR in $(ls artifacts/); do echo "-F files=@artifacts/$CUR"; done)
+        curl --fail -L -H "Token: ${{ secrets.INDEXER_TOKEN }}" \
+            -F "branch=${BRANCH_NAME}" \
+            ${FILES[@]} \
+            "${{ secrets.INDEXER_URL }}"/flipper-one-mcu/uploadfiles
+
+    - name: 'Find previous comment'
+      if: ${{ !github.event.pull_request.head.repo.fork && github.event.pull_request }}
+      uses: peter-evans/find-comment@v3
+      id: find-comment
+      with:
+        issue-number: ${{ github.event.pull_request.number }}
+        comment-author: 'github-actions[bot]'
+        body-includes: 'Compiled firmware for commit'
+
+    - name: 'Create or update comment'
+      if: ${{ !github.event.pull_request.head.repo.fork && github.event.pull_request }}
+      uses: peter-evans/create-or-update-comment@v4
+      with:
+        comment-id: ${{ steps.find-comment.outputs.comment-id }}
+        issue-number: ${{ github.event.pull_request.number }}
+        body: |
+          **Compiled firmware for commit `${{steps.names.outputs.commit_sha}}`:**
+          - [🍓 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{steps.names.outputs.branch_name}}/flipper-one-mcu-f100-firmware-${{steps.names.outputs.suffix}}.uf2)
+        edit-mode: replace
