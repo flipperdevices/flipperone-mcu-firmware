@@ -1,0 +1,24 @@
+{
+    "device": {
+        "vid": "0x37C1",
+        "pid": "0xF102",
+        "bcd": 1.00,
+        "lang_id": "0x0409",
+        "manufacturer": "Flipper FZCO",
+        "product": "Flipper One MCU Bootloader",
+        "max_power": "0x32",
+        "attributes": "0xE0"
+    },
+    "scsi": {
+        "vendor": "Flipper",
+        "product": "Flipper One",
+        "version": "1.00"
+    },
+    "volume": {
+        "label": "FlipOneMCU",
+        "redirect_url": "https://r.flipper.net/flipper_one_mcu_update",
+        "redirect_name": "How to Update Firmware",
+        "model": "Flipper One",
+        "board_id": "F0B0C1"
+    }
+}
