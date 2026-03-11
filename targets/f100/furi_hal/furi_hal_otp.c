@@ -13,11 +13,13 @@
 // STRDEF encoding: high byte = row offset from WL_BASE_ROW, low byte = char count (ASCII)
 #define WL_STRDEF(row_offset, char_count) (((row_offset) << 8) | (char_count))
 
-// Helper macros to calculate string lengths and row counts at compile time
-#define STR_LEN(str) (sizeof(str) - 1)
+// In the following macros, "" is used to ensure that the parameter is a string literal and not a pointer
 
-// Number of ECC rows a string occupies: 2 ASCII chars per row, ceil(len/2) = sizeof(str)/2
-#define STR_ROWS(str) (sizeof(str) / 2)
+// Helper macros to calculate string lengths and row counts at compile time
+#define STR_LEN(str) (sizeof("" str) - 1)
+
+// Number of ECC rows a string occupies: 2 ASCII chars per row, ceil(len/2) = sizeof(str)/2,
+#define STR_ROWS(str) (sizeof("" str) / 2)
 
 // clang-format off
 
@@ -41,7 +43,7 @@
 #define OTP_REDIRECT_URL     "https://r.flipper.net/flipper_one_mcu_update" // max 127 chars
 #define OTP_REDIRECT_NAME    "How to Update Firmware" // max 127 chars
 #define OTP_MODEL            "Flipper One"            // max 127 chars
-#define OTP_BOARD_ID         "F0B0C1"                 // max 127 chars
+#define OTP_BOARD_ID_FORMAT         "F%luB%luC%lu"    // max 127 chars
 
 // String row offsets from WL_BASE_ROW (strings are packed right after the 16-row table)
 #define WL_OFF_MANUFACTURER  0x10
@@ -64,26 +66,14 @@ static_assert(STR_LEN(OTP_SCSI_VERSION)     <= 4,   "OTP_SCSI_VERSION too long")
 static_assert(STR_LEN(OTP_REDIRECT_URL)     <= 127, "OTP_REDIRECT_URL too long");
 static_assert(STR_LEN(OTP_REDIRECT_NAME)    <= 127, "OTP_REDIRECT_NAME too long");
 static_assert(STR_LEN(OTP_MODEL)            <= 127, "OTP_MODEL too long");
-static_assert(STR_LEN(OTP_BOARD_ID)         <= 127, "OTP_BOARD_ID too long");
 
 // clang-format on
-
-static bool furi_hal_otp_usb_white_label_addr_valid(void);
-
-static bool furi_hal_otp_write_usb_white_label(void);
 
 void furi_hal_otp_init(void) {
     FURI_LOG_I(TAG, "OTP init");
 
-    if(!furi_hal_otp_usb_white_label_addr_valid()) {
-        FURI_LOG_E(TAG, "USB white label address is not valid, writing white label to OTP");
-        if(!furi_hal_otp_write_usb_white_label()) {
-            FURI_LOG_E(TAG, "Failed to write USB white label to OTP");
-        } else {
-            FURI_LOG_I(TAG, "USB white label successfully written to OTP");
-        }
-    } else {
-        FURI_LOG_I(TAG, "USB white label address is valid");
+    if(!furi_hal_otp_usb_white_label_valid()) {
+        FURI_LOG_E(TAG, "USB white label is not valid");
     }
 }
 
@@ -128,7 +118,7 @@ static bool furi_hal_otp_usb_white_label_write_string(uint16_t base_row, uint8_t
     return true;
 }
 
-bool furi_hal_otp_usb_white_label_addr_valid(void) {
+bool furi_hal_otp_usb_white_label_valid(void) {
     // USB_BOOT_FLAGS is a 3x redundant 24-bit row (no ECC)
     // Raw mode: 4 bytes per row, low 24 bits = OTP value
     uint32_t buf = 0;
@@ -141,55 +131,98 @@ bool furi_hal_otp_usb_white_label_addr_valid(void) {
     return (buf & OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS) != 0;
 }
 
-bool furi_hal_otp_write_usb_white_label(void) {
-    // USB white label table: 16 ECC rows at WL_BASE_ROW (indices per Table 579 in RP2350 datasheet)
-    // String data follows the table, 2 ASCII chars per ECC row, packed little-endian
+FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t firmware_id, uint32_t body_id, uint32_t connectivity_id) {
+    FuriString* board_id_str = furi_string_alloc_printf(OTP_BOARD_ID_FORMAT, firmware_id, body_id, connectivity_id);
+    FuriHalOtpUsbWhiteLabelError error = FuriHalOtpUsbWhiteLabelErrorNone;
 
-    // clang-format off
-    const uint16_t wl_table[16] = {
-        [0]  = OTP_USB_VID,                                                    // VID
-        [1]  = OTP_USB_PID,                                                    // PID
-        [2]  = OTP_USB_BCD,                                                    // bcdDevice 1.00
-        [3]  = OTP_USB_LANG_ID,                                                // lang_id (English US)
-        [4]  = WL_STRDEF(WL_OFF_MANUFACTURER, STR_LEN(OTP_USB_MANUFACTURER)),  // manufacturer
-        [5]  = WL_STRDEF(WL_OFF_PRODUCT,      STR_LEN(OTP_USB_PRODUCT)),       // product
-        [6]  = 0x0000,                                                         // serial number string (not set)
-        [7]  = (OTP_USB_MAX_POWER << 8) | OTP_USB_ATTRIBUTES,                  // bMaxPower, bmAttributes
-        [8]  = WL_STRDEF(WL_OFF_VOLUME_LABEL,  STR_LEN(OTP_USB_VOLUME_LABEL)), // volume label
-        [9]  = WL_STRDEF(WL_OFF_SCSI_VENDOR,   STR_LEN(OTP_SCSI_VENDOR)),      // SCSI vendor
-        [10] = WL_STRDEF(WL_OFF_SCSI_PRODUCT,  STR_LEN(OTP_SCSI_PRODUCT)),     // SCSI product
-        [11] = WL_STRDEF(WL_OFF_SCSI_VERSION,  STR_LEN(OTP_SCSI_VERSION)),     // SCSI version
-        [12] = WL_STRDEF(WL_OFF_REDIRECT_URL,  STR_LEN(OTP_REDIRECT_URL)),     // redirect URL
-        [13] = WL_STRDEF(WL_OFF_REDIRECT_NAME, STR_LEN(OTP_REDIRECT_NAME)),    // redirect name
-        [14] = WL_STRDEF(WL_OFF_MODEL,         STR_LEN(OTP_MODEL)),            // model
-        [15] = WL_STRDEF(WL_OFF_BOARD_ID,      STR_LEN(OTP_BOARD_ID)),         // board_id
-    };
-    // clang-format on
+    do {
+        if(furi_string_size(board_id_str) >= 127) {
+            error = FuriHalOtpUsbWhiteLabelErrorBoardIdTooLong;
+            break;
+        }
 
-    // 1. Write white label table (16 consecutive ECC rows)
-    otp_cmd_t cmd = {.flags = WL_BASE_ROW | OTP_CMD_ECC_BITS | OTP_CMD_WRITE_BITS};
-    int rc = rom_func_otp_access((uint8_t*)wl_table, sizeof(wl_table), cmd);
-    if(rc != BOOTROM_OK) {
-        FURI_LOG_E(TAG, "OTP white label table write failed: %d", rc);
-        return false;
-    }
+        // USB white label table: 16 ECC rows at WL_BASE_ROW
+        // String data follows the table, 2 ASCII chars per ECC row, packed little-endian
 
-    // 2. Write string data
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_MANUFACTURER, OTP_USB_MANUFACTURER)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_PRODUCT, OTP_USB_PRODUCT)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_VOLUME_LABEL, OTP_USB_VOLUME_LABEL)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_VENDOR, OTP_SCSI_VENDOR)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_PRODUCT, OTP_SCSI_PRODUCT)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_VERSION, OTP_SCSI_VERSION)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_REDIRECT_URL, OTP_REDIRECT_URL)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_REDIRECT_NAME, OTP_REDIRECT_NAME)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_MODEL, OTP_MODEL)) return false;
-    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_BOARD_ID, OTP_BOARD_ID)) return false;
+        // clang-format off
+        const uint16_t wl_table[16] = {
+            [0]  = OTP_USB_VID,                                                      // VID
+            [1]  = OTP_USB_PID,                                                      // PID
+            [2]  = OTP_USB_BCD,                                                      // bcdDevice 1.00
+            [3]  = OTP_USB_LANG_ID,                                                  // lang_id (English US)
+            [4]  = WL_STRDEF(WL_OFF_MANUFACTURER, STR_LEN(OTP_USB_MANUFACTURER)),    // manufacturer
+            [5]  = WL_STRDEF(WL_OFF_PRODUCT,      STR_LEN(OTP_USB_PRODUCT)),         // product
+            [6]  = 0x0000,                                                           // serial number string (not set)
+            [7]  = (OTP_USB_MAX_POWER << 8) | OTP_USB_ATTRIBUTES,                    // bMaxPower, bmAttributes
+            [8]  = WL_STRDEF(WL_OFF_VOLUME_LABEL,  STR_LEN(OTP_USB_VOLUME_LABEL)),   // volume label
+            [9]  = WL_STRDEF(WL_OFF_SCSI_VENDOR,   STR_LEN(OTP_SCSI_VENDOR)),        // SCSI vendor
+            [10] = WL_STRDEF(WL_OFF_SCSI_PRODUCT,  STR_LEN(OTP_SCSI_PRODUCT)),       // SCSI product
+            [11] = WL_STRDEF(WL_OFF_SCSI_VERSION,  STR_LEN(OTP_SCSI_VERSION)),       // SCSI version
+            [12] = WL_STRDEF(WL_OFF_REDIRECT_URL,  STR_LEN(OTP_REDIRECT_URL)),       // redirect URL
+            [13] = WL_STRDEF(WL_OFF_REDIRECT_NAME, STR_LEN(OTP_REDIRECT_NAME)),      // redirect name
+            [14] = WL_STRDEF(WL_OFF_MODEL,         STR_LEN(OTP_MODEL)),              // model
+            [15] = WL_STRDEF(WL_OFF_BOARD_ID,      furi_string_size(board_id_str)),  // board_id
+        };
+        // clang-format on
 
-    // 3. Write USB_WHITE_LABEL_ADDR (ECC) — points to WL_BASE_ROW
-    if(!furi_hal_otp_write_ecc(OTP_DATA_USB_WHITE_LABEL_ADDR_ROW, WL_BASE_ROW)) return false;
+        // 1. Write white label table (16 consecutive ECC rows)
+        otp_cmd_t cmd = {.flags = WL_BASE_ROW | OTP_CMD_ECC_BITS | OTP_CMD_WRITE_BITS};
+        int rc = rom_func_otp_access((uint8_t*)wl_table, sizeof(wl_table), cmd);
+        if(rc != BOOTROM_OK) {
+            FURI_LOG_E(TAG, "OTP white label table write failed: %d", rc);
+            error = FuriHalOtpUsbWhiteLabelErrorWriteTableFailed;
+            break;
+        }
 
-    // clang-format off
+        // 2. Write string data
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_MANUFACTURER, OTP_USB_MANUFACTURER)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteManufacturerFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_PRODUCT, OTP_USB_PRODUCT)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteProductFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_VOLUME_LABEL, OTP_USB_VOLUME_LABEL)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteVolumeLabelFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_VENDOR, OTP_SCSI_VENDOR)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteScsiVendorFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_PRODUCT, OTP_SCSI_PRODUCT)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteScsiProductFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_VERSION, OTP_SCSI_VERSION)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteScsiVersionFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_REDIRECT_URL, OTP_REDIRECT_URL)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteRedirectUrlFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_REDIRECT_NAME, OTP_REDIRECT_NAME)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteRedirectNameFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_MODEL, OTP_MODEL)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteModelFailed;
+            break;
+        }
+        if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_BOARD_ID, furi_string_get_cstr(board_id_str))) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteBoardIdFailed;
+            break;
+        }
+
+        // 3. Write USB_WHITE_LABEL_ADDR (ECC) — points to WL_BASE_ROW
+        if(!furi_hal_otp_write_ecc(OTP_DATA_USB_WHITE_LABEL_ADDR_ROW, WL_BASE_ROW)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteAddrFailed;
+            break;
+        }
+
+        // clang-format off
     // 4. Write USB_BOOT_FLAGS (raw, 3× redundant) — mark all written entries valid
     const uint32_t usb_boot_flags =
         OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS |
@@ -209,11 +242,63 @@ bool furi_hal_otp_write_usb_white_label(void) {
         OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_NAME_STRDEF_VALID_BITS |
         OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_MODEL_STRDEF_VALID_BITS |
         OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_BOARD_ID_STRDEF_VALID_BITS;
-    // clang-format on
+        // clang-format on
 
-    if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_ROW, usb_boot_flags)) return false;
-    if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_R1_ROW, usb_boot_flags)) return false;
-    if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_R2_ROW, usb_boot_flags)) return false;
+        if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_ROW, usb_boot_flags)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsFailed;
+            break;
+        }
+        if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_R1_ROW, usb_boot_flags)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR1Failed;
+            break;
+        }
+        if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_R2_ROW, usb_boot_flags)) {
+            error = FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR2Failed;
+            break;
+        }
+    } while(false);
 
-    return true;
+    furi_string_free(board_id_str);
+
+    return error;
+}
+
+const char* furi_hal_otp_usb_white_label_error_to_string(FuriHalOtpUsbWhiteLabelError error) {
+    switch(error) {
+    case FuriHalOtpUsbWhiteLabelErrorNone:
+        return "None";
+    case FuriHalOtpUsbWhiteLabelErrorBoardIdTooLong:
+        return "Board ID too long";
+    case FuriHalOtpUsbWhiteLabelErrorWriteTableFailed:
+        return "Write white label table failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteManufacturerFailed:
+        return "Write manufacturer string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteProductFailed:
+        return "Write product string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteVolumeLabelFailed:
+        return "Write volume label string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteScsiVendorFailed:
+        return "Write SCSI vendor string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteScsiProductFailed:
+        return "Write SCSI product string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteScsiVersionFailed:
+        return "Write SCSI version string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteRedirectUrlFailed:
+        return "Write redirect URL string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteRedirectNameFailed:
+        return "Write redirect name string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteModelFailed:
+        return "Write model string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteBoardIdFailed:
+        return "Write board ID string failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteAddrFailed:
+        return "Write USB white label address failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsFailed:
+        return "Write USB boot flags failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR1Failed:
+        return "Write USB boot flags R1 failed";
+    case FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR2Failed:
+        return "Write USB boot flags R2 failed";
+    }
+    return "Unknown error";
 }
