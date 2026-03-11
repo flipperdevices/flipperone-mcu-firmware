@@ -13,6 +13,61 @@
 // STRDEF encoding: high byte = row offset from WL_BASE_ROW, low byte = char count (ASCII)
 #define WL_STRDEF(row_offset, char_count) (((row_offset) << 8) | (char_count))
 
+// Helper macros to calculate string lengths and row counts at compile time
+#define STR_LEN(str) (sizeof(str) - 1)
+
+// Number of ECC rows a string occupies: 2 ASCII chars per row, ceil(len/2) = sizeof(str)/2
+#define STR_ROWS(str) (sizeof(str) / 2)
+
+// clang-format off
+
+// USB device descriptor values
+#define OTP_USB_VID          0x37C1
+#define OTP_USB_PID          0xF102
+#define OTP_USB_BCD          0x0100
+#define OTP_USB_LANG_ID      0x0409
+#define OTP_USB_MAX_POWER    0xFA
+#define OTP_USB_ATTRIBUTES   0x80
+#define OTP_USB_MANUFACTURER "Flipper FZCO"               // max 30 chars
+#define OTP_USB_PRODUCT      "Flipper One MCU Bootloader" // max 30 chars
+
+// USB MSD / SCSI strings
+#define OTP_USB_VOLUME_LABEL "FlipOneMCU"  // max 11 chars
+#define OTP_SCSI_VENDOR      "Flipper"     // max 8 chars
+#define OTP_SCSI_PRODUCT     "Flipper One" // max 16 chars
+#define OTP_SCSI_VERSION     "1.00"        // max 4 chars
+
+// Bootloader info page strings
+#define OTP_REDIRECT_URL     "https://r.flipper.net/flipper_one_mcu_update" // max 127 chars
+#define OTP_REDIRECT_NAME    "How to Update Firmware" // max 127 chars
+#define OTP_MODEL            "Flipper One"            // max 127 chars
+#define OTP_BOARD_ID         "F0B0C1"                 // max 127 chars
+
+// String row offsets from WL_BASE_ROW (strings are packed right after the 16-row table)
+#define WL_OFF_MANUFACTURER  0x10
+#define WL_OFF_PRODUCT       (WL_OFF_MANUFACTURER + STR_ROWS(OTP_USB_MANUFACTURER))
+#define WL_OFF_VOLUME_LABEL  (WL_OFF_PRODUCT      + STR_ROWS(OTP_USB_PRODUCT))
+#define WL_OFF_SCSI_VENDOR   (WL_OFF_VOLUME_LABEL + STR_ROWS(OTP_USB_VOLUME_LABEL))
+#define WL_OFF_SCSI_PRODUCT  (WL_OFF_SCSI_VENDOR  + STR_ROWS(OTP_SCSI_VENDOR))
+#define WL_OFF_SCSI_VERSION  (WL_OFF_SCSI_PRODUCT + STR_ROWS(OTP_SCSI_PRODUCT))
+#define WL_OFF_REDIRECT_URL  (WL_OFF_SCSI_VERSION + STR_ROWS(OTP_SCSI_VERSION))
+#define WL_OFF_REDIRECT_NAME (WL_OFF_REDIRECT_URL  + STR_ROWS(OTP_REDIRECT_URL))
+#define WL_OFF_MODEL         (WL_OFF_REDIRECT_NAME + STR_ROWS(OTP_REDIRECT_NAME))
+#define WL_OFF_BOARD_ID      (WL_OFF_MODEL         + STR_ROWS(OTP_MODEL))
+
+static_assert(STR_LEN(OTP_USB_MANUFACTURER) <= 30,  "OTP_USB_MANUFACTURER too long");
+static_assert(STR_LEN(OTP_USB_PRODUCT)      <= 30,  "OTP_USB_PRODUCT too long");
+static_assert(STR_LEN(OTP_USB_VOLUME_LABEL) <= 11,  "OTP_USB_VOLUME_LABEL too long");
+static_assert(STR_LEN(OTP_SCSI_VENDOR)      <= 8,   "OTP_SCSI_VENDOR too long");
+static_assert(STR_LEN(OTP_SCSI_PRODUCT)     <= 16,  "OTP_SCSI_PRODUCT too long");
+static_assert(STR_LEN(OTP_SCSI_VERSION)     <= 4,   "OTP_SCSI_VERSION too long");
+static_assert(STR_LEN(OTP_REDIRECT_URL)     <= 127, "OTP_REDIRECT_URL too long");
+static_assert(STR_LEN(OTP_REDIRECT_NAME)    <= 127, "OTP_REDIRECT_NAME too long");
+static_assert(STR_LEN(OTP_MODEL)            <= 127, "OTP_MODEL too long");
+static_assert(STR_LEN(OTP_BOARD_ID)         <= 127, "OTP_BOARD_ID too long");
+
+// clang-format on
+
 static bool furi_hal_otp_usb_white_label_addr_valid(void);
 
 static bool furi_hal_otp_write_usb_white_label(void);
@@ -53,7 +108,7 @@ static bool furi_hal_otp_write_raw(uint16_t row, uint32_t value) {
 }
 
 // Write ASCII string as ECC rows: 2 chars packed per 16-bit ECC row
-static bool furi_hal_otp_write_string(uint16_t base_row, uint8_t row_offset, const char* str) {
+static bool furi_hal_otp_usb_white_label_write_string(uint16_t base_row, uint8_t row_offset, const char* str) {
     size_t len = strlen(str);
     uint8_t num_rows = (len + 1) / 2;
     uint16_t buf[num_rows];
@@ -89,37 +144,25 @@ bool furi_hal_otp_usb_white_label_addr_valid(void) {
 bool furi_hal_otp_write_usb_white_label(void) {
     // USB white label table: 16 ECC rows at WL_BASE_ROW (indices per Table 579 in RP2350 datasheet)
     // String data follows the table, 2 ASCII chars per ECC row, packed little-endian
-    //
-    // String layout (offsets from WL_BASE_ROW):
-    //   0x10 "Flipper FZCO"                              (12 chars, 6 rows), manufacturer string, max-length 30 UTF-16 or ASCII chars
-    //   0x16 "Flipper One MCU Bootloader"                (26 chars, 13 rows), product string, max-length 30 UTF-16 or ASCII chars
-    //   0x23 "FlipOneMCU"                                (10 chars, 5 rows), volume label must be a string with < 11 characters
-    //   0x28 "Flipper"                                   ( 7 chars, 4 rows), SCSI vendor must be a string with < 8 characters
-    //   0x2C "Flipper One"                               (11 chars, 6 rows), SCSI product must be a string with < 16 characters
-    //   0x32 "1.00"                                      ( 4 chars, 2 rows), SCSI version string, max-length 4 ASCII chars
-    //   0x34 "https://r.flipper.net/flipper_one_mcu_update" (44 chars, 22 rows), redirect URL, max-length 127 ASCII chars
-    //   0x4A "How to Update Firmware"                    (22 chars, 11 rows), redirect name, max-length 127 ASCII chars
-    //   0x55 "Flipper One"                               (11 chars, 6 rows), model string, max-length 127 ASCII chars
-    //   0x5B "F0B0C1"                                    ( 6 chars, 3 rows), board_id string, max-length 127 ASCII chars
 
     // clang-format off
     const uint16_t wl_table[16] = {
-        [0]  = 0x37C1,                       // VID
-        [1]  = 0xF102,                       // PID
-        [2]  = 0x0100,                       // bcdDevice 1.00
-        [3]  = 0x0409,                       // lang_id (English US)
-        [4]  = WL_STRDEF(0x10, 12),          // manufacturer "Flipper FZCO"
-        [5]  = WL_STRDEF(0x16, 26),          // product "Flipper One MCU Bootloader"
-        [6]  = 0x0000,                       // serial number string (not set)
-        [7]  = (0x32 << 8) | 0xE0,          // bMaxPower=0x32 (100mA), bmAttributes=0xE0
-        [8]  = WL_STRDEF(0x23, 10),          // volume label "FlipOneMCU"
-        [9]  = WL_STRDEF(0x28,  7),          // SCSI vendor "Flipper"
-        [10] = WL_STRDEF(0x2C, 11),          // SCSI product "Flipper One"
-        [11] = WL_STRDEF(0x32,  4),          // SCSI version "1.00"
-        [12] = WL_STRDEF(0x34, 44),          // redirect URL "https://r.flipper.net/flipper_one_mcu_update"
-        [13] = WL_STRDEF(0x4A, 22),          // redirect name "How to Update Firmware"
-        [14] = WL_STRDEF(0x55, 11),          // model "Flipper One"
-        [15] = WL_STRDEF(0x5B,  6),          // board_id "F0B0C1"
+        [0]  = OTP_USB_VID,                                                    // VID
+        [1]  = OTP_USB_PID,                                                    // PID
+        [2]  = OTP_USB_BCD,                                                    // bcdDevice 1.00
+        [3]  = OTP_USB_LANG_ID,                                                // lang_id (English US)
+        [4]  = WL_STRDEF(WL_OFF_MANUFACTURER, STR_LEN(OTP_USB_MANUFACTURER)),  // manufacturer
+        [5]  = WL_STRDEF(WL_OFF_PRODUCT,      STR_LEN(OTP_USB_PRODUCT)),       // product
+        [6]  = 0x0000,                                                         // serial number string (not set)
+        [7]  = (OTP_USB_MAX_POWER << 8) | OTP_USB_ATTRIBUTES,                  // bMaxPower, bmAttributes
+        [8]  = WL_STRDEF(WL_OFF_VOLUME_LABEL,  STR_LEN(OTP_USB_VOLUME_LABEL)), // volume label
+        [9]  = WL_STRDEF(WL_OFF_SCSI_VENDOR,   STR_LEN(OTP_SCSI_VENDOR)),      // SCSI vendor
+        [10] = WL_STRDEF(WL_OFF_SCSI_PRODUCT,  STR_LEN(OTP_SCSI_PRODUCT)),     // SCSI product
+        [11] = WL_STRDEF(WL_OFF_SCSI_VERSION,  STR_LEN(OTP_SCSI_VERSION)),     // SCSI version
+        [12] = WL_STRDEF(WL_OFF_REDIRECT_URL,  STR_LEN(OTP_REDIRECT_URL)),     // redirect URL
+        [13] = WL_STRDEF(WL_OFF_REDIRECT_NAME, STR_LEN(OTP_REDIRECT_NAME)),    // redirect name
+        [14] = WL_STRDEF(WL_OFF_MODEL,         STR_LEN(OTP_MODEL)),            // model
+        [15] = WL_STRDEF(WL_OFF_BOARD_ID,      STR_LEN(OTP_BOARD_ID)),         // board_id
     };
     // clang-format on
 
@@ -132,38 +175,45 @@ bool furi_hal_otp_write_usb_white_label(void) {
     }
 
     // 2. Write string data
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x10, "Flipper FZCO")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x16, "Flipper One MCU Bootloader")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x23, "FlipOneMCU")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x28, "Flipper")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x2C, "Flipper One")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x32, "1.00")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x34, "https://r.flipper.net/flipper_one_mcu_update")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x4A, "How to Update Firmware")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x55, "Flipper One")) return false;
-    if(!furi_hal_otp_write_string(WL_BASE_ROW, 0x5B, "F0B0C1")) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_MANUFACTURER, OTP_USB_MANUFACTURER)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_PRODUCT, OTP_USB_PRODUCT)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_VOLUME_LABEL, OTP_USB_VOLUME_LABEL)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_VENDOR, OTP_SCSI_VENDOR)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_PRODUCT, OTP_SCSI_PRODUCT)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_SCSI_VERSION, OTP_SCSI_VERSION)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_REDIRECT_URL, OTP_REDIRECT_URL)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_REDIRECT_NAME, OTP_REDIRECT_NAME)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_MODEL, OTP_MODEL)) return false;
+    if(!furi_hal_otp_usb_white_label_write_string(WL_BASE_ROW, WL_OFF_BOARD_ID, OTP_BOARD_ID)) return false;
 
     // 3. Write USB_WHITE_LABEL_ADDR (ECC) — points to WL_BASE_ROW
     if(!furi_hal_otp_write_ecc(OTP_DATA_USB_WHITE_LABEL_ADDR_ROW, WL_BASE_ROW)) return false;
 
+    // clang-format off
     // 4. Write USB_BOOT_FLAGS (raw, 3× redundant) — mark all written entries valid
     const uint32_t usb_boot_flags =
-        OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS | OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_VID_VALUE_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_VID_VALUE_VALID_BITS |
         OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_PID_VALUE_VALID_BITS |
         OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_SERIAL_NUMBER_VALUE_VALID_BITS | // entry 2: bcdDevice
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_LANG_ID_VALUE_VALID_BITS | OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_MANUFACTURER_STRDEF_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_LANG_ID_VALUE_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_MANUFACTURER_STRDEF_VALID_BITS |
         OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_PRODUCT_STRDEF_VALID_BITS |
         // bit 6 (SERIAL_NUMBER_STRDEF) intentionally not set — no serial string
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_CONFIG_ATTRIBUTES_MAX_POWER_VALUES_VALID_BITS | OTP_DATA_USB_BOOT_FLAGS_WL_VOLUME_LABEL_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_VENDOR_STRDEF_VALID_BITS | OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_PRODUCT_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_VERSION_STRDEF_VALID_BITS | OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_URL_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_NAME_STRDEF_VALID_BITS | OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_MODEL_STRDEF_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_USB_CONFIG_ATTRIBUTES_MAX_POWER_VALUES_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_VOLUME_LABEL_STRDEF_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_VENDOR_STRDEF_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_PRODUCT_STRDEF_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_VERSION_STRDEF_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_URL_STRDEF_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_NAME_STRDEF_VALID_BITS |
+        OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_MODEL_STRDEF_VALID_BITS |
         OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_BOARD_ID_STRDEF_VALID_BITS;
+    // clang-format on
 
     if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_ROW, usb_boot_flags)) return false;
     if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_R1_ROW, usb_boot_flags)) return false;
     if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_R2_ROW, usb_boot_flags)) return false;
 
-    FURI_LOG_I(TAG, "USB white label written to OTP");
     return true;
 }
