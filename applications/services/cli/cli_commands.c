@@ -2,6 +2,7 @@
 
 #include <furi_hal.h>
 #include <furi_hal_i2c_config.h>
+#include <furi_hal_otp.h>
 #include <task_control_block.h>
 #include <time.h>
 #include <args.h>
@@ -418,6 +419,58 @@ static void cli_command_clock_out(Cli* cli, FuriString* args, void* context) {
     furi_hal_clock_out_to_gpio13(cli_clock_sources[source], (float)div);
 }
 
+static void cli_command_otp_help(Cli* cli, FuriString* args, void* context) {
+    UNUSED(cli);
+    UNUSED(args);
+    UNUSED(context);
+    printf(
+        "otp <OTP_ACTION>\r\n"
+        "Where <OTP_ACTION> is:\r\n"
+        "\twhitelabel <FIRMWARE_ID> <BODY_ID> <CONNECTIVITY_ID>\r\n"
+        "");
+}
+
+static void cli_command_otp(Cli* cli, FuriString* args, void* context) {
+    FuriString* action = furi_string_alloc();
+    do {
+        if(!args_read_string_and_trim(args, action)) {
+            cli_command_otp_help(cli, args, context);
+            break;
+        }
+
+        if(furi_string_cmp(action, "whitelabel") != 0) {
+            cli_command_otp_help(cli, args, context);
+            break;
+        }
+
+        int firmware_id, body_id, connectivity_id;
+        if(!args_read_int_and_trim(args, &firmware_id) || !args_read_int_and_trim(args, &body_id) || !args_read_int_and_trim(args, &connectivity_id)) {
+            cli_command_otp_help(cli, args, context);
+            break;
+        }
+
+        if(firmware_id < 0 || body_id < 0 || connectivity_id < 0) {
+            cli_command_otp_help(cli, args, context);
+            break;
+        }
+
+        printf("Programming USB white label in OTP with F%dB%dC%d\r\n", firmware_id, body_id, connectivity_id);
+
+        if(furi_hal_otp_usb_white_label_valid()) {
+            printf("USB white label is already programmed in OTP, it cannot be programmed again\r\n");
+            break;
+        }
+
+        FuriHalOtpUsbWhiteLabelError error = furi_hal_otp_write_usb_white_label(firmware_id, body_id, connectivity_id);
+        if(error == FuriHalOtpUsbWhiteLabelErrorNone) {
+            printf("USB white label written to OTP successfully\r\n");
+        } else {
+            printf("Failed to write USB white label to OTP: %d\r\n", error);
+        }
+    } while(0);
+    furi_string_free(action);
+}
+
 void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "?", CliCommandFlagParallelSafe, cli_command_help, NULL);
     cli_add_command(cli, "help", CliCommandFlagParallelSafe, cli_command_help, NULL);
@@ -432,4 +485,6 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "expander_ext", CliCommandFlagParallelSafe, cli_command_expander_ext, NULL);
     cli_add_command(cli, "clock_out", CliCommandFlagParallelSafe, cli_command_clock_out, NULL);
     cli_add_command(cli, "gpio", CliCommandFlagParallelSafe, cli_command_gpio, NULL);
+
+    cli_add_command(cli, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
 }
