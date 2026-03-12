@@ -103,22 +103,22 @@ static bool touchpad_test_app_layout(void* _model) {
 void touchpad_test_app_update_frame(TouchpadTestModel* model) {
     canvas_clear(model->canvas, 0xFF);
 
+    // grid
+    render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH / 2, 1, TOUCHPAD_CANVAS_WIDTH / 2, TOUCHPAD_CANVAS_HEIGHT - 1, 220);
+    render_draw_line(model->canvas, 60, 1, 60, TOUCHPAD_CANVAS_HEIGHT - 1, 220);
+    render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH - 60, 1, TOUCHPAD_CANVAS_WIDTH - 60, TOUCHPAD_CANVAS_HEIGHT - 1, 220);
+    render_draw_line(model->canvas, 1, TOUCHPAD_CANVAS_HEIGHT / 2, TOUCHPAD_CANVAS_WIDTH - 1, TOUCHPAD_CANVAS_HEIGHT / 2, 220);
+
     // ellipses
     for(int i = 0; i < TOUCHPAD_ELLIPSE_COUNT; i++) {
         int32_t margin_x = i * (TOUCHPAD_CANVAS_WIDTH / 2) / TOUCHPAD_ELLIPSE_COUNT;
         int32_t margin_y = i * (TOUCHPAD_CANVAS_HEIGHT / 2) / TOUCHPAD_ELLIPSE_COUNT;
-        int32_t w = TOUCHPAD_CANVAS_WIDTH - 2 * margin_x;
-        int32_t h = TOUCHPAD_CANVAS_HEIGHT - 2 * margin_y;
-        int32_t r = 60 - i * (60 / TOUCHPAD_ELLIPSE_COUNT);
+        int32_t w = TOUCHPAD_CANVAS_WIDTH - 2 * margin_x - 2;
+        int32_t h = TOUCHPAD_CANVAS_HEIGHT - 2 * margin_y - 2;
+        int32_t r = h / 2;
         uint8_t color = (i == 0) ? 0x00 : 220;
-        render_draw_round_rectangle(model->canvas, margin_x, margin_y, w, h, r, 1, color);
+        render_draw_round_rectangle(model->canvas, margin_x + 1, margin_y + 1, w, h, r, 1, color);
     }
-
-    // grid
-    render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH / 2, 0, TOUCHPAD_CANVAS_WIDTH / 2, TOUCHPAD_CANVAS_HEIGHT, 220);
-    render_draw_line(model->canvas, 60, 0, 60, TOUCHPAD_CANVAS_HEIGHT, 220);
-    render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH - 60, 0, TOUCHPAD_CANVAS_WIDTH - 60, TOUCHPAD_CANVAS_HEIGHT, 220);
-    render_draw_line(model->canvas, 0, TOUCHPAD_CANVAS_HEIGHT / 2, TOUCHPAD_CANVAS_WIDTH, TOUCHPAD_CANVAS_HEIGHT / 2, 220);
 
     // touch lines
     for(size_t i = 0; i < TouchpadTestLineArray_size(model->lines); i++) {
