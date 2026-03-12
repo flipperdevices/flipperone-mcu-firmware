@@ -141,7 +141,7 @@ static void gui_redraw(Gui* gui) {
 
     Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
-    render_do_render(gui->render_canvas, &renderCommands);
+    clay_render_do_render(gui->render_canvas, &renderCommands);
 
     if(gui_view_find_opaque_from_top(gui->views, &it)) {
         do {
@@ -301,6 +301,8 @@ void gui_set_backlight(Gui* gui, int8_t brightness) {
 }
 
 static Gui* gui_alloc(void) {
+    canvas_init();
+
     Gui* gui = malloc(sizeof(Gui));
 
     // Allocate mutex
@@ -327,7 +329,7 @@ static Gui* gui_alloc(void) {
     FURI_LOG_I(TAG, "Clay allocation: %lluk", totalMemorySize / 1024);
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
     Clay_Initialize(arena, (Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT}, (Clay_ErrorHandler){gui_handle_clay_errors, gui});
-    Clay_SetMeasureTextFunction(render_measure_text, NULL);
+    Clay_SetMeasureTextFunction(clay_render_measure_text, NULL);
 
     // Subscribe to input events
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), gui_input_events_glue, gui->input_queue);

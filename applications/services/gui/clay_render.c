@@ -32,6 +32,8 @@ typedef struct {
     Color color;
 } RenderTextContext;
 
+static U8G2FontRender render_font_renderers[FontMax];
+
 static const void* render_get_font_by_id(Font font_id) {
     switch(font_id) {
     case FontBody:
@@ -363,15 +365,17 @@ static void render_text(Canvas* canvas, Clay_BoundingBox* bb, Clay_TextRenderDat
     RENDER_DEBUG(TAG, "    i[d: %d, size: %d, spacing: %d, line: %d]", text_data->fontId, text_data->fontSize, text_data->letterSpacing, text_data->lineHeight);
 
     Color color = render_color(text_data->textColor);
-    const void* font = render_get_font_by_id((Font)text_data->fontId);
 
     RenderTextContext ctx = {
         .canvas = canvas,
         .color = color,
     };
-    U8G2FontRender_t render = U8G2FontRender(font, render_draw_pixel_fg, render_draw_pixel_bg, &ctx);
 
-    u8g2_render_print_multiline(&render, bb->x, bb->y, text_data->stringContents.chars, text_data->stringContents.length);
+    furi_check(text_data->fontId < FontMax);
+
+    U8G2FontRender* font_render = &render_font_renderers[text_data->fontId];
+
+    u8g2_font_render_print_multiline(font_render, bb->x, bb->y, text_data->stringContents.chars, text_data->stringContents.length, &ctx);
 }
 
 static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderData* image_data) {
@@ -429,7 +433,7 @@ static void render_scissor_end(Canvas* canvas) {
     canvas->scissors_y1 = canvas->height;
 }
 
-void render_do_render(Canvas* canvas, Clay_RenderCommandArray* renderCommands) {
+void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* renderCommands) {
     for(int i = 0; i < renderCommands->length; i++) {
         Clay_RenderCommand* renderCommand = &renderCommands->internalArray[i];
         Clay_BoundingBox boundingBox = renderCommand->boundingBox;
@@ -462,21 +466,24 @@ void render_do_render(Canvas* canvas, Clay_RenderCommandArray* renderCommands) {
     }
 }
 
-Clay_Dimensions render_measure_text(Clay_StringSlice text, Clay_TextElementConfig* config, void* userData) {
+Clay_Dimensions clay_render_measure_text(Clay_StringSlice text, Clay_TextElementConfig* config, void* userData) {
     UNUSED(userData);
-    const void* font = render_get_font_by_id((Font)config->fontId);
-    RenderTextContext ctx = {
-        .canvas = NULL,
-        .color = 0,
-    };
-    U8G2FontRender_t font_render = U8G2FontRender(font, render_draw_pixel_fg, render_draw_pixel_bg, &ctx);
+    furi_check(config->fontId < FontMax);
+    U8G2FontRender* font_render = &render_font_renderers[config->fontId];
 
     Clay_Dimensions dimensions = {
-        .width = u8g2_font_get_string_width_multiline(&font_render, text.chars, text.length),
-        .height = u8g2_font_get_height(&font_render),
+        .width = u8g2_font_render_get_string_width_multiline(font_render, text.chars, text.length),
+        .height = u8g2_font_render_get_height(font_render),
     };
 
     return dimensions;
+}
+
+void canvas_init(void) {
+    for(int i = 0; i < FontMax; i++) {
+        const void* font = render_get_font_by_id(i);
+        render_font_renderers[i] = u8g2_font_render_init(font, render_draw_pixel_fg, render_draw_pixel_bg);
+    }
 }
 
 Canvas* canvas_alloc(size_t width, size_t height) {
