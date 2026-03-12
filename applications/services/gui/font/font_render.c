@@ -46,8 +46,10 @@ void u8g2_font_render_print_char(U8G2FontRender* font, int32_t* x, int32_t y, ch
         return;
     }
     font_parse_glyph_header(font, &glyph);
-    y += font->header.ascent_A;
-    font_render_glyph(font, &glyph, *x, y, context);
+    if(glyph.width != 0 && glyph.height != 0) {
+        y += font->header.ascent_A;
+        font_render_glyph(font, &glyph, *x, y, context);
+    }
 
     *x += glyph.pitch;
 }
