@@ -265,97 +265,132 @@ static float render_clamp_corner_radius(float y_size, float radius) {
     return CLAY__MAX(2, radius);
 }
 
-static void render_rectangle(Canvas* canvas, Clay_BoundingBox* bb, Clay_RectangleRenderData* rect_data) {
-    uint32_t r_top_left = render_clamp_corner_radius(bb->height, rect_data->cornerRadius.topLeft);
-    uint32_t r_top_right = render_clamp_corner_radius(bb->height, rect_data->cornerRadius.topRight);
-    uint32_t r_bottom_right = render_clamp_corner_radius(bb->height, rect_data->cornerRadius.bottomRight);
-    uint32_t r_bottom_left = render_clamp_corner_radius(bb->height, rect_data->cornerRadius.bottomLeft);
-    Color color = render_color(rect_data->backgroundColor);
+void render_draw_line(Canvas* canvas, int32_t x0, int32_t y0, int32_t x1, int32_t y1, Color color) {
+    // classic bresenham's line algorithm
+    int32_t dx = abs(x1 - x0);
+    int32_t dy = abs(y1 - y0);
+    int32_t sx = (x0 < x1) ? 1 : -1;
+    int32_t sy = (y0 < y1) ? 1 : -1;
+    int32_t err = dx - dy;
+
+    while(true) {
+        render_set_pixel(canvas, x0, y0, color);
+        if(x0 == x1 && y0 == y1) break;
+        int32_t err2 = err * 2;
+        if(err2 > -dy) {
+            err -= dy;
+            x0 += sx;
+        }
+        if(err2 < dx) {
+            err += dx;
+            y0 += sy;
+        }
+    }
+}
+
+void render_fill_round_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, int32_t radius, Color color) {
+    render_fill_round_rectangle_ext(canvas, x, y, width, height, radius, radius, radius, radius, color);
+}
+
+void render_fill_round_rectangle_ext(
+    Canvas* canvas,
+    int32_t x,
+    int32_t y,
+    int32_t width,
+    int32_t height,
+    int32_t radius_top_left,
+    int32_t radius_top_right,
+    int32_t radius_bottom_right,
+    int32_t radius_bottom_left,
+    Color color) {
+    uint32_t r_top_left = render_clamp_corner_radius(height, radius_top_left);
+    uint32_t r_top_right = render_clamp_corner_radius(height, radius_top_right);
+    uint32_t r_bottom_right = render_clamp_corner_radius(height, radius_bottom_right);
+    uint32_t r_bottom_left = render_clamp_corner_radius(height, radius_bottom_left);
 
     RENDER_DEBUG(TAG, "Rectangle");
-    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, color);
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", x, y, width, height, color);
     RENDER_DEBUG(TAG, "    [%lu, %lu, %lu, %lu]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
 
     if(!r_top_left && !r_top_right && !r_bottom_right && !r_bottom_left) {
-        render_fill_rectangle(canvas, bb->x, bb->y, bb->width, bb->height, color);
+        render_fill_rectangle(canvas, x, y, width, height, color);
         return;
     }
 
     {
-        render_fill_arc(canvas, bb->x + r_top_left, bb->y + r_top_left, r_top_left, 180.f, 270.f, color);
-        render_fill_arc(canvas, bb->x + bb->width - r_top_right - 1, bb->y + r_top_right, r_top_right, 270.0f, 0.0f, color);
-        render_fill_arc(canvas, bb->x + bb->width - r_bottom_right - 1, bb->y + bb->height - r_bottom_right - 1, r_bottom_right, 0.f, 90.f, color);
-        render_fill_arc(canvas, bb->x + r_bottom_left, bb->y + bb->height - r_bottom_left - 1, r_bottom_left, 90.f, 180.f, color);
+        render_fill_arc(canvas, x + r_top_left, y + r_top_left, r_top_left, 180.f, 270.f, color);
+        render_fill_arc(canvas, x + width - r_top_right - 1, y + r_top_right, r_top_right, 270.0f, 0.0f, color);
+        render_fill_arc(canvas, x + width - r_bottom_right - 1, y + height - r_bottom_right - 1, r_bottom_right, 0.f, 90.f, color);
+        render_fill_arc(canvas, x + r_bottom_left, y + height - r_bottom_left - 1, r_bottom_left, 90.f, 180.f, color);
     }
 
     {
-        render_fill_rectangle(canvas, bb->x + r_top_left, bb->y, bb->width - r_top_left - r_top_right, MAX(r_top_left, r_top_right), color);
+        render_fill_rectangle(canvas, x + r_top_left, y, width - r_top_left - r_top_right, MAX(r_top_left, r_top_right), color);
 
         int32_t bottom_height = MAX(r_bottom_left, r_bottom_right);
-        render_fill_rectangle(
-            canvas, bb->x + r_bottom_left, bb->y + bb->height - bottom_height, bb->width - r_bottom_left - r_bottom_right, bottom_height, color);
+        render_fill_rectangle(canvas, x + r_bottom_left, y + height - bottom_height, width - r_bottom_left - r_bottom_right, bottom_height, color);
 
-        int32_t middle_height = bb->height - MIN(r_bottom_right, r_bottom_left) - MIN(r_top_right, r_top_left);
+        int32_t middle_height = height - MIN(r_bottom_right, r_bottom_left) - MIN(r_top_right, r_top_left);
         render_fill_rectangle(
-            canvas,
-            bb->x + MIN(r_top_left, r_bottom_left),
-            bb->y + MIN(r_top_right, r_top_left),
-            bb->width - r_bottom_left - r_bottom_right,
-            middle_height,
-            color);
+            canvas, x + MIN(r_top_left, r_bottom_left), y + MIN(r_top_right, r_top_left), width - r_bottom_left - r_bottom_right, middle_height, color);
 
-        int32_t left_height = bb->height - r_top_left - r_bottom_left;
+        int32_t left_height = height - r_top_left - r_bottom_left;
         int32_t left_width = MAX(r_top_left, r_bottom_left);
-        render_fill_rectangle(canvas, bb->x, bb->y + r_top_left, left_width, left_height, color);
+        render_fill_rectangle(canvas, x, y + r_top_left, left_width, left_height, color);
 
-        int32_t right_height = bb->height - r_top_right - r_bottom_right;
+        int32_t right_height = height - r_top_right - r_bottom_right;
         int32_t right_width = MAX(r_top_right, r_bottom_right);
-        render_fill_rectangle(canvas, bb->x + bb->width - right_width, bb->y + r_top_right, right_width, right_height, color);
+        render_fill_rectangle(canvas, x + width - right_width, y + r_top_right, right_width, right_height, color);
     }
 }
 
-static void render_border(Canvas* canvas, Clay_BoundingBox* bb, Clay_BorderRenderData* border_data) {
-    uint32_t r_top_left = render_clamp_corner_radius(bb->height, border_data->cornerRadius.topLeft);
-    uint32_t r_top_right = render_clamp_corner_radius(bb->height, border_data->cornerRadius.topRight);
-    uint32_t r_bottom_right = render_clamp_corner_radius(bb->height, border_data->cornerRadius.bottomRight);
-    uint32_t r_bottom_left = render_clamp_corner_radius(bb->height, border_data->cornerRadius.bottomLeft);
-    Color color = render_color(border_data->color);
+void render_draw_round_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, int32_t radius, int32_t border_width, Color color) {
+    render_draw_round_rectangle_ext(canvas, x, y, width, height, radius, radius, radius, radius, border_width, border_width, border_width, border_width, color);
+}
+
+void render_draw_round_rectangle_ext(
+    Canvas* canvas,
+    int32_t x,
+    int32_t y,
+    int32_t width,
+    int32_t height,
+    int32_t radius_top_left,
+    int32_t radius_top_right,
+    int32_t radius_bottom_right,
+    int32_t radius_bottom_left,
+    int32_t border_width_top,
+    int32_t border_width_right,
+    int32_t border_width_bottom,
+    int32_t border_width_left,
+    Color color) {
+    uint32_t r_top_left = render_clamp_corner_radius(height, radius_top_left);
+    uint32_t r_top_right = render_clamp_corner_radius(height, radius_top_right);
+    uint32_t r_bottom_right = render_clamp_corner_radius(height, radius_bottom_right);
+    uint32_t r_bottom_left = render_clamp_corner_radius(height, radius_bottom_left);
 
     RENDER_DEBUG(TAG, "Border");
-    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, color);
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", x, y, width, height, color);
     RENDER_DEBUG(TAG, "    [%lu, %lu, %lu, %lu]", r_top_left, r_top_right, r_bottom_right, r_bottom_left);
-    RENDER_DEBUG(TAG, "    [%d, %d, %d, %d]", border_data->width.top, border_data->width.right, border_data->width.bottom, border_data->width.left);
+    RENDER_DEBUG(TAG, "    [%d, %d, %d, %d]", border_width_top, border_width_right, border_width_bottom, border_width_left);
 
-    if(border_data->width.top > 0) {
-        render_draw_arc(canvas, bb->x + r_top_left, bb->y + r_top_left, r_top_left, 180.f, 270.f, color);
-        render_fill_rectangle(canvas, bb->x + r_top_left, bb->y, bb->width - r_top_left - r_top_right, border_data->width.top, color);
-        render_draw_arc(canvas, bb->x + bb->width - r_top_right - 1, bb->y + r_top_right, r_top_right, 270.f, 0.f, color);
+    if(border_width_top > 0) {
+        render_draw_arc(canvas, x + r_top_left, y + r_top_left, r_top_left, 180.f, 270.f, color);
+        render_fill_rectangle(canvas, x + r_top_left, y, width - r_top_left - r_top_right, border_width_top, color);
+        render_draw_arc(canvas, x + width - r_top_right - 1, y + r_top_right, r_top_right, 270.f, 0.f, color);
     }
 
-    if(border_data->width.right > 0 && r_top_right + r_bottom_right <= bb->height) {
-        render_fill_rectangle(
-            canvas,
-            bb->x + bb->width - border_data->width.right,
-            bb->y + r_top_right,
-            border_data->width.right,
-            bb->height - r_top_right - r_bottom_right,
-            color);
+    if(border_width_right > 0 && r_top_right + r_bottom_right <= height) {
+        render_fill_rectangle(canvas, x + width - border_width_right, y + r_top_right, border_width_right, height - r_top_right - r_bottom_right, color);
     }
 
-    if(border_data->width.bottom > 0) {
-        render_draw_arc(canvas, bb->x + bb->width - r_bottom_right - 1, bb->y + bb->height - r_bottom_right - 1, r_bottom_right, 0.f, 90.f, color);
-        render_fill_rectangle(
-            canvas,
-            bb->x + r_bottom_left,
-            bb->y + bb->height - border_data->width.bottom,
-            bb->width - r_bottom_left - r_bottom_right,
-            border_data->width.bottom,
-            color);
-        render_draw_arc(canvas, bb->x + r_bottom_left, bb->y + bb->height - r_bottom_left - 1, r_bottom_left, 90.f, 180.f, color);
+    if(border_width_bottom > 0) {
+        render_draw_arc(canvas, x + width - r_bottom_right - 1, y + height - r_bottom_right - 1, r_bottom_right, 0.f, 90.f, color);
+        render_fill_rectangle(canvas, x + r_bottom_left, y + height - border_width_bottom, width - r_bottom_left - r_bottom_right, border_width_bottom, color);
+        render_draw_arc(canvas, x + r_bottom_left, y + height - r_bottom_left - 1, r_bottom_left, 90.f, 180.f, color);
     }
 
-    if(border_data->width.left > 0 && r_bottom_left + r_top_left < bb->height) {
-        render_fill_rectangle(canvas, bb->x, bb->y + r_top_left, border_data->width.left, bb->height - r_top_left - r_bottom_left, color);
+    if(border_width_left > 0 && r_bottom_left + r_top_left < height) {
+        render_fill_rectangle(canvas, x, y + r_top_left, border_width_left, height - r_top_left - r_bottom_left, color);
     }
 }
 
@@ -425,39 +460,65 @@ static void render_scissor_start(Canvas* canvas, Clay_BoundingBox* bb) {
     if(canvas->scissors_y1 > (int32_t)canvas->height) canvas->scissors_y1 = canvas->height;
 }
 
-static void render_scissor_end(Canvas* canvas) {
-    RENDER_DEBUG(TAG, "Scissor end");
+static void render_scissor_reset(Canvas* canvas) {
+    RENDER_DEBUG(TAG, "Scissor reset");
     canvas->scissors_x0 = 0;
     canvas->scissors_y0 = 0;
     canvas->scissors_x1 = canvas->width;
     canvas->scissors_y1 = canvas->height;
 }
 
-void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* renderCommands) {
-    for(int i = 0; i < renderCommands->length; i++) {
-        Clay_RenderCommand* renderCommand = &renderCommands->internalArray[i];
-        Clay_BoundingBox boundingBox = renderCommand->boundingBox;
+void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* render_commands) {
+    for(int i = 0; i < render_commands->length; i++) {
+        Clay_RenderCommand* render_command = &render_commands->internalArray[i];
+        Clay_BoundingBox bounding_box = render_command->boundingBox;
 
-        switch(renderCommand->commandType) {
+        switch(render_command->commandType) {
         case CLAY_RENDER_COMMAND_TYPE_NONE:
             break;
         case CLAY_RENDER_COMMAND_TYPE_RECTANGLE:
-            render_rectangle(canvas, &boundingBox, &renderCommand->renderData.rectangle);
+            Clay_RectangleRenderData* rectangle_data = &render_command->renderData.rectangle;
+            render_fill_round_rectangle_ext(
+                canvas,
+                bounding_box.x,
+                bounding_box.y,
+                bounding_box.width,
+                bounding_box.height,
+                rectangle_data->cornerRadius.topLeft,
+                rectangle_data->cornerRadius.topRight,
+                rectangle_data->cornerRadius.bottomRight,
+                rectangle_data->cornerRadius.bottomLeft,
+                render_color(rectangle_data->backgroundColor));
             break;
         case CLAY_RENDER_COMMAND_TYPE_BORDER:
-            render_border(canvas, &boundingBox, &renderCommand->renderData.border);
+            Clay_BorderRenderData* border_data = &render_command->renderData.border;
+            render_draw_round_rectangle_ext(
+                canvas,
+                bounding_box.x,
+                bounding_box.y,
+                bounding_box.width,
+                bounding_box.height,
+                border_data->cornerRadius.topLeft,
+                border_data->cornerRadius.topRight,
+                border_data->cornerRadius.bottomRight,
+                border_data->cornerRadius.bottomLeft,
+                border_data->width.top,
+                border_data->width.right,
+                border_data->width.bottom,
+                border_data->width.left,
+                render_color(border_data->color));
             break;
         case CLAY_RENDER_COMMAND_TYPE_TEXT:
-            render_text(canvas, &boundingBox, &renderCommand->renderData.text);
+            render_text(canvas, &bounding_box, &render_command->renderData.text);
             break;
         case CLAY_RENDER_COMMAND_TYPE_IMAGE:
-            render_image(canvas, &boundingBox, &renderCommand->renderData.image);
+            render_image(canvas, &bounding_box, &render_command->renderData.image);
             break;
         case CLAY_RENDER_COMMAND_TYPE_SCISSOR_START:
-            render_scissor_start(canvas, &boundingBox);
+            render_scissor_start(canvas, &bounding_box);
             break;
         case CLAY_RENDER_COMMAND_TYPE_SCISSOR_END:
-            render_scissor_end(canvas);
+            render_scissor_reset(canvas);
             break;
         case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
             furi_crash("Custom render commands are not supported");
@@ -495,6 +556,7 @@ Canvas* canvas_alloc(size_t width, size_t height) {
     *(canvas->canary_post) = CANARY_VALUE;
     canvas->width = width;
     canvas->height = height;
+    render_scissor_reset(canvas);
 
     return canvas;
 }
@@ -516,4 +578,14 @@ size_t canvas_get_width(Canvas* canvas) {
 
 size_t canvas_get_height(Canvas* canvas) {
     return canvas->height;
+}
+
+Image canvas_to_image(Canvas* canvas) {
+    Image image = {
+        .width = canvas->width,
+        .height = canvas->height,
+        .format = ImageFormatRawGray8,
+        .data = (uint8_t*)canvas->data,
+    };
+    return image;
 }

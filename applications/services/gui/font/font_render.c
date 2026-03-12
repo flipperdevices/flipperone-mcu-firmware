@@ -57,9 +57,7 @@ void u8g2_font_render_print_char(U8G2FontRender* font, int32_t* x, int32_t y, ch
 void u8g2_font_render_print(U8G2FontRender* font, int32_t x, int32_t y, const char* str, void* context) {
     while(*str) {
         const char* chr = str++;
-        // if(*chr < 0x100) {
         u8g2_font_render_print_char(font, &x, y, *chr, context);
-        // }
     }
 }
 
