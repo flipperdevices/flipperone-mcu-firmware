@@ -6,30 +6,29 @@
  */
 #include "font_render.h"
 
-uint8_t font_get_unsigned_bits(U8G2FontGlyph_t* glyph, uint8_t count);
-int8_t font_get_signed_bits(U8G2FontGlyph_t* glyph, uint8_t count);
-uint16_t font_get_start_symbol_search_postition(U8G2FontRender_t* font, char chr);
-int8_t font_get_glyph(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph, uint16_t search_position, char chr);
-void font_parse_glyph_header(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph);
-int32_t font_draw_start_x_position(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph);
-int32_t font_draw_start_y_position(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph);
-void font_render_glyph(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph, int32_t x, int32_t y);
+uint8_t font_get_unsigned_bits(U8G2FontGlyph* glyph, uint8_t count);
+int8_t font_get_signed_bits(U8G2FontGlyph* glyph, uint8_t count);
+uint16_t font_get_start_symbol_search_postition(U8G2FontRender* font, char chr);
+int8_t font_get_glyph(U8G2FontRender* font, U8G2FontGlyph* glyph, uint16_t search_position, char chr);
+void font_parse_glyph_header(U8G2FontRender* font, U8G2FontGlyph* glyph);
+int32_t font_draw_start_x_position(U8G2FontRender* font, U8G2FontGlyph* glyph);
+int32_t font_draw_start_y_position(U8G2FontRender* font, U8G2FontGlyph* glyph);
+void font_render_glyph(U8G2FontRender* font, U8G2FontGlyph* glyph, int32_t x, int32_t y, void* context);
 
-U8G2FontRender_t U8G2FontRender(const uint8_t* data, fnDrawPixel drawFgPixel, fnDrawPixel drawBgPixel, void* context) {
-    U8G2FontRender_t font = {
+U8G2FontRender u8g2_font_render_init(const uint8_t* data, U8G2FontRenderDrawPixelCallback draw_pixel_fg, U8G2FontRenderDrawPixelCallback draw_pixel_bg) {
+    U8G2FontRender font = {
         .data = data,
-        .drawFgPixel = drawFgPixel,
-        .drawBgPixel = drawBgPixel,
-        .context = context,
+        .draw_pixel_fg = draw_pixel_fg,
+        .draw_pixel_bg = draw_pixel_bg,
     };
 
-    font.header = U8G2FontRender_ParseHeader(&font);
+    font.header = u8g2_font_render_parse_header(&font);
 
     return font;
 }
 
-U8G2FontHeader_t U8G2FontRender_ParseHeader(U8G2FontRender_t* font) {
-    U8G2FontHeader_t header;
+U8G2FontHeader u8g2_font_render_parse_header(U8G2FontRender* font) {
+    U8G2FontHeader header;
 
     memcpy(&header, font->data, U8G2_FONT_HEADER_SIZE);
     header.offset_A = U8G2_FONT_HEADER_SIZE + (font->data[17] << 8 | font->data[18]);
@@ -39,36 +38,36 @@ U8G2FontHeader_t U8G2FontRender_ParseHeader(U8G2FontRender_t* font) {
     return header;
 }
 
-void U8G2FontRender_PrintChar(U8G2FontRender_t* font, int32_t* x, int32_t y, char chr) {
+void u8g2_font_render_print_char(U8G2FontRender* font, int32_t* x, int32_t y, char chr, void* context) {
     uint16_t search_position = font_get_start_symbol_search_postition(font, chr);
 
-    U8G2FontGlyph_t glyph;
+    U8G2FontGlyph glyph;
     if(font_get_glyph(font, &glyph, search_position, chr) != U8G2FontRender_OK) {
         return;
     }
     font_parse_glyph_header(font, &glyph);
-    y += font->header.ascent_A;
-    font_render_glyph(font, &glyph, *x, y);
+    if(glyph.width != 0 && glyph.height != 0) {
+        y += font->header.ascent_A;
+        font_render_glyph(font, &glyph, *x, y, context);
+    }
 
     *x += glyph.pitch;
 }
 
-void U8G2FontRender_Print(U8G2FontRender_t* font, int32_t x, int32_t y, const char* str) {
+void u8g2_font_render_print(U8G2FontRender* font, int32_t x, int32_t y, const char* str, void* context) {
     while(*str) {
         const char* chr = str++;
-        // if(*chr < 0x100) {
-        U8G2FontRender_PrintChar(font, &x, y, *chr);
-        // }
+        u8g2_font_render_print_char(font, &x, y, *chr, context);
     }
 }
 
-void u8g2_render_print(U8G2FontRender_t* font, int32_t x, int32_t y, const char* str, size_t len) {
+void u8g2_font_render_print_slice(U8G2FontRender* font, int32_t x, int32_t y, const char* str, size_t len, void* context) {
     for(size_t i = 0; i < len; i++) {
-        U8G2FontRender_PrintChar(font, &x, y, str[i]);
+        u8g2_font_render_print_char(font, &x, y, str[i], context);
     }
 }
 
-uint8_t font_get_unsigned_bits(U8G2FontGlyph_t* glyph, uint8_t count) {
+uint8_t font_get_unsigned_bits(U8G2FontGlyph* glyph, uint8_t count) {
     uint8_t val;
     uint8_t start = glyph->bit_pos;
     uint8_t end = start + count;
@@ -92,14 +91,14 @@ uint8_t font_get_unsigned_bits(U8G2FontGlyph_t* glyph, uint8_t count) {
     return val;
 }
 
-int8_t font_get_signed_bits(U8G2FontGlyph_t* glyph, uint8_t count) {
+int8_t font_get_signed_bits(U8G2FontGlyph* glyph, uint8_t count) {
     int8_t val = (int8_t)font_get_unsigned_bits(glyph, count);
     val -= 1 << (count - 1);
 
     return val;
 }
 
-uint16_t font_get_start_symbol_search_postition(U8G2FontRender_t* font, char chr) {
+uint16_t font_get_start_symbol_search_postition(U8G2FontRender* font, char chr) {
     uint16_t search_position = U8G2_FONT_HEADER_SIZE;
     if(chr >= 65 && chr <= 90) {
         search_position = font->header.offset_A;
@@ -110,7 +109,7 @@ uint16_t font_get_start_symbol_search_postition(U8G2FontRender_t* font, char chr
     return search_position;
 }
 
-int8_t font_get_glyph(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph, uint16_t search_position, char chr) {
+int8_t font_get_glyph(U8G2FontRender* font, U8G2FontGlyph* glyph, uint16_t search_position, char chr) {
     while(1) {
         memcpy(glyph, font->data + search_position, 2);
         if(glyph->character == chr) {
@@ -129,7 +128,7 @@ int8_t font_get_glyph(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph, uint16_t s
     return U8G2FontRender_ERR;
 }
 
-void font_parse_glyph_header(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph) {
+void font_parse_glyph_header(U8G2FontRender* font, U8G2FontGlyph* glyph) {
     glyph->width = font_get_unsigned_bits(glyph, font->header.glyph_width);
     glyph->height = font_get_unsigned_bits(glyph, font->header.glyph_height);
     glyph->x_offset = font_get_signed_bits(glyph, font->header.glyph_x_offset);
@@ -137,17 +136,17 @@ void font_parse_glyph_header(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph) {
     glyph->pitch = font_get_signed_bits(glyph, font->header.glyph_pitch);
 }
 
-int32_t font_draw_start_x_position(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph) {
+int32_t font_draw_start_x_position(U8G2FontRender* font, U8G2FontGlyph* glyph) {
     (void)font;
     return glyph->x_offset;
 }
 
-int32_t font_draw_start_y_position(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph) {
+int32_t font_draw_start_y_position(U8G2FontRender* font, U8G2FontGlyph* glyph) {
     (void)font;
     return -glyph->height - glyph->y_offset;
 }
 
-void font_render_glyph(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph, int32_t x, int32_t y) {
+void font_render_glyph(U8G2FontRender* font, U8G2FontGlyph* glyph, int32_t x, int32_t y, void* context) {
     uint32_t pixels = 0;
     int32_t y_pos = y + font_draw_start_y_position(font, glyph);
     int32_t x_pos = x + font_draw_start_x_position(font, glyph);
@@ -163,9 +162,9 @@ void font_render_glyph(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph, int32_t x
         for(; repeat >= 0; repeat--) {
             for(uint8_t i = 0; i < zeros + ones; i++) {
                 if(i <= zeros - 1) {
-                    font->drawBgPixel(x_pos, y_pos, font->context);
+                    font->draw_pixel_bg(x_pos, y_pos, context);
                 } else {
-                    font->drawFgPixel(x_pos, y_pos, font->context);
+                    font->draw_pixel_fg(x_pos, y_pos, context);
                 }
                 x_pos++;
 
@@ -183,14 +182,14 @@ void font_render_glyph(U8G2FontRender_t* font, U8G2FontGlyph_t* glyph, int32_t x
     }
 }
 
-size_t u8g2_font_get_height(U8G2FontRender_t* font) {
+size_t u8g2_font_render_get_height(U8G2FontRender* font) {
     return font->header.ascent_A + 2;
 }
 
-static size_t u8g2_font_glyph_width(U8G2FontRender_t* font, char chr) {
+static size_t u8g2_font_glyph_width(U8G2FontRender* font, char chr) {
     uint16_t search_position = font_get_start_symbol_search_postition(font, chr);
 
-    U8G2FontGlyph_t glyph;
+    U8G2FontGlyph glyph;
     if(font_get_glyph(font, &glyph, search_position, chr) != U8G2FontRender_OK) {
         return 0;
     }
@@ -199,7 +198,7 @@ static size_t u8g2_font_glyph_width(U8G2FontRender_t* font, char chr) {
     return glyph.pitch;
 }
 
-size_t u8g2_font_get_string_width(U8G2FontRender_t* font, const char* str, size_t len) {
+size_t u8g2_font_render_get_string_width(U8G2FontRender* font, const char* str, size_t len) {
     size_t width = 0;
     for(size_t i = 0; i < len; i++) {
         width += u8g2_font_glyph_width(font, str[i]);
@@ -207,20 +206,20 @@ size_t u8g2_font_get_string_width(U8G2FontRender_t* font, const char* str, size_
     return width;
 }
 
-void u8g2_render_print_multiline(U8G2FontRender_t* font, int32_t x, int32_t y, const char* str, size_t len) {
+void u8g2_font_render_print_multiline(U8G2FontRender* font, int32_t x, int32_t y, const char* str, size_t len, void* context) {
     int32_t original_x = x;
 
     for(size_t i = 0; i < len; i++) {
         if(str[i] == '\n') {
-            y += u8g2_font_get_height(font);
+            y += u8g2_font_render_get_height(font);
             x = original_x;
         } else {
-            U8G2FontRender_PrintChar(font, &x, y, str[i]);
+            u8g2_font_render_print_char(font, &x, y, str[i], context);
         }
     }
 }
 
-size_t u8g2_font_get_string_width_multiline(U8G2FontRender_t* font, const char* str, size_t len) {
+size_t u8g2_font_render_get_string_width_multiline(U8G2FontRender* font, const char* str, size_t len) {
     size_t max_width = 0;
     size_t line_width = 0;
     for(size_t i = 0; i < len; i++) {

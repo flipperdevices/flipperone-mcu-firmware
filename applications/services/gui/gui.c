@@ -31,7 +31,7 @@ struct Gui {
 
     // View ports
     ViewHandleArray_t views;
-    RenderBuffer* render_buffer;
+    Canvas* render_canvas;
     DisplayJd9853QSPI* display;
 
     // Event handling
@@ -121,15 +121,27 @@ static void gui_redraw(Gui* gui) {
 
     ViewHandleArray_it_t it;
 
-    if(gui_view_find_opaque_from_top(gui->views, &it)) {
-        do {
-            view_layout(gui_view_from_it(&it));
-        } while(gui_view_find_next_transparent(&it));
+    CLAY(
+        CLAY_ID("GUI"),
+        {
+            .layout =
+                {
+                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                    // workaround for the pixel shift bug
+                    .padding = {.left = 1, .top = 0, .right = 0, .bottom = 0},
+                },
+        }) {
+        if(gui_view_find_opaque_from_top(gui->views, &it)) {
+            do {
+                view_layout(gui_view_from_it(&it));
+            } while(gui_view_find_next_transparent(&it));
+        }
     }
 
     Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
-    render_do_render(&renderCommands);
+    clay_render_do_render(gui->render_canvas, &renderCommands);
 
     if(gui_view_find_opaque_from_top(gui->views, &it)) {
         do {
@@ -137,9 +149,9 @@ static void gui_redraw(Gui* gui) {
         } while(gui_view_find_next_transparent(&it));
     }
 
-    size_t width = render_get_buffer_width(gui->render_buffer);
-    size_t height = render_get_buffer_height(gui->render_buffer);
-    display_jd9853_qspi_write_buffer(gui->display, render_get_buffer_data(gui->render_buffer), width * height);
+    size_t width = canvas_get_width(gui->render_canvas);
+    size_t height = canvas_get_height(gui->render_canvas);
+    display_jd9853_qspi_write_buffer(gui->display, canvas_get_data(gui->render_canvas), width * height);
 
     gui_unlock(gui);
 }
@@ -289,6 +301,8 @@ void gui_set_backlight(Gui* gui, int8_t brightness) {
 }
 
 static Gui* gui_alloc(void) {
+    canvas_init();
+
     Gui* gui = malloc(sizeof(Gui));
 
     // Allocate mutex
@@ -306,8 +320,7 @@ static Gui* gui_alloc(void) {
     // Display and buffer
     gui->display = display_jd9853_qspi_init();
     gui_set_backlight(gui, 20);
-    gui->render_buffer = render_alloc_buffer();
-    render_set_current_buffer(gui->render_buffer);
+    gui->render_canvas = canvas_alloc(JD9853_WIDTH, JD9853_HEIGHT);
 
     // Clay initialization
     Clay_SetMaxElementCount(128);
@@ -316,7 +329,7 @@ static Gui* gui_alloc(void) {
     FURI_LOG_I(TAG, "Clay allocation: %lluk", totalMemorySize / 1024);
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
     Clay_Initialize(arena, (Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT}, (Clay_ErrorHandler){gui_handle_clay_errors, gui});
-    Clay_SetMeasureTextFunction(render_measure_text, NULL);
+    Clay_SetMeasureTextFunction(clay_render_measure_text, NULL);
 
     // Subscribe to input events
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), gui_input_events_glue, gui->input_queue);
