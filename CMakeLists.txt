@@ -68,6 +68,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/spi_get_frame/*.c*"
     "lib/drivers/ina219/*.c*"
     "lib/drivers/bq25792/*.c*"
+    "lib/drivers/bq28z620/*.c*"
     "lib/drivers/fusb302/*.c*"
     "lib/drivers/i2c_multi_slave/*.c*"
     "lib/drivers/i2c_slave/*.c*"
