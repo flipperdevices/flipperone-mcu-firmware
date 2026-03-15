@@ -10,6 +10,7 @@
 #include <input/input.h>
 #include <furi_hal_nvm.h>
 #include <power/power.h>
+#include <drivers/bq28z620/bq28z620.h>
 
 #define TAG "PerefTest"
 
@@ -84,8 +85,82 @@ int32_t test_peref_srv(void* p) {
 
     furi_delay_ms(2000);
 
+    Bq28z620* bat = bq28z620_init(&furi_hal_i2c_handle_main, BQ28Z620_ADDRESS);
+
     while(true) {
-        furi_delay_ms(500);
+        furi_delay_ms(5000);
+        FURI_LOG_I(TAG, "\r\n\r\nBattery status update");
+        Bq28z620StdCmdControlStatusRegBits control_status = {0};
+        bq28z620_get_control_status(bat, &control_status);
+
+        uint16_t time_to_empty = 0;
+        bq28z620_get_time_to_empty(bat, &time_to_empty);
+
+        uint16_t time_to_full = 0;
+        bq28z620_get_average_time_to_full(bat, &time_to_full);
+
+        float_t temperature = 0;
+        bq28z620_get_internal_temperature(bat, &temperature);
+
+        float voltage = 0;
+        bq28z620_get_voltage(bat, &voltage);
+
+        Bq28z620StdCmdBatteryStatusRegBits battery_status = {0};
+        bq28z620_get_battery_status(bat, &battery_status);
+
+        int16_t current = 0;
+        bq28z620_get_current(bat, &current);
+
+        uint16_t remaining_capacity = 0;
+        bq28z620_get_remaining_capacity(bat, &remaining_capacity);
+
+        uint16_t full_charge_capacity = 0;
+        bq28z620_get_full_charge_capacity(bat, &full_charge_capacity);
+
+        int16_t average_current = 0;
+        bq28z620_get_average_current(bat, &average_current);
+
+        uint16_t average_time_to_empty = 0;
+        bq28z620_get_average_time_to_empty(bat, &average_time_to_empty);
+
+        uint16_t average_time_to_full = 0;
+        bq28z620_get_average_time_to_full(bat, &average_time_to_full);
+
+        int16_t standby_current = 0;
+        bq28z620_get_standby_current(bat, &standby_current);
+
+        uint16_t standby_time_to_empty = 0;
+        bq28z620_get_standby_time_to_empty(bat, &standby_time_to_empty);
+
+        int16_t max_load_current = 0;
+        bq28z620_get_max_load_current(bat, &max_load_current);
+
+        uint16_t max_load_time_to_empty = 0;
+        bq28z620_get_max_load_time_to_empty(bat, &max_load_time_to_empty);
+
+        int16_t average_power = 0;
+        bq28z620_get_average_power(bat, &average_power);
+
+        float internal_temperature = 0;
+        bq28z620_get_internal_temperature(bat, &internal_temperature);
+
+        uint16_t cycle_count = 0;
+        bq28z620_get_cycle_count(bat, &cycle_count);
+
+        uint8_t relative_state_of_charge = 0;
+        bq28z620_get_relative_state_of_charge(bat, &relative_state_of_charge);
+
+        uint8_t state_of_health = 0;
+        bq28z620_get_state_of_health(bat, &state_of_health);
+
+        float charge_voltage = 0;
+        bq28z620_get_charging_voltage(bat, &charge_voltage);
+
+        int16_t charge_current = 0;
+        bq28z620_get_charging_current(bat, &charge_current);
+
+        uint16_t design_capacity = 0;
+        bq28z620_get_design_capacity(bat, &design_capacity);
 
         // float bus_v = 0;
         // float current_a = 0;

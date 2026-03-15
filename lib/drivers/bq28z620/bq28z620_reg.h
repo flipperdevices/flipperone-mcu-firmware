@@ -8,7 +8,7 @@
 /* clang-format off */
 
 typedef enum {
-    Bq28z620StdCmdManufacturerAccess = 0x00,
+    Bq28z620StdCmdManufacturerAccessAndControlStatus = 0x00,
     Bq28z620StdCmdAtRate = 0x02,
     Bq28z620StdCmdAtRateTimeToEmpty = 0x04,
     Bq28z620StdCmdTemperature = 0x06,
@@ -111,10 +111,10 @@ typedef struct {
     uint8_t authcalm        : 1; //Bit 12: Automatic CALIBRATION mode. 1 = Enabled, 0 = Disabled
     uint8_t sec             : 2; //Bits 14–13: SECURITY mode 0b00 = Reserved, 0b01 = Full Access, 0b10 = Unsealed, 0b11 = Sealed
     uint8_t                 : 1; //Bit 15: Reserved
-} Bq28z620StdCmdManufacturerAccessRegBits;
+} Bq28z620StdCmdControlStatusRegBits;
 _Static_assert(
-    sizeof(Bq28z620StdCmdManufacturerAccessRegBits) == 2,
-    "Size check for 'Bq28z620StdCmdManufacturerAccessRegBits' failed.");
+    sizeof(Bq28z620StdCmdControlStatusRegBits) == 2,
+    "Size check for 'Bq28z620StdCmdControlStatusRegBits' failed.");
 
 /*14.1.3 0x02/03 AtRate()*/
 typedef struct {
