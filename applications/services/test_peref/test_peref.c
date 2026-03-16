@@ -97,7 +97,7 @@ int32_t test_peref_srv(void* p) {
         bq28z620_get_time_to_empty(bat, &time_to_empty);
 
         float_t temperature = 0;
-        bq28z620_get_internal_temperature(bat, &temperature);
+        bq28z620_get_temperature(bat, &temperature);
 
         float voltage = 0;
         bq28z620_get_voltage(bat, &voltage);
