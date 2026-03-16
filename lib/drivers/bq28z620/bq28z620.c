@@ -361,7 +361,7 @@ Bq28z620Status bq28z620_get_average_power(Bq28z620* instance, int16_t* average_p
     Bq28z620StdCmdAveragePowerRegBits average_power_reg = {0};
     Bq28z620Status status = bq28z620_std_cmd(instance, Bq28z620StdCmdAveragePower, (uint8_t*)&average_power_reg, sizeof(average_power_reg));
     if(status == Bq28z620StatusOk) {
-        *average_power = average_power_reg.average_power;
+        *average_power = average_power_reg.average_power * 10; // From observations it is clear that the step is 10 mW, this is not indicated in the datasheet
         BQ28Z620_DEBUG(TAG, "Raw AveragePower reg: %d, Average power: %d mW", average_power_reg.average_power, *average_power);
     } else {
         FURI_LOG_E(TAG, "Failed to get average power");
