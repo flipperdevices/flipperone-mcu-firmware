@@ -34,9 +34,8 @@
  */
 #define _PID_MAP(itf, n) ((CFG_TUD_##itf) << (n))
 
-// Todo: replace with your own VID
 #define USB_VID 0x37c1
-#define USB_PID 0x1337
+#define USB_PID 0xF101
 #define USB_BCD 0x0200
 
 //--------------------------------------------------------------------+
@@ -211,14 +210,14 @@ enum {
     STRID_SERIAL,
 };
 
-// Must be less than 16 characters to fit in 32 bytes
-static char usbd_serial_str[] = "_one_xxxxxxxx_";
+// Must be less than 32 characters to fit in USBD_DESC_STR_MAX
+static char usbd_serial_str[] = "flipper_one_mcu_xxxxxxxx_";
 
 // array of pointer to string descriptors
 static char const* usbd_desc_str[] = {
     (const char[]){0x09, 0x04}, // 0: is supported language is English (0x0409)
     "Flipper Devices Inc.", // 1: Manufacturer
-    "Flipper One", // 2: Product
+    "Flipper One MCU Debug", // 2: Product
     usbd_serial_str, // 3: Serials will use unique ID if possible
     "CDC", // 4: CDC Interface
 };
@@ -245,7 +244,7 @@ const uint16_t* tud_descriptor_string_cb(uint8_t index, __unused uint16_t langid
 #error USBD_DESC_STR_MAX too low (min is 17).
 #endif
     static uint16_t desc_str[USBD_DESC_STR_MAX];
-    const size_t serial_start = 5;
+    const size_t serial_start = 16;
 
     // Assign the SN using the unique flash id
     if(usbd_serial_str[serial_start] == 'x') {
