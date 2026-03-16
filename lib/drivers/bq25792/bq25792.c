@@ -8,6 +8,9 @@
 #define BQ25792_DEVICE_PART_NUMBER 0b001 //BQ25792
 #define BQ25792_DEVICE_REVISION    0b000 //Revision
 
+#define BQ25792_BAT_MAX_CHARGE_VOLTAGE 8800
+#define BQ25792_BAT_MAX_CHARGE_CURRENT 3000
+
 #ifdef BQ25792_DEBUG_ENABLE
 #define BQ25792_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
@@ -178,12 +181,22 @@ static Bq25792Status bq25792_load_config(Bq25792* instance) {
         if(res != Bq25792StatusOk) {
             break;
         }
-        Bq25792ChargerControl5RegBits charger_control_5 = {0};
-        bq25792_read_reg8(instance, Bq25792RegChargerControl5, (uint8_t*)&charger_control_5);
+
+        // Disable Dp/Dm detection
+        Bq25792ChargerControl2RegBits charger_control_2 = {0};
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl2, *(uint8_t*)&charger_control_2);
         if(res != Bq25792StatusOk) {
             break;
         }
+
+        Bq25792ChargerControl5RegBits charger_control_5 = {0};
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl5, (uint8_t*)&charger_control_5);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_5.en_iindpm = 0; // Disable IINDPM measurement
         charger_control_5.sfet_present = 1; // Enable Sfet presence detection
+        charger_control_5.en_ibat = 1; // Enable IBAT measurement
         res = bq25792_write_reg8(instance, Bq25792RegChargerControl5, *(uint8_t*)&charger_control_5);
     } while(0);
     if(res != Bq25792StatusOk) {
@@ -217,6 +230,9 @@ Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
         if(bq25792_load_config(instance) != Bq25792StatusOk) {
             furi_crash("BQ25792 failed to load config");
         }
+
+        bq25792_set_charge_voltage_limit_ma(instance, BQ25792_BAT_MAX_CHARGE_VOLTAGE);
+        bq25792_set_charge_current_limit_ma(instance, BQ25792_BAT_MAX_CHARGE_CURRENT);
 
     } else {
         FURI_LOG_E(TAG, "BQ25792 device not ready at address 0x%02X", instance->address);
@@ -405,9 +421,10 @@ Bq25792Status bq25792_set_charge_voltage_limit_ma(Bq25792* instance, uint16_t ch
     furi_check(instance);
     furi_check(charge_voltage_limit >= 8000 && charge_voltage_limit <= 8800); // Max charge voltage limit is 8800 mV
     Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792ChargeVoltageLimitRegBits charge_voltage_limit_reg = {0};
+    charge_voltage_limit_reg.vreg = charge_voltage_limit / 10; // Convert to register value (10 mV per LSB)
     do {
-        charge_voltage_limit = charge_voltage_limit / 10; // Convert to register value (10 mV per LSB)
-        res = bq25792_write_reg16(instance, Bq25792RegChargeVoltageLimit, charge_voltage_limit);
+        res = bq25792_write_reg16(instance, Bq25792RegChargeVoltageLimit, *(uint16_t*)&charge_voltage_limit_reg);
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to set charge voltage limit!");
@@ -451,7 +468,6 @@ Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable) {
     Bq25792ChargerControl0RegBits charger_control_0 = {0};
     do {
         res = bq25792_read_reg8(instance, Bq25792RegChargerControl0, (uint8_t*)&charger_control_0);
-        FURI_LOG_E(TAG, "Read ChargerControl0: %08b", *(uint8_t*)&charger_control_0);
         if(res != Bq25792StatusOk) {
             break;
         }
