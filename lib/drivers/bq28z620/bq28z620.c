@@ -381,7 +381,7 @@ Bq28z620Status bq28z620_get_internal_temperature(Bq28z620* instance, float* inte
         *internal_temperature = (float)internal_temperature_reg.internal_temperature * 0.1f - 273.15f;
         BQ28Z620_DEBUG(
             TAG,
-            "Raw internal temperature reg: %u, Internal temperature: %.2f C",
+            "Raw Internal temperature reg: %u, Internal temperature: %.2f C",
             (uint16_t)internal_temperature_reg.internal_temperature,
             *internal_temperature);
     } else {

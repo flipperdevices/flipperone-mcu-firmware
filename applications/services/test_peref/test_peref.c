@@ -79,11 +79,11 @@ int32_t test_peref_srv(void* p) {
     uint8_t duty = 0;
     UNUSED(duty);
 
-    test_nvm();
+    //test_nvm();
 
     Power* power = furi_record_open(RECORD_POWER);
 
-    furi_delay_ms(2000);
+    furi_delay_ms(40000);
 
     Bq28z620* bat = bq28z620_init(&furi_hal_i2c_handle_main, BQ28Z620_ADDRESS);
 
@@ -95,9 +95,6 @@ int32_t test_peref_srv(void* p) {
 
         uint16_t time_to_empty = 0;
         bq28z620_get_time_to_empty(bat, &time_to_empty);
-
-        uint16_t time_to_full = 0;
-        bq28z620_get_average_time_to_full(bat, &time_to_full);
 
         float_t temperature = 0;
         bq28z620_get_internal_temperature(bat, &temperature);
