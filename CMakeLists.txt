@@ -6,6 +6,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+set(TARGET_HARDWARE "f100" CACHE STRING "Target hardware")
+
 # Initialise pico_sdk from installed location
 # (note this can come from environment, CMake cache etc)
 
@@ -56,8 +58,8 @@ file(GLOB_RECURSE SOURCES
     "app/*.c"
     "app/theme/*.c"
     "app/fs/*.c"
-    "targets/f100/furi_hal/*.c*"
-    "targets/f100/furi_bsp/*.c*"
+    "targets/${TARGET_HARDWARE}/furi_hal/*.c*"
+    "targets/${TARGET_HARDWARE}/furi_bsp/*.c*"
     "lib/drivers/display/*.c*"  
     "lib/drivers/tps62868x/*.c*"
     "lib/drivers/tca6416a/*.c*"
@@ -73,7 +75,7 @@ file(GLOB_RECURSE SOURCES
     "applications/*.c"
     "applications/services/*.c"
     "applications/main/*.c"
-    "targets/f100/src/*.c*" 
+    "targets/${TARGET_HARDWARE}/src/*.c*" 
 )
 
 add_executable(${PROJECT_NAME} 
@@ -110,10 +112,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
     ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/src
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_hal
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/furi_bsp
-    ${CMAKE_CURRENT_LIST_DIR}/targets/f100/config
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/src
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_hal
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_bsp
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/config
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib

@@ -8,9 +8,9 @@
 
 #define TAG "CpuApp"
 
-#define cpu_app_MENU_ID(x) CLAY_SIDI(CLAY_STRING("CpuAppMenu"), x)
+#define CPU_APP_MENU_ID(x) CLAY_SIDI(CLAY_STRING("CpuAppMenu"), x)
 
-#define cpu_app_MESSAGE_QUEUE_SIZE 64
+#define CPU_APP_MESSAGE_QUEUE_SIZE 64
 
 typedef enum {
     CpuAppMenuItemStart,
@@ -139,7 +139,7 @@ static bool cpu_app_layout(void* _model) {
                 for(uint32_t i = 0; i < cpu_app_menu_items_count; i++) {
                     bool selected = (i == model->selected_index);
                     CLAY(
-                        cpu_app_MENU_ID(i),
+                        CPU_APP_MENU_ID(i),
                         {
                             .layout =
                                 {
@@ -302,7 +302,7 @@ static CpuApp* cpu_app_alloc(void) {
     CpuApp* instance = malloc(sizeof(CpuApp));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
-    instance->app_queue = furi_message_queue_alloc(cpu_app_MESSAGE_QUEUE_SIZE, sizeof(CpuAppMessage));
+    instance->app_queue = furi_message_queue_alloc(CPU_APP_MESSAGE_QUEUE_SIZE, sizeof(CpuAppMessage));
 
     instance->spi_get_frame = spi_get_frame_init();
     spi_get_frame_set_callback_rx(instance->spi_get_frame, cpu_app_spi_get_frame_isr, instance);
