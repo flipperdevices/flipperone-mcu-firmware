@@ -5,8 +5,6 @@
 
 #define TAG "Bq28z620"
 
-#define BQ28Z620_DEBUG_ENABLE
-
 #ifdef BQ28Z620_DEBUG_ENABLE
 #define BQ28Z620_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
@@ -45,13 +43,15 @@ static Bq28z620Status bq28z620_std_cmd(Bq28z620* instance, Bq28z620StdCmd std_cm
     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
         FURI_LOG_E(TAG, "Failed to send std cmd 0x%02X", std_cmd);
     } else {
-        // BQ28Z620_DEBUG(TAG, "Sent std cmd 0x%02X", std_cmd);
-        // if(response && response_length > 0) {
-        //     BQ28Z620_DEBUG(TAG, "Response: %d bytes", response_length);
-        //     for(size_t i = 0; i < response_length; i++) {
-        //         BQ28Z620_DEBUG(TAG, "  %02X: %02X", i, response[i]);
-        //     }
-        // }
+#ifdef BQ28Z620_DEBUG_ENABLE
+        BQ28Z620_DEBUG(TAG, "Sent std cmd 0x%02X", std_cmd);
+        if(response && response_length > 0) {
+            BQ28Z620_DEBUG(TAG, "Response: %d bytes", response_length);
+            for(size_t i = 0; i < response_length; i++) {
+                BQ28Z620_DEBUG(TAG, "  %02X: %02X", i, response[i]);
+            }
+        }
+#endif
     }
 
     return bq28z620_check_status(ret);
@@ -433,15 +433,10 @@ Bq28z620Status bq28z620_get_state_of_health(Bq28z620* instance, uint8_t* state_o
     furi_check(state_of_health);
 
     Bq28z620StdCmdStateOfHealthRegBits state_of_health_reg = {0};
-    Bq28z620Status status =
-        bq28z620_std_cmd(instance, Bq28z620StdCmdStateOfHealth, (uint8_t*)&state_of_health_reg, sizeof(state_of_health_reg));
+    Bq28z620Status status = bq28z620_std_cmd(instance, Bq28z620StdCmdStateOfHealth, (uint8_t*)&state_of_health_reg, sizeof(state_of_health_reg));
     if(status == Bq28z620StatusOk) {
         *state_of_health = state_of_health_reg.state_of_health;
-        BQ28Z620_DEBUG(
-            TAG,
-            "Raw StateOfHealth reg: %u, State of health: %u%%",
-            state_of_health_reg.state_of_health,
-            *state_of_health);
+        BQ28Z620_DEBUG(TAG, "Raw StateOfHealth reg: %u, State of health: %u%%", state_of_health_reg.state_of_health, *state_of_health);
     } else {
         FURI_LOG_E(TAG, "Failed to get state of health");
     }
