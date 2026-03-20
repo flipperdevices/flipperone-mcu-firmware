@@ -68,7 +68,10 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/spi_get_frame/*.c*"
     "lib/drivers/ina219/*.c*"
     "lib/drivers/bq25792/*.c*"
-    "lib/drivers/fusb302/*.c*"
+    #"lib/drivers/fusb302/*.c*"
+
+
+
     "lib/drivers/i2c_multi_slave/*.c*"
     "lib/drivers/i2c_slave/*.c*"
     "lib/tusb/*.c*"
@@ -76,6 +79,12 @@ file(GLOB_RECURSE SOURCES
     "applications/services/*.c"
     "applications/main/*.c"
     "targets/${TARGET_HARDWARE}/src/*.c*" 
+
+    "lib/usb_pd/glue/*.c*"
+    "lib/usb_pd/*.c*"
+    "lib/usb_pd/board/*.c*"
+    "lib/usb_pd/common/*.c*"
+    "lib/usb_pd/driver/tcpm/*.c*"
 )
 
 add_executable(${PROJECT_NAME} 
@@ -119,13 +128,31 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
+
+    
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb_pd/glue
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb_pd
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb_pd/board
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb_pd/common
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb_pd/common/usbc
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb_pd/driver/tcpm
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb_pd/include
+    
 )
+
+# Force-include FreeRTOS.h for the main executable so FreeRTOS port macros
+# (e.g. portENTER_CRITICAL) and types are available before other FreeRTOS
+# headers (workaround for include-order issues across many source files).
+# target_compile_options(${PROJECT_NAME} PRIVATE
+#     -include "${CMAKE_CURRENT_LIST_DIR}/lib/freertos/FreeRTOS-Kernel/include/FreeRTOS.h"
+# )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/mlib)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/ws2812)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_multi_slave)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/usb_pd/common/usbc)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
 
@@ -152,5 +179,11 @@ target_link_libraries(${PROJECT_NAME}
     kvstore
     kvstore_default
 )
+
+# Link conditional USB PD usbc object library (created by
+# lib/usb_pd/common/usbc/CMakeLists.txt) instead of globbing its sources
+if(TARGET usb_pd_usbc)
+    target_link_libraries(${PROJECT_NAME} PRIVATE usb_pd_usbc)
+endif()
 
 pico_add_extra_outputs(${PROJECT_NAME})
