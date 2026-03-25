@@ -64,7 +64,7 @@ static void i2c_registers_input_event_glue(const void* value, void* ctx) {
 void i2c_registers_init(void) {
     furi_hal_gpio_init(&gpio_cpu_int, GpioModeOutputOpenDrain, GpioPullNo, GpioSpeedLow);
     furi_hal_gpio_init(&gpio_m40, GpioModeOutputPushPull, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_write(&gpio_cpu_int, true);
+    furi_hal_gpio_write_open_drain(&gpio_cpu_int, false);
     furi_hal_gpio_write(&gpio_m40, false);
 
     I2CRegMap_init(i2c_registers);
