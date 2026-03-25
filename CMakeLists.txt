@@ -127,6 +127,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_multi_slave)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/rtt)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
 
 # Add the standard library to the build
@@ -151,6 +152,7 @@ target_link_libraries(${PROJECT_NAME}
     mlib
     kvstore
     kvstore_default
+    rtt
 )
 
 pico_add_extra_outputs(${PROJECT_NAME})
