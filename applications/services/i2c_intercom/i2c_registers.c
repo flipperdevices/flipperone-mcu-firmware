@@ -62,9 +62,9 @@ static void i2c_registers_input_event_glue(const void* value, void* ctx) {
 }
 
 void i2c_registers_init(void) {
-    furi_hal_gpio_init(&gpio_cpu_int, GpioModeOutputPushPull, GpioPullNo, GpioSpeedLow);
+    furi_hal_gpio_init(&gpio_cpu_int, GpioModeOutputOpenDrain, GpioPullNo, GpioSpeedLow);
     furi_hal_gpio_init(&gpio_m40, GpioModeOutputPushPull, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_write(&gpio_cpu_int, false);
+    furi_hal_gpio_write(&gpio_cpu_int, true);
     furi_hal_gpio_write(&gpio_m40, false);
 
     I2CRegMap_init(i2c_registers);
@@ -157,7 +157,7 @@ bool i2c_register_read_commit(uint16_t address) {
             }
 
             if(i2c_register_get_status_register() == 0) {
-                furi_hal_gpio_write(&gpio_cpu_int, false);
+                furi_hal_gpio_write_open_drain(&gpio_cpu_int, true);
                 furi_hal_gpio_write(&gpio_m40, false);
             }
 
@@ -215,7 +215,7 @@ void i2c_register_update_and_set_interrupt(uint16_t address, uint16_t value, uin
             interrupt_reg->value |= interrupt_bits;
 
             if(i2c_register_get_status_register() != 0) {
-                furi_hal_gpio_write(&gpio_cpu_int, true);
+                furi_hal_gpio_write_open_drain(&gpio_cpu_int, false);
                 furi_hal_gpio_write(&gpio_m40, true);
             }
         }
