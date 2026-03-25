@@ -31,6 +31,7 @@ typedef struct {
 
     int32_t last_x;
     int32_t last_y;
+    float pressure;
     bool pressed;
 
 } TouchpadTestModel;
@@ -127,7 +128,8 @@ void touchpad_test_app_update_frame(TouchpadTestModel* model) {
     }
 
     // touch point
-    const int32_t radius = 3;
+    const int32_t min_radius = 3;
+    const int32_t radius = min_radius + (int32_t)(model->pressure * 20);
     if(model->pressed) {
         render_fill_round_rectangle(model->canvas, model->last_x - radius, model->last_y - radius, 2 * radius, 2 * radius, radius, 0x00);
     } else {
@@ -191,6 +193,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
                 model->pressed = true;
                 model->last_x = (event->x - touch_resolution_padding_x) * TOUCHPAD_CANVAS_WIDTH / touch_resolution_x;
                 model->last_y = (event->y - touch_resolution_padding_y) * TOUCHPAD_CANVAS_HEIGHT / touch_resolution_y;
+                model->pressure = event->pressure / (1024.0f * 16.0f);
                 touchpad_test_app_update_frame(model);
             },
             true);
@@ -208,6 +211,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
                 }
                 model->last_x = new_x;
                 model->last_y = new_y;
+                model->pressure = event->pressure / (1024.0f * 16.0f);
                 touchpad_test_app_update_frame(model);
             },
             true);
@@ -219,6 +223,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
             TouchpadTestModel * model,
             {
                 model->pressed = false;
+                model->pressure = event->pressure / (1024.0f * 16.0f);
                 touchpad_test_app_update_frame(model);
             },
             true);
