@@ -52,6 +52,9 @@ typedef uint8_t (*FuriHalI2cBusSlaveWriteCallback)(const FuriHalI2cBusHandle* ha
 /** FuriHal i2c bus slave read callback */
 typedef uint8_t (*FuriHalI2cBusSlaveReadCallback)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
 
+//** FuriHal reset i2c bus slave callback */
+typedef void (*FuriHalI2cBusSlaveResetCallback)(const FuriHalI2cBusHandle* handle);
+
 /** FuriHal i2c handle */
 struct FuriHalI2cBusHandle {
     FuriHalI2cBus* bus;
@@ -69,6 +72,7 @@ typedef struct {
         struct {
             FuriHalI2cBusSlaveWriteCallback write_blocking;
             FuriHalI2cBusSlaveReadCallback read_blocking;
+            FuriHalI2cBusSlaveResetCallback bus_reset;
             FuriHalI2cBusSlaveCallback callback;
             void* context;
         } slave;

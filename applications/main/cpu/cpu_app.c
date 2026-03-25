@@ -8,14 +8,15 @@
 
 #define TAG "CpuApp"
 
-#define cpu_app_MENU_ID(x) CLAY_SIDI(CLAY_STRING("CpuAppMenu"), x)
+#define CPU_APP_MENU_ID(x) CLAY_SIDI(CLAY_STRING("CpuAppMenu"), x)
 
-#define cpu_app_MESSAGE_QUEUE_SIZE 64
+#define CPU_APP_MESSAGE_QUEUE_SIZE 64
 
 typedef enum {
     CpuAppMenuItemStart,
     CpuAppMenuItemStop,
     CpuAppMenuItemReset,
+    CpuAppMenuItemMaskrom,
     CpuAppMenuItemClose,
 } CpuAppMenuItem;
 
@@ -23,6 +24,7 @@ static const char* cpu_app_menu_items[] = {
     [CpuAppMenuItemStart] = "Start",
     [CpuAppMenuItemStop] = "Stop",
     [CpuAppMenuItemReset] = "Reset",
+    [CpuAppMenuItemMaskrom] = "Maskrom",
     [CpuAppMenuItemClose] = "Close",
 };
 
@@ -38,6 +40,7 @@ typedef enum {
     CpuAppMessageTypeStart,
     CpuAppMessageTypeStop,
     CpuAppMessageTypeReset,
+    CpuAppMessageTypeMaskrom,
     CpuAppMessageTypeClose,
     CpuAppMessageTypeNewFrame,
 } CpuAppMessageType;
@@ -76,6 +79,14 @@ static void furi_hal_bsp_linux_stop(void) {
     uint32_t status = furi_bsp_expander_main_read_output();
     FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
     status &= ~(OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En);
+    FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
+    furi_bsp_expander_main_write_output(status);
+}
+
+static void furi_hal_bsp_linux_maskrom(void) {
+    uint32_t status = furi_bsp_expander_main_read_output();
+    FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
+    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En | OutputExpMainExpander17 ;
     FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
     furi_bsp_expander_main_write_output(status);
 }
@@ -139,7 +150,7 @@ static bool cpu_app_layout(void* _model) {
                 for(uint32_t i = 0; i < cpu_app_menu_items_count; i++) {
                     bool selected = (i == model->selected_index);
                     CLAY(
-                        cpu_app_MENU_ID(i),
+                        CPU_APP_MENU_ID(i),
                         {
                             .layout =
                                 {
@@ -168,17 +179,20 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
 
 static void cpu_app_input_menu(CpuApp* instance, size_t selected_index) {
     switch(selected_index) {
-    case CpuAppMenuItemStart: {
+    case CpuAppMenuItemStart:
         cpu_app_send_message(instance, CpuAppMessageTypeStart);
-    } break;
-    case CpuAppMenuItemStop: {
+        break;
+    case CpuAppMenuItemStop:
         cpu_app_send_message(instance, CpuAppMessageTypeStop);
-    } break;
+        break;
     case CpuAppMenuItemReset:
         cpu_app_send_message(instance, CpuAppMessageTypeReset);
         break;
     case CpuAppMenuItemClose:
         cpu_app_send_message(instance, CpuAppMessageTypeClose);
+        break;
+    case CpuAppMenuItemMaskrom:
+        cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
         break;
     }
 }
@@ -288,6 +302,12 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_hal_bsp_linux_reset();
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             break;
+        case CpuAppMessageTypeMaskrom:
+            furi_hal_bsp_linux_reset();
+            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
+            furi_hal_bsp_linux_maskrom();
+            cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
+            break;
         case CpuAppMessageTypeNewFrame:
             cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
             break;
@@ -302,7 +322,7 @@ static CpuApp* cpu_app_alloc(void) {
     CpuApp* instance = malloc(sizeof(CpuApp));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
-    instance->app_queue = furi_message_queue_alloc(cpu_app_MESSAGE_QUEUE_SIZE, sizeof(CpuAppMessage));
+    instance->app_queue = furi_message_queue_alloc(CPU_APP_MESSAGE_QUEUE_SIZE, sizeof(CpuAppMessage));
 
     instance->spi_get_frame = spi_get_frame_init();
     spi_get_frame_set_callback_rx(instance->spi_get_frame, cpu_app_spi_get_frame_isr, instance);

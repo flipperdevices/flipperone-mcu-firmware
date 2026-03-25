@@ -21,9 +21,7 @@ extern "C" {
 #define U8G2FontRender_OK  0x01
 #define U8G2FontRender_ERR 0x02
 
-#define pgm_read(adr) (*(const uint8_t*)(adr))
-
-typedef void (*fnDrawPixel)(int32_t x, int32_t y, void* context);
+typedef void (*U8G2FontRenderDrawPixelCallback)(int32_t x, int32_t y, void* context);
 
 typedef struct {
     uint8_t number_of_glyphs     : 8;
@@ -50,7 +48,7 @@ typedef struct {
     uint16_t offset_A            : 16;
     uint16_t offset_a            : 16;
     uint16_t offset_0x100        : 16;
-} U8G2FontHeader_t;
+} U8G2FontHeader;
 
 typedef struct {
     uint8_t character   : 8;
@@ -64,29 +62,28 @@ typedef struct {
 
     uint8_t bit_pos;
     const uint8_t* data;
-} U8G2FontGlyph_t;
+} U8G2FontGlyph;
 
 typedef struct {
-    U8G2FontHeader_t header;
+    U8G2FontHeader header;
 
     const uint8_t* data;
 
-    fnDrawPixel drawFgPixel;
-    fnDrawPixel drawBgPixel;
-    void* context;
-} U8G2FontRender_t;
+    U8G2FontRenderDrawPixelCallback draw_pixel_fg;
+    U8G2FontRenderDrawPixelCallback draw_pixel_bg;
+} U8G2FontRender;
 
-U8G2FontRender_t U8G2FontRender(const uint8_t* data, fnDrawPixel drawFgPixel, fnDrawPixel drawBgPixel, void* context);
-U8G2FontHeader_t U8G2FontRender_ParseHeader(U8G2FontRender_t* font);
-void U8G2FontRender_PrintChar(U8G2FontRender_t* font, int32_t* x, int32_t y, char chr);
-void U8G2FontRender_Print(U8G2FontRender_t* font, int32_t x, int32_t y, const char* str);
+U8G2FontRender u8g2_font_render_init(const uint8_t* data, U8G2FontRenderDrawPixelCallback draw_pixel_fg, U8G2FontRenderDrawPixelCallback draw_pixel_bg);
+U8G2FontHeader u8g2_font_render_parse_header(U8G2FontRender* font);
+void u8g2_font_render_print_char(U8G2FontRender* font, int32_t* x, int32_t y, char chr, void* context);
+void u8g2_font_render_print(U8G2FontRender* font, int32_t x, int32_t y, const char* str, void* context);
 
-void u8g2_render_print(U8G2FontRender_t* font, int32_t x, int32_t y, const char* str, size_t len);
-size_t u8g2_font_get_height(U8G2FontRender_t* font);
-size_t u8g2_font_get_string_width(U8G2FontRender_t* font, const char* str, size_t len);
+void u8g2_font_render_print_slice(U8G2FontRender* font, int32_t x, int32_t y, const char* str, size_t len, void* context);
+size_t u8g2_font_render_get_height(U8G2FontRender* font);
+size_t u8g2_font_render_get_string_width(U8G2FontRender* font, const char* str, size_t len);
 
-void u8g2_render_print_multiline(U8G2FontRender_t* font, int32_t x, int32_t y, const char* str, size_t len);
-size_t u8g2_font_get_string_width_multiline(U8G2FontRender_t* font, const char* str, size_t len);
+void u8g2_font_render_print_multiline(U8G2FontRender* font, int32_t x, int32_t y, const char* str, size_t len, void* context);
+size_t u8g2_font_render_get_string_width_multiline(U8G2FontRender* font, const char* str, size_t len);
 
 #ifdef __cplusplus
 }
