@@ -36,7 +36,7 @@
                     {
                         "label": "Flipper One Logs",
                         "port": 0,
-                        "timestamp": true,
+                        "timestamp": false,
                         "type": "console"
                     }
                 ]
@@ -70,7 +70,7 @@
                     {
                         "label": "Flipper One Logs",
                         "port": 0,
-                        "timestamp": true,
+                        "timestamp": false,
                         "type": "console"
                     }
                 ]
@@ -112,7 +112,7 @@
                     {
                         "label": "Flipper One Logs",
                         "port": 0,
-                        "timestamp": true,
+                        "timestamp": false,
                         "type": "console"
                     }
                 ]
@@ -147,7 +147,7 @@
                     {
                         "label": "Flipper One Logs",
                         "port": 0,
-                        "timestamp": true,
+                        "timestamp": false,
                         "type": "console"
                     }
                 ]

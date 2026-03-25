@@ -1,23 +1,13 @@
 #include <furi.h>
 #include <furi_hal.h>
 #include <furi_hal_nvm.h>
+#include <furi_hal_log.h>
 #include <furi_bsp.h>
 #include <flipper.h>
 
 #include "pico/multicore.h"
-#include <SEGGER_RTT.h>
 
 #define TAG "Main"
-
-static void furi_rtt_log_callback(const uint8_t* data, size_t size, void* context) {
-    UNUSED(context);
-    SEGGER_RTT_Write(0, data, size);
-}
-
-static FuriLogHandler rtt_log_handler = {
-    .callback = furi_rtt_log_callback,
-    .context = NULL,
-};
 
 int32_t init_task(void* context) {
     UNUSED(context);
@@ -26,9 +16,7 @@ int32_t init_task(void* context) {
     furi_hal_init();
 
     // Set the UART for logging output
-    // furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart1, 230400);
-    // ToDo: set debug mode
-    furi_log_set_level(FuriLogLevelInfo);
+    furi_hal_log_hardware_init();
 
     // Flipper BSP init
     furi_bsp_init();
@@ -44,9 +32,11 @@ int32_t init_task(void* context) {
 }
 
 int main(void) {
-    //Initialize FURI layer
+    // Initialize FURI layer
     furi_init();
-    furi_log_add_handler(rtt_log_handler);
+
+    // TODO: read log level and output from nvm
+    furi_hal_log_init(FuriLogLevelInfo, FuriHalLogOutputAll);
 
     // Critical FURI HAL
     furi_hal_init_early();
