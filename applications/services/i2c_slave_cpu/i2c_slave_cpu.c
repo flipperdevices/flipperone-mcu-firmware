@@ -20,7 +20,7 @@ typedef enum {
     I2cSlaveCpuStateDataTransmitted,
 } I2cSlaveCpuState;
 
-/** Input pin state */
+/** I2C slave state */
 typedef struct {
     FuriPubSub* event_pubsub;
     FuriThreadId thread_id;
@@ -43,38 +43,9 @@ static int64_t __isr __not_in_flash_func(i2c_slave_cpu_timeout_callback)(alarm_i
     return 0;
 }
 
-static inline void i2c_slave_cpu_is_address_received(const FuriHalI2cBusHandle* handle, I2cSlaveCpu* instance) {
-    uint8_t data_add[2];
-    uint8_t len = furi_hal_i2c_slave_read_blocking(handle, data_add, 2);
-    if(len == 2) {
-        instance->mem_address = ((uint16_t)data_add[0] << 8) | data_add[1];
-        instance->state = I2cSlaveCpuStateAddressSet;
-    } else {
-        instance->state = I2cSlaveCpuStateAddressNoSet;
-    }
-}
-
-static inline void i2c_slave_cpu_data_received(const FuriHalI2cBusHandle* handle, I2cSlaveCpu* instance) {
-    uint8_t max_len = 16; // max 16 bytes can be read, if more is sent, it will be read in next events
-
-    // uint8_t len = furi_hal_i2c_slave_read_blocking(handle, &instance->test_buffer[instance->mem_address & 0xFF], max_len);
-    // instance->mem_address += len;
-    uint8_t len = 0;
-    do {
-        uint8_t data;
-        len = furi_hal_i2c_slave_read_blocking(handle, &data, 1);
-        if(len) {
-            instance->test_buffer[instance->mem_address & 0xFF] = data;
-            instance->mem_address++;
-        }
-    } while(len);
-}
-
 static inline void i2c_slave_cpu_data_transmit(const FuriHalI2cBusHandle* handle, I2cSlaveCpu* instance) {
     uint8_t max_len = 16; // max 16 bytes can be transmitted, if more is requested, it will be sent in next events
 
-    // uint8_t len = furi_hal_i2c_slave_write_blocking(handle, &instance->test_buffer[instance->mem_address & 0xFF], max_len);
-    // instance->mem_address += len;
     uint8_t len = 0;
     do {
         uint8_t data = instance->test_buffer[instance->mem_address & 0xFF];
@@ -84,14 +55,6 @@ static inline void i2c_slave_cpu_data_transmit(const FuriHalI2cBusHandle* handle
         }
     } while(len);
 }
-
-// ToDo: maybe not necessary
-// static inline void i2c_slave_cpu_data_received_clear(const FuriHalI2cBusHandle* handle, void* context) {
-//     I2cSlaveCpu* instance = context;
-//     uint8_t max_len = 16; // max 16 bytes can be read, if more is sent, it will be read in next events
-//     uint8_t data[max_len];
-//     furi_hal_i2c_slave_read_blocking(handle, data, max_len);
-// }
 
 static inline size_t i2c_slave_cpu_receive_data(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t max_len) {
     size_t total = 0;
@@ -133,11 +96,11 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
     case FuriHalI2cBusSlaveEventWrite:
         // Master is writing data to slave
         if(instance->state == I2cSlaveCpuStateStart) {
-            // instance->state = i2c_slave_cpu_receive_address(handle, &instance->mem_address);
-            i2c_slave_cpu_is_address_received(handle, instance);
+            instance->state = i2c_slave_cpu_receive_address(handle, &instance->mem_address);
         }
         if(instance->state == I2cSlaveCpuStateAddressSet) {
-            i2c_slave_cpu_data_received(handle, instance);
+            i2c_slave_cpu_receive_data(
+                handle, &instance->test_buffer[instance->mem_address & 0xFF], instance->test_buffer_size - (instance->mem_address & 0xFF));
         }
         break;
     case FuriHalI2cBusSlaveEventRead:
@@ -147,8 +110,7 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
         if(instance->state == I2cSlaveCpuStateStart || instance->state == I2cSlaveCpuStateDataTransmitted) {
-            // instance->state = i2c_slave_cpu_receive_address(handle, &instance->mem_address);
-            i2c_slave_cpu_is_address_received(handle, instance);
+            instance->state = i2c_slave_cpu_receive_address(handle, &instance->mem_address);
         }
         if(instance->state == I2cSlaveCpuStateAddressNoSet || instance->state == I2cSlaveCpuStateIdle) {
             instance->mem_address = I2C_SLAVE_CPU_DEFAULT_ADDRESS_REGISTER;
@@ -157,11 +119,11 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
     case FuriHalI2cBusSlaveEventStop:
         // Master has sent a Stop signal, finalize any ongoing operations
         if(instance->state == I2cSlaveCpuStateStart) {
-            // instance->state = i2c_slave_cpu_receive_address(handle, &instance->mem_address);
-            i2c_slave_cpu_is_address_received(handle, instance);
+            instance->state = i2c_slave_cpu_receive_address(handle, &instance->mem_address);
         }
         if(instance->state == I2cSlaveCpuStateAddressSet) {
-            i2c_slave_cpu_data_received(handle, instance);
+            i2c_slave_cpu_receive_data(
+                handle, &instance->test_buffer[instance->mem_address & 0xFF], instance->test_buffer_size - (instance->mem_address & 0xFF));
         }
 
         instance->state = I2cSlaveCpuStateIdle;
@@ -176,7 +138,7 @@ void __isr __not_in_flash_func(i2c_slave_cpu_isr)(const FuriHalI2cBusHandle* han
     //furi_thread_flags_set(instance->thread_id, I2C_SLAVE_CPU_THREAD_FLAG_ISR);
 }
 
-int32_t i2c_slave_cpu_srv(void* p) {
+int32_t i2c_intercom_srv(void* p) {
     UNUSED(p);
 
     I2cSlaveCpu* instance = (I2cSlaveCpu*)malloc(sizeof(I2cSlaveCpu));

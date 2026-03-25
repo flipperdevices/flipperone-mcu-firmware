@@ -7,12 +7,13 @@
 LIST_DEF(FuriLogHandlersList, FuriLogHandler, M_POD_OPLIST)
 
 #define FURI_LOG_LEVEL_DEFAULT FuriLogLevelInfo
+#define FURI_LOG_BUFFER_SIZE   256
 
 typedef struct {
     FuriLogLevel log_level;
     FuriMutex* mutex;
     FuriLogHandlersList_t tx_handlers;
-    char buffer[256];
+    char buffer[FURI_LOG_BUFFER_SIZE];
 } FuriLogParams;
 
 static FuriLogParams furi_log = {0};
@@ -160,12 +161,12 @@ void furi_log_print_format(FuriLogLevel level, const char* tag, const char* form
         }
 
         // Timestamp
-        snprintf(furi_log.buffer, sizeof(furi_log.buffer), "%lu %s[%s][%s] " _FURI_LOG_CLR_RESET, furi_get_tick(), color, log_letter, tag);
+        snprintf(furi_log.buffer, FURI_LOG_BUFFER_SIZE, "%lu %s[%s][%s] " _FURI_LOG_CLR_RESET, furi_get_tick(), color, log_letter, tag);
         furi_log_puts(furi_log.buffer);
 
         va_list args;
         va_start(args, format);
-        vsnprintf(furi_log.buffer, sizeof(furi_log.buffer), format, args);
+        vsnprintf(furi_log.buffer, FURI_LOG_BUFFER_SIZE, format, args);
         va_end(args);
 
         furi_log_puts(furi_log.buffer);
@@ -190,7 +191,7 @@ void furi_log_print_raw_format(FuriLogLevel level, const char* format, ...) {
 
         va_list args;
         va_start(args, format);
-        vsnprintf(furi_log.buffer, sizeof(furi_log.buffer), format, args);
+        vsnprintf(furi_log.buffer, FURI_LOG_BUFFER_SIZE, format, args);
         va_end(args);
 
         furi_log_puts(furi_log.buffer);
