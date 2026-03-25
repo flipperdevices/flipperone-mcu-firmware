@@ -86,7 +86,7 @@ static void furi_hal_bsp_linux_stop(void) {
 static void furi_hal_bsp_linux_maskrom(void) {
     uint32_t status = furi_bsp_expander_main_read_output();
     FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En | OutputExpMainExpander17 ;
+    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En | OutputExpMainExpander17;
     FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
     furi_bsp_expander_main_write_output(status);
 }
@@ -232,6 +232,13 @@ static bool cpu_app_input_menu_get_selected_index(CpuAppModel* model, void* cont
     return false;
 }
 
+static bool cpu_app_input_menu_get_visible(CpuAppModel* model, void* context) {
+    furi_check(context);
+    bool* visible = context;
+    *visible = model->menu_visible;
+    return false;
+}
+
 static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* model, void* context), void* context) {
     bool update;
     with_view_model(instance->view, CpuAppModel * model, { update = callback(model, context); }, update);
@@ -242,23 +249,28 @@ static bool cpu_app_input(InputEvent* event, void* context) {
     CpuApp* instance = context;
     bool consumed = false;
 
-    if(event->type == InputTypeLong) {
-        if(event->key == InputKeyBack) {
-            consumed = true;
-        }
-    }
-
     if(event->type == InputTypePress) {
+        bool menu_visible = false;
+        cpu_app_model_apply(instance, cpu_app_input_menu_get_visible, &menu_visible);
+
+        if(menu_visible) {
+            if(event->key == InputKeyUp) {
+                cpu_app_model_apply(instance, cpu_app_model_menu_prev, NULL);
+                consumed = true;
+            } else if(event->key == InputKeyDown) {
+                cpu_app_model_apply(instance, cpu_app_model_menu_next, NULL);
+                consumed = true;
+            } else if(event->key == InputKeyOk) {
+                size_t selected_index;
+                cpu_app_model_apply(instance, cpu_app_input_menu_get_selected_index, &selected_index);
+                cpu_app_input_menu(instance, selected_index);
+                consumed = true;
+            }
+        }
+
         if(event->key == InputKey3) {
             cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
-        } else if(event->key == InputKeyUp) {
-            cpu_app_model_apply(instance, cpu_app_model_menu_prev, NULL);
-        } else if(event->key == InputKeyDown) {
-            cpu_app_model_apply(instance, cpu_app_model_menu_next, NULL);
-        } else if(event->key == InputKeyOk) {
-            size_t selected_index;
-            cpu_app_model_apply(instance, cpu_app_input_menu_get_selected_index, &selected_index);
-            cpu_app_input_menu(instance, selected_index);
+            consumed = true;
         }
     }
     return consumed;
