@@ -46,14 +46,14 @@ void iqs7211e_set_input_callback(Iqs7211e* instance, Iqs7211eCallbackInput callb
 void iqs7211e_force_i2c_communication(Iqs7211e* instance);
 void iqs7211e_reset(Iqs7211e* instance);
 Iqs7211eChargingMode iqs7211e_get_charging_mode(Iqs7211e* instance);
-uint16_t iqs7211e_get_abs_x_fingers_num(Iqs7211e* instance, uint8_t finger_num);
-uint16_t iqs7211e_get_abs_y_fingers_num(Iqs7211e* instance, uint8_t finger_num);
+uint16_t iqs7211e_get_finger_abs_x(Iqs7211e* instance, uint8_t finger_num);
+uint16_t iqs7211e_get_finger_abs_y(Iqs7211e* instance, uint8_t finger_num);
+uint16_t iqs7211e_get_finger_touch_strength(Iqs7211e* instance, uint8_t finger_num);
+uint16_t iqs7211e_get_finger_area(Iqs7211e* instance, uint8_t finger_num);
 bool iqs7211e_get_touchpad_event_occurred(Iqs7211e* instance);
 Iqs7211eEvent iqs7211e_get_event(Iqs7211e* instance);
 uint8_t iqs7211e_get_fingers_num(Iqs7211e* instance);
 bool iqs7211e_get_ready(Iqs7211e* instance);
-
-
 
 #ifdef __cplusplus
 }

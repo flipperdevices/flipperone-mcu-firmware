@@ -715,7 +715,7 @@ Iqs7211eChargingMode iqs7211e_get_charging_mode(Iqs7211e* instance) {
     return instance->data.info_flags.charging_mode;
 }
 
-uint16_t iqs7211e_get_abs_x_fingers_num(Iqs7211e* instance, uint8_t finger_num) {
+uint16_t iqs7211e_get_finger_abs_x(Iqs7211e* instance, uint8_t finger_num) {
     furi_check(instance);
     furi_check(finger_num && finger_num <= IQS7211E_MAX_FINGERS);
     if(finger_num == 2) {
@@ -724,13 +724,31 @@ uint16_t iqs7211e_get_abs_x_fingers_num(Iqs7211e* instance, uint8_t finger_num) 
     return instance->data.f1_x_position;
 }
 
-uint16_t iqs7211e_get_abs_y_fingers_num(Iqs7211e* instance, uint8_t finger_num) {
+uint16_t iqs7211e_get_finger_abs_y(Iqs7211e* instance, uint8_t finger_num) {
     furi_check(instance);
     furi_check(finger_num && finger_num <= IQS7211E_MAX_FINGERS);
     if(finger_num == 2) {
         return instance->data.f2_y_position;
     }
     return instance->data.f1_y_position;
+}
+
+uint16_t iqs7211e_get_finger_touch_strength(Iqs7211e* instance, uint8_t finger_num) {
+    furi_check(instance);
+    furi_check(finger_num && finger_num <= IQS7211E_MAX_FINGERS);
+    if(finger_num == 2) {
+        return instance->data.f2_touch_strength;
+    }
+    return instance->data.f1_touch_strength;
+}
+
+uint16_t iqs7211e_get_finger_area(Iqs7211e* instance, uint8_t finger_num) {
+    furi_check(instance);
+    furi_check(finger_num && finger_num <= IQS7211E_MAX_FINGERS);
+    if(finger_num == 2) {
+        return instance->data.f2_area;
+    }
+    return instance->data.f1_area;
 }
 
 bool iqs7211e_get_touchpad_event_occurred(Iqs7211e* instance) {
