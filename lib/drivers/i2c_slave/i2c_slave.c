@@ -5,7 +5,6 @@
 typedef struct {
     I2cSlaveCallback callback;
     uint8_t address;
-    bool transfer_in_progress;
     bool start_detected;
 } I2cSlave;
 
@@ -40,19 +39,16 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
         hw->clr_stop_det;
         do_finish_transfer = true;
     }
-    if(do_finish_transfer && slave->transfer_in_progress) {
-        slave->callback(i2c, I2cSlaveEventStop);
-        slave->transfer_in_progress = false;
-        slave->start_detected = false;
-    }
     if(intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
-        slave->transfer_in_progress = true;
         slave->callback(i2c, I2cSlaveEventReceive);
     }
     if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
         hw->clr_rd_req;
-        slave->transfer_in_progress = true;
         slave->callback(i2c, I2cSlaveEventRequest);
+    }
+    if(do_finish_transfer && slave->start_detected) {
+        slave->callback(i2c, I2cSlaveEventStop);
+        slave->start_detected = false;
     }
     FURI_CRITICAL_EXIT();
 }
@@ -95,7 +91,6 @@ void i2c_slave_deinit(i2c_inst_t* i2c) {
 
     slave->callback = NULL;
     slave->address = 0;
-    slave->transfer_in_progress = false;
     slave->start_detected = false;
 
     uint32_t num = I2C0_IRQ + i2c_index;

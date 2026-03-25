@@ -75,6 +75,7 @@ typedef struct {
             FuriHalI2cBusSlaveResetCallback bus_reset;
             FuriHalI2cBusSlaveCallback callback;
             void* context;
+            uint8_t address;
         } slave;
     };
 
