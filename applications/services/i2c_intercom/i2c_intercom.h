@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 
-#define RECORD_I2C_SLAVE_CPU "i2c_slave_cpu"
+#define RECORD_I2C_INTERCOM "i2c_intercom"
 
 #ifdef __cplusplus
 }
