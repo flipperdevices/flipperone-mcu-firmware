@@ -25,7 +25,7 @@ of your PR, not the AI.** This means:
 - You understand every change you submit.
 - You can explain design decisions without asking an AI.
 - You have read and tested the code yourself.
-- You can respond to review comments from your own understanding.
+- You can respond to review comments on your own.
 
 ### What is a low-effort AI PR
 
