@@ -1,39 +1,9 @@
 #include <furi.h>
+#include <furi_hal_resources.h>
 #include <m-dict.h>
 
 #include "i2c_registers.h"
-
-/**
- * Device address: 0x69
- * 
- * Register map:
- * 0x0000+0 Status register             (read)
- *          Bit 0: Input interrupt flag (cleared when input interrupt register is cleared)
- *          Bit 1-15: Reserved
- * 
- * 0x0100+0 Input interrupt register    (read, read to clear)
- *          Bit 0: Buttons input happened
- *          Bit 1: Touchpad input happened
- *          Bit 2-15: Reserved
- * 0x0100+2 Buttons state register      (read)
- *          Bit 0: InputKey2 state
- *          Bit 1: InputKey1 state
- *          Bit 2: InputKey3 state
- *          Bit 3: InputKey4 state
- *          Bit 4: InputKey5 state
- *          Bit 5: InputKeySw state
- *          Bit 6: InputKeyBack state
- *          Bit 7: InputKeyDown state
- *          Bit 8: InputKeyRight state
- *          Bit 9: InputKeyOk state
- *          Bit 10: InputKeyLeft state
- *          Bit 11: InputKeyUp state
- *          Bit 12: InputKeyPtt state
- *          Bit 13-15: Reserved
- * 0x0100+4 Touchpad X position         (read)
- * 0x0100+6 Touchpad Y position         (read)
- * 0x0100+8 Touchpad press state        (read)
- */
+#include "i2c_registers_map.h"
 
 typedef struct {
     uint32_t flags;
@@ -42,37 +12,44 @@ typedef struct {
 
 DICT_DEF2(I2CRegMap, uint16_t, M_DEFAULT_OPLIST, I2CReg, M_POD_OPLIST);
 
+#define I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE (sizeof(uint16_t) * 8)
+
+// hashmap of registers, key is register address, value is register struct
 static I2CRegMap_t i2c_registers;
-static const uint16_t i2c_address_to_status_bits_map[] = {
-    [0] = 0x0100 + 0, // bit 0 is input interrupt register
-};
-static const size_t i2c_address_to_status_bits_map_size = COUNT_OF(i2c_address_to_status_bits_map);
 
-#include <input/input.h>
+// map of status register bits to register addresses, index is status bit, value is register address
+static uint16_t i2c_address_to_status_bits_map[I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE] = {0};
+static size_t i2c_address_to_status_bits_map_max_bit = 0;
 
-static void i2c_registers_input_event_glue(const void* value, void* ctx) {
-    UNUSED(ctx);
-    furi_check(value);
-    InputEvent* event = (InputEvent*)value;
-    if(event->type == InputTypePress) {
-        i2c_register_update_and_set_interrupt(0x0102, event->key, event->key, 0x0100, 1 << 0);
-    } else if(event->type == InputTypeRelease) {
-        i2c_register_update_and_set_interrupt(0x0102, 0, event->key, 0x0100, 1 << 0);
+static void i2c_register_interrupt_line_set(bool set) {
+    if(set) {
+        furi_hal_gpio_write_open_drain(&gpio_cpu_int, false);
+        furi_hal_gpio_write(&gpio_m40, true);
+    } else {
+        furi_hal_gpio_write_open_drain(&gpio_cpu_int, true);
+        furi_hal_gpio_write(&gpio_m40, false);
+    }
+}
+
+static void i2c_register_interrupt_line_init(void) {
+    furi_hal_gpio_init(&gpio_cpu_int, GpioModeOutputOpenDrain, GpioPullNo, GpioSpeedLow);
+    furi_hal_gpio_init(&gpio_m40, GpioModeOutputPushPull, GpioPullNo, GpioSpeedLow);
+    i2c_register_interrupt_line_set(false);
+}
+
+void i2c_address_to_status_bits_map_add(uint8_t bit, uint16_t address) {
+    furi_check(bit < I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE);
+    furi_check(i2c_address_to_status_bits_map[bit] == 0); // bit must not be already assigned
+    i2c_address_to_status_bits_map[bit] = address;
+    if(bit >= i2c_address_to_status_bits_map_max_bit) {
+        i2c_address_to_status_bits_map_max_bit = bit + 1;
     }
 }
 
 void i2c_registers_init(void) {
-    furi_hal_gpio_init(&gpio_cpu_int, GpioModeOutputOpenDrain, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_init(&gpio_m40, GpioModeOutputPushPull, GpioPullNo, GpioSpeedLow);
-    furi_hal_gpio_write_open_drain(&gpio_cpu_int, true);
-    furi_hal_gpio_write(&gpio_m40, false);
+    i2c_register_interrupt_line_init();
 
     I2CRegMap_init(i2c_registers);
-
-    i2c_register_add(0x0100, 0x0000, I2CRegFlagRead | I2CRegFlagReadToClear);
-    i2c_register_add(0x0102, 0x0000, I2CRegFlagRead);
-
-    furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), i2c_registers_input_event_glue, NULL);
 }
 
 void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags) {
@@ -87,7 +64,7 @@ void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags) 
 
 uint16_t i2c_register_get_status_register(void) {
     uint16_t status_value = 0x0000;
-    for(size_t i = 0; i < i2c_address_to_status_bits_map_size; i++) {
+    for(size_t i = 0; i < i2c_address_to_status_bits_map_max_bit; i++) {
         uint16_t reg_address = i2c_address_to_status_bits_map[i];
         I2CReg* reg = I2CRegMap_get(i2c_registers, reg_address);
         if(reg) {
@@ -105,7 +82,7 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value) {
     uint16_t even_address = address & 0xFFFE;
 
     do {
-        if(even_address == 0x00) {
+        if(even_address == I2C_STATUS_REG_ADDRESS) {
             // high byte of status register
             uint16_t status = i2c_register_get_status_register();
 
@@ -137,14 +114,14 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value) {
 }
 
 bool i2c_register_read_commit(uint16_t address) {
-    // special case for status register
-    if(address == 0x00 || address == 0x01) {
-        return true;
-    }
-
     bool result = false;
     bool is_odd = address & 1;
     uint16_t even_address = address & 0xFFFE;
+
+    // special case for status register
+    if(even_address == I2C_STATUS_REG_ADDRESS) {
+        return true;
+    }
 
     FURI_CRITICAL_ENTER();
     do {
@@ -157,8 +134,7 @@ bool i2c_register_read_commit(uint16_t address) {
             }
 
             if(i2c_register_get_status_register() == 0) {
-                furi_hal_gpio_write_open_drain(&gpio_cpu_int, true);
-                furi_hal_gpio_write(&gpio_m40, false);
+                i2c_register_interrupt_line_set(false);
             }
 
             result = true;
@@ -214,10 +190,9 @@ void i2c_register_update_and_set_interrupt(uint16_t address, uint16_t value, uin
             furi_check(interrupt_reg); // interrupt address must exist
             interrupt_reg->value |= interrupt_bits;
 
-            if(i2c_register_get_status_register() != 0) {
-                furi_hal_gpio_write_open_drain(&gpio_cpu_int, false);
-                furi_hal_gpio_write(&gpio_m40, true);
-            }
+            // we know that we already set some interrupt bits,
+            // so we can directly set the interrupt line without checking the status register
+            i2c_register_interrupt_line_set(true);
         }
     } while(false);
     FURI_CRITICAL_EXIT();
