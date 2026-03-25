@@ -36,7 +36,7 @@
 // USB MSD / SCSI strings
 #define OTP_USB_VOLUME_LABEL "FlipOneMCU"  // max 11 chars
 #define OTP_SCSI_VENDOR      "Flipper"     // max 8 chars
-#define OTP_SCSI_PRODUCT     "Flipper One" // max 16 chars
+#define OTP_SCSI_PRODUCT     "One"         // max 16 chars
 #define OTP_SCSI_VERSION     "1.00"        // max 4 chars
 
 // Bootloader info page strings
