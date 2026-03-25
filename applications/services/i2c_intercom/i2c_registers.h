@@ -1,17 +1,23 @@
 #pragma once
 
-/**
- * Register map:
- * 0x0000+0 Status register             (read)
- *          Bit 0: Input interrupt flag (cleared when input interrupt register is cleared)
- *          Bit 1-15: Reserved
- * 
- * 0x0100+0 Input interrupt register    (read, read to clear)
- *          Bit 0: Buttons input happened
- *          Bit 1: Touchpad input happened
- *          Bit 2-15: Reserved
- * 0x0100+2 Buttons state register      (read)
- * 0x0100+4 Touchpad X position         (read)
- * 0x0100+6 Touchpad Y position         (read)
- * 0x0100+8 Touchpad press state        (read)
- */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef enum {
+    I2CRegFlagRead = 1 << 0,
+    I2CRegFlagWrite = 1 << 1,
+    I2CRegFlagReadToClear = 1 << 2,
+} I2CRegFlag;
+
+void i2c_registers_init(void);
+void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags);
+bool i2c_register_read_start(uint16_t address, uint8_t* value);
+bool i2c_register_read_commit(uint16_t address);
+bool i2c_register_write(uint16_t address, uint8_t value);
+void i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
+void i2c_register_update_and_set_interrupt(uint16_t address, uint16_t value, uint16_t mask, uint16_t interrupt_address, uint16_t interrupt_bits);
+
+#ifdef __cplusplus
+}
+#endif

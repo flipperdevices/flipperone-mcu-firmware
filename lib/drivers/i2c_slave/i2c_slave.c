@@ -39,10 +39,10 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
         hw->clr_stop_det;
         do_finish_transfer = true;
     }
-    if(intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
+    if(!do_finish_transfer && (intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS)) {
         slave->callback(i2c, I2cSlaveEventReceive);
     }
-    if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
+    if(!do_finish_transfer && (intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS)) {
         hw->clr_rd_req;
         slave->callback(i2c, I2cSlaveEventRequest);
     }
