@@ -14,6 +14,13 @@ DICT_DEF2(I2CRegMap, uint16_t, M_DEFAULT_OPLIST, I2CReg, M_POD_OPLIST);
 
 #define I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE (sizeof(uint16_t) * 8)
 
+#define REG16_GET_LO(v)    ((v) & 0xFF)
+#define REG16_GET_HI(v)    (((v) >> 8) & 0xFF)
+#define REG16_SET_LO(v, b) ((v) = ((v) & 0xFF00) | (uint8_t)(b))
+#define REG16_SET_HI(v, b) ((v) = ((v) & 0x00FF) | ((uint16_t)(uint8_t)(b) << 8))
+#define REG16_CLR_LO(v)    ((v) &= 0xFF00)
+#define REG16_CLR_HI(v)    ((v) &= 0x00FF)
+
 // hashmap of registers, key is register address, value is register struct
 static I2CRegMap_t i2c_registers;
 
@@ -88,19 +95,17 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value) {
     FURI_CRITICAL_ENTER();
 
     bool result = false;
-    bool is_odd = address & 1;
+    bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
 
     do {
         I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagRead)) {
-            // big-endian
-            if(is_odd) {
-                *value = reg->value & 0xFF;
+            if(is_hi_byte) {
+                *value = REG16_GET_HI(reg->value);
             } else {
-                *value = (reg->value >> 8) & 0xFF;
+                *value = REG16_GET_LO(reg->value);
             }
-
             result = true;
         }
     } while(false);
@@ -111,17 +116,17 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value) {
 
 bool i2c_register_read_commit(uint16_t address) {
     bool result = false;
-    bool is_odd = address & 1;
+    bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
 
     FURI_CRITICAL_ENTER();
     do {
         I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagReadToClear)) {
-            if(is_odd) {
-                reg->value &= 0xFF00;
+            if(is_hi_byte) {
+                REG16_CLR_HI(reg->value);
             } else {
-                reg->value &= 0x00FF;
+                REG16_CLR_LO(reg->value);
             }
 
             if(i2c_register_get_status_register_value() == 0) {
@@ -138,18 +143,17 @@ bool i2c_register_read_commit(uint16_t address) {
 
 bool i2c_register_write(uint16_t address, uint8_t value) {
     bool result = false;
-    bool is_odd = address & 1;
+    bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
 
     FURI_CRITICAL_ENTER();
     do {
         I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagWrite)) {
-            // big-endian
-            if(is_odd) {
-                reg->value = (reg->value & 0xFF00) | value;
+            if(is_hi_byte) {
+                REG16_SET_HI(reg->value, value);
             } else {
-                reg->value = (reg->value & 0x00FF) | ((uint16_t)value << 8);
+                REG16_SET_LO(reg->value, value);
             }
             result = true;
         }
