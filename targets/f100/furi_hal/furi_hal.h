@@ -16,6 +16,7 @@ struct STOP_EXTERNING_ME {};
 // #include <furi_hal_debug.h>
 #include <furi_hal_interrupt.h>
 #include <furi_hal_os.h>
+#include <furi_hal_otp.h>
 // #include <furi_hal_cortex.h>
 // #include <furi_hal_bus.h>
 // #include <furi_hal_target.h>
