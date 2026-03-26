@@ -36,9 +36,9 @@ Tca6416a* tca6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     instance->pin_reset = pin_reset;
     instance->pin_interrupt = pin_interrupt;
     instance->address = address;
+    furi_hal_gpio_write(instance->pin_reset, true);
     furi_hal_gpio_init_simple(instance->pin_reset, GpioModeOutputOpenDrain);
-    furi_hal_gpio_write_open_drain(instance->pin_reset, false);
-    furi_delay_ms(10);
+    
     furi_hal_gpio_write_open_drain(instance->pin_reset, true);
     furi_delay_ms(10);
 
@@ -47,7 +47,6 @@ Tca6416a* tca6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     furi_hal_i2c_release(instance->i2c_handle);
 
     if(ret) {
-        tca6416a_write_output(instance, 0x0000); // All low
         furi_hal_gpio_init_simple(instance->pin_interrupt, GpioModeInput);
         furi_hal_gpio_add_int_callback(instance->pin_interrupt, GpioConditionFall, tca6416a_interrupt_handler, instance);
     } else {

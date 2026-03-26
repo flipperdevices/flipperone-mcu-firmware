@@ -60,10 +60,10 @@ void furi_hal_gpio_init_ex(const GpioPin* gpio, const GpioMode mode, const GpioP
         gpio_set_input_hysteresis_enabled(gpio->pin, false);
         break;
     case GpioModeOutputOpenDrain:
-        gpio_set_dir(gpio->pin, GPIO_IN);
         gpio_set_oeover(gpio->pin, GPIO_OVERRIDE_INVERT);
         gpio_set_outover(gpio->pin, GPIO_OVERRIDE_LOW);
         gpio_set_input_hysteresis_enabled(gpio->pin, true);
+        furi_hal_gpio_write_open_drain(gpio, true);
         break;
     case GpioModeAnalog:
         adc_gpio_init(gpio->pin);
