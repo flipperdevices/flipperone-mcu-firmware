@@ -2,8 +2,8 @@
 
 Thank you for investing your time in contributing to our project!
 
-In this guide you will get an overview of the contribution workflow from opening an issue,
-creating a PR, reviewing, and merging the PR.
+In this guide, you will get an overview of the contribution workflow — from opening an issue to
+creating, reviewing, and merging a PR.
 
 ## Getting started
 
@@ -15,7 +15,7 @@ project's goals and guidelines:
 - Keep changes focused — one concern per PR.
 - Low-effort AI PRs are not accepted — see [AI-assisted development](#ai-assisted-development).
 
-Feel free to ask questions in issues if you're not sure about scope or approach.
+Feel free to ask questions in issues if you're not sure about the scope or approach.
 
 ## AI-assisted development
 
@@ -38,7 +38,7 @@ without genuine engagement. Signs include:
 - Changes that don't address the actual feedback — only its surface wording.
 - No evidence of testing or local verification.
 
-**Low-effort AI PRs will be closed without merge.** If a PR is identified as one,
+**Low-effort AI PRs will be closed without merging.** If a PR is identified as such,
 the contributor is welcome to reopen it once they have engaged with the code themselves.
 
 The bar is not "did you use AI" — it is "do you understand and own what you're submitting."
@@ -47,7 +47,7 @@ The bar is not "did you use AI" — it is "do you understand and own what you're
 
 ### Create a new issue
 
-If you found a bug or have a feature request, search existing issues first. If a related
+If you find a bug or have a feature request, search existing issues first. If a related
 issue doesn't exist, open a new one with enough detail to reproduce the problem or
 understand the proposal.
 
@@ -59,7 +59,7 @@ for open tasks. Leave a comment on the issue before starting work to avoid dupli
 ## Making changes
 
 1. Fork the repository.
-2. Create a working branch from main branch.
+2. Create a working branch from the main branch.
 3. Make your changes and verify the build.
 4. Flash and test on hardware.
 
@@ -74,12 +74,12 @@ for open tasks. Leave a comment on the issue before starting work to avoid dupli
 When you're done, open a pull request:
 
 - Fill out the PR template completely.
-- Don't forget to [link PR to issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue) if you are solving one.
-- [Enable maintainer edits](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/allowing-changes-to-a-pull-request-branch-created-from-a-fork) so the branch can be updated for merge.
+- Don't forget to [link the PR to an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue) if you are solving one.
+- [Enable maintainer edits](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/allowing-changes-to-a-pull-request-branch-created-from-a-fork) so the branch can be updated for merging.
 - As you address review comments, mark each conversation as [resolved](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/commenting-on-a-pull-request#resolving-conversations).
 - We [may ask for changes](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/incorporating-feedback-in-your-pull-request) before merging — apply them and push to the same branch.
-- If you run into any merge issues, checkout [this git tutorial](https://lab.github.com/githubtraining/managing-merge-conflicts) to help you resolve merge conflicts and other issues.
+- If you run into any merge issues, check out [this git tutorial](https://lab.github.com/githubtraining/managing-merge-conflicts) to help you resolve merge conflicts and other issues.
 
 ### Your PR is merged!
 
-Congratulations 🎉🎉 The FlipperDevices team thanks you ✨.
+Congratulations 🎉🎉 The Flipper Devices team thanks you ✨
