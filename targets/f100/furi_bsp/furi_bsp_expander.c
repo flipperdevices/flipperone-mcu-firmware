@@ -4,6 +4,8 @@
 
 #include "furi_bsp_expander.h"
 
+#define TAG "BspExpander"
+
 typedef struct {
     Tca6416a* handle;
     FuriCallback callback;
@@ -30,8 +32,6 @@ typedef struct {
     ExpanderCallbackStorage expander7;
 } ExpanderMain;
 
-#define TAG "Expander"
-
 #define EXPANDER_MAIN_THREAD_FLAG_ISR 0x00000001
 
 // #define EXPANDER_DEBUG_ENABLE
@@ -54,8 +54,10 @@ static void furi_bsp_set_callback(ExpanderCallbackStorage* storage, FuriCallback
 
 static void furi_bsp_expander_control_init(void) {
     furi_check(expander_control == NULL);
+    FURI_LOG_I(TAG, "Initializing Control Expander");
     expander_control = malloc(sizeof(ExpanderControl));
     expander_control->handle = tca6416a_init(&furi_hal_i2c_handle_control, &gpio_expander_reset, &gpio_expander_int, TCA6416A_ADDRESS_A0);
+    tca6416a_write_output(expander_control->handle, 0x0000); // All outputs low by default
     tca6416a_write_mode(expander_control->handle, InputKeyMask);
 }
 
@@ -131,6 +133,7 @@ static int32_t furi_bsp_expander_callback_thread(void* context) {
 
 static void furi_bsp_expander_main_init(void) {
     furi_check(expander_main == NULL);
+    FURI_LOG_I(TAG, "Initializing Main Expander");
     expander_main = malloc(sizeof(ExpanderMain));
     expander_main->handle = tca6416a_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, TCA6416A_ADDRESS_A0);
 
@@ -142,7 +145,8 @@ static void furi_bsp_expander_main_init(void) {
     tca6416a_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
     expander_main->control_state = FuriBspControlExpanderMainMcu;
     // Todo: Errata lay the I2C line
-    furi_bsp_expander_main_write_output(OutputExpMainVcc5v0DevS0En);
+    uint32_t output_mask = furi_bsp_expander_main_read_output();
+    furi_bsp_expander_main_write_output(output_mask | OutputExpMainVcc5v0DevS0En);
     tca6416a_write_mode(expander_main->handle, InputExpMainInputMask);
 
     expander_main->input_mask_old = ~tca6416a_read_input(expander_main->handle) & InputExpMainInputMask;
