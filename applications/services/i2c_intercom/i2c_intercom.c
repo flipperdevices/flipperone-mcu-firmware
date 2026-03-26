@@ -181,7 +181,7 @@ int32_t i2c_intercom_srv(void* p) {
     i2c_registers_init();
 
     // Version
-    i2c_register_add(I2C_VERSION_REG_ADDRESS, 0x0001, I2CRegFlagRead);
+    i2c_register_add(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION, I2CRegFlagRead);
 
     // Input
     // TODO: move somewhere
