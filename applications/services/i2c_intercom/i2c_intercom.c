@@ -1,5 +1,3 @@
-#include "i2c_intercom.h"
-
 #include <furi.h>
 #include <furi_hal_i2c.h>
 #include <furi_hal_i2c_config.h>
@@ -181,6 +179,9 @@ int32_t i2c_intercom_srv(void* p) {
     instance->bus_handle = &furi_hal_i2c_handle_cpu;
 
     i2c_registers_init();
+
+    // Version
+    i2c_register_add(I2C_VERSION_REG_ADDRESS, 0x0001, I2CRegFlagRead);
 
     // Input
     // TODO: move somewhere
