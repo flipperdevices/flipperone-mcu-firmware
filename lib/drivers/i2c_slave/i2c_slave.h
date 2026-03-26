@@ -49,6 +49,13 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback handler);
  */
 void i2c_slave_deinit(i2c_inst_t* i2c);
 
+/**
+ * \brief Reset an I2C slave instance.
+ * \ingroup pico_i2c_slave
+ * \param i2c Either \ref i2c0 or \ref i2c1
+ */
+void i2c_slave_reset(i2c_inst_t* i2c);
+
 #ifdef __cplusplus
 }
 #endif

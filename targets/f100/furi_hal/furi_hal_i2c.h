@@ -37,6 +37,7 @@ const char* furi_hal_i2c_bus_name(const FuriHalI2cBusHandle* handle);
 void furi_hal_i2c_slave_set_callback(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveCallback callback, void* context);
 uint8_t furi_hal_i2c_slave_write_blocking(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
 uint8_t furi_hal_i2c_slave_read_blocking(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
+void furi_hal_i2c_slave_bus_reset(const FuriHalI2cBusHandle* handle);
 
 #ifdef __cplusplus
 }

@@ -182,6 +182,12 @@ static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle, ui
     return len;
 }
 
+static void furi_hal_i2c_bus_slave_reset(const FuriHalI2cBusHandle* handle) {
+    furi_assert(handle);
+    i2c_inst_t* i2c = handle->bus->data;
+    i2c_slave_reset(i2c);
+}
+
 static void __isr __not_in_flash_func(furi_hal_i2c_bus_cpu_slave_callback)(i2c_inst_t* i2c, I2cSlaveEvent event) {
     switch(event) {
     case I2cSlaveEventStart: // master has sent a Start signal
@@ -226,6 +232,7 @@ FuriHalI2cBus furi_hal_i2c_bus_cpu = {
              {
                  .read_blocking = furi_hal_i2c_bus_slave_read,
                  .write_blocking = furi_hal_i2c_bus_slave_write,
+                 .bus_reset = furi_hal_i2c_bus_slave_reset,
                  .callback = NULL,
                  .context = NULL,
              }},

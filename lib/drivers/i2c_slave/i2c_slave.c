@@ -4,6 +4,7 @@
 
 typedef struct {
     I2cSlaveCallback callback;
+    uint8_t address;
     bool transfer_in_progress;
     bool start_detected;
 } I2cSlave;
@@ -63,6 +64,7 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     uint32_t i2c_index = i2c_hw_index(i2c);
     I2cSlave* slave = &i2c_slaves[i2c_index];
     slave->callback = callback;
+    slave->address = address;
 
     // Note: The I2C slave does clock stretching implicitly after a RD_REQ, while the Tx FIFO is empty.
     // Clock stretching while the Rx FIFO is full is also enabled by default.
@@ -73,6 +75,8 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_RD_REQ_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS | I2C_IC_INTR_MASK_M_STOP_DET_BITS |
                     I2C_IC_INTR_MASK_M_START_DET_BITS | I2C_IC_INTR_MASK_M_RESTART_DET_BITS;
 
+    // Set Rx FIFO threshold to 16 bytes to reduce number of interrupts when receiving data from master.
+    // This is the max number of bytes that can be read from the FIFO in the interrupt
     i2c->hw->enable = 0;
     i2c->hw->rx_tl = 16;
     i2c->hw->enable = 1;
@@ -90,7 +94,9 @@ void i2c_slave_deinit(i2c_inst_t* i2c) {
     furi_check(slave->callback); // should be called after i2c_slave_init()
 
     slave->callback = NULL;
+    slave->address = 0;
     slave->transfer_in_progress = false;
+    slave->start_detected = false;
 
     uint32_t num = I2C0_IRQ + i2c_index;
     irq_set_enabled(num, false);
@@ -100,4 +106,19 @@ void i2c_slave_deinit(i2c_inst_t* i2c) {
     hw->intr_mask = I2C_IC_INTR_MASK_RESET;
 
     i2c_set_slave_mode(i2c, false, 0);
+}
+
+void i2c_slave_reset(i2c_inst_t* i2c) {
+    furi_check(i2c == i2c0 || i2c == i2c1);
+
+    uint32_t i2c_index = i2c_hw_index(i2c);
+    I2cSlave* slave = &i2c_slaves[i2c_index];
+
+    I2cSlaveCallback temp_callback = slave->callback;
+    uint8_t temp_address = slave->address;
+    furi_check(temp_address);
+    furi_check(temp_callback);
+
+    i2c_slave_deinit(i2c);
+    i2c_slave_init(i2c, temp_address, temp_callback);
 }
