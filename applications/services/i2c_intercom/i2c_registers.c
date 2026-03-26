@@ -21,6 +21,8 @@ static I2CRegMap_t i2c_registers;
 static uint16_t i2c_address_to_status_bits_map[I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE] = {0};
 static size_t i2c_address_to_status_bits_map_max_bit = 0;
 
+static I2CReg i2c_status_register = {.value = 0x0000, .flags = I2CRegFlagRead};
+
 static void i2c_register_interrupt_line_set(bool set) {
     if(set) {
         furi_hal_gpio_write_open_drain(&gpio_cpu_int, false);
@@ -62,7 +64,7 @@ void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags) 
     FURI_CRITICAL_EXIT();
 }
 
-uint16_t i2c_register_get_status_register(void) {
+uint16_t i2c_register_get_status_register_value(void) {
     uint16_t status_value = 0x0000;
     for(size_t i = 0; i < i2c_address_to_status_bits_map_max_bit; i++) {
         uint16_t reg_address = i2c_address_to_status_bits_map[i];
@@ -74,6 +76,14 @@ uint16_t i2c_register_get_status_register(void) {
     return status_value;
 }
 
+I2CReg* i2c_register_get(uint16_t address) {
+    if(address == I2C_STATUS_REG_ADDRESS) {
+        i2c_status_register.value = i2c_register_get_status_register_value();
+        return &i2c_status_register;
+    }
+    return I2CRegMap_get(i2c_registers, address);
+}
+
 bool i2c_register_read_start(uint16_t address, uint8_t* value) {
     FURI_CRITICAL_ENTER();
 
@@ -82,21 +92,7 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value) {
     uint16_t even_address = address & 0xFFFE;
 
     do {
-        if(even_address == I2C_STATUS_REG_ADDRESS) {
-            // high byte of status register
-            uint16_t status = i2c_register_get_status_register();
-
-            // big-endian
-            if(is_odd) {
-                *value = status & 0xFF;
-            } else {
-                *value = (status >> 8) & 0xFF;
-            }
-            result = true;
-            break;
-        }
-
-        I2CReg* reg = I2CRegMap_get(i2c_registers, even_address);
+        I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagRead)) {
             // big-endian
             if(is_odd) {
@@ -118,14 +114,9 @@ bool i2c_register_read_commit(uint16_t address) {
     bool is_odd = address & 1;
     uint16_t even_address = address & 0xFFFE;
 
-    // special case for status register
-    if(even_address == I2C_STATUS_REG_ADDRESS) {
-        return true;
-    }
-
     FURI_CRITICAL_ENTER();
     do {
-        I2CReg* reg = I2CRegMap_get(i2c_registers, even_address);
+        I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagReadToClear)) {
             if(is_odd) {
                 reg->value &= 0xFF00;
@@ -133,7 +124,7 @@ bool i2c_register_read_commit(uint16_t address) {
                 reg->value &= 0x00FF;
             }
 
-            if(i2c_register_get_status_register() == 0) {
+            if(i2c_register_get_status_register_value() == 0) {
                 i2c_register_interrupt_line_set(false);
             }
 
@@ -152,7 +143,7 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
 
     FURI_CRITICAL_ENTER();
     do {
-        I2CReg* reg = I2CRegMap_get(i2c_registers, even_address);
+        I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagWrite)) {
             // big-endian
             if(is_odd) {
