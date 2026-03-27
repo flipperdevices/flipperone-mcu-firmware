@@ -72,6 +72,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/fusb302/*.c*"
     "lib/drivers/i2c_multi_slave/*.c*"
     "lib/drivers/i2c_slave/*.c*"
+    "lib/drivers/headphones/*.c*"
     "lib/tusb/*.c*"
     "applications/*.c"
     "applications/services/*.c"
