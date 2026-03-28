@@ -2,6 +2,7 @@
 #include <furi_hal_gpio.h>
 
 typedef enum {
+    HeadphonesStatusNone = 0,
     HeadphonesStatusDisconnected = (1 << 0),
     HeadphonesStatusConnected = (1 << 1),
     HeadphonesStatusMicrophoneConnected = (1 << 2),
