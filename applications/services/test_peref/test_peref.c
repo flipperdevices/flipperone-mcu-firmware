@@ -68,8 +68,15 @@ void test_nvm(void) {
     FURI_LOG_I(TAG, "Get bool result: %d, value_set: %d value_get: %d", res, bool_value, read_bool_value);
 }
 
-void test_peref_srv_hp_callback(void* context, HeadphonesStatus hp_status) {
-    FURI_LOG_I(TAG, "Headphones status changed: %08b", hp_status);
+bool state = false;
+HeadphonesStatus _hp_status = 0;
+
+void test_peref_srv_hp_callback(void* context, bool connected) {
+    _hp_status = connected;
+    state = 1;
+}
+
+void test_peref_srv_gpio_callback(void* context) {
 }
 
 int32_t test_peref_srv(void* p) {
@@ -89,11 +96,25 @@ int32_t test_peref_srv(void* p) {
 
     Power* power = furi_record_open(RECORD_POWER);
     headphones_init(&gpio_audio_hp_detect, &gpio_audio_key, test_peref_srv_hp_callback, NULL);
-    while(true) {
-        FURI_LOG_I(TAG, "\r\n\r\nBattery status update");
-        furi_delay_ms(1000);
-        headphones_update();
 
+    //furi_hal_gpio_init_simple(&gpio_audio_hp_detect, GpioModeInput);
+    // furi_hal_gpio_add_int_callback(&gpio_audio_hp_detect, GpioConditionRiseFall, test_peref_srv_gpio_callback, NULL);
+    bool show_status = false;
+    while(true) {
+        //\FURI_LOG_I(TAG, "\r\n\r\nBattery status update");
+        furi_delay_ms(100);
+
+        if(state || show_status) {
+            if(headphones_update(&_hp_status)) {
+                FURI_LOG_I(TAG, "Headphones status changed: %08b", _hp_status);
+            }
+        }
+
+        if(!state){
+            show_status = false;
+        } else {
+            show_status = true;
+        }
     }
     furi_crash();
 }
