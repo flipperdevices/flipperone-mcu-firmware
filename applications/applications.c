@@ -132,7 +132,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = headphones_srv,
         .name = "HeadphonesSrv",
         .appid = "headphones_srv",
-        .stack_size = 1024 * 4,
+        .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
 };
