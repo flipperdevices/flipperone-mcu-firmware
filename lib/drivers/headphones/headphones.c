@@ -4,8 +4,6 @@
 
 #define TAG "Headphones"
 
-//#define HEADPHONES_DEBUG_ENABLE
-
 #ifdef HEADPHONES_DEBUG_ENABLE
 #define HEADPHONES_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
@@ -15,20 +13,20 @@
 #define ADC_DIFF(x, y) (((x) < (y)) ? ((y) - (x)) : ((x) - (y)))
 
 /*
-Control Function	Accessory Support	Description
-Function A	Required	Play/Pause/Intercept (short press), Trigger Help (long press), "Next" (double press)
-Function B	Optional	Volume Up
-Function C	Optional	Volume Down
-Function D	Optional	Reserved (Pixel devices use this for voice command launch)
-*/
+    Control Function  Accessory Support	Description
+    Function A	            Required	Play/Pause/Intercept (short press), Trigger Help (long press), "Next" (double press)
+    Function B	            Optional	Volume Up
+    Function C	            Optional	Volume Down
+    Function D	            Optional	Reserved (Pixel devices use this for voice command launch)
 
-/*Control Function	Equivalent Impedance*
-0 Ohm	                    [Function A] Play/Pause/Hook
-240 Ohm +/- 1% resistance	[Function B]
-470 Ohm +/- 1% resistance	[Function C]
-135 Ohm +/- 1% resistance	[Function D]
-*Overall impedance from the positive terminal of the microphone to GND 
-when the button is pressed with a 2.2V bias applied through a 2.2 kOhm resistor.*/
+    Control Function	        Equivalent Impedance
+      0 Ohm	                    [Function A] Play/Pause/Hook
+    240 Ohm +/- 1% resistance	[Function B]
+    470 Ohm +/- 1% resistance	[Function C]
+    135 Ohm +/- 1% resistance	[Function D]
+    Overall impedance from the positive terminal of the microphone to GND 
+    when the button is pressed with a 2.2V bias applied through a 2.2 kOhm resistor.
+*/
 
 // Configuration
 #define HEADPHONES_R_PULL_UP 2200 // ohms, pull-up resistor
@@ -43,8 +41,12 @@ when the button is pressed with a 2.2V bias applied through a 2.2 kOhm resistor.
 #define HEADPHONES_MIN_ADC_VALUE_KEY_PRESSED_D 100
 #define HEADPHONES_MAX_ADC_VALUE_KEY_PRESSED_D 200
 
-#define HEADPHONES_ADC_VALUE_DELTA 10
-#define HEADPHONES_ADC_DEBOUNCE_MS 50
+#define HEADPHONES_ADC_VALUE_DELTA  10
+#define HEADPHONES_ADC_DEBOUNCE_MS  50
+#define HEADPHONES_ADC_DOUBLE_CHECK 4
+
+#define HEADPHONES_STATUS_KEY_PRESSED_MASK \
+    (HeadphonesStatusKeyPressedA | HeadphonesStatusKeyPressedB | HeadphonesStatusKeyPressedC | HeadphonesStatusKeyPressedD)
 
 typedef struct {
     HeadphonesStatus state; // Placeholder for actual headphone driver state
@@ -57,7 +59,7 @@ typedef struct {
 
 static Headphones* headphones_instance = NULL;
 
-void headphones_interrupt_handler(void* ctx) {
+static void __isr __not_in_flash_func(headphones_interrupt_handler)(void* ctx) {
     Headphones* instance = (Headphones*)ctx;
 
     bool connected = furi_hal_gpio_read(instance->headphone_detect_pin);
@@ -149,8 +151,8 @@ bool headphones_update(HeadphonesStatus* status) {
     }
 
     uint16_t adc_value = furi_hal_adc_read(headphones_instance->headphone_key_pin);
-    uint8_t double_check = 4;
-    
+    uint8_t double_check = HEADPHONES_ADC_DOUBLE_CHECK;
+
     do {
         furi_delay_ms(HEADPHONES_ADC_DEBOUNCE_MS);
         uint16_t adc_value_temp = furi_hal_adc_read(headphones_instance->headphone_key_pin);

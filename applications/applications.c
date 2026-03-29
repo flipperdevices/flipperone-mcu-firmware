@@ -17,6 +17,7 @@ extern int32_t power_srv(void* p);
 extern int32_t cli_srv(void* p);
 extern int32_t fusb302_srv(void* p);
 extern int32_t power_menu_srv(void* p);
+extern int32_t headphones_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -78,13 +79,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    {
-        .app = test_peref_srv,
-        .name = "TestPerefSrv",
-        .appid = "test_peref_srv",
-        .stack_size = 1024,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
+    // {
+    //     .app = test_peref_srv,
+    //     .name = "TestPerefSrv",
+    //     .appid = "test_peref_srv",
+    //     .stack_size = 1024,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    // },
     {
         .app = gui_srv,
         .name = "GuiSrv",
@@ -124,6 +125,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = power_menu_srv,
         .name = "PowerMenuSrv",
         .appid = "power_menu_srv",
+        .stack_size = 1024 * 4,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = headphones_srv,
+        .name = "HeadphonesSrv",
+        .appid = "headphones_srv",
         .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
     },
