@@ -8,6 +8,8 @@ typedef enum {
     I2CRegFlagRead = 1 << 0,
     I2CRegFlagWrite = 1 << 1,
     I2CRegFlagReadToClear = 1 << 2,
+
+    I2CRegFlagInterrupt = 1 << 3, // internal use only, do not use
 } I2CRegFlag;
 
 // Init register storage

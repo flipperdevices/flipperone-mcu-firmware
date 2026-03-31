@@ -11,7 +11,15 @@ typedef struct {
 } I2CReg;
 
 DICT_DEF2(I2CRegMap, uint16_t, M_DEFAULT_OPLIST, I2CReg, M_POD_OPLIST);
-DICT_DEF2(I2CStatusToMaskMap, uint16_t, M_DEFAULT_OPLIST, I2CReg*, M_PTR_OPLIST);
+
+typedef struct {
+    // pointer to the interrupt mask register corresponding to this interrupt
+    I2CReg* mask_reg;
+    // which bit in the status register corresponds to this interrupt
+    uint8_t status_register_bit;
+} I2CInterruptInfo;
+
+DICT_DEF2(I2CInterruptInfoMap, uint16_t, M_DEFAULT_OPLIST, I2CInterruptInfo, M_POD_OPLIST);
 
 #define I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE (sizeof(uint16_t) * 8)
 
@@ -26,20 +34,12 @@ typedef struct {
     // hashmap of registers, key is register address, value is register struct
     I2CRegMap_t map;
     // map of status registers to their corresponding interrupt mask registers
-    I2CStatusToMaskMap_t status_to_mask_map;
-    // map of status register bits to register addresses, index is status bit, value is register address
-    uint16_t status_bits_map[I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE];
-    // maximum number of used bits in the status_bits_map
-    size_t status_bits_map_count;
-    // status register, value is calculated based on the registers assigned to the status bits
-    I2CReg status_register;
+    I2CInterruptInfoMap_t status_to_mask_map;
+    // status register pointer
+    I2CReg* status_register;
 } I2CRegisters;
 
-static I2CRegisters i2c = {
-    .status_bits_map = {0},
-    .status_bits_map_count = 0,
-    .status_register = {.value = 0x0000, .flags = I2CRegFlagRead},
-};
+static I2CRegisters i2c;
 
 static void i2c_register_interrupt_line_set(bool set) {
     if(set) {
@@ -57,62 +57,53 @@ static void i2c_register_interrupt_line_init(void) {
     i2c_register_interrupt_line_set(false);
 }
 
-void i2c_address_to_status_bits_map_add(uint8_t bit, uint16_t address) {
-    furi_check(bit < I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE);
-    furi_check(i2c.status_bits_map[bit] == 0); // bit must not be already assigned
-    i2c.status_bits_map[bit] = address;
-    if(bit >= i2c.status_bits_map_count) {
-        i2c.status_bits_map_count = bit + 1;
-    }
+static I2CReg* i2c_register_get(uint16_t address) {
+    return I2CRegMap_get(i2c.map, address);
+}
+
+static void i2c_register_set_at(uint16_t address, I2CReg reg) {
+    I2CRegMap_set_at(i2c.map, address, reg);
+}
+
+static I2CInterruptInfo* i2c_interrupt_info_get(uint16_t address) {
+    return I2CInterruptInfoMap_get(i2c.status_to_mask_map, address);
+}
+
+static void i2c_interrupt_info_set_at(uint16_t address, I2CInterruptInfo info) {
+    I2CInterruptInfoMap_set_at(i2c.status_to_mask_map, address, info);
 }
 
 void i2c_registers_init(void) {
     i2c_register_interrupt_line_init();
 
     I2CRegMap_init(i2c.map);
-    I2CStatusToMaskMap_init(i2c.status_to_mask_map);
+    I2CInterruptInfoMap_init(i2c.status_to_mask_map);
+
+    i2c_register_add(I2C_STATUS_REG_ADDRESS, 0, I2CRegFlagRead);
+    i2c.status_register = i2c_register_get(I2C_STATUS_REG_ADDRESS);
+    furi_check(i2c.status_register);
 }
 
 void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags) {
     FURI_CRITICAL_ENTER();
     furi_check(address % 2 == 0); // only even addresses are valid
-    furi_check(I2CRegMap_get(i2c.map, address) == NULL); // address must not exist
+    furi_check(i2c_register_get(address) == NULL); // address must not exist
 
     I2CReg reg = {.value = default_value, .flags = flags};
-    I2CRegMap_set_at(i2c.map, address, reg);
+    i2c_register_set_at(address, reg);
     FURI_CRITICAL_EXIT();
 }
 
 void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit) {
-    i2c_register_add(address, 0x0000, I2CRegFlagRead | I2CRegFlagReadToClear);
+    FURI_CRITICAL_ENTER();
+    i2c_register_add(address, 0x0000, I2CRegFlagRead | I2CRegFlagReadToClear | I2CRegFlagInterrupt);
     i2c_register_add(mask_address, 0x0000, I2CRegFlagRead | I2CRegFlagWrite);
-    i2c_address_to_status_bits_map_add(status_register_bit, address);
-    I2CStatusToMaskMap_set_at(i2c.status_to_mask_map, address, I2CRegMap_get(i2c.map, mask_address));
-}
-
-uint16_t i2c_register_get_status_register_value(void) {
-    uint16_t status_value = 0x0000;
-    for(size_t i = 0; i < i2c.status_bits_map_count; i++) {
-        uint16_t reg_address = i2c.status_bits_map[i];
-        I2CReg* reg = I2CRegMap_get(i2c.map, reg_address);
-        if(reg) {
-            status_value |= (reg->value != 0) ? (1 << i) : 0;
-        }
-    }
-    return status_value;
-}
-
-I2CReg* i2c_register_get(uint16_t address) {
-    if(address == I2C_STATUS_REG_ADDRESS) {
-        i2c.status_register.value = i2c_register_get_status_register_value();
-        return &i2c.status_register;
-    }
-    return I2CRegMap_get(i2c.map, address);
+    I2CInterruptInfo interrupt = {.mask_reg = i2c_register_get(mask_address), .status_register_bit = status_register_bit};
+    i2c_interrupt_info_set_at(address, interrupt);
+    FURI_CRITICAL_EXIT();
 }
 
 bool i2c_register_read_start(uint16_t address, uint8_t* value) {
-    FURI_CRITICAL_ENTER();
-
     bool result = false;
     bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
@@ -128,7 +119,6 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value) {
             result = true;
         }
     } while(false);
-    FURI_CRITICAL_EXIT();
 
     return result;
 }
@@ -138,7 +128,6 @@ bool i2c_register_read_commit(uint16_t address) {
     bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
 
-    FURI_CRITICAL_ENTER();
     do {
         I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagReadToClear)) {
@@ -148,14 +137,19 @@ bool i2c_register_read_commit(uint16_t address) {
                 REG16_CLR_LO(reg->value);
             }
 
-            if(i2c_register_get_status_register_value() == 0) {
-                i2c_register_interrupt_line_set(false);
+            if((reg->flags & I2CRegFlagInterrupt) && reg->value == 0) {
+                I2CInterruptInfo* interrupt_info_ptr = i2c_interrupt_info_get(address);
+                if(interrupt_info_ptr) {
+                    i2c.status_register->value &= ~(1 << interrupt_info_ptr->status_register_bit);
+                    if(i2c.status_register->value == 0) {
+                        i2c_register_interrupt_line_set(false);
+                    }
+                }
             }
 
             result = true;
         }
     } while(false);
-    FURI_CRITICAL_EXIT();
 
     return result;
 }
@@ -165,7 +159,6 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
     bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
 
-    FURI_CRITICAL_ENTER();
     do {
         I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagWrite)) {
@@ -177,28 +170,27 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
             result = true;
         }
     } while(false);
-    FURI_CRITICAL_EXIT();
 
     return result;
 }
 
 void i2c_register_update(uint16_t address, uint16_t value, uint16_t mask) {
-    I2CReg* reg = I2CRegMap_get(i2c.map, address);
+    I2CReg* reg = i2c_register_get(address);
     furi_check(reg); // address must exist
     reg->value = (reg->value & ~mask) | (value & mask);
 }
 
 void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_bits) {
-    I2CReg* interrupt = I2CRegMap_get(i2c.map, interrupt_address);
-    furi_check(interrupt);
+    I2CReg* interrupt_reg = i2c_register_get(interrupt_address);
+    furi_check(interrupt_reg);
 
-    I2CReg** interrupt_mask_ptr = I2CStatusToMaskMap_get(i2c.status_to_mask_map, interrupt_address);
-    furi_check(interrupt_mask_ptr);
-    I2CReg* interrupt_mask = *interrupt_mask_ptr;
+    I2CInterruptInfo* interrupt_info_ptr = i2c_interrupt_info_get(interrupt_address);
+    furi_check(interrupt_info_ptr);
 
-    interrupt->value |= (interrupt_bits & ~interrupt_mask->value);
+    interrupt_reg->value |= (interrupt_bits & ~interrupt_info_ptr->mask_reg->value);
 
-    if(interrupt->value) {
+    if(interrupt_reg->value) {
+        i2c.status_register->value |= (1 << interrupt_info_ptr->status_register_bit);
         i2c_register_interrupt_line_set(true);
     }
 }

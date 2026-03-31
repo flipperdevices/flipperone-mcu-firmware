@@ -47,14 +47,16 @@ static int64_t __isr __not_in_flash_func(i2c_intercom_timeout_callback)(alarm_id
 
 static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle, I2cIntercom* instance) {
     uint8_t data;
-    if(!i2c_register_read_start(instance->mem_address, &data)) {
-        data = I2C_INTERCOM_INVALID_ADDRESS_VALUE;
-    }
-    uint8_t len = furi_hal_i2c_slave_write_blocking(handle, &data, 1);
-    if(len) {
-        i2c_register_read_commit(instance->mem_address);
-        instance->mem_address++;
-    }
+    with_i2c_register({
+        if(!i2c_register_read_start(instance->mem_address, &data)) {
+            data = I2C_INTERCOM_INVALID_ADDRESS_VALUE;
+        }
+        uint8_t len = furi_hal_i2c_slave_write_blocking(handle, &data, 1);
+        if(len) {
+            i2c_register_read_commit(instance->mem_address);
+            instance->mem_address++;
+        }
+    });
 }
 
 static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle, I2cIntercom* instance) {
@@ -64,7 +66,7 @@ static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle
         uint8_t data;
         len = furi_hal_i2c_slave_read_blocking(handle, &data, 1);
         if(len) {
-            i2c_register_write(instance->mem_address, data);
+            with_i2c_register({ i2c_register_write(instance->mem_address, data); });
             instance->mem_address++;
         }
         total += len;
@@ -139,7 +141,7 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
         break;
     }
 
-    furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_FLAG_ISR);
+    // furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_FLAG_ISR);
 }
 
 static void i2c_registers_input_event_glue(const void* value, void* ctx) {
