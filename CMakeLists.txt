@@ -6,7 +6,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(TARGET_HARDWARE "f100" CACHE STRING "Target hardware")
+set(FIRMWARE_TARGET 100 CACHE STRING "Firmware target number")
+set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
+set(TARGET_HARDWARE "f${FIRMWARE_TARGET}")
 
 # Initialise pico_sdk from installed location
 # (note this can come from environment, CMake cache etc)
@@ -52,7 +54,6 @@ add_compile_options(-Wno-unknown-pragmas)
 # Add executable. Default name is the project name, version 0.1
 file(GLOB_RECURSE SOURCES
     "lib/furi/*.c*" 
-    "lib/furi/version/*.c*" 
     "lib/furi/core/*.c*"
     "lib/toolbox/*.c*"
     "app/*.c"
@@ -98,6 +99,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     #PICO_USE_SW_SPIN_LOCKS=0
 )
 
+include(lib/furi/version/CMakeLists.txt)
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 pico_set_program_version(${PROJECT_NAME} "0.1")
