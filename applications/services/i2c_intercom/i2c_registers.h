@@ -17,15 +17,23 @@ void i2c_registers_init(void);
 // Flags specify the register properties (readable, writable, read-to-clear), see I2CRegFlag.
 void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags);
 
-// Add mapping from register address to status register bit. This is used to update the status register when the register value changes. Bit specify which bit in the status register to update when the register value changes.
-void i2c_address_to_status_bits_map_add(uint8_t bit, uint16_t address);
+// Adds an interrupt register with a corresponding mask register and connects it to the status register.
+void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit);
 
 // Update register value with a mask. This is used to update only some bits of the register without affecting other bits.
+// @warning Must be called in a critical section, use with_i2c_register macro for convenience.
 void i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
 
-// Update register value with a mask, and set interrupt if needed. This is used to update only some bits of the register without affecting other bits.
-// Interrupt register must exist, and interrupt_bits specify which bits to set in the interrupt register. Also will set the interrupt line.
-void i2c_register_update_and_set_interrupt(uint16_t address, uint16_t value, uint16_t mask, uint16_t interrupt_address, uint16_t interrupt_bits);
+// Sets the interrupt bits if the interrupt is not masked. Also, the interrupt line will be raised if some interrupt bits are set.
+// @warning Must be called in a critical section, use with_i2c_register macro for convenience.
+void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_bits);
+
+#define with_i2c_register(code) \
+    {                           \
+        FURI_CRITICAL_ENTER();  \
+        {code};                 \
+        FURI_CRITICAL_EXIT();   \
+    }
 
 #ifdef __cplusplus
 }

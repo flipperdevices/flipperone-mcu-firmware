@@ -12,6 +12,12 @@
  *          Bit 0: Buttons input happened
  *          Bit 1: Touchpad input happened
  *          Bit 2-15: Reserved
+ * 
+ * All mask registers work the same way: writing 1 to a bit will mask the corresponding interrupt and writing 0 will unmask it.
+ * 0x0180+0 Input interrupt mask        (read, write)
+ *          Bit 0: Buttons input interrupt masked
+ *          Bit 1: Touchpad input interrupt masked
+ *          Bit 2-15: Reserved
  * 0x0200+0 Buttons state register      (read)
  *          Bit 0: InputKey2 state
  *          Bit 1: InputKey1 state
@@ -42,6 +48,8 @@
 #define I2C_INPUT_INTERRUPT_REG_ADDRESS      (0x0100 + 0)
 #define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS  (0)
 #define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD (1)
+
+#define I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS (0x0180 + 0)
 
 #define I2C_BUTTONS_STATE_REG_ADDRESS      (0x0200 + 0)
 #define I2C_BUTTONS_STATE_REG_BIT_KEY2     (0)

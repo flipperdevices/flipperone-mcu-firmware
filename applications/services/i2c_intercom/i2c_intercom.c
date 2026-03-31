@@ -147,11 +147,15 @@ static void i2c_registers_input_event_glue(const void* value, void* ctx) {
     furi_check(value);
     InputEvent* event = (InputEvent*)value;
     if(event->type == InputTypePress) {
-        i2c_register_update_and_set_interrupt(
-            I2C_BUTTONS_STATE_REG_ADDRESS, event->key, event->key, I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
+        with_i2c_register({
+            i2c_register_update(I2C_BUTTONS_STATE_REG_ADDRESS, event->key, event->key);
+            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
+        });
     } else if(event->type == InputTypeRelease) {
-        i2c_register_update_and_set_interrupt(
-            I2C_BUTTONS_STATE_REG_ADDRESS, 0, event->key, I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
+        with_i2c_register({
+            i2c_register_update(I2C_BUTTONS_STATE_REG_ADDRESS, event->key, event->key);
+            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
+        });
     }
 }
 
@@ -160,14 +164,14 @@ static void i2c_registers_input_touch_event_glue(const void* value, void* ctx) {
     furi_check(value);
     InputTouchEvent* event = (InputTouchEvent*)value;
     if(event->type == InputTouchTypeStart || event->type == InputTouchTypeMove || event->type == InputTouchTypeEnd) {
-        FURI_CRITICAL_ENTER();
-        if(event->type == InputTouchTypeStart || event->type == InputTouchTypeMove) {
-            i2c_register_update(I2C_TOUCHPAD_X_REG_ADDRESS, event->x, 0xFFFF);
-            i2c_register_update(I2C_TOUCHPAD_Y_REG_ADDRESS, event->y, 0xFFFF);
-        }
-        i2c_register_update_and_set_interrupt(
-            I2C_TOUCHPAD_PRESS_REG_ADDRESS, event->pressure, 0xFFFF, I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD);
-        FURI_CRITICAL_EXIT();
+        with_i2c_register({
+            if(event->type == InputTouchTypeStart || event->type == InputTouchTypeMove) {
+                i2c_register_update(I2C_TOUCHPAD_X_REG_ADDRESS, event->x, 0xFFFF);
+                i2c_register_update(I2C_TOUCHPAD_Y_REG_ADDRESS, event->y, 0xFFFF);
+            }
+            i2c_register_update(I2C_TOUCHPAD_PRESS_REG_ADDRESS, event->pressure, 0xFFFF);
+            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD);
+        });
     }
 }
 
@@ -184,14 +188,14 @@ int32_t i2c_intercom_srv(void* p) {
     i2c_register_add(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION, I2CRegFlagRead);
 
     // Input
-    // TODO: move somewhere
-    i2c_register_add(I2C_INPUT_INTERRUPT_REG_ADDRESS, 0, I2CRegFlagRead | I2CRegFlagReadToClear);
-    i2c_address_to_status_bits_map_add(I2C_STATUS_REG_BIT_INPUT, I2C_INPUT_INTERRUPT_REG_ADDRESS);
+    // Interrupt register
+    i2c_register_add_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_INPUT);
+
+    // Buttons state
     i2c_register_add(I2C_BUTTONS_STATE_REG_ADDRESS, 0, I2CRegFlagRead);
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), i2c_registers_input_event_glue, NULL);
 
-    // Touchpad
-    // TODO: move somewhere
+    // Touchpad state
     i2c_register_add(I2C_TOUCHPAD_X_REG_ADDRESS, 0, I2CRegFlagRead);
     i2c_register_add(I2C_TOUCHPAD_Y_REG_ADDRESS, 0, I2CRegFlagRead);
     i2c_register_add(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0, I2CRegFlagRead);

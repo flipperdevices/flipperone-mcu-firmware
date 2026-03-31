@@ -11,6 +11,7 @@ typedef struct {
 } I2CReg;
 
 DICT_DEF2(I2CRegMap, uint16_t, M_DEFAULT_OPLIST, I2CReg, M_POD_OPLIST);
+DICT_DEF2(I2CStatusToMaskMap, uint16_t, M_DEFAULT_OPLIST, I2CReg*, M_PTR_OPLIST);
 
 #define I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE (sizeof(uint16_t) * 8)
 
@@ -24,6 +25,8 @@ DICT_DEF2(I2CRegMap, uint16_t, M_DEFAULT_OPLIST, I2CReg, M_POD_OPLIST);
 typedef struct {
     // hashmap of registers, key is register address, value is register struct
     I2CRegMap_t map;
+    // map of status registers to their corresponding interrupt mask registers
+    I2CStatusToMaskMap_t status_to_mask_map;
     // map of status register bits to register addresses, index is status bit, value is register address
     uint16_t status_bits_map[I2C_ADDRESS_TO_STATUS_BITS_MAP_SIZE];
     // maximum number of used bits in the status_bits_map
@@ -67,6 +70,7 @@ void i2c_registers_init(void) {
     i2c_register_interrupt_line_init();
 
     I2CRegMap_init(i2c.map);
+    I2CStatusToMaskMap_init(i2c.status_to_mask_map);
 }
 
 void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags) {
@@ -77,6 +81,13 @@ void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags) 
     I2CReg reg = {.value = default_value, .flags = flags};
     I2CRegMap_set_at(i2c.map, address, reg);
     FURI_CRITICAL_EXIT();
+}
+
+void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit) {
+    i2c_register_add(address, 0x0000, I2CRegFlagRead | I2CRegFlagReadToClear);
+    i2c_register_add(mask_address, 0x0000, I2CRegFlagRead | I2CRegFlagWrite);
+    i2c_address_to_status_bits_map_add(status_register_bit, address);
+    I2CStatusToMaskMap_set_at(i2c.status_to_mask_map, address, I2CRegMap_get(i2c.map, mask_address));
 }
 
 uint16_t i2c_register_get_status_register_value(void) {
@@ -172,31 +183,22 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
 }
 
 void i2c_register_update(uint16_t address, uint16_t value, uint16_t mask) {
-    FURI_CRITICAL_ENTER();
-    do {
-        I2CReg* reg = I2CRegMap_get(i2c.map, address);
-        furi_check(reg); // address must exist
-        reg->value = (reg->value & ~mask) | (value & mask);
-    } while(false);
-    FURI_CRITICAL_EXIT();
+    I2CReg* reg = I2CRegMap_get(i2c.map, address);
+    furi_check(reg); // address must exist
+    reg->value = (reg->value & ~mask) | (value & mask);
 }
 
-void i2c_register_update_and_set_interrupt(uint16_t address, uint16_t value, uint16_t mask, uint16_t interrupt_address, uint16_t interrupt_bits) {
-    FURI_CRITICAL_ENTER();
-    do {
-        I2CReg* reg = I2CRegMap_get(i2c.map, address);
-        furi_check(reg); // address must exist
-        reg->value = (reg->value & ~mask) | (value & mask);
-        // Set interrupt if needed
-        if(interrupt_address) {
-            I2CReg* interrupt_reg = I2CRegMap_get(i2c.map, interrupt_address);
-            furi_check(interrupt_reg); // interrupt address must exist
-            interrupt_reg->value |= interrupt_bits;
+void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_bits) {
+    I2CReg* interrupt = I2CRegMap_get(i2c.map, interrupt_address);
+    furi_check(interrupt);
 
-            // we know that we already set some interrupt bits,
-            // so we can directly set the interrupt line without checking the status register
-            i2c_register_interrupt_line_set(true);
-        }
-    } while(false);
-    FURI_CRITICAL_EXIT();
+    I2CReg** interrupt_mask_ptr = I2CStatusToMaskMap_get(i2c.status_to_mask_map, interrupt_address);
+    furi_check(interrupt_mask_ptr);
+    I2CReg* interrupt_mask = *interrupt_mask_ptr;
+
+    interrupt->value |= (interrupt_bits & ~interrupt_mask->value);
+
+    if(interrupt->value) {
+        i2c_register_interrupt_line_set(true);
+    }
 }
