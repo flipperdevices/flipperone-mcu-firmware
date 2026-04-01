@@ -30,6 +30,7 @@ void i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
 // @warning Must be called in a critical section, use with_i2c_register macro for convenience.
 void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_bits);
 
+// Macro for executing code in a critical section when accessing registers.
 #define with_i2c_register(code) \
     {                           \
         FURI_CRITICAL_ENTER();  \

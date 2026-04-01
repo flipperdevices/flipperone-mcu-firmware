@@ -10,6 +10,7 @@
 // TODO: move somewhere
 #include <input/input.h>
 #include <input_touch/input_touch.h>
+#include <headphones/headphones.h>
 
 #define TAG                                   "I2cIntercom"
 #define I2C_INTERCOM_THREAD_FLAG_ISR          0x00000001
@@ -177,6 +178,16 @@ static void i2c_registers_input_touch_event_glue(const void* value, void* ctx) {
     }
 }
 
+static void i2c_registers_headphones_event_glue(const void* value, void* ctx) {
+    UNUSED(ctx);
+    furi_check(value);
+    HeadphonesEvent* event = (HeadphonesEvent*)value;
+    with_i2c_register({
+        i2c_register_update(I2C_HEADPHONES_STATE_REG_ADDRESS, event->hp_status, 0xFFFF);
+        i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES);
+    });
+}
+
 int32_t i2c_intercom_srv(void* p) {
     UNUSED(p);
 
@@ -202,6 +213,10 @@ int32_t i2c_intercom_srv(void* p) {
     i2c_register_add(I2C_TOUCHPAD_Y_REG_ADDRESS, 0, I2CRegFlagRead);
     i2c_register_add(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0, I2CRegFlagRead);
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_TOUCH_EVENTS), i2c_registers_input_touch_event_glue, NULL);
+
+    // Headphones
+    i2c_register_add(I2C_HEADPHONES_STATE_REG_ADDRESS, 0, I2CRegFlagRead);
+    furi_pubsub_subscribe(furi_record_open(RECORD_HEADPHONES), i2c_registers_headphones_event_glue, NULL);
 
     furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);

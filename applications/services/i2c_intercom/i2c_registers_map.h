@@ -11,13 +11,15 @@
  * 0x0100+0 Input interrupt register    (read, read to clear)
  *          Bit 0: Buttons input happened
  *          Bit 1: Touchpad input happened
- *          Bit 2-15: Reserved
+ *          Bit 2: Headphones input happened
+ *          Bit 3-15: Reserved
  * 
  * All mask registers work the same way: writing 1 to a bit will mask the corresponding interrupt and writing 0 will unmask it.
  * 0x0180+0 Input interrupt mask        (read, write)
  *          Bit 0: Buttons input interrupt masked
  *          Bit 1: Touchpad input interrupt masked
- *          Bit 2-15: Reserved
+ *          Bit 2: Headphones input interrupt masked
+ *          Bit 3-15: Reserved
  * 0x0200+0 Buttons state register      (read)
  *          Bit 0: InputKey2 state
  *          Bit 1: InputKey1 state
@@ -36,6 +38,7 @@
  * 0x0200+2 Touchpad X position         (read)
  * 0x0200+4 Touchpad Y position         (read)
  * 0x0200+6 Touchpad press state        (read)
+ * 0x0200+8 Headphones state            (read)
  */
 
 #define I2C_DEVICE_ADDRESS       (0x69)
@@ -45,9 +48,10 @@
 #define I2C_INTERCOM_VERSION_REG_ADDRESS (0x0080)
 #define I2C_INTERCOM_VERSION             (0x0001)
 
-#define I2C_INPUT_INTERRUPT_REG_ADDRESS      (0x0100 + 0)
-#define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS  (0)
-#define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD (1)
+#define I2C_INPUT_INTERRUPT_REG_ADDRESS        (0x0100 + 0)
+#define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS    (0)
+#define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
+#define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
 
 #define I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS (0x0180 + 0)
 
@@ -69,3 +73,11 @@
 #define I2C_TOUCHPAD_X_REG_ADDRESS     (0x0200 + 2)
 #define I2C_TOUCHPAD_Y_REG_ADDRESS     (0x0200 + 4)
 #define I2C_TOUCHPAD_PRESS_REG_ADDRESS (0x0200 + 6)
+
+#define I2C_HEADPHONES_STATE_REG_ADDRESS                (0x0200 + 8)
+#define I2C_HEADPHONES_STATE_REG_HEADPHONES_PRESENT_BIT (0)
+#define I2C_HEADPHONES_STATE_REG_MIC_PRESENT_BIT        (1)
+#define I2C_HEADPHONES_STATE_REG_BUTTON_A_PRESSED_BIT   (2)
+#define I2C_HEADPHONES_STATE_REG_BUTTON_B_PRESSED_BIT   (3)
+#define I2C_HEADPHONES_STATE_REG_BUTTON_C_PRESSED_BIT   (4)
+#define I2C_HEADPHONES_STATE_REG_BUTTON_D_PRESSED_BIT   (5)
