@@ -23,7 +23,10 @@ void furi_hal_adc_gpio_init(const GpioPin* gpio) {
     furi_check((NUM_BANK0_GPIOS - gpio->pin) <= 8); // Ensure pin is within ADC range
     FuriHalAdcChannelEnable adc_channel = 8 - (NUM_BANK0_GPIOS - gpio->pin);
     furi_hal_adc_channel_enable_mask |= (1 << adc_channel);
+
+    FURI_CRITICAL_ENTER();
     adc_gpio_init(gpio->pin);
+    FURI_CRITICAL_EXIT();
 }
 
 uint16_t furi_hal_adc_read(const GpioPin* gpio) {
@@ -31,8 +34,13 @@ uint16_t furi_hal_adc_read(const GpioPin* gpio) {
     furi_check((NUM_BANK0_GPIOS - gpio->pin) <= 8); // Ensure pin is within ADC range
     FuriHalAdcChannelEnable adc_channel = 8 - (NUM_BANK0_GPIOS - gpio->pin);
     furi_check((furi_hal_adc_channel_enable_mask & (1 << adc_channel)) != 0);
+
+    FURI_CRITICAL_ENTER();
     adc_select_input(adc_channel);
-    return adc_read();
+    uint16_t result = adc_read();
+    FURI_CRITICAL_EXIT();
+
+    return result;
 }
 
 float FURI_ALWAYS_INLINE furi_hal_adc_conversion_factor(void) {
