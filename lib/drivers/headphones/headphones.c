@@ -173,10 +173,12 @@ bool headphones_update(HeadphonesStatus* status) {
     HeadphonesStatus button_state = headphones_detect_button(adc_voltage);
     headphones_instance->state &= ~HEADPHONES_STATUS_KEY_PRESSED_MASK; // Clear all key pressed states
     if(button_state) {
-        headphones_instance->state |= button_state;
+        if(headphones_instance->state & HeadphonesStatusMicrophoneConnected) {
+            headphones_instance->state |= button_state;
+        }
     } else {
-        headphones_instance->state |= HeadphonesStatusMicrophoneConnected;
         if(adc_voltage > headphones_instance->max_mic_bias_v) {
+            headphones_instance->state |= HeadphonesStatusMicrophoneConnected;
             headphones_instance->max_mic_bias_v = adc_voltage;
             HEADPHONES_DEBUG(TAG, "New max ADC voltage observed: %.4f V", headphones_instance->max_mic_bias_v);
         }
