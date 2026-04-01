@@ -4,6 +4,8 @@
 
 #define TAG "Headphones"
 
+// #define HEADPHONES_DEBUG_ENABLE
+
 #ifdef HEADPHONES_DEBUG_ENABLE
 #define HEADPHONES_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
@@ -78,7 +80,7 @@ void headphones_init(const GpioPin* headphone_detect_pin, const GpioPin* headpho
     headphones_instance->callback = callback;
     headphones_instance->callback_context = callback_context;
     headphones_instance->max_mic_bias_v = HEADPHONES_MBIAS_V;
-    headphones_instance->state = HeadphonesStatusDisconnected;
+    headphones_instance->state = HeadphonesStatusNone;
 
     furi_hal_gpio_init_simple(headphones_instance->headphone_detect_pin, GpioModeInput);
     furi_hal_gpio_add_int_callback(headphones_instance->headphone_detect_pin, GpioConditionRiseFall, headphones_interrupt_handler, headphones_instance);
@@ -93,7 +95,7 @@ void headphones_init(const GpioPin* headphone_detect_pin, const GpioPin* headpho
             HEADPHONES_DEBUG(TAG, "New max ADC voltage observed: %.4f V", headphones_instance->max_mic_bias_v);
         }
         if(headphones_instance->callback) {
-            headphones_instance->callback(headphones_instance->callback_context, headphones_instance->state);
+            headphones_instance->callback(headphones_instance->callback_context, true);
         }
     }
 
@@ -134,14 +136,13 @@ bool headphones_update(HeadphonesStatus* status) {
     HeadphonesStatus old_state = headphones_instance->state;
 
     if(furi_hal_gpio_read(headphones_instance->headphone_detect_pin)) {
-        if(headphones_instance->state & HeadphonesStatusDisconnected) {
-            headphones_instance->state |= HeadphonesStatusConnected;
-            headphones_instance->state &= ~HeadphonesStatusDisconnected;
+        if(!(headphones_instance->state & HeadphonesStatusPresent)) {
+            headphones_instance->state |= HeadphonesStatusPresent;
             *status = headphones_instance->state;
             return true;
         }
     } else {
-        headphones_instance->state = HeadphonesStatusDisconnected;
+        headphones_instance->state = HeadphonesStatusNone;
         headphones_instance->max_mic_bias_v = HEADPHONES_MBIAS_V;
         if(old_state != headphones_instance->state) {
             *status = headphones_instance->state;
@@ -173,12 +174,12 @@ bool headphones_update(HeadphonesStatus* status) {
     HeadphonesStatus button_state = headphones_detect_button(adc_voltage);
     headphones_instance->state &= ~HEADPHONES_STATUS_KEY_PRESSED_MASK; // Clear all key pressed states
     if(button_state) {
-        if(headphones_instance->state & HeadphonesStatusMicrophoneConnected) {
+        if(headphones_instance->state & HeadphonesStatusMicrophonePresent) {
             headphones_instance->state |= button_state;
         }
     } else {
         if(adc_voltage > headphones_instance->max_mic_bias_v) {
-            headphones_instance->state |= HeadphonesStatusMicrophoneConnected;
+            headphones_instance->state |= HeadphonesStatusMicrophonePresent;
             headphones_instance->max_mic_bias_v = adc_voltage;
             HEADPHONES_DEBUG(TAG, "New max ADC voltage observed: %.4f V", headphones_instance->max_mic_bias_v);
         }

@@ -10,7 +10,7 @@
 #define HEADPHONES_SRV_DEBUG_ENABLE
 
 #ifdef HEADPHONES_SRV_DEBUG_ENABLE
-#define HEADPHONES_SRV_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
+#define HEADPHONES_SRV_DEBUG(...) FURI_LOG_I(__VA_ARGS__)
 #else
 #define HEADPHONES_SRV_DEBUG(...)
 #endif
@@ -24,6 +24,7 @@ struct Headphones {
 typedef enum {
     HeadphonesEventTypeIsrConnected = (1 << 0),
     HeadphonesEventTypeIsrDisconnected = (1 << 1),
+    HeadphonesEventTypeIsrTimer = (1 << 2),
 } HeadphonesEventType;
 
 static void __isr __not_in_flash_func(headphones_connected_callback)(void* context, bool connected) {
@@ -39,25 +40,19 @@ static void __isr __not_in_flash_func(headphones_connected_callback)(void* conte
 static void headphones_timer_callback(void* context) {
     furi_assert(context);
     Headphones* instance = (Headphones*)context;
-    HeadphonesStatus hp_status;
-    if(headphones_update(&hp_status)) {
-        HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
-        HeadphonesEvent event = {
-            .hp_status = hp_status,
-        };
-        furi_pubsub_publish(instance->event_pubsub, &event);
-    }
+    furi_event_loop_set_custom_event(instance->event_loop, HeadphonesEventTypeIsrTimer);
 }
 
 static void headphones_custom_event_callback(uint32_t events, void* context) {
     furi_assert(context);
     Headphones* instance = (Headphones*)context;
+    HeadphonesStatus hp_status;
 
     if(events & HeadphonesEventTypeIsrConnected) {
         furi_event_loop_timer_start(instance->timer, HEADPHONES_TIMEOUT_UPDATE_MS);
     }
+
     if(events & HeadphonesEventTypeIsrDisconnected) {
-        HeadphonesStatus hp_status;
         if(headphones_update(&hp_status)) {
             HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
             HeadphonesEvent event = {
@@ -66,6 +61,16 @@ static void headphones_custom_event_callback(uint32_t events, void* context) {
             furi_pubsub_publish(instance->event_pubsub, &event);
         }
         furi_event_loop_timer_stop(instance->timer);
+    }
+
+    if(events & HeadphonesEventTypeIsrTimer) {
+        if(headphones_update(&hp_status)) {
+            HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
+            HeadphonesEvent event = {
+                .hp_status = hp_status,
+            };
+            furi_pubsub_publish(instance->event_pubsub, &event);
+        }
     }
 }
 
