@@ -155,7 +155,7 @@ static void i2c_registers_input_event_glue(const void* value, void* ctx) {
         });
     } else if(event->type == InputTypeRelease) {
         with_i2c_register({
-            i2c_register_update(I2C_BUTTONS_STATE_REG_ADDRESS, event->key, event->key);
+            i2c_register_update(I2C_BUTTONS_STATE_REG_ADDRESS, 0, event->key);
             i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
         });
     }
