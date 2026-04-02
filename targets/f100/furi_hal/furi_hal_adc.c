@@ -6,10 +6,13 @@
 
 typedef uint32_t FuriHalAdcChannelEnable;
 
-FuriHalAdcChannelEnable furi_hal_adc_channel_enable_mask = 0;
+static FuriHalAdcChannelEnable furi_hal_adc_channel_enable_mask = 0;
+static FuriMutex* furi_hal_adc_mutex = NULL;
 
 void furi_hal_adc_init(void) {
+    furi_check(furi_hal_adc_mutex == NULL);
     adc_init();
+    furi_hal_adc_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     FURI_LOG_I(TAG, "Init OK");
 }
 
@@ -21,24 +24,28 @@ void furi_hal_adc_deinit(void) {
 void furi_hal_adc_gpio_init(const GpioPin* gpio) {
     furi_check(gpio);
     furi_check((NUM_BANK0_GPIOS - gpio->pin) <= 8); // Ensure pin is within ADC range
+    furi_check(furi_hal_adc_mutex);
+
+    furi_check(furi_mutex_acquire(furi_hal_adc_mutex, FuriWaitForever) == FuriStatusOk);
     FuriHalAdcChannelEnable adc_channel = 8 - (NUM_BANK0_GPIOS - gpio->pin);
     furi_hal_adc_channel_enable_mask |= (1 << adc_channel);
 
-    FURI_CRITICAL_ENTER();
     adc_gpio_init(gpio->pin);
-    FURI_CRITICAL_EXIT();
+    furi_mutex_release(furi_hal_adc_mutex);
 }
 
 uint16_t furi_hal_adc_read(const GpioPin* gpio) {
     furi_check(gpio);
     furi_check((NUM_BANK0_GPIOS - gpio->pin) <= 8); // Ensure pin is within ADC range
+    furi_check(furi_hal_adc_mutex);
+
+    furi_check(furi_mutex_acquire(furi_hal_adc_mutex, FuriWaitForever) == FuriStatusOk);
     FuriHalAdcChannelEnable adc_channel = 8 - (NUM_BANK0_GPIOS - gpio->pin);
     furi_check((furi_hal_adc_channel_enable_mask & (1 << adc_channel)) != 0);
 
-    FURI_CRITICAL_ENTER();
     adc_select_input(adc_channel);
     uint16_t result = adc_read();
-    FURI_CRITICAL_EXIT();
+    furi_mutex_release(furi_hal_adc_mutex);
 
     return result;
 }
