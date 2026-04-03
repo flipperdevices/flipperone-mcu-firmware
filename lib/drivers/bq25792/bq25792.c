@@ -191,7 +191,7 @@ static Bq25792Status bq25792_load_config(Bq25792* instance) {
         if(res != Bq25792StatusOk) {
             break;
         }
-        charger_control_5.en_iindpm = 0; // Disable IINDPM measurement
+        //charger_control_5.en_iindpm = 0; // Disable IINDPM measurement
         charger_control_5.sfet_present = 1; // Enable Sfet presence detection
         charger_control_5.en_ibat = 1; // Enable IBAT measurement
         res = bq25792_write_reg8(instance, Bq25792RegChargerControl5, *(uint8_t*)&charger_control_5);
