@@ -115,8 +115,8 @@ static void power_cli_print_bq25792(Power* power) {
         "  ChgTemp: %.2fC\r\n"
         "  BatTemp: %.2fC\r\n"
         "  IINDPM:  %dmA\r\n"
-        "  VCHRG:   %dmV\r\n"
-        "  ICHRG:   %dmA\r\n\r\n",
+        "  VREG:    %dmV\r\n"
+        "  ICHG:    %dmA\r\n\r\n",
         (float_t)vsys_mv / 1000.0f,
         (float_t)vbus_mv / 1000.0f,
         ibus_ma,
