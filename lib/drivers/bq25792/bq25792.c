@@ -8,9 +8,6 @@
 #define BQ25792_DEVICE_PART_NUMBER 0b001 //BQ25792
 #define BQ25792_DEVICE_REVISION    0b000 //Revision
 
-#define BQ25792_BAT_MAX_CHARGE_VOLTAGE 8800
-#define BQ25792_BAT_MAX_CHARGE_CURRENT 3000
-
 #ifdef BQ25792_DEBUG_ENABLE
 #define BQ25792_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
@@ -230,9 +227,6 @@ Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
         if(bq25792_load_config(instance) != Bq25792StatusOk) {
             furi_crash("BQ25792 failed to load config");
         }
-
-        bq25792_set_charge_voltage_limit_ma(instance, BQ25792_BAT_MAX_CHARGE_VOLTAGE);
-        bq25792_set_charge_current_limit_ma(instance, BQ25792_BAT_MAX_CHARGE_CURRENT);
 
     } else {
         FURI_LOG_E(TAG, "BQ25792 device not ready at address 0x%02X", instance->address);

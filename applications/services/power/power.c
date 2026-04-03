@@ -15,6 +15,9 @@
 #define POWER_INA_SHUNT_RESISTOR_OHMS (0.004f)
 #define POWER_INA_BUS_CURRENT_MAX     (9.0f)
 
+#define BQ25792_BAT_MAX_CHARGE_VOLTAGE 8800
+#define BQ25792_BAT_MAX_CHARGE_CURRENT 3000
+
 typedef enum {
     PowerEventTypeIsr = (1 << 0),
     PowerEventTypeAll = (PowerEventTypeIsr),
@@ -215,6 +218,11 @@ static Power* power_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(POWER_MAX_MESSAGES, sizeof(PowerMessage));
     instance->bq25792_header = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);
+
+    // Set default charge voltage and current limits
+    bq25792_set_charge_voltage_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_VOLTAGE);
+    bq25792_set_charge_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_CURRENT);
+
     instance->ina219_header = ina219_init(&furi_hal_i2c_handle_main, INA219_ADDRESS, POWER_INA_SHUNT_RESISTOR_OHMS, POWER_INA_BUS_CURRENT_MAX);
 
     if(!instance->bq25792_header) {
