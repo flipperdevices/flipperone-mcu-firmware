@@ -2,8 +2,8 @@
 #include <furi_hal_i2c_config.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
-#include <drivers/bq25792/bq25792.h>
 #include <led/led_batch.h>
+#include <power/power.h>
 
 #define TAG              "PowerMenu"
 #define POWER_MENU_ID(x) CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
@@ -37,7 +37,6 @@ typedef struct {
     Gui* gui;
     View* view;
     FuriEventLoop* event_loop;
-    Bq25792* bq25792;
     size_t selected_led_batch_index;
     size_t selected_backlight_index;
 } PowerMenu;
@@ -225,10 +224,14 @@ static void power_menu_input_menu(PowerMenu* instance, size_t selected_index) {
         power_menu_model_apply(instance, power_menu_model_set_led_text, &instance->selected_led_batch_index);
         break;
     case PowerMenuActionPowerOff:
-        bq25792_set_power_switch(instance->bq25792, Bq25792PowerShipMode);
+        Power* power_off = furi_record_open(RECORD_POWER);
+        power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
+        furi_record_close(RECORD_POWER);
         break;
     case PowerMenuActionReboot:
-        bq25792_set_power_switch(instance->bq25792, Bq25792PowerReset);
+        Power* power_reset = furi_record_open(RECORD_POWER);
+        power_bq25792_set_power_switch(power_reset, Bq25792PowerReset);
+        furi_record_close(RECORD_POWER);
         break;
     case PowerMenuActionCancel:
         power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
@@ -278,7 +281,6 @@ static bool power_menu_input(InputEvent* event, void* context) {
 
 static PowerMenu* power_menu_alloc(void) {
     PowerMenu* instance = malloc(sizeof(PowerMenu));
-    instance->bq25792 = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
 
