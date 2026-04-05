@@ -36,6 +36,7 @@ bool power_bq25792_get_charger_fault(Power* instance, Bq25792FaultStatusReg* fau
 bool power_bq25792_get_charger_irq_flags(Power* instance, Bq25792ChargerFlagReg* irq_flags);
 bool power_bq25792_adc_enable(Power* instance, bool enable);
 bool power_bq25792_watchdog_reset(Power* instance);
+bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit);
 #ifdef __cplusplus
 }
 #endif

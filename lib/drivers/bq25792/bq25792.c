@@ -201,6 +201,21 @@ static Bq25792Status bq25792_load_config(Bq25792* instance) {
         }
 
         res = bq25792_set_input_current_limit_ma(instance, BQ25792_MAX_INPUT_DEFAULT_CURRENT);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+
+        Bq25792ChargerControl0RegBits charger_control_0 = {0};
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl0, (uint8_t*)&charger_control_0);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        // Enabling automatic adjustment of input current
+        charger_control_0.en_ico = 1; // Enable ICO current limit
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl0, *(uint8_t*)&charger_control_0);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
 
     } while(0);
     if(res != Bq25792StatusOk) {
@@ -459,6 +474,23 @@ Bq25792Status bq25792_set_charge_current_limit_ma(Bq25792* instance, uint16_t ch
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to set charge current limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_ico_current_limit_ma(Bq25792* instance, uint16_t* ico_current_limit) {
+    furi_check(instance);
+    furi_check(ico_current_limit);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792ICOCurrentLimitRegBits ico_current_limit_reg = {0};
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegICOCurrentLimit, (uint16_t*)&ico_current_limit_reg);
+        if(res == Bq25792StatusOk) {
+            *ico_current_limit = ico_current_limit_reg.ico_ilim * 10; // Convert to ICO current limit (10 mA per LSB)
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get ICO current limit!");
     }
     return res;
 }
