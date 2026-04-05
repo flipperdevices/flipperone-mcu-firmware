@@ -5,8 +5,9 @@
 
 #define TAG "Bq25792"
 
-#define BQ25792_DEVICE_PART_NUMBER 0b001 //BQ25792
-#define BQ25792_DEVICE_REVISION    0b000 //Revision
+#define BQ25792_DEVICE_PART_NUMBER        0b001 //BQ25792
+#define BQ25792_DEVICE_REVISION           0b000 //Revision
+#define BQ25792_MAX_INPUT_DEFAULT_CURRENT 500 // mA
 
 #ifdef BQ25792_DEBUG_ENABLE
 #define BQ25792_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
@@ -191,10 +192,16 @@ static Bq25792Status bq25792_load_config(Bq25792* instance) {
         if(res != Bq25792StatusOk) {
             break;
         }
-        //charger_control_5.en_iindpm = 0; // Disable IINDPM measurement
+        charger_control_5.en_extilim = 0; // Disable external ILIM pin control
         charger_control_5.sfet_present = 1; // Enable Sfet presence detection
         charger_control_5.en_ibat = 1; // Enable IBAT measurement
         res = bq25792_write_reg8(instance, Bq25792RegChargerControl5, *(uint8_t*)&charger_control_5);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+
+        res = bq25792_set_input_current_limit_ma(instance, BQ25792_MAX_INPUT_DEFAULT_CURRENT);
+
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to load config!");
@@ -490,10 +497,22 @@ Bq25792Status bq25792_get_charger_fault(Bq25792* instance, Bq25792FaultStatusReg
     furi_check(instance);
     Bq25792Status res = Bq25792StatusUnknown;
     do {
-        res = bq25792_read_mem(instance, Bq25792RegChargerStatus0, fault->data, sizeof(fault->data));
+        res = bq25792_read_mem(instance, Bq25792RegFaultStatus0, fault->data, sizeof(fault->data));
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to get charger fault!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_clear_charger_fault(Bq25792* instance, Bq25792FaultStatusReg* fault) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_write_reg16(instance, Bq25792RegFaultStatus0, *(uint16_t*)fault->data);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to clear charger fault!");
     }
     return res;
 }
