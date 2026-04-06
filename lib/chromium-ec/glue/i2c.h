@@ -1,4 +1,5 @@
 #pragma once
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,9 +23,6 @@ enum mask_update_action {
 /* Flags for i2c_xfer_unlocked() */
 #define I2C_XFER_START BIT(0) /* Start smbus session from idle state */
 #define I2C_XFER_STOP  BIT(1) /* Terminate smbus session with stop bit */
-#define I2C_XFER_RESTART \
-    BIT(2) /* Generate restart condition on smbus. Note: Only supported \
-		  for Zephyr. */
 #define I2C_XFER_SINGLE (I2C_XFER_START | I2C_XFER_STOP) /* One transaction */
 
 /**

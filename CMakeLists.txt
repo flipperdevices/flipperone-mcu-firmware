@@ -138,6 +138,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
 # TODO: move furi and hardware target to the libraries, to use inside the libs as well, and not just in the main app
 target_include_directories(chromium-ec PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/furi
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_hal
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/config
 )
 

@@ -11,7 +11,11 @@ set(PRIVATE_INCLUDES
 )
 
 set(SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/fusb302.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/pd_test.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/glue/i2c.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/glue/task.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/glue/timer.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/driver/fusb302.c
 )
 
 add_library(${PROJECT_NAME} STATIC

@@ -59,6 +59,13 @@ void task_set_event(task_id_t tskid, uint32_t event);
  */
 uint32_t task_wait_event(int timeout_us);
 
+/**
+ * Wake a task.
+ *
+ * @param tskid		Task to wake
+ */
+void task_wake(task_id_t tskid);
+
 #ifdef __cplusplus
 }
 #endif
