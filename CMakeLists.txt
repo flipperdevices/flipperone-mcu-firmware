@@ -132,9 +132,16 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_multi_slave)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/rtt)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/chromium-ec)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
 
-# Add the standard library to the build
+# TODO: move furi and hardware target to the libraries, to use inside the libs as well, and not just in the main app
+target_include_directories(chromium-ec PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}/lib/furi
+    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/config
+)
+
+# Add the libraries to the build
 target_link_libraries(${PROJECT_NAME}
     cmsis_core
     pico_stdlib
@@ -157,6 +164,7 @@ target_link_libraries(${PROJECT_NAME}
     kvstore
     kvstore_default
     rtt
+    chromium-ec
 )
 
 pico_add_extra_outputs(${PROJECT_NAME})
