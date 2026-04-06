@@ -177,23 +177,23 @@ FuriPubSub* power_get_pubsub(Power* power) {
     return power->event_pubsub;
 }
 
-#define POWER_MESSAGE_SEND_PARAM(fn, ctx, par, res) \
-    do {                                            \
-        if(0) {                                     \
-            /* typechecking */                      \
-            res = fn(ctx, par);                     \
-        }                                           \
-        PowerMessage msg = {                        \
-            .function = fn##_api,                   \
-            .context = ctx,                         \
-            .param = &(par),                        \
-            .result = &(res),                       \
-            .lock = api_lock_alloc_locked(),        \
-        };                                          \
-        power_send_message(instance, &msg);         \
+#define POWER_API_CALL_PARAM(fn, ctx, par, res) \
+    do {                                        \
+        if(0) {                                 \
+            /* typechecking */                  \
+            res = fn(ctx, par);                 \
+        }                                       \
+        PowerMessage msg = {                    \
+            .function = fn##_api,               \
+            .context = ctx,                     \
+            .param = &(par),                    \
+            .result = &(res),                   \
+            .lock = api_lock_alloc_locked(),    \
+        };                                      \
+        power_send_message(instance, &msg);     \
     } while(0);
 
-#define POWER_MESSAGE_SEND(fn, ctx, res)     \
+#define POWER_API_CALL(fn, ctx, res)         \
     do {                                     \
         if(0) {                              \
             /* typechecking */               \
@@ -214,28 +214,28 @@ FuriPubSub* power_get_pubsub(Power* power) {
 float_t power_ina219_get_voltage_v(Power* instance) {
     furi_check(instance);
     float_t voltage;
-    POWER_MESSAGE_SEND(ina219_get_bus_voltage_v, instance->ina219_header, voltage);
+    POWER_API_CALL(ina219_get_bus_voltage_v, instance->ina219_header, voltage);
     return voltage;
 }
 
 float_t power_ina219_get_current_a(Power* instance) {
     furi_check(instance);
     float_t current;
-    POWER_MESSAGE_SEND(ina219_get_current_a, instance->ina219_header, current);
+    POWER_API_CALL(ina219_get_current_a, instance->ina219_header, current);
     return current;
 }
 
 float_t power_ina219_get_power_w(Power* instance) {
     furi_check(instance);
     float_t power;
-    POWER_MESSAGE_SEND(ina219_get_power_w, instance->ina219_header, power);
+    POWER_API_CALL(ina219_get_power_w, instance->ina219_header, power);
     return power;
 }
 
 float_t power_ina219_get_shunt_voltage_mv(Power* instance) {
     furi_check(instance);
     float_t shunt_voltage;
-    POWER_MESSAGE_SEND(ina219_get_shunt_voltage_mv, instance->ina219_header, shunt_voltage);
+    POWER_API_CALL(ina219_get_shunt_voltage_mv, instance->ina219_header, shunt_voltage);
     return shunt_voltage;
 }
 
@@ -244,146 +244,146 @@ float_t power_ina219_get_shunt_voltage_mv(Power* instance) {
 bool power_bq25792_set_power_switch(Power* instance, Bq25792PowerSwitch power_switch) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_set_power_switch, instance->bq25792_header, power_switch, result);
+    POWER_API_CALL_PARAM(bq25792_set_power_switch, instance->bq25792_header, power_switch, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ibus_ma(Power* instance, int16_t* ibus) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_ibus_ma, instance->bq25792_header, ibus, result);
+    POWER_API_CALL_PARAM(bq25792_get_ibus_ma, instance->bq25792_header, ibus, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ibat_ma(Power* instance, int16_t* ibat) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_ibat_ma, instance->bq25792_header, ibat, result);
+    POWER_API_CALL_PARAM(bq25792_get_ibat_ma, instance->bq25792_header, ibat, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vbus_mv(Power* instance, uint16_t* vbus) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_vbus_mv, instance->bq25792_header, vbus, result);
+    POWER_API_CALL_PARAM(bq25792_get_vbus_mv, instance->bq25792_header, vbus, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vbat_mv(Power* instance, uint16_t* vbat) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_vbat_mv, instance->bq25792_header, vbat, result);
+    POWER_API_CALL_PARAM(bq25792_get_vbat_mv, instance->bq25792_header, vbat, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vsys_mv(Power* instance, uint16_t* vsys) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_vsys_mv, instance->bq25792_header, vsys, result);
+    POWER_API_CALL_PARAM(bq25792_get_vsys_mv, instance->bq25792_header, vsys, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_temperature(Power* instance, float* temperature) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_charger_temperature, instance->bq25792_header, temperature, result);
+    POWER_API_CALL_PARAM(bq25792_get_charger_temperature, instance->bq25792_header, temperature, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_temperature_battery_celsius(Power* instance, float* temperature) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_temperature_battery_celsius, instance->bq25792_header, temperature, result);
+    POWER_API_CALL_PARAM(bq25792_get_temperature_battery_celsius, instance->bq25792_header, temperature, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_input_current_limit_ma(Power* instance, uint16_t* input_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
+    POWER_API_CALL_PARAM(bq25792_get_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_set_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
+    POWER_API_CALL_PARAM(bq25792_set_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charge_voltage_limit_ma(Power* instance, uint16_t* charge_voltage_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
+    POWER_API_CALL_PARAM(bq25792_get_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_charge_voltage_limit_ma(Power* instance, uint16_t charge_voltage_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_set_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
+    POWER_API_CALL_PARAM(bq25792_set_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charge_current_limit_ma(Power* instance, uint16_t* charge_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
+    POWER_API_CALL_PARAM(bq25792_get_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_charge_current_limit_ma(Power* instance, uint16_t charge_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_set_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
+    POWER_API_CALL_PARAM(bq25792_set_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_charge_enable(Power* instance, bool enable) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_charge_enable, instance->bq25792_header, enable, result);
+    POWER_API_CALL_PARAM(bq25792_charge_enable, instance->bq25792_header, enable, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_status(Power* instance, Bq25792ChargerStatusReg* status) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_charger_status, instance->bq25792_header, status, result);
+    POWER_API_CALL_PARAM(bq25792_get_charger_status, instance->bq25792_header, status, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_fault(Power* instance, Bq25792FaultStatusReg* fault) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_charger_fault, instance->bq25792_header, fault, result);
+    POWER_API_CALL_PARAM(bq25792_get_charger_fault, instance->bq25792_header, fault, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_irq_flags(Power* instance, Bq25792ChargerFlagReg* irq_flags) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_charger_irq_flags, instance->bq25792_header, irq_flags, result);
+    POWER_API_CALL_PARAM(bq25792_get_charger_irq_flags, instance->bq25792_header, irq_flags, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_adc_enable(Power* instance, bool enable) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_adc_enable, instance->bq25792_header, enable, result);
+    POWER_API_CALL_PARAM(bq25792_adc_enable, instance->bq25792_header, enable, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_watchdog_reset(Power* instance) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND(bq25792_watchdog_reset, instance->bq25792_header, result);
+    POWER_API_CALL(bq25792_watchdog_reset, instance->bq25792_header, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_MESSAGE_SEND_PARAM(bq25792_get_ico_current_limit_ma, instance->bq25792_header, ico_current_limit, result);
+    POWER_API_CALL_PARAM(bq25792_get_ico_current_limit_ma, instance->bq25792_header, ico_current_limit, result);
     return result == Bq25792StatusOk;
 }
