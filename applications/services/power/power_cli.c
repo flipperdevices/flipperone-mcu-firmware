@@ -93,6 +93,7 @@ static void power_cli_print_bq25792(Power* power) {
     uint16_t input_current_limit_ma = 0;
     uint16_t charge_voltage_limit_mv = 0;
     uint16_t charge_current_limit_ma = 0;
+    uint16_t ico_current_limit_ma = 0;
 
     power_bq25792_get_ibus_ma(power, &ibus_ma);
     power_bq25792_get_ibat_ma(power, &ibat_ma);
@@ -104,6 +105,7 @@ static void power_cli_print_bq25792(Power* power) {
     power_bq25792_get_input_current_limit_ma(power, &input_current_limit_ma);
     power_bq25792_get_charge_voltage_limit_ma(power, &charge_voltage_limit_mv);
     power_bq25792_get_charge_current_limit_ma(power, &charge_current_limit_ma);
+    power_bq25792_get_ico_current_limit_ma(power, &ico_current_limit_ma);
 
     printf(
         "BQ25792:\r\n"
@@ -115,8 +117,9 @@ static void power_cli_print_bq25792(Power* power) {
         "  ChgTemp: %.2fC\r\n"
         "  BatTemp: %.2fC\r\n"
         "  IINDPM:  %dmA\r\n"
-        "  VCHRG:   %dmV\r\n"
-        "  ICHRG:   %dmA\r\n\r\n",
+        "  VREG:    %dmV\r\n"
+        "  ICHG:    %dmV\r\n"
+        "  ICO:     %dmA\r\n\r\n",
         (float_t)vsys_mv / 1000.0f,
         (float_t)vbus_mv / 1000.0f,
         ibus_ma,
@@ -126,7 +129,8 @@ static void power_cli_print_bq25792(Power* power) {
         battery_temp,
         input_current_limit_ma,
         charge_voltage_limit_mv,
-        charge_current_limit_ma);
+        charge_current_limit_ma,
+        ico_current_limit_ma);
 }
 
 static void power_cli_print_charger_status(Power* power, FuriString* arena) {
