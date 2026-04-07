@@ -1,7 +1,6 @@
 #pragma once
 
 #include <furi_hal_i2c_types.h>
-#include <furi_hal_gpio.h>
 
 /*
 INA4230 I2C address can be configured by connecting the ADDR pin to GND, VCC, SDA, or SCL. This results in 4 possible addresses.

@@ -120,7 +120,7 @@ int32_t test_peref_srv(void* p) {
         FURI_LOG_I(TAG, "Test");
         furi_delay_ms(500);
         for(uint32_t ina = 0; ina < 5; ina++) {
-            FURI_LOG_I(TAG, "INA4230 at address %ld", ina);
+            FURI_LOG_I(TAG, "INA4230 %ld", ina);
             for(uint32_t channel = 0; channel < 4; channel++) {
                 float bus_voltage = ina4230_get_bus_voltage_v(ina4230_add[ina], channel);
                 float shunt_voltage = ina4230_get_shunt_voltage_mv(ina4230_add[ina], channel);
