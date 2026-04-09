@@ -32,9 +32,60 @@ struct Power {
     FuriMessageQueue* message_queue;
 };
 
+static void power_bq25792_print_charger_irq(Power* instance) {
+    Bq25792ChargerFlagReg fl = {0};
+    bq25792_get_charger_irq_flags(instance->bq25792_header, &fl);
+
+    FuriString* arena = furi_string_alloc();
+    furi_string_set(arena, "");
+    if(fl.flag0.vbus_present_flag) furi_string_cat_printf(arena, " VBUS_PRESENT");
+    if(fl.flag0.ac1_present_flag) furi_string_cat_printf(arena, " AC1_PRESENT");
+    if(fl.flag0.ac2_present_flag) furi_string_cat_printf(arena, " AC2_PRESENT");
+    if(fl.flag0.pg_flag) furi_string_cat_printf(arena, " PG");
+    if(fl.flag0.poorsrc_flag) furi_string_cat_printf(arena, " POORSRC");
+    if(fl.flag0.wd_flag) furi_string_cat_printf(arena, " WD");
+    if(fl.flag0.vindpm_flag) furi_string_cat_printf(arena, " VINDPM");
+    if(fl.flag0.iindpm_flag) furi_string_cat_printf(arena, " IINDPM");
+    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
+    FURI_LOG_I(TAG, "  IRQ0:    0x%02X %s", fl.data[0], furi_string_get_cstr(arena));
+
+    furi_string_set(arena, "");
+    if(fl.flag1.bc12_done_flag) furi_string_cat_printf(arena, " BC1.2_DONE");
+    if(fl.flag1.vbat_present_flag) furi_string_cat_printf(arena, " VBAT_PRESENT");
+    if(fl.flag1.treg_flag) furi_string_cat_printf(arena, " TREG");
+    if(fl.flag1.vbus_flag) furi_string_cat_printf(arena, " VBUS");
+    if(fl.flag1.ico_flag) furi_string_cat_printf(arena, " ICO");
+    if(fl.flag1.chg_flag) furi_string_cat_printf(arena, " CHG");
+    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
+    FURI_LOG_I(TAG, "  IRQ1:    0x%02X %s", fl.data[1], furi_string_get_cstr(arena));
+
+    furi_string_set(arena, "");
+    if(fl.flag2.topoff_tmr_flag) furi_string_cat_printf(arena, " TOPOFF_TMR");
+    if(fl.flag2.prechg_tmr_flag) furi_string_cat_printf(arena, " PRECHG_TMR");
+    if(fl.flag2.trichg_tmr_flag) furi_string_cat_printf(arena, " TRICHG_TMR");
+    if(fl.flag2.chg_tmr_flag) furi_string_cat_printf(arena, " CHG_TMR");
+    if(fl.flag2.vsys_flag) furi_string_cat_printf(arena, " VSYS");
+    if(fl.flag2.adc_done_flag) furi_string_cat_printf(arena, " ADC_DONE");
+    if(fl.flag2.dpdm_done_flag) furi_string_cat_printf(arena, " DPDM_DONE");
+    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
+    FURI_LOG_I(TAG, "  IRQ2:    0x%02X %s", fl.data[2], furi_string_get_cstr(arena));
+
+    furi_string_set(arena, "");
+    if(fl.flag3.ts_hot_flag) furi_string_cat_printf(arena, " TS_HOT");
+    if(fl.flag3.ts_warm_flag) furi_string_cat_printf(arena, " TS_WARM");
+    if(fl.flag3.ts_cool_flag) furi_string_cat_printf(arena, " TS_COOL");
+    if(fl.flag3.ts_cold_flag) furi_string_cat_printf(arena, " TS_COLD");
+    if(fl.flag3.vbatotg_low_flag) furi_string_cat_printf(arena, " VBATOTG_LOW");
+    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
+    FURI_LOG_I(TAG, "  IRQ3:    0x%02X %s", fl.data[3], furi_string_get_cstr(arena));
+    furi_string_free(arena);
+}
+
+
 static void __isr __not_in_flash_func(power_bq25792_event_isr)(void* context) {
     Power* instance = (Power*)context;
     furi_event_loop_set_custom_event(instance->event_loop, PowerEventTypeIsr);
+    power_bq25792_print_charger_irq(instance);
 }
 
 typedef void (*PowerFunction)(void* context, void* param, void* result);
