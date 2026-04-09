@@ -4,6 +4,7 @@
 #include <furi_hal_gpio.h>
 
 #define FUSB302_ADDRESS 0x22
+#define FUSB302_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_1000
 
 typedef struct Fusb302 Fusb302;
 typedef void (*Fusb302Callback)(void* context);

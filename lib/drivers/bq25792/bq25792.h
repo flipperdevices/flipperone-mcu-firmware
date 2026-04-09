@@ -6,6 +6,7 @@
 #include "bq25792_helper.h"
 
 #define BQ25792_ADDRESS 0x6B
+#define BQ25792_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_1000
 
 typedef struct Bq25792 Bq25792;
 typedef void (*Bq25792CallbackInput)(void* context);

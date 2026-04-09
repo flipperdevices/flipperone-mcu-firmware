@@ -28,7 +28,7 @@ static FURI_ALWAYS_INLINE int ina219_write_reg(Ina219* instance, Ina219Reg reg, 
 
     uint8_t buffer[3] = {reg, data >> 8, data & 0xFF};
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, INA219_I2C_SPEED_HZ);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -45,7 +45,7 @@ static FURI_ALWAYS_INLINE int ina219_read_reg(Ina219* instance, Ina219Reg reg, u
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, INA219_I2C_SPEED_HZ);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         uint8_t buffer[2] = {0};
@@ -126,7 +126,7 @@ Ina219* ina219_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, floa
     instance->i2c_handle = i2c_handle;
     instance->address = address;
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, INA219_I2C_SPEED_HZ);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 

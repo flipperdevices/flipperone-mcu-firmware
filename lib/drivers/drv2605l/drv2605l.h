@@ -5,6 +5,7 @@
 #include <drivers/drv2605l/drv2605l_effect.h>
 
 #define DRV2605L_ADDRESS (0x5Au)
+#define DRV2605L_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_400
 
 typedef struct Drv2605l Drv2605l;
 

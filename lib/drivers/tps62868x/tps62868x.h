@@ -5,6 +5,8 @@
 #include <furi_hal_i2c_types.h>
 
 #define TPS62868_ADDRESS 0x47
+#define TPS62868X_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_400
+
 typedef struct Tps62868x Tps62868x;
 
 #ifdef __cplusplus

@@ -7,6 +7,10 @@
 typedef struct FuriHalI2cBus FuriHalI2cBus;
 typedef struct FuriHalI2cBusHandle FuriHalI2cBusHandle;
 
+#define FURI_HAL_I2C_TYPES_TIMINGS_100   100000
+#define FURI_HAL_I2C_TYPES_TIMINGS_400   400000
+#define FURI_HAL_I2C_TYPES_TIMINGS_1000  1000000
+
 /** FuriHal i2c bus states */
 typedef enum {
     FuriHalI2cBusEventInit, /**< Bus initialization event, called on system start */
@@ -94,6 +98,7 @@ struct FuriHalI2cBus {
     const GpioPin* sda;
     const GpioPin* scl;
     const FuriHalI2cMode mode;
+    uint32_t current_speed_hz;
     FuriMutex* mutex;
     FuriHalI2cBusAPI api;
 };

@@ -207,7 +207,7 @@ static void cli_command_free_blocks(Cli* cli, FuriString* args, void* context) {
 }
 
 static void cli_scan_i2c_bus(const FuriHalI2cBusHandle* handle, const char* bus_name) {
-    furi_hal_i2c_acquire(handle);
+    furi_hal_i2c_acquire(handle, FURI_HAL_I2C_TYPES_TIMINGS_100);
     furi_check(handle);
 
     printf("Scanning %s bus (%s):\r\n", bus_name, furi_hal_i2c_bus_name(handle));

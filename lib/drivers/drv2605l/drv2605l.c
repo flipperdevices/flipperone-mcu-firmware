@@ -25,7 +25,7 @@ static int drv2605l_write_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data
 
     uint8_t buffer[2] = {reg, *data};
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, DRV2605L_I2C_SPEED_HZ);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -42,7 +42,7 @@ static int drv2605l_read_reg(Drv2605l* instance, Drv2605lReg reg, uint16_t* data
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, DRV2605L_I2C_SPEED_HZ);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         uint8_t buffer[1] = {0};
@@ -176,7 +176,7 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     //Todo: GpioModeOutputPushPull
     //furi_hal_gpio_init_simple(instance->pin_trigger, GpioModeOutputPushPull);
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, DRV2605L_I2C_SPEED_HZ);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 

@@ -35,7 +35,7 @@ static Bq28z620Status bq28z620_check_status(int stataus) {
 static Bq28z620Status bq28z620_std_cmd(Bq28z620* instance, Bq28z620StdCmd std_cmd, uint8_t* response, size_t response_length) {
     furi_check(instance);
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, BQ28Z620_I2C_SPEED_HZ);
     int ret =
         furi_hal_i2c_master_trx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&std_cmd, 1, response, response_length, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
@@ -62,7 +62,7 @@ Bq28z620* bq28z620_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address) 
     instance->i2c_handle = i2c_handle;
     instance->address = address;
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, BQ28Z620_I2C_SPEED_HZ);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
     if(ret) {

@@ -87,7 +87,7 @@ static __isr __not_in_flash_func(void) iqs7211e_interrupt_handler(void* ctx) {
 static FURI_ALWAYS_INLINE void iqs7211e_i2c_acquire(Iqs7211e* instance) {
     if(!instance->i2c_session_active) {
         instance->i2c_session_active = true;
-        furi_hal_i2c_acquire(instance->i2c_handle);
+        furi_hal_i2c_acquire(instance->i2c_handle, IQS7211E_I2C_SPEED_HZ);
     }
 }
 
@@ -672,7 +672,7 @@ Iqs7211e* iqs7211e_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     furi_hal_gpio_add_int_callback(instance->pin_rdy, GpioConditionFall, iqs7211e_interrupt_handler, instance);
     iqs7211e_reset(instance);
 
-    furi_hal_i2c_acquire(instance->i2c_handle);
+    furi_hal_i2c_acquire(instance->i2c_handle, IQS7211E_I2C_SPEED_HZ);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
     if(ret) {

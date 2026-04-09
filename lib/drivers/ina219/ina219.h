@@ -4,6 +4,7 @@
 #include <furi_hal_gpio.h>
 
 #define INA219_ADDRESS 0x45
+#define INA219_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_1000
 
 typedef struct Ina219 Ina219;
 typedef void (*Ina219CallbackInput)(void* context);

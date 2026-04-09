@@ -15,7 +15,7 @@ void furi_hal_i2c_deinit_main(void);
 void furi_hal_i2c_init_cpu(void);
 void furi_hal_i2c_deinit_cpu(void);
 
-void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle);
+void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle, uint32_t speed_hz);
 void furi_hal_i2c_release(const FuriHalI2cBusHandle* handle);
 
 bool furi_hal_i2c_device_ready(const FuriHalI2cBusHandle* handle, uint8_t device_address, uint32_t timeout_us);

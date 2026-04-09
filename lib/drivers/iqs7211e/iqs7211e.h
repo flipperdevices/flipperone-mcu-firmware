@@ -4,6 +4,7 @@
 #include <furi_hal_gpio.h>
 
 #define IQS7211E_ADDRESS 0x56
+#define IQS7211E_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_1000
 
 typedef struct Iqs7211e Iqs7211e;
 typedef void (*Iqs7211eCallbackInput)(void* context);
