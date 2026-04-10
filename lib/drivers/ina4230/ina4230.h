@@ -25,7 +25,6 @@ Table 6-1. Address Pins and Target Addresses
     SCL     SCL         1001111 = 0x4F
 */
 typedef struct Ina4230 Ina4230;
-typedef void (*Ina4230CallbackInput)(void* context);
 
 typedef enum {
     Ina4230Gain81_92mV = 0b0,
