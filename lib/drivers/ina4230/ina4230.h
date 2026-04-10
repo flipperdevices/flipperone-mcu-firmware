@@ -82,6 +82,8 @@ typedef enum {
     Ina4230AlertMaskReserved2 = 0b111,
 } Ina4230AlertMask;
 
+#define INA4230_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_400
+
 #ifdef __cplusplus
 extern "C" {
 #endif
