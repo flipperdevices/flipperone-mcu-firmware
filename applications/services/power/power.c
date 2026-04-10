@@ -17,7 +17,7 @@
 
 #define BQ25792_BAT_MAX_CHARGE_VOLTAGE 8650
 #define BQ25792_BAT_MAX_CHARGE_CURRENT 3000
-#define BQ25792_BAT_MAX_INPUT_CURRENT 3000
+#define BQ25792_BAT_MAX_INPUT_CURRENT  3000
 
 typedef enum {
     PowerEventTypeIsr = (1 << 0),
@@ -32,75 +32,71 @@ struct Power {
     FuriMessageQueue* message_queue;
 };
 
-typedef enum {
-    // Ina219
-    PowerMessageTypeIna219GetVoltageV,
-    PowerMessageTypeIna219GetCurrentA,
-    PowerMessageTypeIna219GetPowerW,
-    PowerMessageTypeIna219GetShuntVoltageMv,
-    // Bq25792
-    PowerMessageTypeBq25792SetPowerSwitch,
-    PowerMessageTypeBq25792GetIbusMa,
-    PowerMessageTypeBq25792GetIbatMa,
-    PowerMessageTypeBq25792GetVbusMv,
-    PowerMessageTypeBq25792GetVbatMv,
-    PowerMessageTypeBq25792GetVsysMv,
-    PowerMessageTypeBq25792GetChargerTemperature,
-    PowerMessageTypeBq25792GetTemperatureBatteryCelsius,
-    PowerMessageTypeBq25792GetInputCurrentLimitMa,
-    PowerMessageTypeBq25792SetInputCurrentLimitMa,
-    PowerMessageTypeBq25792GetChargeVoltageLimitMa,
-    PowerMessageTypeBq25792SetChargeVoltageLimitMa,
-    PowerMessageTypeBq25792GetChargeCurrentLimitMa,
-    PowerMessageTypeBq25792SetChargeCurrentLimitMa,
-    PowerMessageTypeBq25792ChargeEnable,
-    PowerMessageTypeBq25792GetChargerStatus,
-    PowerMessageTypeBq25792GetChargerFault,
-    PowerMessageTypeBq25792GetChargerIrqFlags,
-    PowerMessageTypeBq25792AdcEnable,
-    PowerMessageTypeBq25792WatchdogReset,
-    PowerMessageTypeBq25792GetIcoCurrentLimitMa,
-} PowerMessageType;
-
-typedef struct {
-    PowerMessageType type;
-    FuriApiLock lock;
-    bool* result;
-    union {
-        // Ina219
-        float_t* get_voltage_v;
-        float_t* get_current_a;
-        float_t* get_power_w;
-        float_t* get_shunt_voltage_mv;
-        // Bq25792
-        Bq25792PowerSwitch power_switch;
-        int16_t* get_ibus_ma;
-        int16_t* get_ibat_ma;
-        uint16_t* get_vbus_mv;
-        uint16_t* get_vbat_mv;
-        uint16_t* get_vsys_mv;
-        float* get_charger_temperature;
-        float* get_temperature_battery_celsius;
-        uint16_t* get_input_current_limit_ma;
-        uint16_t set_input_current_limit_ma;
-        uint16_t* get_charge_voltage_limit_ma;
-        uint16_t set_charge_voltage_limit_ma;
-        uint16_t* get_charge_current_limit_ma;
-        uint16_t set_charge_current_limit_ma;
-        bool set_charge_enable;
-        Bq25792ChargerStatusReg* get_charger_status;
-        Bq25792FaultStatusReg* get_charger_fault;
-        Bq25792ChargerFlagReg* get_charger_irq_flags;
-        uint16_t* get_ico_current_limit_ma;
-        bool set_adc_enable;
-    };
-
-} PowerMessage;
-
 static void __isr __not_in_flash_func(power_bq25792_event_isr)(void* context) {
     Power* instance = (Power*)context;
     furi_event_loop_set_custom_event(instance->event_loop, PowerEventTypeIsr);
 }
+
+typedef void (*PowerFunction)(void* context, void* param, void* result);
+
+typedef struct {
+    FuriApiLock lock;
+    PowerFunction function;
+    void* context;
+    void* param;
+    void* result;
+} PowerMessage;
+
+#define API_WRAPPER(func, return_type, context_type)            \
+    void func##_api(void* context, void* param, void* result) { \
+        if(0) {                                                 \
+            /* typechecking */                                  \
+            return_type r = func((context_type)0);              \
+        }                                                       \
+        *(return_type*)result = func((context_type)context);    \
+    }
+
+#define API_WRAPPER_PARAM(func, return_type, context_type, param_type)            \
+    void func##_api(void* context, void* param, void* result) {                   \
+        if(0) {                                                                   \
+            /* typechecking */                                                    \
+            return_type r = func((context_type)0, (param_type)0);                 \
+        }                                                                         \
+        *(return_type*)result = func((context_type)context, *(param_type*)param); \
+    }
+
+// Ina219 wrappers
+
+API_WRAPPER(ina219_get_bus_voltage_v, float_t, Ina219*);
+API_WRAPPER(ina219_get_current_a, float_t, Ina219*);
+API_WRAPPER(ina219_get_power_w, float_t, Ina219*);
+API_WRAPPER(ina219_get_shunt_voltage_mv, float_t, Ina219*);
+
+// Bq25792 wrappers
+
+API_WRAPPER_PARAM(bq25792_set_power_switch, Bq25792Status, Bq25792*, Bq25792PowerSwitch);
+API_WRAPPER_PARAM(bq25792_get_ibus_ma, Bq25792Status, Bq25792*, int16_t*);
+API_WRAPPER_PARAM(bq25792_get_ibat_ma, Bq25792Status, Bq25792*, int16_t*);
+API_WRAPPER_PARAM(bq25792_get_vbus_mv, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_get_vbat_mv, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_get_vsys_mv, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_get_charger_temperature, Bq25792Status, Bq25792*, float*);
+API_WRAPPER_PARAM(bq25792_get_temperature_battery_celsius, Bq25792Status, Bq25792*, float*);
+API_WRAPPER_PARAM(bq25792_get_input_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_set_input_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
+API_WRAPPER_PARAM(bq25792_get_charge_voltage_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_set_charge_voltage_limit_ma, Bq25792Status, Bq25792*, uint16_t);
+API_WRAPPER_PARAM(bq25792_get_charge_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_set_charge_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
+API_WRAPPER_PARAM(bq25792_get_ico_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_charge_enable, Bq25792Status, Bq25792*, bool);
+API_WRAPPER_PARAM(bq25792_get_charger_status, Bq25792Status, Bq25792*, Bq25792ChargerStatusReg*);
+API_WRAPPER_PARAM(bq25792_get_charger_fault, Bq25792Status, Bq25792*, Bq25792FaultStatusReg*);
+API_WRAPPER_PARAM(bq25792_get_charger_irq_flags, Bq25792Status, Bq25792*, Bq25792ChargerFlagReg*);
+API_WRAPPER_PARAM(bq25792_adc_enable, Bq25792Status, Bq25792*, bool);
+API_WRAPPER(bq25792_watchdog_reset, Bq25792Status, Bq25792*);
+
+// End of API wrappers
 
 static void power_message_queue_callback(FuriEventLoopObject* object, void* context) {
     furi_assert(context);
@@ -110,93 +106,10 @@ static void power_message_queue_callback(FuriEventLoopObject* object, void* cont
     PowerMessage msg;
     furi_check(furi_message_queue_get(instance->message_queue, &msg, 0) == FuriStatusOk);
 
-    bool result = false;
+    furi_check(msg.function);
+    furi_check(msg.result);
 
-    switch(msg.type) {
-    case PowerMessageTypeIna219GetVoltageV:
-        *(msg.get_voltage_v) = ina219_get_bus_voltage_v(instance->ina219_header);
-        break;
-    case PowerMessageTypeIna219GetCurrentA:
-        *(msg.get_current_a) = ina219_get_current_a(instance->ina219_header);
-        break;
-    case PowerMessageTypeIna219GetPowerW:
-        *(msg.get_power_w) = ina219_get_power_w(instance->ina219_header);
-        break;
-    case PowerMessageTypeIna219GetShuntVoltageMv:
-        *(msg.get_shunt_voltage_mv) = ina219_get_shunt_voltage_mv(instance->ina219_header);
-        break;
-
-    case PowerMessageTypeBq25792SetPowerSwitch:
-        result = bq25792_set_power_switch(instance->bq25792_header, msg.power_switch) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetIbusMa:
-        result = bq25792_get_ibus_ma(instance->bq25792_header, msg.get_ibus_ma) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetIbatMa:
-        result = bq25792_get_ibat_ma(instance->bq25792_header, msg.get_ibat_ma) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetVbusMv:
-        result = bq25792_get_vbus_mv(instance->bq25792_header, msg.get_vbus_mv) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetVbatMv:
-        result = bq25792_get_vbat_mv(instance->bq25792_header, msg.get_vbat_mv) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetVsysMv:
-        result = bq25792_get_vsys_mv(instance->bq25792_header, msg.get_vsys_mv) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetChargerTemperature:
-        result = bq25792_get_charger_temperature(instance->bq25792_header, msg.get_charger_temperature) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetTemperatureBatteryCelsius:
-        result = bq25792_get_temperature_battery_celsius(instance->bq25792_header, msg.get_temperature_battery_celsius) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetInputCurrentLimitMa:
-        result = bq25792_get_input_current_limit_ma(instance->bq25792_header, msg.get_input_current_limit_ma) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792SetInputCurrentLimitMa:
-        result = bq25792_set_input_current_limit_ma(instance->bq25792_header, msg.set_input_current_limit_ma) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetChargeVoltageLimitMa:
-        result = bq25792_get_charge_voltage_limit_ma(instance->bq25792_header, msg.get_charge_voltage_limit_ma) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792SetChargeVoltageLimitMa:
-        result = bq25792_set_charge_voltage_limit_ma(instance->bq25792_header, msg.set_charge_voltage_limit_ma) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetChargeCurrentLimitMa:
-        result = bq25792_get_charge_current_limit_ma(instance->bq25792_header, msg.get_charge_current_limit_ma) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792SetChargeCurrentLimitMa:
-        result = bq25792_set_charge_current_limit_ma(instance->bq25792_header, msg.set_charge_current_limit_ma) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792ChargeEnable:
-        result = bq25792_charge_enable(instance->bq25792_header, msg.set_charge_enable) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetChargerStatus:
-        result = bq25792_get_charger_status(instance->bq25792_header, msg.get_charger_status) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetChargerFault:
-        result = bq25792_get_charger_fault(instance->bq25792_header, msg.get_charger_fault) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetChargerIrqFlags:
-        result = bq25792_get_charger_irq_flags(instance->bq25792_header, msg.get_charger_irq_flags) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792AdcEnable:
-        result = bq25792_adc_enable(instance->bq25792_header, msg.set_adc_enable) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792WatchdogReset:
-        result = bq25792_watchdog_reset(instance->bq25792_header) == Bq25792StatusOk;
-        break;
-    case PowerMessageTypeBq25792GetIcoCurrentLimitMa:
-        result = bq25792_get_ico_current_limit_ma(instance->bq25792_header, msg.get_ico_current_limit_ma) == Bq25792StatusOk;
-        break;
-    default:
-        furi_crash("Invalid message type");
-        break;
-    }
-
-    if(msg.result) {
-        *msg.result = result;
-    }
+    msg.function(msg.context, msg.param, msg.result);
 
     if(msg.lock) {
         api_lock_unlock(msg.lock);
@@ -243,7 +156,7 @@ static Power* power_alloc(void) {
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, power_message_queue_callback, instance);
     furi_event_loop_set_custom_event_callback(instance->event_loop, power_custom_event_callback, instance);
-    
+
     instance->event_pubsub = furi_pubsub_alloc();
     furi_record_create(RECORD_POWER, instance);
 
@@ -264,322 +177,213 @@ FuriPubSub* power_get_pubsub(Power* power) {
     return power->event_pubsub;
 }
 
+#define POWER_API_CALL_PARAM(fn, ctx, par, res) \
+    do {                                        \
+        if(0) {                                 \
+            /* typechecking */                  \
+            res = fn(ctx, par);                 \
+        }                                       \
+        PowerMessage msg = {                    \
+            .function = fn##_api,               \
+            .context = ctx,                     \
+            .param = &(par),                    \
+            .result = &(res),                   \
+            .lock = api_lock_alloc_locked(),    \
+        };                                      \
+        power_send_message(instance, &msg);     \
+    } while(0);
+
+#define POWER_API_CALL(fn, ctx, res)         \
+    do {                                     \
+        if(0) {                              \
+            /* typechecking */               \
+            res = fn(ctx);                   \
+        }                                    \
+        PowerMessage msg = {                 \
+            .function = fn##_api,            \
+            .context = ctx,                  \
+            .param = NULL,                   \
+            .result = &(res),                \
+            .lock = api_lock_alloc_locked(), \
+        };                                   \
+        power_send_message(instance, &msg);  \
+    } while(0);
+
+// Ina219 API functions
+
 float_t power_ina219_get_voltage_v(Power* instance) {
     furi_check(instance);
     float_t voltage;
-    PowerMessage msg = {
-        .type = PowerMessageTypeIna219GetVoltageV,
-        .get_voltage_v = &voltage,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
+    POWER_API_CALL(ina219_get_bus_voltage_v, instance->ina219_header, voltage);
     return voltage;
 }
 
 float_t power_ina219_get_current_a(Power* instance) {
     furi_check(instance);
     float_t current;
-    PowerMessage msg = {
-        .type = PowerMessageTypeIna219GetCurrentA,
-        .get_current_a = &current,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
+    POWER_API_CALL(ina219_get_current_a, instance->ina219_header, current);
     return current;
 }
 
 float_t power_ina219_get_power_w(Power* instance) {
     furi_check(instance);
     float_t power;
-    PowerMessage msg = {
-        .type = PowerMessageTypeIna219GetPowerW,
-        .get_power_w = &power,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
+    POWER_API_CALL(ina219_get_power_w, instance->ina219_header, power);
     return power;
 }
 
 float_t power_ina219_get_shunt_voltage_mv(Power* instance) {
     furi_check(instance);
     float_t shunt_voltage;
-    PowerMessage msg = {
-        .type = PowerMessageTypeIna219GetShuntVoltageMv,
-        .get_shunt_voltage_mv = &shunt_voltage,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
+    POWER_API_CALL(ina219_get_shunt_voltage_mv, instance->ina219_header, shunt_voltage);
     return shunt_voltage;
 }
 
+// Bq25792 API functions
+
 bool power_bq25792_set_power_switch(Power* instance, Bq25792PowerSwitch power_switch) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792SetPowerSwitch,
-        .power_switch = power_switch,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_set_power_switch, instance->bq25792_header, power_switch, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ibus_ma(Power* instance, int16_t* ibus) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetIbusMa,
-        .get_ibus_ma = ibus,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_ibus_ma, instance->bq25792_header, ibus, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ibat_ma(Power* instance, int16_t* ibat) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetIbatMa,
-        .get_ibat_ma = ibat,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_ibat_ma, instance->bq25792_header, ibat, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vbus_mv(Power* instance, uint16_t* vbus) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetVbusMv,
-        .get_vbus_mv = vbus,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_vbus_mv, instance->bq25792_header, vbus, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vbat_mv(Power* instance, uint16_t* vbat) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetVbatMv,
-        .get_vbat_mv = vbat,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_vbat_mv, instance->bq25792_header, vbat, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vsys_mv(Power* instance, uint16_t* vsys) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetVsysMv,
-        .get_vsys_mv = vsys,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_vsys_mv, instance->bq25792_header, vsys, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_temperature(Power* instance, float* temperature) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetChargerTemperature,
-        .get_charger_temperature = temperature,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_charger_temperature, instance->bq25792_header, temperature, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_temperature_battery_celsius(Power* instance, float* temperature) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetTemperatureBatteryCelsius,
-        .get_temperature_battery_celsius = temperature,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_temperature_battery_celsius, instance->bq25792_header, temperature, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_input_current_limit_ma(Power* instance, uint16_t* input_current_limit) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetInputCurrentLimitMa,
-        .get_input_current_limit_ma = input_current_limit,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792SetInputCurrentLimitMa,
-        .set_input_current_limit_ma = input_current_limit,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_set_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charge_voltage_limit_ma(Power* instance, uint16_t* charge_voltage_limit) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetChargeVoltageLimitMa,
-        .get_charge_voltage_limit_ma = charge_voltage_limit,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_charge_voltage_limit_ma(Power* instance, uint16_t charge_voltage_limit) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792SetChargeVoltageLimitMa,
-        .set_charge_voltage_limit_ma = charge_voltage_limit,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_set_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charge_current_limit_ma(Power* instance, uint16_t* charge_current_limit) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetChargeCurrentLimitMa,
-        .get_charge_current_limit_ma = charge_current_limit,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_charge_current_limit_ma(Power* instance, uint16_t charge_current_limit) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792SetChargeCurrentLimitMa,
-        .set_charge_current_limit_ma = charge_current_limit,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_set_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_charge_enable(Power* instance, bool enable) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792ChargeEnable,
-        .set_charge_enable = enable,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_charge_enable, instance->bq25792_header, enable, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_status(Power* instance, Bq25792ChargerStatusReg* status) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetChargerStatus,
-        .get_charger_status = status,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_charger_status, instance->bq25792_header, status, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_fault(Power* instance, Bq25792FaultStatusReg* fault) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetChargerFault,
-        .get_charger_fault = fault,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_charger_fault, instance->bq25792_header, fault, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_irq_flags(Power* instance, Bq25792ChargerFlagReg* irq_flags) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetChargerIrqFlags,
-        .get_charger_irq_flags = irq_flags,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_charger_irq_flags, instance->bq25792_header, irq_flags, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_adc_enable(Power* instance, bool enable) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792AdcEnable,
-        .set_adc_enable = enable,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_adc_enable, instance->bq25792_header, enable, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_watchdog_reset(Power* instance) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792WatchdogReset,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL(bq25792_watchdog_reset, instance->bq25792_header, result);
+    return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit) {
     furi_check(instance);
-    bool result;
-    PowerMessage msg = {
-        .type = PowerMessageTypeBq25792GetIcoCurrentLimitMa,
-        .get_ico_current_limit_ma = ico_current_limit,
-        .result = &result,
-        .lock = api_lock_alloc_locked(),
-    };
-    power_send_message(instance, &msg);
-    return result;
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(bq25792_get_ico_current_limit_ma, instance->bq25792_header, ico_current_limit, result);
+    return result == Bq25792StatusOk;
 }
