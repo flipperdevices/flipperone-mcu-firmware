@@ -51,13 +51,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    {
-        .app = fusb302_srv,
-        .name = "Fusb302Srv",
-        .appid = "fusb302_srv",
-        .stack_size = 1024,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
+    // {
+    //     .app = fusb302_srv,
+    //     .name = "Fusb302Srv",
+    //     .appid = "fusb302_srv",
+    //     .stack_size = 1024,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    // },
     // {
     //     .app = uart_echo_app,
     //     .name = "UartEcho",
