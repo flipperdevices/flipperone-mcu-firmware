@@ -7,6 +7,7 @@
 #include <furi_hal_resources.h>
 #include <drivers/ina219/ina219.h>
 #include <drivers/bq25792/bq25792.h>
+#include <drivers/bq28z620/bq28z620.h>
 #include <furi_bsp.h>
 
 #define TAG "Power"
@@ -29,6 +30,7 @@ struct Power {
     FuriPubSub* event_pubsub;
     Bq25792* bq25792_header;
     Ina219* ina219_header;
+    Bq28z620* bq28z620_header;
     FuriMessageQueue* message_queue;
 };
 
@@ -80,7 +82,6 @@ static void power_bq25792_print_charger_irq(Power* instance) {
     FURI_LOG_I(TAG, "  IRQ3:    0x%02X %s", fl.data[3], furi_string_get_cstr(arena));
     furi_string_free(arena);
 }
-
 
 static void __isr __not_in_flash_func(power_bq25792_event_isr)(void* context) {
     Power* instance = (Power*)context;
@@ -147,6 +148,32 @@ API_WRAPPER_PARAM(bq25792_get_charger_irq_flags, Bq25792Status, Bq25792*, Bq2579
 API_WRAPPER_PARAM(bq25792_adc_enable, Bq25792Status, Bq25792*, bool);
 API_WRAPPER(bq25792_watchdog_reset, Bq25792Status, Bq25792*);
 
+// Bq28z620 wrappers
+
+API_WRAPPER_PARAM(bq28z620_get_control_status, Bq28z620Status, Bq28z620*, Bq28z620StdCmdControlStatusRegBits*);
+API_WRAPPER_PARAM(bq28z620_get_time_to_empty, Bq28z620Status, Bq28z620*, uint16_t*);
+API_WRAPPER_PARAM(bq28z620_get_temperature, Bq28z620Status, Bq28z620*, float*);
+API_WRAPPER_PARAM(bq28z620_get_voltage, Bq28z620Status, Bq28z620*, float*);
+API_WRAPPER_PARAM(bq28z620_get_battery_status, Bq28z620Status, Bq28z620*, Bq28z620StdCmdBatteryStatusRegBits*);
+API_WRAPPER_PARAM(bq28z620_get_current, Bq28z620Status, Bq28z620*, int16_t*);
+API_WRAPPER_PARAM(bq28z620_get_remaining_capacity, Bq28z620Status, Bq28z620*, uint16_t*);
+API_WRAPPER_PARAM(bq28z620_get_full_charge_capacity, Bq28z620Status, Bq28z620*, uint16_t*);
+API_WRAPPER_PARAM(bq28z620_get_average_current, Bq28z620Status, Bq28z620*, int16_t*);
+API_WRAPPER_PARAM(bq28z620_get_average_time_to_empty, Bq28z620Status, Bq28z620*, uint16_t*);
+API_WRAPPER_PARAM(bq28z620_get_average_time_to_full, Bq28z620Status, Bq28z620*, uint16_t*);
+API_WRAPPER_PARAM(bq28z620_get_standby_current, Bq28z620Status, Bq28z620*, int16_t*);
+API_WRAPPER_PARAM(bq28z620_get_standby_time_to_empty, Bq28z620Status, Bq28z620*, uint16_t*);
+API_WRAPPER_PARAM(bq28z620_get_max_load_current, Bq28z620Status, Bq28z620*, int16_t*);
+API_WRAPPER_PARAM(bq28z620_get_max_load_time_to_empty, Bq28z620Status, Bq28z620*, uint16_t*);
+API_WRAPPER_PARAM(bq28z620_get_average_power, Bq28z620Status, Bq28z620*, int16_t*);
+API_WRAPPER_PARAM(bq28z620_get_internal_temperature, Bq28z620Status, Bq28z620*, float*);
+API_WRAPPER_PARAM(bq28z620_get_cycle_count, Bq28z620Status, Bq28z620*, uint16_t*);
+API_WRAPPER_PARAM(bq28z620_get_relative_state_of_charge, Bq28z620Status, Bq28z620*, uint8_t*);
+API_WRAPPER_PARAM(bq28z620_get_state_of_health, Bq28z620Status, Bq28z620*, uint8_t*);
+API_WRAPPER_PARAM(bq28z620_get_charging_voltage, Bq28z620Status, Bq28z620*, float*);
+API_WRAPPER_PARAM(bq28z620_get_charging_current, Bq28z620Status, Bq28z620*, int16_t*);
+API_WRAPPER_PARAM(bq28z620_get_design_capacity, Bq28z620Status, Bq28z620*, uint16_t*);
+
 // End of API wrappers
 
 static void power_message_queue_callback(FuriEventLoopObject* object, void* context) {
@@ -195,6 +222,7 @@ static Power* power_alloc(void) {
     bq25792_set_input_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_INPUT_CURRENT);
 
     instance->ina219_header = ina219_init(&furi_hal_i2c_handle_main, INA219_ADDRESS, POWER_INA_SHUNT_RESISTOR_OHMS, POWER_INA_BUS_CURRENT_MAX);
+    instance->bq28z620_header = bq28z620_init(&furi_hal_i2c_handle_main, BQ28Z620_ADDRESS);
 
     if(!instance->bq25792_header) {
         FURI_LOG_E(TAG, "Failed to initialize BQ25792");
@@ -203,6 +231,9 @@ static Power* power_alloc(void) {
     }
     if(!instance->ina219_header) {
         FURI_LOG_E(TAG, "Failed to initialize INA219");
+    }
+    if(!instance->bq28z620_header) {
+        FURI_LOG_E(TAG, "Failed to initialize BQ28Z620");
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, power_message_queue_callback, instance);
@@ -437,4 +468,167 @@ bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_curre
     Bq25792Status result;
     POWER_API_CALL_PARAM(bq25792_get_ico_current_limit_ma, instance->bq25792_header, ico_current_limit, result);
     return result == Bq25792StatusOk;
+}
+
+// Bq28z620 API functions
+
+bool power_bq28z620_get_control_status(Power* instance, Bq28z620StdCmdControlStatusRegBits* control_status) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_control_status, instance->bq28z620_header, control_status, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_time_to_empty(Power* instance, uint16_t* time_to_empty) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_time_to_empty, instance->bq28z620_header, time_to_empty, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_temperature(Power* instance, float* temperature) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_temperature, instance->bq28z620_header, temperature, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_voltage(Power* instance, float* voltage) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_voltage, instance->bq28z620_header, voltage, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_battery_status(Power* instance, Bq28z620StdCmdBatteryStatusRegBits* battery_status) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_battery_status, instance->bq28z620_header, battery_status, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_current(Power* instance, int16_t* current) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_current, instance->bq28z620_header, current, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_remaining_capacity(Power* instance, uint16_t* remaining_capacity) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_remaining_capacity, instance->bq28z620_header, remaining_capacity, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_full_charge_capacity(Power* instance, uint16_t* full_charge_capacity) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_full_charge_capacity, instance->bq28z620_header, full_charge_capacity, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_average_current(Power* instance, int16_t* average_current) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_average_current, instance->bq28z620_header, average_current, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_average_time_to_empty(Power* instance, uint16_t* average_time_to_empty) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_average_time_to_empty, instance->bq28z620_header, average_time_to_empty, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_average_time_to_full(Power* instance, uint16_t* average_time_to_full) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_average_time_to_full, instance->bq28z620_header, average_time_to_full, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_standby_current(Power* instance, int16_t* standby_current) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_standby_current, instance->bq28z620_header, standby_current, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_standby_time_to_empty(Power* instance, uint16_t* standby_time_to_empty) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_standby_time_to_empty, instance->bq28z620_header, standby_time_to_empty, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_max_load_current(Power* instance, int16_t* max_load_current) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_max_load_current, instance->bq28z620_header, max_load_current, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_max_load_time_to_empty(Power* instance, uint16_t* max_load_time_to_empty) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_max_load_time_to_empty, instance->bq28z620_header, max_load_time_to_empty, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_average_power(Power* instance, int16_t* average_power) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_average_power, instance->bq28z620_header, average_power, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_internal_temperature(Power* instance, float* internal_temperature) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_internal_temperature, instance->bq28z620_header, internal_temperature, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_cycle_count(Power* instance, uint16_t* cycle_count) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_cycle_count, instance->bq28z620_header, cycle_count, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_relative_state_of_charge(Power* instance, uint8_t* relative_state_of_charge) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_relative_state_of_charge, instance->bq28z620_header, relative_state_of_charge, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_state_of_health(Power* instance, uint8_t* state_of_health) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_state_of_health, instance->bq28z620_header, state_of_health, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_charging_voltage(Power* instance, float* charging_voltage) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_charging_voltage, instance->bq28z620_header, charging_voltage, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_charging_current(Power* instance, int16_t* charging_current) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_charging_current, instance->bq28z620_header, charging_current, result);
+    return result == Bq28z620StatusOk;
+}
+
+bool power_bq28z620_get_design_capacity(Power* instance, uint16_t* design_capacity) {
+    furi_check(instance);
+    Bq28z620Status result;
+    POWER_API_CALL_PARAM(bq28z620_get_design_capacity, instance->bq28z620_header, design_capacity, result);
+    return result == Bq28z620StatusOk;
 }
