@@ -180,26 +180,26 @@ static void power_cli_print_bq28z620(Power* power) {
 
     printf(
         "BQ28Z620:\r\n"
-        "  Voltage: %.3fV\r\n"
-        "  Current: %dmA\r\n"
-        "  Temp:    %.2fC\r\n"
-        "  IntTemp: %.2fC\r\n"
-        "  RemCap:  %dmAh\r\n"
-        "  FullCap: %dmAh\r\n"
-        "  AvgCurr: %dmA\r\n"
-        "  AvgPwr:  %dmW\r\n"
-        "  CycleCt: %d\r\n"
-        "  SoC:     %d%%\r\n"
-        "  SoH:     %d%%\r\n"
-        "  ChgVolt: %.3fV\r\n"
-        "  ChgCurr: %dmA\r\n"
-        "  DesignCap: %dmAh\r\n"
-        "  TimeToEmpty: %d min\r\n"
-        "  AvgTimeToEmpty: %d min\r\n"
-        "  TimeToFull: %d min\r\n"
-        "  StandbyCurr: %dmA\r\n"
+        "  Voltage:            %.3fV\r\n"
+        "  Current:            %dmA\r\n"
+        "  Temp:               %.2fC\r\n"
+        "  IntTemp:            %.2fC\r\n"
+        "  RemCap:             %dmAh\r\n"
+        "  FullCap:            %dmAh\r\n"
+        "  AvgCurr:            %dmA\r\n"
+        "  AvgPwr:             %dmW\r\n"
+        "  CycleCt:            %d\r\n"
+        "  SoC:                %d%%\r\n"
+        "  SoH:                %d%%\r\n"
+        "  ChgVolt:            %.3fV\r\n"
+        "  ChgCurr:            %dmA\r\n"
+        "  DesignCap:          %dmAh\r\n"
+        "  TimeToEmpty:        %d min\r\n"
+        "  AvgTimeToEmpty:     %d min\r\n"
+        "  TimeToFull:         %d min\r\n"
+        "  StandbyCurr:        %dmA\r\n"
         "  StandbyTimeToEmpty: %d min\r\n"
-        "  MaxLoadCurr: %dmA\r\n"
+        "  MaxLoadCurr:        %dmA\r\n"
         "  MaxLoadTimeToEmpty: %d min\r\n",
         voltage_v,
         current_ma,
@@ -312,7 +312,7 @@ static void power_cli_print_bq28z620_control_status(Power* power, FuriString* ar
     Bq28z620StdCmdControlStatusRegBits s = {0};
     power_bq28z620_get_control_status(power, &s);
 
-    printf("  Control Status: 0x%04X", *(uint16_t*)&s);
+    printf("\r\n  Control Status: 0x%04X", *(uint16_t*)&s);
 
     furi_string_set(arena, "");
     if(s.qmax) furi_string_cat_printf(arena, " QMAX");
