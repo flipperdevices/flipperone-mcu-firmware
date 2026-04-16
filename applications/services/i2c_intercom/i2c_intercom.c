@@ -218,7 +218,7 @@ int32_t i2c_intercom_srv(void* p) {
     i2c_register_add(I2C_HEADPHONES_STATE_REG_ADDRESS, 0, I2CRegFlagRead);
     furi_pubsub_subscribe(furi_record_open(RECORD_HEADPHONES), i2c_registers_headphones_event_glue, NULL);
 
-    furi_hal_i2c_acquire(instance->bus_handle, FURI_HAL_I2C_TYPES_TIMINGS_1000);
+    furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
     instance->state = I2cIntercomStateIdle;
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
