@@ -372,3 +372,7 @@ float_t display_jd9853_qspi_get_vci(DisplayJd9853QSPI* display) {
     furi_check(display);
     return tps62868x_get_voltage(display->power_supply);
 }
+
+bool display_jd9853_qspi_is_init(void) {
+    return display_instance != NULL;
+}
