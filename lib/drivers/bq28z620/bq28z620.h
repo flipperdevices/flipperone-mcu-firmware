@@ -15,6 +15,8 @@ typedef enum {
     Bq28z620StatusError = -1,
     Bq28z620StatusTimeout = -2,
     Bq28z620StatusUnknown = -3,
+    Bq28z620StatusCrcError = -4,
+    Bq28z620StatusSubCmdError = -5,
 } Bq28z620Status;
 
 #ifdef __cplusplus
@@ -221,6 +223,15 @@ Bq28z620Status bq28z620_get_charging_current(Bq28z620* instance, int16_t* chargi
     * @return Bq28z620Status indicating the result of the operation.
     */
 Bq28z620Status bq28z620_get_design_capacity(Bq28z620* instance, uint16_t* design_capacity);
+
+
+Bq28z620Status bq28z620_get_device_type(Bq28z620* instance, Bq28z620MacSubcmdDeviceTypeRegBits* device_type);
+Bq28z620Status bq28z620_get_device_name(Bq28z620* instance, Bq28z620MacSubcmdDeviceNameRegBits* device_name);
+Bq28z620Status bq28z620_get_operation_status(Bq28z620* instance, Bq28z620MacSubcmdOperationStatusRegBits* operation_status);
+Bq28z620Status bq28z620_get_chemical_id(Bq28z620* instance, Bq28z620MacSubcmdChemicalIDRegBits* chemical_id);
+Bq28z620Status bq28z620_reset(Bq28z620* instance);
+Bq28z620Status bq28z620_get_i2c_configuration(Bq28z620* instance, uint8_t* i2c_configuration);
+Bq28z620Status bq28z620_set_i2c_configuration(Bq28z620* instance, uint8_t* i2c_configuration);
 
 #ifdef __cplusplus
 }

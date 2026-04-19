@@ -4,7 +4,7 @@
 #include <drivers/i2c_master_pio/pio_i2c.h>
 #include <drivers/i2c_slave/i2c_slave.h>
 
-#define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_100   100000
+#define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_100   90000
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400   400000
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_1000  1000000
 #define FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS 0x69

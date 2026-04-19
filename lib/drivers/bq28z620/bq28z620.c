@@ -1,21 +1,10 @@
 #include "bq28z620.h"
+#include "bq28z620_i.h"
 #include <furi.h>
 
 #include <furi_hal_i2c.h>
 
 #define TAG "Bq28z620"
-
-#ifdef BQ28Z620_DEBUG_ENABLE
-#define BQ28Z620_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
-#else
-#define BQ28Z620_DEBUG(...)
-#endif
-
-struct Bq28z620 {
-    const FuriHalI2cBusHandle* i2c_handle;
-    uint8_t address;
-    void* context;
-};
 
 static Bq28z620Status bq28z620_check_status(int stataus) {
     Bq28z620Status ret = Bq28z620StatusUnknown;
