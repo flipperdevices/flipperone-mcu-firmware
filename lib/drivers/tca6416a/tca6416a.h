@@ -5,7 +5,6 @@
 
 #define TCA6416A_ADDRESS_A0 0x20
 #define TCA6416A_ADDRESS_A1 0x21
-#define TCA6416A_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_400
 
 typedef struct Tca6416a Tca6416a;
 typedef void (*Tca6416aCallbackInput)(void* context);

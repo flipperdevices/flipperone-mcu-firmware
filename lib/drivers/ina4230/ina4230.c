@@ -37,7 +37,7 @@ static FURI_ALWAYS_INLINE int ina4230_write_reg(Ina4230* instance, Ina4230Reg re
 
     uint8_t buffer[3] = {reg, data >> 8, data & 0xFF};
 
-    furi_hal_i2c_acquire(instance->i2c_handle, INA4230_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -54,7 +54,7 @@ static FURI_ALWAYS_INLINE int ina4230_read_reg(Ina4230* instance, Ina4230Reg reg
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle, INA4230_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         uint8_t buffer[2] = {0};
@@ -116,8 +116,8 @@ void ina4230_set_config_channel(Ina4230* instance, uint32_t channel, const char*
         calibration_value,
         instance->channel_config[channel].power_lsb,
         instance->channel_config[channel].energy_lsb);
-
-    furi_check(calibration_value <= 0x7FFF, "Calculated calibration value exceeds maximum allowed value for channel");
+    
+    furi_check(calibration_value <= 0x7FFF, "Calculated calibration value exceeds maximum allowed value for channel");    
     instance->channel_config[channel].calibration.shunt_cal = calibration_value;
 
     furi_string_set(instance->channel_config[channel].name, name);
@@ -151,7 +151,7 @@ Ina4230* ina4230_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address) {
         instance->channel_config[i].name = furi_string_alloc();
     }
 
-    furi_hal_i2c_acquire(instance->i2c_handle, INA4230_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 

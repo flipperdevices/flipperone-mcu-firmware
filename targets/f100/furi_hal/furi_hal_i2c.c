@@ -19,7 +19,7 @@ static inline void furi_hal_i2c_check_handle_is_acquired_slave(const FuriHalI2cB
     furi_check(handle->bus->mode == FuriHalI2cModeSlave);
 }
 
-void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle, uint32_t speed_hz) {
+void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle) {
     furi_hal_power_insomnia_enter();
     // Lock bus access
     handle->bus->api.event(handle->bus, FuriHalI2cBusEventLock);
@@ -29,8 +29,6 @@ void furi_hal_i2c_acquire(const FuriHalI2cBusHandle* handle, uint32_t speed_hz) 
     handle->bus->current_handle = handle;
     // Activate bus
     handle->bus->api.event(handle->bus, FuriHalI2cBusEventActivate);
-    // Set bus speed
-    handle->bus->current_speed_hz = speed_hz;
     // Activate handle
     handle->callback(handle, FuriHalI2cBusHandleEventActivate);
 }

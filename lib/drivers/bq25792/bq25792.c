@@ -49,7 +49,7 @@ static Bq25792Status bq25792_write_reg8(Bq25792* instance, Bq25792Reg reg, uint8
 
     uint8_t buffer[2] = {reg, data};
 
-    furi_hal_i2c_acquire(instance->i2c_handle, BQ25792_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -67,7 +67,7 @@ static Bq25792Status bq25792_write_reg16(Bq25792* instance, Bq25792Reg reg, uint
 
     uint8_t buffer[3] = {reg, data >> 8, data & 0xFF};
 
-    furi_hal_i2c_acquire(instance->i2c_handle, BQ25792_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -84,7 +84,7 @@ static Bq25792Status bq25792_read_reg8(Bq25792* instance, Bq25792Reg reg, uint8_
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle, BQ25792_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         uint8_t buffer[2] = {0};
@@ -106,7 +106,7 @@ static Bq25792Status bq25792_read_reg16(Bq25792* instance, Bq25792Reg reg, uint1
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle, BQ25792_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         uint8_t buffer[2] = {0};
@@ -128,7 +128,7 @@ static Bq25792Status bq25792_read_mem(Bq25792* instance, Bq25792Reg reg, uint8_t
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle, BQ25792_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         ret = furi_hal_i2c_master_rx_blocking(instance->i2c_handle, instance->address, data, length, FURI_HAL_I2C_TIMEOUT_US);
@@ -229,7 +229,7 @@ Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
     instance->i2c_handle = i2c_handle;
     instance->address = address;
 
-    furi_hal_i2c_acquire(instance->i2c_handle, BQ25792_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
