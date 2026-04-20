@@ -15,6 +15,7 @@
 #include <drivers/bq28z620/bq28z620.h>
 #include <stdint.h>
 
+#include <led/led_batch.h>
 
 #define TAG "PerefTest"
 
@@ -85,34 +86,44 @@ int32_t test_peref_srv(void* p) {
 
     //test_nvm();
 
-    //Power* power = furi_record_open(RECORD_POWER);
-
     Bq28z620* bq28z620 = bq28z620_init(&furi_hal_i2c_handle_main, BQ28Z620_ADDRESS);
-    // Bq28z620MacSubcmdDevicuieTypeRegBits chemical_id = {0};
-    // bq28z620_get_device_type(bq28z620, &chemical_id);
-    //FURI_LOG_I(TAG, "Bq28z620 Chemical ID: %u", chemical_id.device_type);
 
     furi_delay_ms(1000);
     FURI_LOG_I(TAG, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-    // char device_name[21] = {0};
-    // bq28z620_get_device_name(bq28z620, (Bq28z620MacSubcmdDeviceNameRegBits*)device_name);
-    // FURI_LOG_I(TAG, "Bq28z620 Device Name: %s", device_name);
+
     uint8_t i2c_config = 0;
     bq28z620_get_i2c_configuration(bq28z620, &i2c_config);
     FURI_LOG_I(TAG, "BQ28Z620 I2C Configuration: 0x%02X", i2c_config);
 
-    // bq28z620_set_i2c_configuration(bq28z620, &i2c_config);
-    // furi_delay_ms(1000);
-    bq28z620_get_i2c_configuration(bq28z620, &i2c_config);
-    FURI_LOG_I(TAG, "BQ28Z620 I2C Configuration after set: 0x%02X", i2c_config);
+    //uint8_t new_i2c_config = 0x01; //defalut value
+    uint8_t new_i2c_config = 0x08; //all off, 400-kHz mode - enable
+    bq28z620_set_i2c_configuration(bq28z620, &new_i2c_config);
+    furi_delay_ms(1000);
+
+    if(i2c_config != new_i2c_config) {
+        FURI_LOG_W(TAG, "BQ28Z620 I2C configuration does not match expected value after set");
+        led_set_color_batch_simple(&led_batch_power_red);
+        FURI_LOG_W(TAG, "Resetting BQ28Z620...");
+        furi_delay_ms(5000);
+        bq28z620_reset(bq28z620);
+        while (1)
+        {
+            furi_delay_ms(1000);
+        }
+        
+    }
 
     while(true) {
-        //FURI_LOG_I(TAG, "Test");
-        furi_delay_ms(5000);
+        furi_delay_ms(1000);
         FURI_LOG_I(TAG, "-----------------");
+        led_set_color_batch_simple(&led_batch_all_white);
+        furi_delay_ms(1000);
+        led_set_color_batch_simple(&led_batch_all_off);
         Bq28z620MacSubcmdOperationStatusRegBits operation_status = {0};
         bq28z620_get_operation_status(bq28z620, &operation_status);
-        FURI_LOG_I(TAG, "BQ28Z620 Operation Status: emshut: %d, cb: %d, slpcc: %d, slpad: %d, smbcal: %d, init: %d, sleepm: %d, xl: %d, cal_offset: %d, cal: %d, authcalm: %d, auth: %d, sdm: %d, sleep: %d, sec13_14: %u, pf: %d, ss: %d, sdv: %d, sec8_9: %u, dsg: %d, chg: %d",
+        FURI_LOG_I(
+            TAG,
+            "BQ28Z620 Operation Status: emshut: %d, cb: %d, slpcc: %d, slpad: %d, smbcal: %d, init: %d, sleepm: %d, xl: %d, cal_offset: %d, cal: %d, authcalm: %d, auth: %d, sdm: %d, sleep: %d, sec13_14: %u, pf: %d, ss: %d, sdv: %d, sec8_9: %u, dsg: %d, chg: %d",
             operation_status.emshut,
             operation_status.cb,
             operation_status.slpcc,
@@ -134,18 +145,6 @@ int32_t test_peref_srv(void* p) {
             operation_status.sec8_9,
             operation_status.dsg,
             operation_status.chg);
-        // float voltage =0;
-        // bq28z620_get_voltage(bq28z620, &voltage);
-        // FURI_LOG_I(TAG, "BQ28Z620 Voltage: %.3f V", voltage);
-        // Bq28z620MacSubcmdChemicalIDRegBits chemical_id = {0};
-        // bq28z620_get_chemical_id(bq28z620, &chemical_id);
-        // FURI_LOG_I(TAG, "Bq28z620 Chemical ID: 0x%02X", chemical_id.chemical_id);
-        // char device_name[21] = {0};
-        // bq28z620_get_device_name(bq28z620, (Bq28z620MacSubcmdDeviceNameRegBits*)device_name);
-        // FURI_LOG_I(TAG, "Bq28z620 Device Name: %s", device_name);
-        
-       // bq28z620_reset(bq28z620);
-        
     }
     furi_crash();
 }

@@ -2,7 +2,7 @@
 
 #include "bq28z620.h"
 
-#define BQ28Z620_DEBUG_ENABLE
+//#define BQ28Z620_DEBUG_ENABLE
 
 #ifdef BQ28Z620_DEBUG_ENABLE
 #define BQ28Z620_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
