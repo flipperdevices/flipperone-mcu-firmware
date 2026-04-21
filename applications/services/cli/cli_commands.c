@@ -486,5 +486,7 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "clock_out", CliCommandFlagParallelSafe, cli_command_clock_out, NULL);
     cli_add_command(cli, "gpio", CliCommandFlagParallelSafe, cli_command_gpio, NULL);
 
-    cli_add_command(cli, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
+    if(!furi_hal_otp_usb_white_label_valid()) {
+        cli_add_command(cli, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
+    }
 }
