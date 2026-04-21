@@ -2,6 +2,7 @@
 #include <furi.h>
 #include <drivers/bq25792/bq25792_reg.h>
 #include <drivers/bq25792/bq25792_helper.h>
+#include <drivers/bq28z620/bq28z620_reg.h>
 
 #define RECORD_POWER "power"
 typedef struct Power Power;
@@ -37,6 +38,31 @@ bool power_bq25792_get_charger_irq_flags(Power* instance, Bq25792ChargerFlagReg*
 bool power_bq25792_adc_enable(Power* instance, bool enable);
 bool power_bq25792_watchdog_reset(Power* instance);
 bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit);
+
+bool power_bq28z620_get_control_status(Power* instance, Bq28z620StdCmdControlStatusRegBits* control_status);
+bool power_bq28z620_get_time_to_empty(Power* instance, uint16_t* time_to_empty);
+bool power_bq28z620_get_temperature(Power* instance, float* temperature);
+bool power_bq28z620_get_voltage(Power* instance, float* voltage);
+bool power_bq28z620_get_battery_status(Power* instance, Bq28z620StdCmdBatteryStatusRegBits* battery_status);
+bool power_bq28z620_get_current(Power* instance, int16_t* current);
+bool power_bq28z620_get_remaining_capacity(Power* instance, uint16_t* remaining_capacity);
+bool power_bq28z620_get_full_charge_capacity(Power* instance, uint16_t* full_charge_capacity);
+bool power_bq28z620_get_average_current(Power* instance, int16_t* average_current);
+bool power_bq28z620_get_average_time_to_empty(Power* instance, uint16_t* average_time_to_empty);
+bool power_bq28z620_get_average_time_to_full(Power* instance, uint16_t* average_time_to_full);
+bool power_bq28z620_get_standby_current(Power* instance, int16_t* standby_current);
+bool power_bq28z620_get_standby_time_to_empty(Power* instance, uint16_t* standby_time_to_empty);
+bool power_bq28z620_get_max_load_current(Power* instance, int16_t* max_load_current);
+bool power_bq28z620_get_max_load_time_to_empty(Power* instance, uint16_t* max_load_time_to_empty);
+bool power_bq28z620_get_average_power(Power* instance, int16_t* average_power);
+bool power_bq28z620_get_internal_temperature(Power* instance, float* internal_temperature);
+bool power_bq28z620_get_cycle_count(Power* instance, uint16_t* cycle_count);
+bool power_bq28z620_get_relative_state_of_charge(Power* instance, uint8_t* relative_state_of_charge);
+bool power_bq28z620_get_state_of_health(Power* instance, uint8_t* state_of_health);
+bool power_bq28z620_get_charging_voltage(Power* instance, float* charging_voltage);
+bool power_bq28z620_get_charging_current(Power* instance, int16_t* charging_current);
+bool power_bq28z620_get_design_capacity(Power* instance, uint16_t* design_capacity);
+
 #ifdef __cplusplus
 }
 #endif

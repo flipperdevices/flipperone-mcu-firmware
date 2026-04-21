@@ -592,6 +592,7 @@ typedef struct {
     uint8_t sec13_14    : 2; //Bits 14–13: SECURITY mode. 0b00 = Reserved, 0b01 = Full Access, 0b10 = Unsealed, 0b11 = Sealed
     uint8_t sleep       : 1; //Bit 15: SLEEP mode conditions met. 1 = Active, 0 = Inactive
     uint8_t sdm         : 1; //Bit 16: SHUTDOWN triggered through a command. 1 = Active, 0 = Inactive
+    uint8_t             : 1; //Bit 17: Reserved
     uint8_t auth        : 1; //Bit 18: Authentication in progress. 1 = Active, 0 = Inactive
     uint8_t authcalm    : 1; //Bit 19: Auto CC Offset Calibration by MAC AutoCCOffset(). 1 = The gauge receives the MAC AutoCCOffset() and starts the auto CC Offset calibration. 0 = Clear when the calibration is completed.
     uint8_t cal         : 1; //Bit 20: Calibration Output (raw ADC and CC data). 1 = Active when either the MAC OutputCCADCCal() or OutputShortedCCADCCal() is sent and the raw CC and ADC data for calibration is available. 0 = When the raw CC and ADC data for calibration is not available.

@@ -133,6 +133,97 @@ static void power_cli_print_bq25792(Power* power) {
         ico_current_limit_ma);
 }
 
+static void power_cli_print_bq28z620(Power* power) {
+    uint16_t time_to_empty_min = 0;
+    float temperature_c = 0;
+    float voltage_v = 0;
+    int16_t current_ma = 0;
+    uint16_t remaining_capacity_mah = 0;
+    uint16_t full_charge_capacity_mah = 0;
+    int16_t average_current_ma = 0;
+    uint16_t average_time_to_empty_min = 0;
+    uint16_t average_time_to_full_min = 0;
+    int16_t standby_current_ma = 0;
+    uint16_t standby_time_to_empty_min = 0;
+    int16_t max_load_current_ma = 0;
+    uint16_t max_load_time_to_empty_min = 0;
+    int16_t average_power_mw = 0;
+    float internal_temperature_c = 0;
+    uint16_t cycle_count = 0;
+    uint8_t relative_state_of_charge_percent = 0;
+    uint8_t state_of_health_percent = 0;
+    float charging_voltage_v = 0;
+    int16_t charging_current_ma = 0;
+    uint16_t design_capacity_mah = 0;
+
+    power_bq28z620_get_time_to_empty(power, &time_to_empty_min);
+    power_bq28z620_get_temperature(power, &temperature_c);
+    power_bq28z620_get_voltage(power, &voltage_v);
+    power_bq28z620_get_current(power, &current_ma);
+    power_bq28z620_get_remaining_capacity(power, &remaining_capacity_mah);
+    power_bq28z620_get_full_charge_capacity(power, &full_charge_capacity_mah);
+    power_bq28z620_get_average_current(power, &average_current_ma);
+    power_bq28z620_get_average_time_to_empty(power, &average_time_to_empty_min);
+    power_bq28z620_get_average_time_to_full(power, &average_time_to_full_min);
+    power_bq28z620_get_standby_current(power, &standby_current_ma);
+    power_bq28z620_get_standby_time_to_empty(power, &standby_time_to_empty_min);
+    power_bq28z620_get_max_load_current(power, &max_load_current_ma);
+    power_bq28z620_get_max_load_time_to_empty(power, &max_load_time_to_empty_min);
+    power_bq28z620_get_average_power(power, &average_power_mw);
+    power_bq28z620_get_internal_temperature(power, &internal_temperature_c);
+    power_bq28z620_get_cycle_count(power, &cycle_count);
+    power_bq28z620_get_relative_state_of_charge(power, &relative_state_of_charge_percent);
+    power_bq28z620_get_state_of_health(power, &state_of_health_percent);
+    power_bq28z620_get_charging_voltage(power, &charging_voltage_v);
+    power_bq28z620_get_charging_current(power, &charging_current_ma);
+    power_bq28z620_get_design_capacity(power, &design_capacity_mah);
+
+    printf(
+        "BQ28Z620:\r\n"
+        "  Voltage:            %.3fV\r\n"
+        "  Current:            %dmA\r\n"
+        "  Temp:               %.2fC\r\n"
+        "  IntTemp:            %.2fC\r\n"
+        "  RemCap:             %dmAh\r\n"
+        "  FullCap:            %dmAh\r\n"
+        "  AvgCurr:            %dmA\r\n"
+        "  AvgPwr:             %dmW\r\n"
+        "  CycleCt:            %d\r\n"
+        "  SoC:                %d%%\r\n"
+        "  SoH:                %d%%\r\n"
+        "  ChgVolt:            %.3fV\r\n"
+        "  ChgCurr:            %dmA\r\n"
+        "  DesignCap:          %dmAh\r\n"
+        "  TimeToEmpty:        %d min\r\n"
+        "  AvgTimeToEmpty:     %d min\r\n"
+        "  TimeToFull:         %d min\r\n"
+        "  StandbyCurr:        %dmA\r\n"
+        "  StandbyTimeToEmpty: %d min\r\n"
+        "  MaxLoadCurr:        %dmA\r\n"
+        "  MaxLoadTimeToEmpty: %d min\r\n",
+        voltage_v,
+        current_ma,
+        temperature_c,
+        internal_temperature_c,
+        remaining_capacity_mah,
+        full_charge_capacity_mah,
+        average_current_ma,
+        average_power_mw,
+        cycle_count,
+        relative_state_of_charge_percent,
+        state_of_health_percent,
+        charging_voltage_v,
+        charging_current_ma,
+        design_capacity_mah,
+        time_to_empty_min,
+        average_time_to_full_min,
+        standby_current_ma,
+        standby_time_to_empty_min,
+        average_time_to_empty_min,
+        max_load_current_ma,
+        max_load_time_to_empty_min);
+}
+
 static void power_cli_print_charger_status(Power* power, FuriString* arena) {
     Bq25792ChargerStatusReg s = {0};
     power_bq25792_get_charger_status(power, &s);
@@ -217,6 +308,76 @@ static void power_cli_print_charger_faults(Power* power, FuriString* arena) {
     printf("%s\r\n\r\n", furi_string_get_cstr(arena));
 }
 
+static void power_cli_print_bq28z620_control_status(Power* power, FuriString* arena) {
+    Bq28z620StdCmdControlStatusRegBits s = {0};
+    power_bq28z620_get_control_status(power, &s);
+
+    printf("\r\n  Control Status: 0x%04X", *(uint16_t*)&s);
+
+    furi_string_set(arena, "");
+    if(s.qmax) furi_string_cat_printf(arena, " QMAX");
+    if(s.vok) furi_string_cat_printf(arena, " VOK");
+    if(s.r_dis) furi_string_cat_printf(arena, " R_DIS");
+    if(s.ldmd) furi_string_cat_printf(arena, " LDMD");
+    if(s.checksum_valid) furi_string_cat_printf(arena, " CHECKSUM_VALID");
+    if(s.authcalm) furi_string_cat_printf(arena, " AUTHCALM");
+    if(s.sec) {
+        if(s.sec == 0b01) {
+            furi_string_cat_printf(arena, " SEC: Full_Access");
+        } else if(s.sec == 0b10) {
+            furi_string_cat_printf(arena, " SEC: Unsealed");
+        } else if(s.sec == 0b11) {
+            furi_string_cat_printf(arena, " SEC: Sealed");
+        } else {
+            furi_string_cat_printf(arena, " SEC: Unknown(%02b)", s.sec);
+        }
+    }
+    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
+    printf("%s\r\n", furi_string_get_cstr(arena));
+}
+
+static void power_cli_print_bq28z620_battery_status(Power* power, FuriString* arena) {
+    Bq28z620StdCmdBatteryStatusRegBits s = {0};
+    power_bq28z620_get_battery_status(power, &s);
+
+    printf("  Battery Status: 0x%04X", *(uint16_t*)&s);
+
+    furi_string_set(arena, "");
+    if(s.error_code) {
+        if(s.error_code == 0x00) {
+            furi_string_cat_printf(arena, " ERROR_CODE: OK");
+        } else if(s.error_code == 0x1) {
+            furi_string_cat_printf(arena, " ERROR_CODE: Busy");
+        } else if(s.error_code == 0x2) {
+            furi_string_cat_printf(arena, " ERROR_CODE: Reserved Command");
+        } else if(s.error_code == 0x3) {
+            furi_string_cat_printf(arena, " ERROR_CODE: Unsupported Command");
+        } else if(s.error_code == 0x4) {
+            furi_string_cat_printf(arena, " ERROR_CODE: AccessDenied");
+        } else if(s.error_code == 0x5) {
+            furi_string_cat_printf(arena, " ERROR_CODE: Overflow/Underflow");
+        } else if(s.error_code == 0x6) {
+            furi_string_cat_printf(arena, " ERROR_CODE: BadSize");
+        } else if(s.error_code == 0x7) {
+            furi_string_cat_printf(arena, " ERROR_CODE: UnknownError");
+        } else {
+            furi_string_cat_printf(arena, " ERROR_CODE: Unknown(%d)", s.error_code);
+        }
+    }
+    if(s.fully_discharged) furi_string_cat_printf(arena, " FULLY_DISCHARGED");
+    if(s.fully_charged) furi_string_cat_printf(arena, " FULLY_CHARGED");
+    if(s.discharging) furi_string_cat_printf(arena, " DISCHARGING");
+    if(s.initialization) furi_string_cat_printf(arena, " INITIALIZATION");
+    if(s.remaining_time_alarm) furi_string_cat_printf(arena, " REMAINING_TIME_ALARM");
+    if(s.remaining_capacity_alarm) furi_string_cat_printf(arena, " REMAINING_CAPACITY_ALARM");
+    if(s.terminate_discharge_alarm) furi_string_cat_printf(arena, " TERMINATE_DISCHARGE_ALARM");
+    if(s.overtemperature_alarm) furi_string_cat_printf(arena, " OVERTEMPERATURE_ALARM");
+    if(s.terminate_charge_alarm) furi_string_cat_printf(arena, " TERMINATE_CHARGE_ALARM");
+    if(s.overcharged_alarm) furi_string_cat_printf(arena, " OVERCHARGED_ALARM");
+    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
+    printf("%s\r\n", furi_string_get_cstr(arena));
+}
+
 void power_cli(Cli* cli, FuriString* args, void* context) {
     UNUSED(cli);
     UNUSED(args);
@@ -230,6 +391,10 @@ void power_cli(Cli* cli, FuriString* args, void* context) {
         power_cli_print_bq25792(power);
         power_cli_print_charger_status(power, arena);
         power_cli_print_charger_faults(power, arena);
+
+        power_cli_print_bq28z620(power);
+        power_cli_print_bq28z620_control_status(power, arena);
+        power_cli_print_bq28z620_battery_status(power, arena);
         furi_delay_ms(500);
     }
 
