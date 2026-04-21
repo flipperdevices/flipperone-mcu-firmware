@@ -4,6 +4,9 @@
 #include <drivers/i2c_master_pio/pio_i2c.h>
 #include <drivers/i2c_slave/i2c_slave.h>
 
+#define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_100   100000
+#define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400   400000
+#define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_1000  1000000
 #define FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS 0x69
 
 extern FuriHalI2cBus furi_hal_i2c_bus_control;
@@ -61,7 +64,7 @@ void furi_hal_i2c_bus_handle_main_event(const FuriHalI2cBusHandle* handle, FuriH
 
     if(event == FuriHalI2cBusHandleEventActivate) {
         furi_assert(handle->bus->data == NULL);
-        handle->bus->data = pio_i2c_init(handle->bus->sda, handle->bus->scl, handle->bus->current_speed_hz);
+        handle->bus->data = pio_i2c_init(handle->bus->sda, handle->bus->scl, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_100);
     } else if(event == FuriHalI2cBusHandleEventDeactivate) {
         furi_assert(handle->bus->data != NULL);
         pio_i2c_deinit(handle->bus->data);
@@ -119,7 +122,7 @@ FuriHalI2cBus furi_hal_i2c_bus_control = {
 
 void furi_hal_i2c_bus_handle_control_event(const FuriHalI2cBusHandle* handle, FuriHalI2cBusHandleEvent event) {
     if(event == FuriHalI2cBusHandleEventActivate) {
-        i2c_init(handle->bus->data, handle->bus->current_speed_hz);
+        i2c_init(handle->bus->data, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400);
 
         furi_hal_gpio_init_ex(handle->bus->sda, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
         furi_hal_gpio_set_drive_strength(handle->bus->sda, GpioDriveStrengthMedium);
@@ -239,7 +242,7 @@ FuriHalI2cBus furi_hal_i2c_bus_cpu = {
 
 void furi_hal_i2c_bus_handle_cpu_event(const FuriHalI2cBusHandle* handle, FuriHalI2cBusHandleEvent event) {
     if(event == FuriHalI2cBusHandleEventActivate) {
-        i2c_init(handle->bus->data, handle->bus->current_speed_hz);
+        i2c_init(handle->bus->data, FURI_HAL_I2C_CONFIG_I2C_TIMINGS_1000);
 
         furi_hal_gpio_init_ex(handle->bus->sda, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, GpioAltFn3I2c);
         furi_hal_gpio_set_drive_strength(handle->bus->sda, GpioDriveStrengthMedium);

@@ -42,7 +42,7 @@ static Fusb302Status fusb302_write_reg(Fusb302* instance, Fusb302Reg reg, uint8_
 
     uint8_t buffer[2] = {reg, data};
 
-    furi_hal_i2c_acquire(instance->i2c_handle, FUSB302_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -59,7 +59,7 @@ static Fusb302Status fusb302_read_reg(Fusb302* instance, Fusb302Reg reg, uint8_t
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle, FUSB302_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
 
     int ret = furi_hal_i2c_master_trx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, data, 1, FURI_HAL_I2C_TIMEOUT_US);
     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
@@ -75,7 +75,7 @@ static Fusb302Status fusb302_read_reg(Fusb302* instance, Fusb302Reg reg, uint8_t
 static Fusb302Status fusb302_write_buf(Fusb302* instance, Fusb302Reg reg, uint8_t* data, size_t length) {
     furi_check(instance);
     furi_check(data);
-    furi_hal_i2c_acquire(instance->i2c_handle, FUSB302_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
 
     int ret = furi_hal_i2c_master_trx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, data, length, FURI_HAL_I2C_TIMEOUT_US);
     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
@@ -92,7 +92,7 @@ static Fusb302Status fusb302_read_buf(Fusb302* instance, Fusb302Reg reg, uint8_t
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle, FUSB302_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
 
     int ret = furi_hal_i2c_master_trx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, data, length, FURI_HAL_I2C_TIMEOUT_US);
     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
@@ -223,7 +223,7 @@ Fusb302* fusb302_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
     instance->address = address;
     instance->pin_interrupt = pin_interrupt;
 
-    furi_hal_i2c_acquire(instance->i2c_handle, FUSB302_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 

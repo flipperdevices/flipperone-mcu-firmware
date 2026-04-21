@@ -13,6 +13,7 @@
 #define TCA6416A_DEBUG(...)
 #endif
 
+
 struct Tca6416a {
     const FuriHalI2cBusHandle* i2c_handle;
     const GpioPin* pin_reset;
@@ -40,7 +41,7 @@ Tca6416a* tca6416a_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     furi_hal_gpio_write_open_drain(instance->pin_reset, true);
     furi_delay_ms(10);
 
-    furi_hal_i2c_acquire(instance->i2c_handle, TCA6416A_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
@@ -78,11 +79,11 @@ static FURI_ALWAYS_INLINE int tca6416a_write_reg(Tca6416a* instance, Tca6416aReg
 
     uint8_t buffer[3] = {reg, data & 0xFF, data >> 8};
 
-    furi_hal_i2c_acquire(instance->i2c_handle, TCA6416A_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, sizeof(buffer), FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
-    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)  {
         FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
     } else {
         TCA6416A_DEBUG(TAG, "Wrote reg 0x%02X: %016b", reg, data);
@@ -95,7 +96,7 @@ static FURI_ALWAYS_INLINE int tca6416a_read_reg(Tca6416a* instance, Tca6416aReg 
     furi_check(instance);
     furi_check(data);
 
-    furi_hal_i2c_acquire(instance->i2c_handle, TCA6416A_I2C_SPEED_HZ);
+    furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, (uint8_t*)&reg, 1, FURI_HAL_I2C_TIMEOUT_US);
     if(!(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)) {
         uint8_t buffer[2] = {0};

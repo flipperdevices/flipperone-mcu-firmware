@@ -5,7 +5,6 @@
 #include "bq28z620_reg.h"
 
 #define BQ28Z620_ADDRESS 0x55
-#define BQ28Z620_I2C_SPEED_HZ FURI_HAL_I2C_TYPES_TIMINGS_100
 
 typedef struct Bq28z620 Bq28z620;
 

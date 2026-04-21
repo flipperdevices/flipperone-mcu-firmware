@@ -207,7 +207,7 @@ static void cli_command_free_blocks(Cli* cli, FuriString* args, void* context) {
 }
 
 static void cli_scan_i2c_bus(const FuriHalI2cBusHandle* handle, const char* bus_name) {
-    furi_hal_i2c_acquire(handle, FURI_HAL_I2C_TYPES_TIMINGS_100);
+    furi_hal_i2c_acquire(handle);
     furi_check(handle);
 
     printf("Scanning %s bus (%s):\r\n", bus_name, furi_hal_i2c_bus_name(handle));
@@ -486,5 +486,7 @@ void cli_commands_init(Cli* cli) {
     cli_add_command(cli, "clock_out", CliCommandFlagParallelSafe, cli_command_clock_out, NULL);
     cli_add_command(cli, "gpio", CliCommandFlagParallelSafe, cli_command_gpio, NULL);
 
-    cli_add_command(cli, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
+    if(!furi_hal_otp_usb_white_label_valid()) {
+        cli_add_command(cli, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
+    }
 }
