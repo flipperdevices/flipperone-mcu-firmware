@@ -188,6 +188,10 @@ static void i2c_registers_headphones_event_glue(const void* value, void* ctx) {
     });
 }
 
+void i2c_registers_test_callback(void* context, uint16_t value) {
+    FURI_LOG_I(TAG, "Test callback called with value: %x, ctx: %p", value, context);
+}
+
 int32_t i2c_intercom_srv(void* p) {
     UNUSED(p);
 
@@ -198,25 +202,29 @@ int32_t i2c_intercom_srv(void* p) {
     i2c_registers_init();
 
     // Version
-    i2c_register_add(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION, I2CRegFlagRead);
+    i2c_register_add_readable(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION);
 
     // Input
     // Interrupt register
     i2c_register_add_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_INPUT);
 
     // Buttons state
-    i2c_register_add(I2C_BUTTONS_STATE_REG_ADDRESS, 0, I2CRegFlagRead);
+    i2c_register_add_readable(I2C_BUTTONS_STATE_REG_ADDRESS, 0);
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), i2c_registers_input_event_glue, NULL);
 
     // Touchpad state
-    i2c_register_add(I2C_TOUCHPAD_X_REG_ADDRESS, 0, I2CRegFlagRead);
-    i2c_register_add(I2C_TOUCHPAD_Y_REG_ADDRESS, 0, I2CRegFlagRead);
-    i2c_register_add(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0, I2CRegFlagRead);
+    i2c_register_add_readable(I2C_TOUCHPAD_X_REG_ADDRESS, 0);
+    i2c_register_add_readable(I2C_TOUCHPAD_Y_REG_ADDRESS, 0);
+    i2c_register_add_readable(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0);
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_TOUCH_EVENTS), i2c_registers_input_touch_event_glue, NULL);
 
     // Headphones
-    i2c_register_add(I2C_HEADPHONES_STATE_REG_ADDRESS, 0, I2CRegFlagRead);
+    i2c_register_add_readable(I2C_HEADPHONES_STATE_REG_ADDRESS, 0);
     furi_pubsub_subscribe(furi_record_open(RECORD_HEADPHONES), i2c_registers_headphones_event_glue, NULL);
+
+    // Test writable register
+    // `sudo i2ctransfer -y 0 w4@0x69 0x03 0x00 0x34 0x12` will write 0x1234 to address 0x0300
+    i2c_register_add_writable(0x0300, 0, i2c_registers_test_callback, (void*)0xDEADBEEF);
 
     furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
