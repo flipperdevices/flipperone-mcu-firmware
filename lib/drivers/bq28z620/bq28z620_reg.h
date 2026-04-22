@@ -109,7 +109,7 @@ typedef struct {
     uint8_t checksum_valid  : 1; //Bit 9: Checksum is valid. 1 = Flash Writes are enabled, 0 = Flash Writes are disabled due to low voltage or PF condition.
     uint8_t                 : 2; //Bits 11–10: Reserved
     uint8_t authcalm        : 1; //Bit 12: Automatic CALIBRATION mode. 1 = Enabled, 0 = Disabled
-    uint8_t sec             : 2; //Bits 14–13: SECURITY mode 0b00 = Reserved, 0b01 = Full Access, 0b10 = Unsealed, 0b11 = Sealed
+    uint8_t sec             : 2; //Bits 14–13: SECURITY mode 0b00 = Full Access (Reserved), 0b01 = Reserved (Full Access), 0b10 = Unsealed, 0b11 = Sealed. !!!ERROR dataheet!!!
     uint8_t                 : 1; //Bit 15: Reserved
 } Bq28z620StdCmdControlStatusRegBits;
 _Static_assert(
