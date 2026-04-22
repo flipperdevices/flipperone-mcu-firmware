@@ -13,7 +13,7 @@
 
 #include <drivers/ina4230/ina4230.h>
 #include <drivers/bq28z620/bq28z620.h>
-#include <stdint.h>
+#include <hardware/watchdog.h>
 
 #include <led/led_batch.h>
 
@@ -97,18 +97,17 @@ int32_t test_peref_srv(void* p) {
 
     //uint8_t new_i2c_config = 0x01; //defalut value
     uint8_t new_i2c_config = 0x08; //all off, 400-kHz mode - enable
-
     if(i2c_config != new_i2c_config) {
         bq28z620_set_i2c_configuration(bq28z620, &new_i2c_config);
         furi_delay_ms(1000);
         FURI_LOG_W(TAG, "BQ28Z620 I2C configuration does not match expected value after set");
         led_set_color_batch_simple(&led_batch_power_red);
         FURI_LOG_W(TAG, "Resetting BQ28Z620...");
-        furi_delay_ms(5000);
+        furi_delay_ms(2000);
+
+        // rebooting after 1000ms
+        watchdog_reboot(0, 0, 1000);
         bq28z620_reset(bq28z620);
-        while(1) {
-            furi_delay_ms(1000);
-        }
     }
 
     while(true) {
