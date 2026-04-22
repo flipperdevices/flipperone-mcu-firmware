@@ -7,6 +7,12 @@
 #define RECORD_POWER "power"
 typedef struct Power Power;
 
+typedef enum {
+    PowerDeviceIna219 = (1 << 0),
+    PowerDeviceBq25792 = (1 << 1),
+    PowerDeviceBq28z620 = (1 << 2),
+} PowerDevice;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
