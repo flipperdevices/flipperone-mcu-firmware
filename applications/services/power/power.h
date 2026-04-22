@@ -5,6 +5,7 @@
 #include <drivers/bq28z620/bq28z620_reg.h>
 
 #define RECORD_POWER "power"
+
 typedef struct Power Power;
 
 typedef enum {

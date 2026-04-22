@@ -15,6 +15,7 @@ struct Haptic {
     Drv2605l* haptic_header;
     FuriMessageQueue* message_queue;
     FuriEventLoopTimer* timer;
+    HapticDevice devices;
 };
 
 typedef enum {
@@ -102,7 +103,11 @@ static Haptic* haptic_alloc(void) {
     instance->message_queue = furi_message_queue_alloc(HAPTIC_MAX_MESSAGES, sizeof(HapticMessage));
 
     instance->haptic_header = drv2605l_init(&furi_hal_i2c_handle_control, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
-
+    if(instance->haptic_header) {
+        instance->devices |= HapticDeviceOk;
+    } else {
+        FURI_LOG_E(TAG, "Failed to initialize DRV2605L");
+    }
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, haptic_message_queue_callback, instance);
 
     instance->timer = furi_event_loop_timer_alloc(instance->event_loop, haptic_timer_callback, FuriEventLoopTimerTypeOnce, instance);
@@ -110,6 +115,19 @@ static Haptic* haptic_alloc(void) {
     furi_record_create(RECORD_HAPTIC, instance);
 
     return instance;
+}
+
+bool haptic_is_device_initialized(Haptic* instance, HapticDevice* device) {
+    furi_check(instance);
+    bool initialized = (instance->devices & HapticDeviceOk) == HapticDeviceOk;
+
+    if(device) {
+        *device = instance->devices;
+    }
+    if(!initialized) {
+        FURI_LOG_E(TAG, "Haptic device not initialized");
+    }
+    return initialized;
 }
 
 int32_t haptic_srv(void* p) {
@@ -121,38 +139,50 @@ int32_t haptic_srv(void* p) {
     return 0;
 }
 
-void haptic_play_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t time_ms) {
+bool haptic_play_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t time_ms) {
     furi_check(instance);
     furi_check(effect_index < Drv2605lEffectCountMax);
 
-    const HapticMessage msg = {
-        .type = HapticMessageTypePlayEffect,
-        .as.play_effect =
-            {
-                .effect_index = effect_index,
-                .time_ms = time_ms <= 1 ? HAPTIC_TIMEOUT_OFF_MS : time_ms,
-            },
-    };
+    if(haptic_is_device_initialized(instance, NULL)) {
+        return false;
 
-    haptic_send_message(instance, &msg);
+        const HapticMessage msg = {
+            .type = HapticMessageTypePlayEffect,
+            .as.play_effect =
+                {
+                    .effect_index = effect_index,
+                    .time_ms = time_ms <= 1 ? HAPTIC_TIMEOUT_OFF_MS : time_ms,
+                },
+        };
+
+        haptic_send_message(instance, &msg);
+        return true;
+    }
+    return false;
 }
 
-void haptic_start(Haptic* instance) {
+bool haptic_start(Haptic* instance) {
     furi_check(instance);
+    if(haptic_is_device_initialized(instance, NULL)) {
+        const HapticMessage msg = {
+            .type = HapticMessageTypeStart,
+        };
 
-    const HapticMessage msg = {
-        .type = HapticMessageTypeStart,
-    };
-
-    haptic_send_message(instance, &msg);
+        haptic_send_message(instance, &msg);
+        return true;
+    }
+    return false;
 }
 
-void haptic_stop(Haptic* instance) {
+bool haptic_stop(Haptic* instance) {
     furi_check(instance);
+    if(haptic_is_device_initialized(instance, NULL)) {
+        const HapticMessage msg = {
+            .type = HapticMessageTypeStop,
+        };
 
-    const HapticMessage msg = {
-        .type = HapticMessageTypeStop,
-    };
-
-    haptic_send_message(instance, &msg);
+        haptic_send_message(instance, &msg);
+        return true;
+    }
+    return false;
 }
