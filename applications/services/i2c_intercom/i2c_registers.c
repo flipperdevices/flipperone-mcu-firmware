@@ -203,7 +203,7 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
                 // we assume that if hi byte is written, then the whole register is being written
                 I2CRegisterCallbackWithContext* callback_with_context = i2c_interrupt_callback_get(even_address);
                 if(callback_with_context && callback_with_context->callback) {
-                    callback_with_context->callback(callback_with_context->context, reg->value);
+                    callback_with_context->callback(callback_with_context->context, even_address, reg->value);
                 }
             } else {
                 REG16_SET_LO(reg->value, value);
@@ -215,10 +215,12 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
     return result;
 }
 
-void i2c_register_update(uint16_t address, uint16_t value, uint16_t mask) {
+bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask) {
     I2CReg* reg = i2c_register_get(address);
     furi_check(reg); // address must exist
+    uint16_t old_value = reg->value;
     reg->value = (reg->value & ~mask) | (value & mask);
+    return reg->value != old_value;
 }
 
 void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_bits) {
