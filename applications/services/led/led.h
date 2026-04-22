@@ -19,6 +19,13 @@ typedef struct {
 #define LED_COLOR_WHITE      (LedColor){255, 255, 255}
 #define LED_COLOR_BLACK      (LedColor){0, 0, 0}
 
+#define LED_COLOR_RGB565(color565)           \
+    {                                        \
+        .r = ((color565 >> 11) & 0x1F) << 3, \
+        .g = ((color565 >> 5) & 0x3F) << 2,  \
+        .b = ((color565 >> 0) & 0x1F) << 3,  \
+    }
+
 typedef enum {
     // line 1
     LedTypeNet,
