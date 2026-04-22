@@ -6,8 +6,6 @@
 
 #define TAG "InputTouch"
 
-// #define INPUT_TOUCH_DEBUG_ENABLE
-
 #ifdef INPUT_TOUCH_DEBUG_ENABLE
 #define INPUT_TOUCH_DEBUG(...) FURI_LOG_I(TAG, __VA_ARGS__)
 #else

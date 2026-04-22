@@ -161,6 +161,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+    {
+        .app = haptic_test_app,
+        .name = "Haptic Test",
+        .appid = "haptic_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
 

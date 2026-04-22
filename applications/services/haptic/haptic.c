@@ -104,7 +104,7 @@ static Haptic* haptic_alloc(void) {
 
     instance->haptic_header = drv2605l_init(&furi_hal_i2c_handle_control, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
     if(instance->haptic_header) {
-        instance->devices |= HapticDeviceOk;
+        instance->devices |= HapticDeviceDrv2605l;
     } else {
         FURI_LOG_E(TAG, "Failed to initialize DRV2605L");
     }
@@ -119,7 +119,7 @@ static Haptic* haptic_alloc(void) {
 
 bool haptic_is_device_initialized(Haptic* instance, HapticDevice* device) {
     furi_check(instance);
-    bool initialized = (instance->devices & HapticDeviceOk) == HapticDeviceOk;
+    bool initialized = (instance->devices & HapticDeviceDrv2605l) == HapticDeviceDrv2605l;
 
     if(device) {
         *device = instance->devices;
@@ -144,8 +144,6 @@ bool haptic_play_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t 
     furi_check(effect_index < Drv2605lEffectCountMax);
 
     if(haptic_is_device_initialized(instance, NULL)) {
-        return false;
-
         const HapticMessage msg = {
             .type = HapticMessageTypePlayEffect,
             .as.play_effect =

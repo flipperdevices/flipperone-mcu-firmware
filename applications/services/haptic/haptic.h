@@ -8,7 +8,7 @@
 typedef struct Haptic Haptic;
 
 typedef enum {
-   HapticDeviceOk = (1 << 0),
+   HapticDeviceDrv2605l = (1 << 0),
 } HapticDevice;
 
 #ifdef __cplusplus
