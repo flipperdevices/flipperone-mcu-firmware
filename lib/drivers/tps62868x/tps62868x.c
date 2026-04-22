@@ -37,8 +37,13 @@ Tps62868x* tps62868x_init(const FuriHalI2cBusHandle* handle, uint8_t address) {
     furi_hal_i2c_acquire(instance->i2c_handle);
     ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
+    
     if(ret) {
-      tps62868x_set_pwm_on(instance);
+        tps62868x_set_pwm_on(instance);
+    } else {
+        FURI_LOG_E(TAG, "TPS62868x device not ready at address 0x%02X", instance->address);
+        free(instance);
+        return NULL;
     }
 
     return instance;
@@ -90,8 +95,8 @@ int tps62868x_write_reg(Tps62868x* instance, uint8_t reg, uint8_t* data) {
     int ret = furi_hal_i2c_master_tx_blocking(instance->i2c_handle, instance->address, buffer, 2, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->i2c_handle);
 
-    if (ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT)  {
-        FURI_LOG_E(TAG,"Failed to write reg 0x%02X", reg);
+    if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
+        FURI_LOG_E(TAG, "Failed to write reg 0x%02X", reg);
     } else {
         TPS62868X_DEBUG(TAG, "Wrote reg 0x%02X: %02X", reg, data[0]);
     }
@@ -101,7 +106,7 @@ int tps62868x_write_reg(Tps62868x* instance, uint8_t reg, uint8_t* data) {
 
 int tps62868x_set_voltage(Tps62868x* instance, float volt) {
     furi_check((volt >= TPS62868X_VOLTAGE_MIN) || (volt <= TPS62868X_VOLTAGE_MAX));
-    
+
     //Vout = TPS62868X_VOLTAGE_FACTOR * (0.4v + (VOx_SET*0.005v))
     uint8_t volt_data_reg = (uint8_t)(((volt / TPS62868X_VOLTAGE_FACTOR) - 0.4f) / 0.005f);
     TPS62868X_DEBUG(TAG, "Setting voltage to %.2f V , 0x%02X", volt, volt_data_reg);
@@ -112,7 +117,7 @@ float tps62868x_get_voltage(Tps62868x* instance) {
     uint8_t volt_data_reg[1] = {0};
     float voltage = 0.0f;
     int ret = tps62868x_read_reg(instance, TPS62868X_REG_1, volt_data_reg);
-    
+
     if(ret == PICO_ERROR_GENERIC || ret == PICO_ERROR_TIMEOUT) {
         FURI_LOG_E(TAG, "Failed to get voltage");
         voltage = -1.0f;
