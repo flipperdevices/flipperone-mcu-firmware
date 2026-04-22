@@ -255,6 +255,14 @@ static Power* power_alloc(void) {
     return instance;
 }
 
+bool power_is_device_all_initialized(Power* instance, PowerDevice* device) {
+    furi_check(instance);
+    if(device) {
+        *device = instance->devices;
+    }
+    return (instance->devices & PowerDeviceAllInit) == PowerDeviceAllInit;
+}
+
 int32_t power_srv(void* p) {
     UNUSED(p);
 

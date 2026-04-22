@@ -11,12 +11,15 @@ typedef enum {
     PowerDeviceIna219 = (1 << 0),
     PowerDeviceBq25792 = (1 << 1),
     PowerDeviceBq28z620 = (1 << 2),
+    PowerDeviceAllInit = (PowerDeviceIna219 | PowerDeviceBq25792 | PowerDeviceBq28z620),
 } PowerDevice;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 FuriPubSub* power_get_pubsub(Power* power);
+
+bool power_is_device_all_initialized(Power* instance, PowerDevice* device);
 
 float_t power_ina219_get_voltage_v(Power* instance);
 float_t power_ina219_get_current_a(Power* instance);
