@@ -109,23 +109,25 @@ void i2c_registers_init(void) {
 }
 
 static void i2c_register_add_internal(uint16_t address, uint16_t default_value, uint32_t flags) {
-    FURI_CRITICAL_ENTER();
     furi_check(address % 2 == 0); // only even addresses are valid
     furi_check(i2c_register_get(address) == NULL); // address must not exist
 
     I2CReg reg = {.value = default_value, .flags = flags};
     i2c_register_set_at(address, reg);
-    FURI_CRITICAL_EXIT();
 }
 
 void i2c_register_add_readable(uint16_t address, uint16_t default_value) {
+    FURI_CRITICAL_ENTER();
     i2c_register_add_internal(address, default_value, I2CRegFlagRead);
+    FURI_CRITICAL_EXIT();
 }
 
 void i2c_register_add_writable(uint16_t address, uint16_t default_value, I2CRegisterCallback write_callback, void* write_callback_context) {
+    FURI_CRITICAL_ENTER();
     i2c_register_add_internal(address, default_value, I2CRegFlagRead | I2CRegFlagWrite);
     I2CRegisterCallbackWithContext callback_with_context = {.callback = write_callback, .context = write_callback_context};
     i2c_interrupt_callback_set_at(address, callback_with_context);
+    FURI_CRITICAL_EXIT();
 }
 
 void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit) {

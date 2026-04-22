@@ -6,9 +6,6 @@ extern "C" {
 
 typedef void (*I2CRegisterCallback)(void* context, uint16_t value);
 
-// Init register storage
-void i2c_registers_init(void);
-
 // Add a readable register to the register map. Address must be even.
 void i2c_register_add_readable(uint16_t address, uint16_t default_value);
 

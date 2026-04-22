@@ -4,16 +4,14 @@
 
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
+
+#include "i2c_intercom.h"
 #include "i2c_registers_i.h"
-#include "i2c_registers_map.h"
 
-// TODO: move somewhere
-#include <input/input.h>
-#include <input_touch/input_touch.h>
-#include <headphones/headphones.h>
+#define TAG "I2CIntercom"
 
-#define TAG                                   "I2cIntercom"
-#define I2C_INTERCOM_THREAD_FLAG_ISR          0x00000001
+#define I2C_INTERCOM_THREAD_SETUP_END_FLAG (1 << 0)
+
 #define I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER 0x00
 #define I2C_INTERCOM_TIMEOUT_MS               700
 #define I2C_INTERCOM_INVALID_ADDRESS_VALUE    0x00
@@ -27,15 +25,14 @@ typedef enum {
 } I2cIntercomState;
 
 /** I2C Intercom state */
-typedef struct {
+struct I2cIntercom {
     FuriThreadId thread_id;
     const FuriHalI2cBusHandle* bus_handle;
     alarm_id_t timeout_alarm;
 
     I2cIntercomState state;
     size_t mem_address;
-
-} I2cIntercom;
+};
 
 static int64_t __isr __not_in_flash_func(i2c_intercom_timeout_callback)(alarm_id_t id, __unused void* user_data) {
     UNUSED(id);
@@ -145,51 +142,8 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     // furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_FLAG_ISR);
 }
 
-static void i2c_registers_input_event_glue(const void* value, void* ctx) {
-    UNUSED(ctx);
-    furi_check(value);
-    InputEvent* event = (InputEvent*)value;
-    if(event->type == InputTypePress) {
-        with_i2c_register({
-            i2c_register_update(I2C_BUTTONS_STATE_REG_ADDRESS, event->key, event->key);
-            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
-        });
-    } else if(event->type == InputTypeRelease) {
-        with_i2c_register({
-            i2c_register_update(I2C_BUTTONS_STATE_REG_ADDRESS, 0, event->key);
-            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
-        });
-    }
-}
-
-static void i2c_registers_input_touch_event_glue(const void* value, void* ctx) {
-    UNUSED(ctx);
-    furi_check(value);
-    InputTouchEvent* event = (InputTouchEvent*)value;
-    if(event->type == InputTouchTypeStart || event->type == InputTouchTypeMove || event->type == InputTouchTypeEnd) {
-        with_i2c_register({
-            if(event->type == InputTouchTypeStart || event->type == InputTouchTypeMove) {
-                i2c_register_update(I2C_TOUCHPAD_X_REG_ADDRESS, event->x, 0xFFFF);
-                i2c_register_update(I2C_TOUCHPAD_Y_REG_ADDRESS, event->y, 0xFFFF);
-            }
-            i2c_register_update(I2C_TOUCHPAD_PRESS_REG_ADDRESS, event->pressure, 0xFFFF);
-            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD);
-        });
-    }
-}
-
-static void i2c_registers_headphones_event_glue(const void* value, void* ctx) {
-    UNUSED(ctx);
-    furi_check(value);
-    HeadphonesEvent* event = (HeadphonesEvent*)value;
-    with_i2c_register({
-        i2c_register_update(I2C_HEADPHONES_STATE_REG_ADDRESS, event->hp_status, 0xFFFF);
-        i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES);
-    });
-}
-
-void i2c_registers_test_callback(void* context, uint16_t value) {
-    FURI_LOG_I(TAG, "Test callback called with value: %x, ctx: %p", value, context);
+void i2c_intercom_setup_end(I2cIntercom* instance) {
+    furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_SETUP_END_FLAG);
 }
 
 int32_t i2c_intercom_srv(void* p) {
@@ -201,30 +155,17 @@ int32_t i2c_intercom_srv(void* p) {
 
     i2c_registers_init();
 
-    // Version
-    i2c_register_add_readable(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION);
+    furi_record_create(RECORD_I2C_INTERCOM, instance);
 
-    // Input
-    // Interrupt register
-    i2c_register_add_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_INPUT);
+    FURI_LOG_I(TAG, "started");
 
-    // Buttons state
-    i2c_register_add_readable(I2C_BUTTONS_STATE_REG_ADDRESS, 0);
-    furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), i2c_registers_input_event_glue, NULL);
+    // wait to end of setup before allowing interrupts
+    {
+        uint32_t flags = furi_thread_flags_wait(I2C_INTERCOM_THREAD_SETUP_END_FLAG, FuriFlagWaitAny, FuriWaitForever);
+        furi_check(!(flags & FuriFlagError));
+    }
 
-    // Touchpad state
-    i2c_register_add_readable(I2C_TOUCHPAD_X_REG_ADDRESS, 0);
-    i2c_register_add_readable(I2C_TOUCHPAD_Y_REG_ADDRESS, 0);
-    i2c_register_add_readable(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0);
-    furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_TOUCH_EVENTS), i2c_registers_input_touch_event_glue, NULL);
-
-    // Headphones
-    i2c_register_add_readable(I2C_HEADPHONES_STATE_REG_ADDRESS, 0);
-    furi_pubsub_subscribe(furi_record_open(RECORD_HEADPHONES), i2c_registers_headphones_event_glue, NULL);
-
-    // Test writable register
-    // `sudo i2ctransfer -y 0 w4@0x69 0x03 0x00 0x34 0x12` will write 0x1234 to address 0x0300
-    i2c_register_add_writable(0x0300, 0, i2c_registers_test_callback, (void*)0xDEADBEEF);
+    FURI_LOG_I(TAG, "setup completed, enabling I2C slave mode");
 
     furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
@@ -232,7 +173,7 @@ int32_t i2c_intercom_srv(void* p) {
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
 
     while(1) {
-        furi_thread_flags_wait(I2C_INTERCOM_THREAD_FLAG_ISR, FuriFlagWaitAny, FuriWaitForever);
+        furi_delay_ms(FuriWaitForever);
     }
 
     return 0;

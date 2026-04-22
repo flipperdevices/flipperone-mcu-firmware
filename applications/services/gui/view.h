@@ -18,12 +18,14 @@ typedef bool (*ViewLayoutCallback)(void* model);
 /** View Input callback
  * @warning    called from GUI thread
  * @return true if the input event was consumed and should not be propagated to other view ports
+ * @todo consider passing const InputEvent*
  */
 typedef bool (*ViewInputCallback)(InputEvent* event, void* context);
 
 /** View Input Touch callback
  * @warning    called from GUI thread
  * @return true if the input touch event was consumed and should not be propagated to other view ports
+ * @todo consider passing const InputTouchEvent*
  */
 typedef bool (*ViewInputTouchCallback)(InputTouchEvent* event, void* context);
 

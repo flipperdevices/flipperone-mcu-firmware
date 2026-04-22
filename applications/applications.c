@@ -9,6 +9,7 @@ extern int32_t input_srv(void* p);
 extern int32_t uart_echo_app(void* p);
 extern int32_t input_touch_srv(void* p);
 extern int32_t i2c_intercom_srv(void* p);
+extern int32_t i2c_negotiator_srv(void* p);
 extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
 extern int32_t led_srv(void* p);
@@ -74,9 +75,16 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     },
     {
         .app = i2c_intercom_srv,
-        .name = "I2cIntercomSrv",
+        .name = "I2CIntercomSrv",
         .appid = "i2c_intercom_srv",
         .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = i2c_negotiator_srv,
+        .name = "I2CNegotiatorSrv",
+        .appid = "i2c_negotiator_srv",
+        .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     // {
