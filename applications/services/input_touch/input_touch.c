@@ -75,9 +75,9 @@ int32_t input_touch_srv(void* p) {
     furi_record_create(RECORD_INPUT_TOUCH_EVENTS, instance->event_pubsub);
 
     if(!instance->iqs7211e) {
-        FURI_LOG_E(TAG, "Failed to set input callback for IQS7211E touchpad");
+        FURI_LOG_E(TAG, "Not initialized IQS7211E, input touch service cannot run");
         while(1) {
-            furi_delay_ms(1000);
+            furi_delay_ms(FuriWaitForever);
         }
     }
 
