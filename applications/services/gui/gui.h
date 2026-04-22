@@ -13,7 +13,6 @@ typedef struct Gui Gui;
 
 typedef enum {
     GuiViewPriorityDesktop = 0,
-    GuiViewPriorityIntercom = 100,
     GuiViewPriorityApplication = 50000,
     GuiViewPriorityMenu = 100000,
 } GuiViewPriority;
@@ -24,6 +23,9 @@ void gui_remove_view(Gui* gui, View* view);
 
 // TODO: This is a temporary API, as backlight should be controlled by a dedicated service
 void gui_set_backlight(Gui* gui, int8_t brightness);
+
+void gui_add_unhandled_input_callback(Gui* gui, ViewInputCallback callback, void* context);
+void gui_add_unhandled_touch_input_callback(Gui* gui, ViewInputTouchCallback callback, void* context);
 
 #ifdef __cplusplus
 }
