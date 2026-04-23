@@ -38,7 +38,7 @@ static int drv2605l_write_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data
     return ret;
 }
 
-static int drv2605l_read_reg(Drv2605l* instance, Drv2605lReg reg, uint16_t* data) {
+static int drv2605l_read_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data) {
     furi_check(instance);
     furi_check(data);
 
@@ -130,7 +130,7 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
     // Wait for completion
     uint32_t timeout = furi_get_tick() + 2000;
     while(furi_get_tick() < timeout) {
-        uint16_t go_status = 0;
+        uint8_t go_status = 0;
         drv2605l_read_reg(instance, Drv2605lRegGo, &go_status);
         Drv2605lGo* go_reg_status = (Drv2605lGo*)&go_status;
         if(go_reg_status->go_bit == 0) {
@@ -139,7 +139,7 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
         furi_delay_ms(10);
     }
 
-    uint16_t status = 0;
+    uint8_t status = 0;
     drv2605l_read_reg(instance, Drv2605lRegStatus, &status);
     Drv2605lStatus* status_reg = (Drv2605lStatus*)&status;
 
@@ -153,11 +153,11 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
     //Calib reg 0x18, 0x19, 0x1A (BEMFGain)
     uint8_t calib_data = 0;
 
-    drv2605l_read_reg(instance, Drv2605lRegAutoCalComp, (uint16_t*)&calib_data);
+    drv2605l_read_reg(instance, Drv2605lRegAutoCalComp, (uint8_t*)&calib_data);
     FURI_LOG_I(TAG, "Auto Cal Compensation: reg 0x%02X -> 0x%02X", Drv2605lRegAutoCalComp, calib_data);
-    drv2605l_read_reg(instance, Drv2605lRegAutoCalBemf, (uint16_t*)&calib_data);
+    drv2605l_read_reg(instance, Drv2605lRegAutoCalBemf, (uint8_t*)&calib_data);
     FURI_LOG_I(TAG, "Auto Cal BEMF: reg 0x%02X -> 0x%02X", Drv2605lRegAutoCalBemf, calib_data);
-    drv2605l_read_reg(instance, Drv2605lRegFeedback, (uint16_t*)&calib_data);
+    drv2605l_read_reg(instance, Drv2605lRegFeedback, (uint8_t*)&calib_data);
     FURI_LOG_I(TAG, "Feedback: reg 0x%02X -> 0x%02X", Drv2605lRegFeedback, calib_data);
 
     return true;
@@ -175,6 +175,8 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
 
     //Todo: GpioModeOutputPushPull
     //furi_hal_gpio_init_simple(instance->pin_trigger, GpioModeOutputPushPull);
+    furi_hal_gpio_init_simple(instance->pin_trigger, GpioModeInput);
+    //furi_hal_gpio_init(instance->pin_trigger, GpioModeInput, GpioPullDown, GpioSpeedLow);
 
     furi_hal_i2c_acquire(instance->i2c_handle);
     int ret = furi_hal_i2c_device_ready(instance->i2c_handle, instance->address, FURI_HAL_I2C_TIMEOUT_US);
@@ -265,4 +267,49 @@ void drv2605l_test_all_effects(Drv2605l* instance) {
         furi_delay_ms(1000);
     }
     drv2605l_disable(instance);
+}
+
+void drv2605l_set_audio_to_vibe(Drv2605l* instance, bool enable) {
+    furi_check(instance);
+
+    Drv2605lMode mode_reg ={0};
+    Drv2605lControl1 control1_reg = {0};
+    Drv2605lControl3 control3_reg = {0};
+    Drv2605lAudioCtrl audio_ctrl_reg = {0};
+    uint8_t audio_min_lvl_reg = 0;
+    uint8_t audio_max_lvl_reg = 0;
+    uint8_t audio_min_output_reg = 0;
+    uint8_t audio_max_drive_reg = 0;
+
+
+    drv2605l_read_reg(instance, Drv2605lRegMode, (uint8_t*)&mode_reg);
+    drv2605l_read_reg(instance, Drv2605lRegControl1, (uint8_t*)&control1_reg);
+    drv2605l_read_reg(instance, Drv2605lRegControl3, (uint8_t*)&control3_reg); 
+
+    if(enable) {
+        mode_reg.mode_select = Drv2605lModeTriggerAudioVibe; //Drv2605lModeTriggerAudioVibe; //Drv2605lModeTriggerPWM; //Audio-to-vibe mode
+        control1_reg.ac_couple = 1; //AC coupled
+        control3_reg.n_pwm_analog = 1; //Analog input mode
+        control3_reg.data_fomat_rtp = 1; //Signed
+        audio_ctrl_reg.ath_filter = 2; //0 = 100Hz, 1 = 125Hz, 2 = 150Hz, 3 = 200Hz
+        audio_ctrl_reg.ath_peek_time = 0; //0 = 10 ms, 1 = 20 ms, 2 = 30 ms, 3 = 40 ms
+        audio_min_lvl_reg = 0x4f; //Minimum level that will cause an output
+        audio_max_lvl_reg = 0x8f; //Maximum level that will cause an output
+        //audio_min_output_reg = 0xdf; //Minimum output level
+        audio_max_drive_reg = 0x7f; //Maximum drive level
+        drv2605l_write_reg(instance, Drv2605lRegAudMinLvl, &audio_min_lvl_reg);
+        drv2605l_write_reg(instance, Drv2605lRegAudMaxLvl, &audio_max_lvl_reg);
+        drv2605l_write_reg(instance, Drv2605lRegAudMinDrive, &audio_min_output_reg);
+        drv2605l_write_reg(instance, Drv2605lRegAudMaxDrive, &audio_max_drive_reg);
+        drv2605l_write_reg(instance, Drv2605lRegAudioCtrl, (uint8_t*)&audio_ctrl_reg);
+    } else {
+        mode_reg.mode_select = Drv2605lModeTriggerGo; //Internal trigger mode
+        control1_reg.ac_couple = 0; //DC coupled
+        control3_reg.n_pwm_analog = 0; //PWM input mode
+    }
+
+    drv2605l_write_reg(instance, Drv2605lRegMode, (uint8_t*)&mode_reg);
+    drv2605l_write_reg(instance, Drv2605lRegControl1, (uint8_t*)&control1_reg);
+    drv2605l_write_reg(instance, Drv2605lRegControl3, (uint8_t*)&control3_reg);
+
 }
