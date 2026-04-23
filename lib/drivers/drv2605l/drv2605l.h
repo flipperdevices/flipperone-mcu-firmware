@@ -29,6 +29,7 @@ void drv2605l_trigger_set_effect(Drv2605l* instance, Drv2605lModeTrigger trigger
 void drv2605l_trigger_go(Drv2605l* instance, bool play);
 void drv2605l_trigger_set_effect_and_play(Drv2605l* instance, Drv2605lEffect effect_index);
 void drv2605l_test_all_effects(Drv2605l* instance);
+void drv2605l_set_audio_to_vibe(Drv2605l* instance, bool enable);
 
 #ifdef __cplusplus
 }

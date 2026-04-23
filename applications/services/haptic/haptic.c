@@ -109,6 +109,9 @@ static Haptic* haptic_alloc(void) {
 
     furi_record_create(RECORD_HAPTIC, instance);
 
+    drv2605l_enable(instance->haptic_header);
+    drv2605l_set_audio_to_vibe(instance->haptic_header, true);
+
     return instance;
 }
 
