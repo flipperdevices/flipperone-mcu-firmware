@@ -89,34 +89,7 @@ bool drv2605l_auto_calibration(Drv2605l* instance) {
         .loop_gain = 1, //Medium
         .bemf_gain = 2, //1.365x
     };
-    // Drv2605lControl1 control1_reg = {
-    //     .startup_boost = 1, //enabled
-    //     .ac_couple = 0, //DC coupled
-    //     .drive_time = 19, // <--Setting
-    // };
-    // Drv2605lControl2 control2_reg = {
-    //     .bidir_input = 1, //Bidir input
-    //     .brake_stabilizer = 0, //disabled
-    //     .sample_time = 3, //300us
-    //     .blanking_time = 1,
-    //     .idiss_time = 1,
-    // };
-    // Drv2605lControl3 control3_reg = {
-    //     .ng_thresh = 2, //4%
-    //     .erm_open_loop = 0, //Closed loop
-    //     .supply_comp_dis = 0, //Enabled
-    //     .data_fomat_rtp = 0, //Signed
-    //     .lra_drive_mode = 0, //Once per cycle
-    //     .n_pwm_analog = 0, //PWM Input
-    //     .lra_open_loop = 0, //Auto-resonance mode
-    // };
-    // Drv2605lControl4 control4_reg = {
-    //     .auto_cal_time = 2, //1000:1200 ms
-    //     .otp_status = 0,
-    //     .otp_program = 0, //OTP Memory has not been programmed
-    //     .zc_det_time = 0, //100us
-    // };
-
+    
     Drv2605lMode mode_reg = {
         .device_reset = 0, //Normal operation
         .standby = 0, //Active mode
@@ -246,6 +219,7 @@ uint32_t drv2605l_size_calibration_data(Drv2605l* instance) {
 
 static bool drv2605l_load_settings(Drv2605l* instance) {
     furi_assert(instance);
+
     //Set LNA library
     Drv2605lLibSelect lib_select_reg = {
         .hi_z_mode = 0, //Normal mode
@@ -330,18 +304,10 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     if(ret) {
         drv2605l_enable(instance);
 
-        // //Set LNA library
-        // Drv2605lLibSelect lib_select_reg = {
-        //     .hi_z_mode = 0, //Normal mode
-        //     .library_sel = 6, //LRA
-        // };
-        // drv2605l_write_reg(instance, Drv2605lRegLibSelect, (uint8_t*)&lib_select_reg);
         if(!drv2605l_load_settings(instance)) {
             FURI_LOG_E(TAG, "Failed to load settings");
         }
-
-        // drv2605l_auto_calibration(instance);
-
+        
         drv2605l_disable(instance);
     } else {
         FURI_LOG_E(TAG, "DRV2605L device not ready at address 0x%02X", instance->address);
