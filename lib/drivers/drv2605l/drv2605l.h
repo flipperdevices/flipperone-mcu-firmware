@@ -7,6 +7,7 @@
 #define DRV2605L_ADDRESS (0x5Au)
 
 typedef struct Drv2605l Drv2605l;
+typedef struct Drv2605lCalibrationData Drv2605lCalibrationData;
 
 typedef enum {
     Drv2605lModeTriggerGo = 0b000,
@@ -29,6 +30,11 @@ void drv2605l_trigger_set_effect(Drv2605l* instance, Drv2605lModeTrigger trigger
 void drv2605l_trigger_go(Drv2605l* instance, bool play);
 void drv2605l_trigger_set_effect_and_play(Drv2605l* instance, Drv2605lEffect effect_index);
 void drv2605l_test_all_effects(Drv2605l* instance);
+
+bool drv2605l_auto_calibration(Drv2605l* instance);
+uint32_t drv2605l_size_calibration_data(Drv2605l* instance);
+bool drv2605l_get_calibration_data(Drv2605l* instance, Drv2605lCalibrationData* calib_data);
+bool drv2605l_set_calibration_data(Drv2605l* instance, const Drv2605lCalibrationData* calib_data);
 
 #ifdef __cplusplus
 }

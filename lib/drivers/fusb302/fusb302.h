@@ -9,12 +9,12 @@ typedef struct Fusb302 Fusb302;
 typedef void (*Fusb302Callback)(void* context);
 
 typedef enum {
-    Fusb302StatusOk = 0,
+    Fusb302StatusUnknown = 0,
+    Fusb302StatusOk = 1,
     Fusb302StatusRxEmpty,
     Fusb302StatusTxEmpty,
     Fusb302StatusError = -1,
     Fusb302StatusTimeout = -2,
-    Fusb302StatusUnknown = -3,
 } Fusb302Status;
 
 /**

@@ -4,6 +4,8 @@
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_resources.h>
 #include <api_lock.h>
+#include <furi_hal_nvm.h>
+#include <furi_nwm_key_config.h>
 
 #define TAG "Haptic"
 
@@ -15,6 +17,7 @@ struct Haptic {
     Drv2605l* haptic_header;
     FuriMessageQueue* message_queue;
     FuriEventLoopTimer* timer;
+    HapticDevice devices;
 };
 
 typedef enum {
@@ -102,6 +105,47 @@ static Haptic* haptic_alloc(void) {
     instance->message_queue = furi_message_queue_alloc(HAPTIC_MAX_MESSAGES, sizeof(HapticMessage));
 
     instance->haptic_header = drv2605l_init(&furi_hal_i2c_handle_control, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
+    if(instance->haptic_header) {
+        instance->devices |= HapticDeviceDrv2605l;
+    } else {
+        FURI_LOG_E(TAG, "Failed to initialize DRV2605L");
+    }
+
+    // Load or perform auto-calibration
+    if(instance->haptic_header) {
+        uint32_t calib_data_size = drv2605l_size_calibration_data(instance->haptic_header);
+        Drv2605lCalibrationData* calib_data = malloc(calib_data_size);
+
+        drv2605l_enable(instance->haptic_header);
+
+        if(furi_hal_nvm_get_struct(FURI_NWM_HAPTIC_KEY_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
+            if(drv2605l_set_calibration_data(instance->haptic_header, calib_data)) {
+                FURI_LOG_I(TAG, "Loaded haptic calibration data from NVM");
+            } else {
+                FURI_LOG_E(TAG, "Failed to set haptic calibration data from NVM");
+            }
+        } else {
+            FURI_LOG_W(TAG, "No haptic calibration data in NVM");
+            if(drv2605l_auto_calibration(instance->haptic_header)) {
+                FURI_LOG_I(TAG, "Haptic auto-calibration successful");
+                if(drv2605l_get_calibration_data(instance->haptic_header, calib_data)) {
+                    if(furi_hal_nvm_set_struct(FURI_NWM_HAPTIC_KEY_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
+                        FURI_LOG_I(TAG, "Saved haptic calibration data to NVM");
+                    } else {
+                        FURI_LOG_E(TAG, "Failed to save haptic calibration data to NVM");
+                    }
+                } else {
+                    FURI_LOG_E(TAG, "Failed to get haptic calibration data after auto-calibration");
+                }
+            } else {
+                FURI_LOG_E(TAG, "Haptic auto-calibration failed");
+            }
+        }
+
+        drv2605l_disable(instance->haptic_header);
+
+        free(calib_data);
+    }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, haptic_message_queue_callback, instance);
 
@@ -110,6 +154,19 @@ static Haptic* haptic_alloc(void) {
     furi_record_create(RECORD_HAPTIC, instance);
 
     return instance;
+}
+
+bool haptic_is_device_initialized(Haptic* instance, HapticDevice* device) {
+    furi_check(instance);
+    bool initialized = (instance->devices & HapticDeviceDrv2605l) == HapticDeviceDrv2605l;
+
+    if(device) {
+        *device = instance->devices;
+    }
+    if(!initialized) {
+        FURI_LOG_E(TAG, "Haptic device not initialized");
+    }
+    return initialized;
 }
 
 int32_t haptic_srv(void* p) {
@@ -121,38 +178,48 @@ int32_t haptic_srv(void* p) {
     return 0;
 }
 
-void haptic_play_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t time_ms) {
+bool haptic_play_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t time_ms) {
     furi_check(instance);
     furi_check(effect_index < Drv2605lEffectCountMax);
 
-    const HapticMessage msg = {
-        .type = HapticMessageTypePlayEffect,
-        .as.play_effect =
-            {
-                .effect_index = effect_index,
-                .time_ms = time_ms <= 1 ? HAPTIC_TIMEOUT_OFF_MS : time_ms,
-            },
-    };
+    if(haptic_is_device_initialized(instance, NULL)) {
+        const HapticMessage msg = {
+            .type = HapticMessageTypePlayEffect,
+            .as.play_effect =
+                {
+                    .effect_index = effect_index,
+                    .time_ms = time_ms <= 1 ? HAPTIC_TIMEOUT_OFF_MS : time_ms,
+                },
+        };
 
-    haptic_send_message(instance, &msg);
+        haptic_send_message(instance, &msg);
+        return true;
+    }
+    return false;
 }
 
-void haptic_start(Haptic* instance) {
+bool haptic_start(Haptic* instance) {
     furi_check(instance);
+    if(haptic_is_device_initialized(instance, NULL)) {
+        const HapticMessage msg = {
+            .type = HapticMessageTypeStart,
+        };
 
-    const HapticMessage msg = {
-        .type = HapticMessageTypeStart,
-    };
-
-    haptic_send_message(instance, &msg);
+        haptic_send_message(instance, &msg);
+        return true;
+    }
+    return false;
 }
 
-void haptic_stop(Haptic* instance) {
+bool haptic_stop(Haptic* instance) {
     furi_check(instance);
+    if(haptic_is_device_initialized(instance, NULL)) {
+        const HapticMessage msg = {
+            .type = HapticMessageTypeStop,
+        };
 
-    const HapticMessage msg = {
-        .type = HapticMessageTypeStop,
-    };
-
-    haptic_send_message(instance, &msg);
+        haptic_send_message(instance, &msg);
+        return true;
+    }
+    return false;
 }
