@@ -110,10 +110,10 @@ void furi_state_unsubscribe(FuriStateSub* sub);
 /**
  * @brief Gets the current state
  * 
- * @param[in] sub Subscription handle
+ * @param[in] sub State handle
  * @param[out] item_out Where to write the current state
  */
-void furi_state_get(FuriStateSub* sub, void* item_out);
+void furi_state_get(FuriState* state, void* item_out);
 
 #ifdef __cplusplus
 }
