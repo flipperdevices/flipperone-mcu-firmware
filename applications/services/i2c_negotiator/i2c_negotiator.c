@@ -25,13 +25,13 @@ typedef struct {
     uint16_t value;
 } I2CNegotiatorI2CMessage;
 
-#define I2C_NEGOTIATOR_REGISTER_MESSAGE(func, timeout)                                            \
-    void func##_message(void* context, uint16_t address, uint16_t value) {                        \
-        UNUSED(address);                                                                          \
-        furi_check(context);                                                                      \
-        FuriMessageQueue* queue = context;                                                        \
-        I2CNegotiatorI2CMessage message = {.fn = func, .value = value};                           \
-        furi_check(furi_message_queue_put(queue, &message, timeout) != FuriStatusErrorParameter); \
+#define I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(func)                                      \
+    void func##_message(void* context, uint16_t address, uint16_t value) {                  \
+        UNUSED(address);                                                                    \
+        furi_check(context);                                                                \
+        FuriMessageQueue* queue = context;                                                  \
+        I2CNegotiatorI2CMessage message = {.fn = func, .value = value};                     \
+        furi_check(furi_message_queue_put(queue, &message, 0) != FuriStatusErrorParameter); \
     }
 
 // Input event
@@ -106,25 +106,25 @@ void i2c_negotiator_led_link1(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
     led_set_color_single(instance->led, LedTypeNet, color);
 }
-I2C_NEGOTIATOR_REGISTER_MESSAGE(i2c_negotiator_led_link1, 0);
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link1);
 
 void i2c_negotiator_led_link2(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
     led_set_color_single(instance->led, LedTypeWiFi, color);
 }
-I2C_NEGOTIATOR_REGISTER_MESSAGE(i2c_negotiator_led_link2, 0);
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link2);
 
 void i2c_negotiator_led_link3(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
     led_set_color_single(instance->led, LedTypeEth2, color);
 }
-I2C_NEGOTIATOR_REGISTER_MESSAGE(i2c_negotiator_led_link3, 0);
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link3);
 
 void i2c_negotiator_led_link4(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
     led_set_color_single(instance->led, LedTypeEth1, color);
 }
-I2C_NEGOTIATOR_REGISTER_MESSAGE(i2c_negotiator_led_link4, 0);
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4);
 
 // Internal functions
 static void i2c_negotiator_queue_worker(FuriEventLoopObject* object, void* context) {

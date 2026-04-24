@@ -66,12 +66,29 @@ typedef struct {
     const size_t count;
 } LedBatch;
 
+typedef enum {
+    LedGroupLink,
+    LedGroupPower,
+    LedGroupWattmeter,
+
+    LedGroupMax, // internal use only, keep it last
+} LedGroup;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void led_set_color_single(Led* instance, LedType type, LedColor color);
+
 void led_set_color_batch(Led* instance, const LedBatch* items);
+
+void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness);
+
+FuriState* led_get_link_brightness_state(Led* instance);
+
+FuriState* led_get_power_brightness_state(Led* instance);
+
+FuriState* led_get_wattmeter_brightness_state(Led* instance);
 
 #ifdef __cplusplus
 }
