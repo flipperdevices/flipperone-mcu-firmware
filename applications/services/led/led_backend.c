@@ -5,6 +5,7 @@
 #include <furi_hal_resources.h>
 #include <api_lock.h>
 #include <drivers/ws2812/ws2812.h>
+#include <settings/settings.h>
 
 #define TAG "Led"
 
@@ -74,9 +75,9 @@ typedef struct {
 } LedMessage;
 
 static const char* led_group_names[LedGroupMax] = {
-    [LedGroupLink] = "LedGroupLinkBrightness",
-    [LedGroupPower] = "LedGroupPowerBrightness",
-    [LedGroupWattmeter] = "LedGroupWattmeterBrightness",
+    [LedGroupLink] = SETTINGS_LED_GROUP_LINK,
+    [LedGroupPower] = SETTINGS_LED_GROUP_POWER,
+    [LedGroupWattmeter] = SETTINGS_LED_GROUP_WATTMETER,
 };
 
 static bool led_line_is_wanna_power(uint32_t* line_buffer, size_t led_count) {
