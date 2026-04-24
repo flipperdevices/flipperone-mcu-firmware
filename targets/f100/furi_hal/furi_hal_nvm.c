@@ -103,3 +103,17 @@ FuriHalNvmStorage furi_hal_nvm_get_bool(const char* key, bool* value) {
     int rc = kvs_get(key, value, sizeof(*value), NULL);
     return furi_hal_nvm_check_error(key, rc);
 }
+
+FuriHalNvmStorage furi_hal_nvm_set_struct(const char* key, const void* ptr, size_t size) {
+    furi_check(key);
+    furi_check(ptr);
+    int rc = kvs_set(key, ptr, size);
+    return furi_hal_nvm_check_error(key, rc);
+}
+
+FuriHalNvmStorage furi_hal_nvm_get_struct(const char* key, void* ptr, size_t size) {
+    furi_check(key);
+    furi_check(ptr);
+    int rc = kvs_get(key, ptr, size, NULL);
+    return furi_hal_nvm_check_error(key, rc);
+}

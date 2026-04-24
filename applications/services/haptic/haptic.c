@@ -4,11 +4,13 @@
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_resources.h>
 #include <api_lock.h>
+#include <furi_hal_nvm.h>
 
 #define TAG "Haptic"
 
 #define HAPTIC_MAX_MESSAGES   (8)
 #define HAPTIC_TIMEOUT_OFF_MS (3000)
+#define HAPTIC_KEY_CALIB_DATA "haptic_calib_data"
 
 struct Haptic {
     FuriEventLoop* event_loop;
@@ -102,6 +104,42 @@ static Haptic* haptic_alloc(void) {
     instance->message_queue = furi_message_queue_alloc(HAPTIC_MAX_MESSAGES, sizeof(HapticMessage));
 
     instance->haptic_header = drv2605l_init(&furi_hal_i2c_handle_control, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
+
+    // // Load or perform auto-calibration
+    // if(instance->haptic_header) {
+    //     uint32_t calib_data_size = drv2605l_size_calibration_data(instance->haptic_header);
+    //     Drv2605lCalibrationData* calib_data = malloc(calib_data_size);
+\
+    //     drv2605l_enable(instance->haptic_header);
+
+    //     if(furi_hal_nvm_get_struct(HAPTIC_KEY_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
+    //         if(drv2605l_set_calibration_data(instance->haptic_header, calib_data)) {
+    //             FURI_LOG_I(TAG, "Loaded haptic calibration data from NVM");
+    //         } else {
+    //             FURI_LOG_E(TAG, "Failed to set haptic calibration data from NVM");
+    //         }
+    //     } else {
+    //         FURI_LOG_W(TAG, "No haptic calibration data in NVM");
+    //         if(drv2605l_auto_calibration(instance->haptic_header)) {
+    //             FURI_LOG_I(TAG, "Haptic auto-calibration successful");
+    //             if(drv2605l_get_calibration_data(instance->haptic_header, calib_data)) {
+    //                 if(furi_hal_nvm_set_struct(HAPTIC_KEY_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
+    //                     FURI_LOG_I(TAG, "Saved haptic calibration data to NVM");
+    //                 } else {
+    //                     FURI_LOG_E(TAG, "Failed to save haptic calibration data to NVM");
+    //                 }
+    //             } else {
+    //                 FURI_LOG_E(TAG, "Failed to get haptic calibration data after auto-calibration");
+    //             }
+    //         } else {
+    //             FURI_LOG_E(TAG, "Haptic auto-calibration failed");
+    //         }
+    //     }
+
+    //     drv2605l_disable(instance->haptic_header);
+
+    //     free(calib_data);
+    // }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, haptic_message_queue_callback, instance);
 
