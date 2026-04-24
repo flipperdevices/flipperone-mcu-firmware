@@ -54,8 +54,8 @@ void furi_hal_nvm_init(void) {
     // Initialize Key-Value Store
     // Defalut setting uses 128KB of flash memory for KV store, at the end of flash memory
     if(!kvs_init()) {
-        // ToDo: add notice that NWM is scribbled
-        furi_crash("Failed to initialize Key-Value Store");
+        // ToDo: add notice that NVM is scribbled
+        FURI_LOG_E(TAG, "Failed to initialize Key-Value Store");
         furi_hal_nvm_wipe();
     }
 }
@@ -175,13 +175,13 @@ FuriHalNvmStorage furi_hal_nvm_get_bool(const char* key, bool* value) {
 FuriHalNvmStorage furi_hal_nvm_set_struct(const char* key, const void* ptr, size_t size) {
     furi_check(key);
     furi_check(ptr);
-    int rc = kvs_set(key, ptr, size);
+    int rc = kvs_set_safe(key, ptr, size);
     return furi_hal_nvm_check_error(key, rc);
 }
 
 FuriHalNvmStorage furi_hal_nvm_get_struct(const char* key, void* ptr, size_t size) {
     furi_check(key);
     furi_check(ptr);
-    int rc = kvs_get(key, ptr, size, NULL);
+    int rc = kvs_get_safe(key, ptr, size, NULL);
     return furi_hal_nvm_check_error(key, rc);
 }

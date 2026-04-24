@@ -5,7 +5,7 @@
 #include <furi_hal_resources.h>
 #include <api_lock.h>
 #include <furi_hal_nvm.h>
-#include <furi_nwm_key_config.h>
+#include <settings/settings.h>
 
 #define TAG "Haptic"
 
@@ -118,7 +118,7 @@ static Haptic* haptic_alloc(void) {
 
         drv2605l_enable(instance->haptic_header);
 
-        if(furi_hal_nvm_get_struct(FURI_NWM_HAPTIC_KEY_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
+        if(furi_hal_nvm_get_struct(SETTINGS_HAPTIC_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
             if(drv2605l_set_calibration_data(instance->haptic_header, calib_data)) {
                 FURI_LOG_I(TAG, "Loaded haptic calibration data from NVM");
             } else {
@@ -129,7 +129,7 @@ static Haptic* haptic_alloc(void) {
             if(drv2605l_auto_calibration(instance->haptic_header)) {
                 FURI_LOG_I(TAG, "Haptic auto-calibration successful");
                 if(drv2605l_get_calibration_data(instance->haptic_header, calib_data)) {
-                    if(furi_hal_nvm_set_struct(FURI_NWM_HAPTIC_KEY_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
+                    if(furi_hal_nvm_set_struct(SETTINGS_HAPTIC_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
                         FURI_LOG_I(TAG, "Saved haptic calibration data to NVM");
                     } else {
                         FURI_LOG_E(TAG, "Failed to save haptic calibration data to NVM");

@@ -8,6 +8,8 @@ extern "C" {
 #define SETTINGS_LED_GROUP_POWER     "LedGroupPowerBrightness"
 #define SETTINGS_LED_GROUP_WATTMETER "LedGroupWattmeterBrightness"
 
+#define SETTINGS_HAPTIC_CALIB_DATA "HapticCalibrationData"
+
 #ifdef __cplusplus
 }
 #endif
