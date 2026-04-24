@@ -509,12 +509,9 @@ static PowerMenu* power_menu_alloc(void) {
     instance->selected_backlight_brightness_index = 3; // 20%
     power_menu_apply_backlight(instance);
 
-    FuriState* link_brightness_state = led_get_link_brightness_state(instance->led);
-    FuriState* power_brightness_state = led_get_power_brightness_state(instance->led);
-    FuriState* wattmeter_brightness_state = led_get_wattmeter_brightness_state(instance->led);
-    furi_state_subscribe(link_brightness_state, power_menu_link_led_brightness_callback, instance);
-    furi_state_subscribe(power_brightness_state, power_menu_power_led_brightness_callback, instance);
-    furi_state_subscribe(wattmeter_brightness_state, power_menu_wattmeter_led_brightness_callback, instance);
+    furi_state_subscribe(led_get_link_brightness_state(instance->led), power_menu_link_led_brightness_callback, instance);
+    furi_state_subscribe(led_get_power_brightness_state(instance->led), power_menu_power_led_brightness_callback, instance);
+    furi_state_subscribe(led_get_wattmeter_brightness_state(instance->led), power_menu_wattmeter_led_brightness_callback, instance);
 
     return instance;
 }
@@ -522,6 +519,8 @@ static PowerMenu* power_menu_alloc(void) {
 static void power_menu_free(PowerMenu* instance) {
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
+    furi_record_close(RECORD_LEDS);
+
     power_menu_model_apply(instance, power_menu_model_deinit, NULL);
     view_free(instance->view);
     furi_event_loop_free(instance->event_loop);

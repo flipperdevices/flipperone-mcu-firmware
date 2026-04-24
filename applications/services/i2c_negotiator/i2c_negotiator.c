@@ -102,6 +102,21 @@ static void i2c_negotiator_headphones_event_glue(const void* value, void* ctx) {
 }
 
 // Led functions
+void i2c_negotiator_link_led_brightness_set(I2CNegotiator* instance, uint16_t value) {
+    led_set_brightness(instance->led, LedGroupLink, value & 0xFF);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_link_led_brightness_set);
+
+void i2c_negotiator_power_led_brightness_set(I2CNegotiator* instance, uint16_t value) {
+    led_set_brightness(instance->led, LedGroupPower, value & 0xFF);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_power_led_brightness_set);
+
+void i2c_negotiator_wattmeter_led_brightness_set(I2CNegotiator* instance, uint16_t value) {
+    led_set_brightness(instance->led, LedGroupWattmeter, value & 0xFF);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_wattmeter_led_brightness_set);
+
 void i2c_negotiator_led_link1(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
     led_set_color_single(instance->led, LedTypeNet, color);
@@ -137,6 +152,24 @@ static void i2c_negotiator_queue_worker(FuriEventLoopObject* object, void* conte
     }
 }
 
+static void i2c_negotiator_link_led_brightness_callback(const void* item, void* context) {
+    UNUSED(context);
+    uint8_t* brightness = (uint8_t*)item;
+    with_i2c_register({ i2c_register_update(I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS, *brightness, 0xFF); });
+}
+
+static void i2c_negotiator_power_led_brightness_callback(const void* item, void* context) {
+    UNUSED(context);
+    uint8_t* brightness = (uint8_t*)item;
+    with_i2c_register({ i2c_register_update(I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS, *brightness, 0xFF); });
+}
+
+static void i2c_negotiator_wattmeter_led_brightness_callback(const void* item, void* context) {
+    UNUSED(context);
+    uint8_t* brightness = (uint8_t*)item;
+    with_i2c_register({ i2c_register_update(I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS, *brightness, 0xFF); });
+}
+
 I2CNegotiator* i2c_negotiator_alloc() {
     I2CNegotiator* instance = malloc(sizeof(I2CNegotiator));
     instance->gui = furi_record_open(RECORD_GUI);
@@ -166,12 +199,19 @@ I2CNegotiator* i2c_negotiator_alloc() {
         i2c_register_add_readable(I2C_HEADPHONES_STATE_REG_ADDRESS, 0);
         furi_pubsub_subscribe(furi_record_open(RECORD_HEADPHONES), i2c_negotiator_headphones_event_glue, NULL);
 
-        // Test writable register
-        // `sudo i2ctransfer -y 0 w4@0x69 0x03 0x00 0x34 0x12` will write 0x1234 to address 0x0300
+        // LEDs
         i2c_register_add_writable(I2C_LED_LINK1_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link1_message, instance->led_queue);
         i2c_register_add_writable(I2C_LED_LINK2_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link2_message, instance->led_queue);
         i2c_register_add_writable(I2C_LED_LINK3_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link3_message, instance->led_queue);
         i2c_register_add_writable(I2C_LED_LINK4_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link4_message, instance->led_queue);
+
+        i2c_register_add_writable(I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS, 0, i2c_negotiator_link_led_brightness_set_message, instance->led_queue);
+        i2c_register_add_writable(I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS, 0, i2c_negotiator_power_led_brightness_set_message, instance->led_queue);
+        i2c_register_add_writable(I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS, 0, i2c_negotiator_wattmeter_led_brightness_set_message, instance->led_queue);
+
+        furi_state_subscribe(led_get_link_brightness_state(instance->led), i2c_negotiator_link_led_brightness_callback, NULL);
+        furi_state_subscribe(led_get_power_brightness_state(instance->led), i2c_negotiator_power_led_brightness_callback, NULL);
+        furi_state_subscribe(led_get_wattmeter_brightness_state(instance->led), i2c_negotiator_wattmeter_led_brightness_callback, NULL);
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->led_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);
