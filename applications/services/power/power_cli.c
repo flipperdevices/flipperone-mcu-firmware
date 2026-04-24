@@ -321,16 +321,16 @@ static void power_cli_print_bq28z620_control_status(Power* power, FuriString* ar
     if(s.ldmd) furi_string_cat_printf(arena, " LDMD");
     if(s.checksum_valid) furi_string_cat_printf(arena, " CHECKSUM_VALID");
     if(s.authcalm) furi_string_cat_printf(arena, " AUTHCALM");
-    if(s.sec) {
-        if(s.sec == 0b01) {
-            furi_string_cat_printf(arena, " SEC: Full_Access");
-        } else if(s.sec == 0b10) {
-            furi_string_cat_printf(arena, " SEC: Unsealed");
-        } else if(s.sec == 0b11) {
-            furi_string_cat_printf(arena, " SEC: Sealed");
-        } else {
-            furi_string_cat_printf(arena, " SEC: Unknown(%02b)", s.sec);
-        }
+    if(s.sec == 0b00) {
+        furi_string_cat_printf(arena, " SEC: Full_Access");
+    } else if(s.sec == 0b01) {
+        furi_string_cat_printf(arena, " SEC: Reserved");
+    } else if(s.sec == 0b10) {
+        furi_string_cat_printf(arena, " SEC: Unsealed");
+    } else if(s.sec == 0b11) {
+        furi_string_cat_printf(arena, " SEC: Sealed");
+    } else {
+        furi_string_cat_printf(arena, " SEC: Unknown(%02b)", s.sec);
     }
     if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
     printf("%s\r\n", furi_string_get_cstr(arena));
@@ -343,26 +343,24 @@ static void power_cli_print_bq28z620_battery_status(Power* power, FuriString* ar
     printf("  Battery Status: 0x%04X", *(uint16_t*)&s);
 
     furi_string_set(arena, "");
-    if(s.error_code) {
-        if(s.error_code == 0x00) {
-            furi_string_cat_printf(arena, " ERROR_CODE: OK");
-        } else if(s.error_code == 0x1) {
-            furi_string_cat_printf(arena, " ERROR_CODE: Busy");
-        } else if(s.error_code == 0x2) {
-            furi_string_cat_printf(arena, " ERROR_CODE: Reserved Command");
-        } else if(s.error_code == 0x3) {
-            furi_string_cat_printf(arena, " ERROR_CODE: Unsupported Command");
-        } else if(s.error_code == 0x4) {
-            furi_string_cat_printf(arena, " ERROR_CODE: AccessDenied");
-        } else if(s.error_code == 0x5) {
-            furi_string_cat_printf(arena, " ERROR_CODE: Overflow/Underflow");
-        } else if(s.error_code == 0x6) {
-            furi_string_cat_printf(arena, " ERROR_CODE: BadSize");
-        } else if(s.error_code == 0x7) {
-            furi_string_cat_printf(arena, " ERROR_CODE: UnknownError");
-        } else {
-            furi_string_cat_printf(arena, " ERROR_CODE: Unknown(%d)", s.error_code);
-        }
+    if(s.error_code == 0x00) {
+        furi_string_cat_printf(arena, " ERROR_CODE: OK");
+    } else if(s.error_code == 0x1) {
+        furi_string_cat_printf(arena, " ERROR_CODE: Busy");
+    } else if(s.error_code == 0x2) {
+        furi_string_cat_printf(arena, " ERROR_CODE: Reserved Command");
+    } else if(s.error_code == 0x3) {
+        furi_string_cat_printf(arena, " ERROR_CODE: Unsupported Command");
+    } else if(s.error_code == 0x4) {
+        furi_string_cat_printf(arena, " ERROR_CODE: AccessDenied");
+    } else if(s.error_code == 0x5) {
+        furi_string_cat_printf(arena, " ERROR_CODE: Overflow/Underflow");
+    } else if(s.error_code == 0x6) {
+        furi_string_cat_printf(arena, " ERROR_CODE: BadSize");
+    } else if(s.error_code == 0x7) {
+        furi_string_cat_printf(arena, " ERROR_CODE: UnknownError");
+    } else {
+        furi_string_cat_printf(arena, " ERROR_CODE: Unknown(%d)", s.error_code);
     }
     if(s.fully_discharged) furi_string_cat_printf(arena, " FULLY_DISCHARGED");
     if(s.fully_charged) furi_string_cat_printf(arena, " FULLY_CHARGED");

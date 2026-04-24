@@ -3,18 +3,32 @@
 #include <toolbox/furi_callback.h>
 #include <furi_hal_resources.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 typedef enum {
     FuriBspControlExpanderMainMcu,
     FuriBspControlExpanderMainCpu,
 } FuriBspControlExpanderMain;
 
+typedef enum {
+    FuriBspDeviceExpanderControl = (1 << 0),
+    FuriBspDeviceExpanderMain = (1 << 1),
+    FuriBspDeviceAllInit = (FuriBspDeviceExpanderControl | FuriBspDeviceExpanderMain),
+} FuriBspDevice;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
+
 /** Init all expander related hardware
  */
 void furi_bsp_expander_init(void);
+
+/** Check if expander hardware is initialized
+ * @param device - pointer to store which expander(s) are initialized
+ * @return bool - whether the requested expander(s) are initialized
+ */
+bool furi_bsp_expander_is_initialized(FuriBspDevice* device);
 
 /** Returns the current state of buttons from the expander
  * @return uint16_t - bitmask of button states (InputKey)

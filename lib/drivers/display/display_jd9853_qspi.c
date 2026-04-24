@@ -272,8 +272,10 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
 
     //tps62868x init
     display->power_supply = tps62868x_init(&furi_hal_i2c_handle_control, TPS62868_ADDRESS);
-    tps62868x_set_voltage(display->power_supply, 3.3f);
-    tps62868x_get_voltage(display->power_supply);
+    if(display->power_supply) {
+        tps62868x_set_voltage(display->power_supply, 3.3f);
+        tps62868x_get_voltage(display->power_supply);
+    }
 
     //dma init
     display->dma_tx_channel = dma_claim_unused_channel(true);
@@ -346,7 +348,7 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     hw_clear_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
     dma_channel_unclaim(display->dma_tx_channel);
 
-    tps62868x_deinit(display->power_supply);
+    if(display->power_supply) tps62868x_deinit(display->power_supply);
 
     free(display);
     display_instance = NULL;
@@ -365,10 +367,15 @@ void display_jd9853_qspi_eco_mode(DisplayJd9853QSPI* display, bool enable) {
 
 void display_jd9853_qspi_set_vci(DisplayJd9853QSPI* display, float_t voltage) {
     furi_check(display);
-    tps62868x_set_voltage(display->power_supply, voltage);
+    if(display->power_supply) tps62868x_set_voltage(display->power_supply, voltage);
 }
 
 float_t display_jd9853_qspi_get_vci(DisplayJd9853QSPI* display) {
     furi_check(display);
-    return tps62868x_get_voltage(display->power_supply);
+    if(display->power_supply) return tps62868x_get_voltage(display->power_supply);
+    return 0.0f;
+}
+
+bool display_jd9853_qspi_is_init(void) {
+    return display_instance != NULL;
 }
