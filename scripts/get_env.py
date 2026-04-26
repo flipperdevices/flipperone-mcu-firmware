@@ -74,8 +74,11 @@ def get_details(event, args):
         data["commit_hash"] = event["head_commit"]["id"]
         ref = event["ref"]
     else:
-        data["commit_comment"] = shlex.quote(event["commits"][-1]["message"])
-        data["commit_hash"] = event["commits"][-1]["id"]
+        # head_commit is always present on push events; commits[] can be empty
+        # on squash-merges, force pushes, or automated pushes.
+        head = event.get("head_commit") or event["commits"][-1]
+        data["commit_comment"] = shlex.quote(head["message"])
+        data["commit_hash"] = head["id"]
         ref = event["ref"]
     data["commit_sha"] = data["commit_hash"][:8]
     data["branch_name"] = re.sub(r"refs/\w+/", "", ref)
