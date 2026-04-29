@@ -1,7 +1,6 @@
 #include <applications.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
-#include <main/self_check/self_test.h>
 
 #define DESKTOP_INPUT_QUEUE_SIZE       16
 #define DESKTOP_INPUT_TOUCH_QUEUE_SIZE 16
@@ -243,16 +242,6 @@ static Desktop* desktop_alloc(void) {
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
 
     gui_add_view(desktop->gui, desktop->view, GuiViewPriorityDesktop);
-
-    if(!self_check_process(NULL)) {
-        DesktopMessage message = {
-            .type = DesktopMessageTypeAppStart,
-            .app = &FLIPPER_APPS[4],
-            .args = NULL,
-        };
-
-        furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
-    }
 
     return desktop;
 }

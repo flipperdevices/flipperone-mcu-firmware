@@ -1,4 +1,3 @@
-#include "self_test.h"
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 
@@ -7,7 +6,7 @@
 #include <power/power.h>
 #include <input_touch/input_touch.h>
 #include <drivers/display/display_jd9853_qspi.h>
-//#include <fusb302/fusb302.h>
+#include <assets.h>
 
 #define TAG "SelfCheck"
 
@@ -25,22 +24,6 @@ typedef struct {
     FuriString* status_str;
 } SelfCheck;
 
-static void keypad_test_app_create_keypad_button(Clay_String text, bool inverted) {
-    CLAY_AUTO_ID({
-        .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
-        .layout =
-            {
-                .padding = {8, 8, 4, 4},
-                .sizing = {.width = KEYPAD_TEST_BUTTON_WIDTH},
-                .childAlignment = {.x = CLAY_ALIGN_X_CENTER},
-            },
-        .backgroundColor = inverted ? COLOR_WHITE : COLOR_BLACK,
-        .cornerRadius = CLAY_CORNER_RADIUS(4),
-    }) {
-        CLAY_TEXT(text, CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = inverted ? COLOR_BLACK : COLOR_WHITE}));
-    }
-}
-
 static bool self_check_layout(void* _model) {
     furi_assert(_model);
     SelfCheckModel* model = (SelfCheckModel*)_model;
@@ -55,56 +38,41 @@ static bool self_check_layout(void* _model) {
              .childGap = 4,
          }}) {
         CLAY(
-            CLAY_APP_ID("Header"),
-            {
-                .layout =
-                    {
-                        .sizing = {.height = CLAY_SIZING_FIXED(14), .width = CLAY_SIZING_GROW(0)},
-                        .childGap = 8,
-                        .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                    },
-            }) {
-            CLAY_AUTO_ID({.layout = {.padding = {8, 8, 4, 4}}}) {
-                CLAY_TEXT(CLAY_STRING("Self Check"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
-            }
-        }
-        CLAY(
             CLAY_APP_ID("MainContent"),
             {
-                .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
-                .cornerRadius = CLAY_CORNER_RADIUS(4),
                 .clip = {.vertical = true},
                 .layout =
                     {
                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
                         .childGap = 8,
-                        .padding = {6, 6, 6, 6},
+                        .padding = {.left = 6, .right = 6, .top = 6, .bottom = 6},
                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                        .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
                     },
             }) {
-            CLAY_AUTO_ID({.layout = {.padding = {8, 8, 4, 4}}}) {
+            CLAY_AUTO_ID({
+                .layout =
+                    {
+                        .sizing = {.height = CLAY_SIZING_FIT(0), .width = CLAY_SIZING_FIT(0)},
+                        .padding = {.left = 0, .right = 3, .top = 3, .bottom = 0},
+                    },
+                .floating =
+                    {
+                        .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
+                        .attachTo = CLAY_ATTACH_TO_PARENT,
+                    },
+            }) {
+                CLAY_AUTO_ID({
+                    .layout =
+                        {
+                            .sizing = {.height = CLAY_SIZING_FIXED(bios.height), .width = CLAY_SIZING_FIXED(bios.width)},
+                        },
+                    .image = {.imageData = (void*)&bios},
+                }) {
+                }
+            }
+            CLAY_AUTO_ID() {
                 CLAY_TEXT(clay_helper_string_from(model->status_str), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
-        }
-    }
-
-    CLAY(
-        CLAY_APP_ID("Footer"),
-        {
-            .layout =
-                {
-                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                    .sizing = {.height = CLAY_SIZING_FIXED(28), .width = CLAY_SIZING_GROW(0)},
-                    .padding = {0, 6, 4, 6},
-                    .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
-                },
-        }) {
-        /* spacer grows to push button to the right */
-        CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(1)}}}) {
-        }
-        CLAY_AUTO_ID({.layout = {.sizing = {.width = KEYPAD_TEST_BUTTON_WIDTH}}}) {
-            keypad_test_app_create_keypad_button(CLAY_STRING("Ok"), false);
         }
     }
 
@@ -117,7 +85,7 @@ static bool self_check_input(InputEvent* event, void* context) {
     bool consumed = false;
 
     if(event->type == InputTypePress) {
-        if(event->key == InputKeyOk) {
+        if(event->key == InputKeyOk || event->key == InputKeyBack) {
             furi_thread_signal(instance->thread, FuriSignalExit, NULL);
             consumed = true;
         }
@@ -134,7 +102,7 @@ static bool self_check_input_touch(InputTouchEvent* event, void* context) {
     return false;
 }
 
-bool self_check_process(FuriString* status_str) {
+static bool self_check_process(FuriString* status_str) {
     bool check_ok = true;
     bool all_ok = true;
 
@@ -164,7 +132,7 @@ bool self_check_process(FuriString* status_str) {
     }
 
     // check display
-    // todo: tps62868x is not needed, it will be removed in the next version
+    // TODO: tps62868x is not needed, it will be removed in the next version
 
     // check input touch
     InputTouch* input_touch = furi_record_open(RECORD_INPUT_TOUCH);
@@ -176,18 +144,21 @@ bool self_check_process(FuriString* status_str) {
     }
 
     // check usb
-    // todo: add usb check when fusb302 is ready
+    // TODO: add usb check when fusb302 is ready
 
     // show result
     if(status_str) {
-        furi_string_set(status_str, "Checking\n\n");
-        furi_string_cat_printf(status_str, "Expander control: %s\n", (expander_device & FuriBspDeviceExpanderControl) ? "OK" : "FAIL");
-        furi_string_cat_printf(status_str, "Expander main: %s\n", (expander_device & FuriBspDeviceExpanderMain) ? "OK" : "FAIL");
-        furi_string_cat_printf(status_str, "Haptic: %s\n", (haptic_device & HapticDeviceDrv2605l) ? "OK" : "FAIL");
-        furi_string_cat_printf(status_str, "Power INA219: %s\n", (power_device & PowerDeviceIna219) ? "OK" : "FAIL");
-        furi_string_cat_printf(status_str, "Power BQ25792: %s\n", (power_device & PowerDeviceBq25792) ? "OK" : "FAIL");
-        furi_string_cat_printf(status_str, "Power BQ28z620: %s\n", (power_device & PowerDeviceBq28z620) ? "OK" : "FAIL");
-        furi_string_cat_printf(status_str, "Input Touch: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "OK" : "FAIL");
+        // TODO: get real cpu info
+        furi_string_printf(status_str, "CPU: Cortex-M33 at 150MHz\nMemory total: %dK\n", memmgr_get_total_heap() / 1024);
+        furi_string_cat_printf(status_str, "Memory free: %dK\n\n", memmgr_get_free_heap() / 1024);
+        furi_string_cat_printf(status_str, "Current meter: %s\n", (power_device & PowerDeviceIna219) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Expander control: %s\n", (expander_device & FuriBspDeviceExpanderControl) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Expander main: %s\n", (expander_device & FuriBspDeviceExpanderMain) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Haptic: %s\n", (haptic_device & HapticDeviceDrv2605l) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Charger: %s\n", (power_device & PowerDeviceBq25792) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Gauge: %s\n", (power_device & PowerDeviceBq28z620) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Touchpad: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "\n\nPress DEL to enter setup, OK or BACK to exit");
     }
 
     return all_ok;
@@ -222,10 +193,26 @@ static void self_check_free(SelfCheck* instance) {
     free(instance);
 }
 
-int32_t self_check_app(void* p) {
-    UNUSED(p);
+static void self_check_app_main(void) {
     SelfCheck* instance = self_check_alloc();
     furi_event_loop_run(instance->event_loop);
     self_check_free(instance);
+}
+
+static void self_check_app_autorun(void) {
+    FURI_LOG_I(TAG, "Starting self check autorun");
+
+    if(!self_check_process(NULL)) {
+        self_check_app_main();
+    }
+}
+
+int32_t self_check_app(void* p) {
+    if(p && strcmp((char*)p, "autorun") == 0) {
+        self_check_app_autorun();
+    } else {
+        self_check_app_main();
+    }
+
     return 0;
 }
