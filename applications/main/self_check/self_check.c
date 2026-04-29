@@ -172,7 +172,11 @@ static SelfCheck* self_check_alloc(void) {
     instance->view = view_alloc();
 
     instance->status_str = furi_string_alloc();
-    self_check_process(instance->status_str);
+    if(!self_check_process(instance->status_str)) {
+        Haptic* haptic = furi_record_open(RECORD_HAPTIC);
+        haptic_play_effect(haptic, Drv2605lEffectDoubleClick_100, 0);
+        furi_record_close(RECORD_HAPTIC);
+    }
 
     view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(SelfCheckModel));
     with_view_model(instance->view, SelfCheckModel * model, { model->status_str = instance->status_str; }, false);
