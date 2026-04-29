@@ -17,7 +17,7 @@ struct Haptic {
     Drv2605l* haptic_header;
     FuriMessageQueue* message_queue;
     FuriEventLoopTimer* timer;
-    HapticDevice devices;
+    HapticDevice device;
 };
 
 typedef enum {
@@ -106,7 +106,7 @@ static Haptic* haptic_alloc(void) {
 
     instance->haptic_header = drv2605l_init(&furi_hal_i2c_handle_control, &gpio_haptic_en, &gpio_haptic_pwm, DRV2605L_ADDRESS);
     if(instance->haptic_header) {
-        instance->devices |= HapticDeviceDrv2605l;
+        instance->device |= HapticDeviceDrv2605l;
     } else {
         FURI_LOG_E(TAG, "Failed to initialize DRV2605L");
     }
@@ -158,10 +158,10 @@ static Haptic* haptic_alloc(void) {
 
 bool haptic_is_device_initialized(Haptic* instance, HapticDevice* device) {
     furi_check(instance);
-    bool initialized = (instance->devices & HapticDeviceDrv2605l) == HapticDeviceDrv2605l;
+    bool initialized = (instance->device & HapticDeviceDrv2605l) == HapticDeviceDrv2605l;
 
     if(device) {
-        *device = instance->devices;
+        *device = instance->device;
     }
     if(!initialized) {
         FURI_LOG_E(TAG, "Haptic device not initialized");

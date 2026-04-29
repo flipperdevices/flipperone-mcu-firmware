@@ -20,7 +20,7 @@ extern "C" {
 #endif
 FuriPubSub* power_get_pubsub(Power* power);
 
-bool power_is_device_all_initialized(Power* instance, PowerDevice* device);
+bool power_is_device_initialized(Power* instance, PowerDevice* device);
 
 float_t power_ina219_get_voltage_v(Power* instance);
 float_t power_ina219_get_current_a(Power* instance);

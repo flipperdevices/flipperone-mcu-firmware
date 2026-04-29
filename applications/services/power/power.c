@@ -255,7 +255,7 @@ static Power* power_alloc(void) {
     return instance;
 }
 
-bool power_is_device_all_initialized(Power* instance, PowerDevice* device) {
+bool power_is_device_initialized(Power* instance, PowerDevice* device) {
     furi_check(instance);
     if(device) {
         *device = instance->devices;

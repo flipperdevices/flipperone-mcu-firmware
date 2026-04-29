@@ -14,12 +14,13 @@
 
 #define INPUT_THREAD_FLAG_ISR 0x00000001
 
-typedef struct {
+struct InputTouch {
     FuriPubSub* event_pubsub;
     FuriThreadId thread_id;
     Iqs7211e* iqs7211e;
+    InputTouchDevice device;
     bool touch;
-} InputTouch;
+};
 
 static void __isr __not_in_flash_func(input_touch_isr)(void* context) {
     furi_assert(context);
@@ -73,12 +74,15 @@ int32_t input_touch_srv(void* p) {
     instance->iqs7211e = iqs7211e_init(&furi_hal_i2c_handle_control, &gpio_touchpad_rdy, IQS7211E_ADDRESS);
 
     furi_record_create(RECORD_INPUT_TOUCH_EVENTS, instance->event_pubsub);
+    furi_record_create(RECORD_INPUT_TOUCH, instance);
 
     if(!instance->iqs7211e) {
         FURI_LOG_E(TAG, "Not initialized IQS7211E, input touch service cannot run");
         while(1) {
             furi_delay_ms(FuriWaitForever);
         }
+    } else {
+        instance->device |= InputTouchDeviceIqs7211e;
     }
 
     iqs7211e_set_input_callback(instance->iqs7211e, input_touch_isr, input_touch_event_isr, instance);
@@ -91,4 +95,17 @@ int32_t input_touch_srv(void* p) {
     }
 
     return 0;
+}
+
+bool input_touch_is_device_initialized(InputTouch* instance, InputTouchDevice* device) {
+    furi_check(instance);
+    bool initialized = (instance->device & InputTouchDeviceIqs7211e) == InputTouchDeviceIqs7211e;
+
+    if(device) {
+        *device = instance->device;
+    }
+    if(!initialized) {
+        FURI_LOG_E(TAG, "Input touch device not initialized");
+    }
+    return initialized;
 }
