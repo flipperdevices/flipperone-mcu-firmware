@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # check for virtual environment
-if [ ! -d ".venv" ]; then
+if [ ! -f ".venv/bin/activate" ]; then
     echo "Creating virtual environment..."
-    python3 -m venv .venv
+    rm -rf .venv
+    python3 -m venv --copies .venv # --copies to fix macOS symlink issues
 fi
 
 source ./.venv/bin/activate
