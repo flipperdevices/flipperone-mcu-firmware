@@ -42,10 +42,21 @@ void flipper_init(void) {
     flipper_init_services();
 
     for(size_t i = 0; i < FLIPPER_SERVICES_COUNT; i++) {
-        FURI_LOG_D(TAG, "Starting service %s", FLIPPER_SERVICES[i].name);
+        const FlipperInternalApplication* app = &FLIPPER_SERVICES[i];
+        FURI_LOG_D(TAG, "Starting service %s", app->name);
 
-        FuriThread* thread = furi_thread_alloc_service(FLIPPER_SERVICES[i].name, FLIPPER_SERVICES[i].stack_size, FLIPPER_SERVICES[i].app, NULL);
-        furi_thread_set_appid(thread, FLIPPER_SERVICES[i].appid);
+        FuriThread* thread = furi_thread_alloc_service(app->name, app->stack_size, app->app, NULL);
+        furi_thread_set_appid(thread, app->appid);
+
+        furi_thread_start(thread);
+    }
+
+    for(size_t i = 0; i < FLIPPER_AUTORUN_APPS_COUNT; i++) {
+        const FlipperInternalApplication* app = &FLIPPER_AUTORUN_APPS[i];
+        FURI_LOG_D(TAG, "Starting autorun app %s", app->name);
+
+        FuriThread* thread = furi_thread_alloc_ex(app->name, app->stack_size, app->app, "autorun");
+        furi_thread_set_appid(thread, app->appid);
 
         furi_thread_start(thread);
     }

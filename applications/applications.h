@@ -43,6 +43,12 @@ extern const size_t FLIPPER_SERVICES_COUNT;
 extern const FlipperInternalApplication FLIPPER_APPS[];
 extern const size_t FLIPPER_APPS_COUNT;
 
+/* Autorun apps list
+ * Apps that are automatically started on startup. These applications will receive the "autorun" argument.
+ */
+extern const FlipperInternalApplication FLIPPER_AUTORUN_APPS[];
+extern const size_t FLIPPER_AUTORUN_APPS_COUNT;
+
 /* Internal CLI commands
  * Added to main CLI registry by CLI startup hook
  */

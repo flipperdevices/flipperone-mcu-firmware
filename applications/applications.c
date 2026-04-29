@@ -157,6 +157,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
+        .app = self_check_app,
+        .name = "Self Check",
+        .appid = "self_check",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
         .app = keypad_test_app,
         .name = "Keypad Test",
         .appid = "keypad_test",
@@ -177,6 +184,10 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+};
+const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
+
+const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
     {
         .app = self_check_app,
         .name = "Self Check",
@@ -185,7 +196,7 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .flags = FlipperInternalApplicationFlagDefault,
     },
 };
-const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
+const size_t FLIPPER_AUTORUN_APPS_COUNT = COUNT_OF(FLIPPER_AUTORUN_APPS);
 
 const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
