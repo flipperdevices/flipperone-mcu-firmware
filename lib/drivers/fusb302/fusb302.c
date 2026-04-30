@@ -233,12 +233,12 @@ Fusb302* fusb302_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
             furi_hal_gpio_init_simple(instance->pin_interrupt, GpioModeInput);
             furi_hal_gpio_add_int_callback(instance->pin_interrupt, GpioConditionFall, fusb302_interrupt_handler, instance);
         }
-
+#ifdef FUSB302_DEBUG_ENABLE
         Fusb302DeviceIdRegBits device_id = {0};
         fusb302_read_reg(instance, Fusb302RegDeviceId, (uint8_t*)&device_id);
         FUSB302_DEBUG(TAG, "Version ID: %02X, Product ID: %02X", device_id.version_id, device_id.product_id);
-
-        fusb302_start_drp_logic(instance);
+#endif
+        fusb302_sw_reset(instance);
 
     } else {
         FURI_LOG_E(TAG, "FUSB302 device not ready at address 0x%02X", instance->address);
@@ -256,6 +256,18 @@ void fusb302_deinit(Fusb302* instance) {
         furi_hal_gpio_init_ex(instance->pin_interrupt, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     }
     free(instance);
+}
+
+Fusb302Status fusb302_sw_reset(Fusb302* instance) {
+    furi_check(instance);
+    Fusb302ResetRegBits reset = {
+        .sw_reset = 1,
+    };
+    Fusb302Status res = fusb302_write_reg(instance, Fusb302RegReset, *(uint8_t*)&reset);
+    if(res != Fusb302StatusOk) {
+        FURI_LOG_E(TAG, "Failed to reset FUSB302!");
+    }
+    return res;
 }
 
 Fusb302Status fusb302_pd_reset(Fusb302* instance) {

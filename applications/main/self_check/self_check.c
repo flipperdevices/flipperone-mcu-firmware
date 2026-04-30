@@ -6,11 +6,10 @@
 #include <power/power.h>
 #include <input_touch/input_touch.h>
 #include <drivers/display/display_jd9853_qspi.h>
+#include <pd/pd.h>
 #include <assets.h>
 
 #define TAG "SelfCheck"
-
-#define KEYPAD_TEST_BUTTON_WIDTH CLAY_SIZING_FIXED(40)
 
 typedef struct {
     FuriString* status_str;
@@ -143,22 +142,29 @@ static bool self_check_process(FuriString* status_str) {
         all_ok = check_ok;
     }
 
-    // check usb
-    // TODO: add usb check when fusb302 is ready
+    // check pd
+    Pd* pd = furi_record_open(RECORD_PD);
+    PdDevice pd_device;
+    check_ok = pd_is_device_initialized(pd, &pd_device);
+    furi_record_close(RECORD_PD);
+    if(all_ok) {
+        all_ok = check_ok;
+    }
 
     // show result
     if(status_str) {
         // TODO: get real cpu info
-        furi_string_printf(status_str, "CPU: Cortex-M33 at 150MHz\nMemory total: %dK\n", memmgr_get_total_heap() / 1024);
+        furi_string_printf(status_str, "CPU: Dual Cortex-M33 at 150MHz\nMemory total: %dK\n", memmgr_get_total_heap() / 1024);
         furi_string_cat_printf(status_str, "Memory free: %dK\n\n", memmgr_get_free_heap() / 1024);
         furi_string_cat_printf(status_str, "Current meter: %s\n", (power_device & PowerDeviceIna219) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Expander control: %s\n", (expander_device & FuriBspDeviceExpanderControl) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Expander main: %s\n", (expander_device & FuriBspDeviceExpanderMain) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Haptic: %s\n", (haptic_device & HapticDeviceDrv2605l) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "PD: %s\n", (pd_device & PdDeviceFusb302) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Charger: %s\n", (power_device & PowerDeviceBq25792) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Gauge: %s\n", (power_device & PowerDeviceBq28z620) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Touchpad: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "\n\nPress DEL to enter setup, OK or BACK to exit");
+        furi_string_cat_printf(status_str, "\nPress DEL to enter setup, OK or BACK to exit");
     }
 
     return all_ok;

@@ -62,6 +62,8 @@ void fusb302_read_cc_status(Fusb302* instance, uint8_t cc);
 void fusb302_deinit(Fusb302* instance);
 bool fusb302_read_role(Fusb302* instance);
 void fusb302_set_input_callback(Fusb302* instance, Fusb302Callback callback, void* context);
+Fusb302Status fusb302_start_drp_logic(Fusb302* instance);
+Fusb302Status fusb302_sw_reset(Fusb302* instance);
 
 Fusb302Status fusb302_cc_orientation_set(Fusb302* instance, Fusb302TypeCcOrientation orientation);
 // pd

@@ -16,7 +16,7 @@ extern int32_t led_srv(void* p);
 extern int32_t usb_srv(void* p);
 extern int32_t power_srv(void* p);
 extern int32_t cli_srv(void* p);
-extern int32_t fusb302_srv(void* p);
+extern int32_t pd_srv(void* p);
 extern int32_t power_menu_srv(void* p);
 extern int32_t headphones_srv(void* p);
 
@@ -54,13 +54,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    // {
-    //     .app = fusb302_srv,
-    //     .name = "Fusb302Srv",
-    //     .appid = "fusb302_srv",
-    //     .stack_size = 1024,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
+    {
+        .app = pd_srv,
+        .name = "PdSrv",
+        .appid = "pd_srv",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
     // {
     //     .app = uart_echo_app,
     //     .name = "UartEcho",
