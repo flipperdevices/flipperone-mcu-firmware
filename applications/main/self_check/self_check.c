@@ -176,7 +176,7 @@ static bool self_check_process(FuriString* status_str) {
         furi_string_cat_printf(status_str, "Gauge: %s\n", (power_device & PowerDeviceBq28z620) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Touchpad: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "USB Mux: %s\n", (usb_mux_device & UsbMuxDeviceHd3ss3220) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Press DEL to enter setup, OK or BACK to exit");
+        furi_string_cat_printf(status_str, "           Press DEL to enter setup, OK or BACK to exit");
     }
 
     return all_ok;
