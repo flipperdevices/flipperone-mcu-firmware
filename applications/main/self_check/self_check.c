@@ -164,7 +164,7 @@ static bool self_check_process(FuriString* status_str) {
     // show result
     if(status_str) {
         // TODO: get real cpu info
-        furi_string_printf(status_str, "CPU: Dual Cortex-M33 at 150MHz\n");
+        furi_string_printf(status_str, "CPU: Dual Cortex-M33 @ 150MHz\n");
         furi_string_cat_printf(status_str, "Memory total: %dK\n", memmgr_get_total_heap() / 1024);
         furi_string_cat_printf(status_str, "Memory free: %dK\n\n", memmgr_get_free_heap() / 1024);
         furi_string_cat_printf(status_str, "Current meter: %s\n", (power_device & PowerDeviceIna219) ? "ok" : "NOT FOUND");
