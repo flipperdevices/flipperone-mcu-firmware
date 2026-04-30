@@ -13,14 +13,11 @@ struct UsbMux {
     FuriEventLoop* event_loop;
     Hd3ss3220* usb_mux_header;
     FuriMessageQueue* message_queue;
-    FuriEventLoopTimer* timer;
     UsbMuxDevice device;
 };
 
 typedef enum {
-    UsbMuxMessageTypePlayEffect,
-    UsbMuxMessageTypeStart,
-    UsbMuxMessageTypeStop,
+    UsbMuxMessageTypeTest = 0,
 } UsbMuxMessageType;
 
 typedef struct {
@@ -72,7 +69,8 @@ static UsbMux* usb_mux_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(USB_MUX_MAX_MESSAGES, sizeof(UsbMuxMessage));
 
-    instance->usb_mux_header = hd3ss3220_init(&furi_hal_i2c_handle_control, HD3SS3220_ADDRESS, NULL);
+    // TODO: control of the device's power supply
+    instance->usb_mux_header = hd3ss3220_init(&furi_hal_i2c_handle_main, HD3SS3220_ADDRESS, NULL);
     if(instance->usb_mux_header) {
         instance->device |= UsbMuxDeviceHd3ss3220;
     } else {

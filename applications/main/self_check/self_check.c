@@ -7,6 +7,7 @@
 #include <input_touch/input_touch.h>
 #include <drivers/display/display_jd9853_qspi.h>
 #include <pd/pd.h>
+#include <usb_mux/usb_mux.h>
 #include <assets.h>
 
 #define TAG "SelfCheck"
@@ -152,7 +153,13 @@ static bool self_check_process(FuriString* status_str) {
     }
 
     // check usb mux
-    // TODO: add usb mux
+    UsbMux* usb_mux = furi_record_open(RECORD_USBMUX);
+    UsbMuxDevice usb_mux_device;
+    check_ok = usb_mux_is_device_initialized(usb_mux, &usb_mux_device);
+    furi_record_close(RECORD_USBMUX);
+    if(all_ok) {
+        all_ok = check_ok;
+    }
 
     // show result
     if(status_str) {
@@ -168,7 +175,8 @@ static bool self_check_process(FuriString* status_str) {
         furi_string_cat_printf(status_str, "Charger: %s\n", (power_device & PowerDeviceBq25792) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Gauge: %s\n", (power_device & PowerDeviceBq28z620) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Touchpad: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "\nPress DEL to enter setup, OK or BACK to exit");
+        furi_string_cat_printf(status_str, "USB Mux: %s\n", (usb_mux_device & UsbMuxDeviceHd3ss3220) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Press DEL to enter setup, OK or BACK to exit");
     }
 
     return all_ok;
