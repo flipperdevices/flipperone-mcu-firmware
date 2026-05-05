@@ -96,3 +96,14 @@ Clay_String clay_helper_string_from_chars(const char* chars) {
     clay_string.chars = chars;
     return clay_string;
 }
+
+void clay_fixed_image(const Image* image) {
+    CLAY_AUTO_ID({
+        .layout =
+            {
+                .sizing = {.height = CLAY_SIZING_FIXED(image->height), .width = CLAY_SIZING_FIXED(image->width)},
+            },
+        .image = {.imageData = (void*)image},
+    }) {
+    }
+}
