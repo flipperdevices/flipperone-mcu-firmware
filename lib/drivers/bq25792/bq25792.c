@@ -143,7 +143,7 @@ static Bq25792Status bq25792_read_mem(Bq25792* instance, Bq25792Reg reg, uint8_t
     return bq25792_check_status(ret);
 }
 
-static Bq25792Status bq25792_load_config(Bq25792* instance) {
+Bq25792Status bq25792_load_default_config(Bq25792* instance) {
     furi_check(instance);
     Bq25792Status res = Bq25792StatusUnknown;
     do {
@@ -246,8 +246,8 @@ Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
             furi_crash("BQ25792 device ID mismatch!");
         }
 
-        if(bq25792_load_config(instance) != Bq25792StatusOk) {
-            furi_crash("BQ25792 failed to load config");
+        if(bq25792_load_default_config(instance) != Bq25792StatusOk) {
+            furi_crash("BQ25792 failed to load default config");
         }
 
     } else {

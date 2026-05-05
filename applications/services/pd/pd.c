@@ -28,6 +28,7 @@ struct Pd {
 typedef enum {
     PdMessageTypeSetMode,
     PdMessageTypeGetMode,
+    PdMessageTypeResetConfig,
 } PdMessageType;
 
 typedef struct {
@@ -61,6 +62,9 @@ static void pd_message_queue_callback(FuriEventLoopObject* object, void* context
         break;
     case PdMessageTypeGetMode:
         *(msg.get_mode) = instance->mode;
+        break;
+    case PdMessageTypeResetConfig:
+        result = fusb302_sw_reset(instance->fusb302_header) == Fusb302StatusOk;
         break;
     default:
         furi_crash("Invalid message type");
@@ -185,6 +189,20 @@ bool pd_get_mode(Pd* instance, PdMode* mode) {
         PdMessage msg = {
             .type = PdMessageTypeGetMode,
             .get_mode = mode,
+            .lock = api_lock_alloc_locked(),
+        };
+
+        pd_send_message(instance, &msg);
+        return true;
+    }
+    return false;
+}
+
+bool pd_reset_config(Pd* instance) {
+    furi_check(instance);
+    if(pd_is_device_initialized(instance, NULL)) {
+        PdMessage msg = {
+            .type = PdMessageTypeResetConfig,
             .lock = api_lock_alloc_locked(),
         };
 

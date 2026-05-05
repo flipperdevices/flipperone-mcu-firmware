@@ -35,6 +35,36 @@ struct Power {
     PowerDevice devices;
 };
 
+static Bq25792Status power_bq25792_reset_and_load_config(Power* instance) {
+    furi_assert(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+
+    do {
+        res = bq25792_load_default_config(instance->bq25792_header);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to load BQ25792 default config: %d", res);
+            break;
+        }
+        // Set default charge voltage and current limits
+        res = bq25792_set_charge_voltage_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_VOLTAGE);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to set BQ25792 charge voltage limit: %d", res);
+            break;
+        }
+        res = bq25792_set_charge_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_CURRENT);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to set BQ25792 charge current limit: %d", res);
+            break;
+        }
+        res = bq25792_set_input_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_INPUT_CURRENT);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to set BQ25792 input current limit: %d", res);
+            break;
+        }
+    } while(false);
+    return res;
+}
+
 static void power_bq25792_print_charger_irq(Power* instance) {
     Bq25792ChargerFlagReg fl = {0};
     bq25792_get_charger_irq_flags(instance->bq25792_header, &fl);
@@ -149,6 +179,9 @@ API_WRAPPER_PARAM(bq25792_get_charger_irq_flags, Bq25792Status, Bq25792*, Bq2579
 API_WRAPPER_PARAM(bq25792_adc_enable, Bq25792Status, Bq25792*, bool);
 API_WRAPPER(bq25792_watchdog_reset, Bq25792Status, Bq25792*);
 
+/* Wrapper for power-side BQ25792 reset/config function so it can be queued via PowerMessage */
+API_WRAPPER(power_bq25792_reset_and_load_config, Bq25792Status, Power*);
+
 // Bq28z620 wrappers
 
 API_WRAPPER_PARAM(bq28z620_get_control_status, Bq28z620Status, Bq28z620*, Bq28z620StdCmdControlStatusRegBits*);
@@ -221,10 +254,8 @@ static Power* power_alloc(void) {
     instance->bq25792_header = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);
     if(instance->bq25792_header) {
         instance->devices |= PowerDeviceBq25792;
-        // Set default charge voltage and current limits
-        bq25792_set_charge_voltage_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_VOLTAGE);
-        bq25792_set_charge_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_CURRENT);
-        bq25792_set_input_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_INPUT_CURRENT);
+        /* call synchronous implementation to initialize charger */
+        power_bq25792_reset_and_load_config(instance);
         furi_bsp_expander_main_attach_bq25792_callback(power_bq25792_event_isr, instance);
     } else {
         FURI_LOG_E(TAG, "Failed to initialize BQ25792");
@@ -354,6 +385,13 @@ float_t power_ina219_get_shunt_voltage_mv(Power* instance) {
 }
 
 // Bq25792 API functions
+
+bool power_bq25792_reset_config(Power* instance) {
+    furi_check(instance);
+    Bq25792Status result;
+    POWER_API_CALL(PowerDeviceBq25792, power_bq25792_reset_and_load_config, instance, result);
+    return result == Bq25792StatusOk;
+}
 
 bool power_bq25792_set_power_switch(Power* instance, Bq25792PowerSwitch power_switch) {
     furi_check(instance);

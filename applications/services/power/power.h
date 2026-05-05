@@ -27,6 +27,7 @@ float_t power_ina219_get_current_a(Power* instance);
 float_t power_ina219_get_power_w(Power* instance);
 float_t power_ina219_get_shunt_voltage_mv(Power* instance);
 
+bool power_bq25792_reset_config(Power* instance);
 bool power_bq25792_set_power_switch(Power* instance, Bq25792PowerSwitch power_switch);
 bool power_bq25792_get_ibus_ma(Power* instance, int16_t* ibus);
 bool power_bq25792_get_ibat_ma(Power* instance, int16_t* ibat);

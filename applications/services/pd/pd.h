@@ -23,6 +23,7 @@ extern "C" {
 #endif
 bool pd_is_device_initialized(Pd* instance, PdDevice* device);
 FuriPubSub* pd_get_pubsub(Pd* pd);
+bool pd_reset_config(Pd* instance);
 bool pd_set_mode(Pd* instance, PdMode mode);
 bool pd_get_mode(Pd* instance, PdMode* mode);
 

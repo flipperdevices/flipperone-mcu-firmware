@@ -5,6 +5,8 @@
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/spi_get_frame/spi_get_frame.h>
 #include <assets.h>
+#include <pd/pd.h>
+#include <power/power.h>
 
 #define TAG "CpuApp"
 
@@ -62,6 +64,18 @@ typedef struct {
     FuriMessageQueue* app_queue;
     SpiGetFrame* spi_get_frame;
 } CpuApp;
+
+static void furi_hal_reset_pd_and_charger(void) {
+    Pd* pd = furi_record_open(RECORD_PD);
+    PdDevice pd_device;
+    pd_reset_config(pd);
+    furi_record_close(RECORD_PD);
+
+    Power* power = furi_record_open(RECORD_POWER);
+    PowerDevice power_device;
+    power_bq25792_reset_config(power);
+    furi_record_close(RECORD_POWER);
+}
 
 static void furi_hal_bsp_linux_reset(void) {
     furi_bsp_main_reset();
@@ -301,20 +315,24 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
         switch(message.type) {
         case CpuAppMessageTypeStart:
         case CpuAppMessageTypeReset:
+            furi_hal_reset_pd_and_charger();
             furi_hal_bsp_linux_reset();
             furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             furi_hal_bsp_linux_start();
             cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
             break;
         case CpuAppMessageTypeStop:
+            furi_hal_reset_pd_and_charger();
             furi_hal_bsp_linux_reset();
             furi_hal_bsp_linux_stop();
             break;
         case CpuAppMessageTypeClose:
+            furi_hal_reset_pd_and_charger();
             furi_hal_bsp_linux_reset();
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             break;
         case CpuAppMessageTypeMaskrom:
+            furi_hal_reset_pd_and_charger();
             furi_hal_bsp_linux_reset();
             furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             furi_hal_bsp_linux_maskrom();
