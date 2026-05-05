@@ -50,6 +50,15 @@ bool haptic_start(Haptic* instance);
  */
 bool haptic_stop(Haptic* instance);
 
+
+/**
+ * @brief Forces the haptic device to perform auto-calibration.
+ * 
+ * @param instance The Haptic instance.
+ * @return true if the auto-calibration was successfully started, false otherwise.
+ */
+bool haptic_force_auto_calibrate(Haptic* instance);
+
 #ifdef __cplusplus
 }
 #endif
