@@ -62,7 +62,7 @@ static bool self_check_layout(void* _model) {
                         .attachTo = CLAY_ATTACH_TO_PARENT,
                     },
             }) {
-                clay_simple_image(&logo_head);
+                clay_fixed_image(&logo_head);
             }
 
             // text
