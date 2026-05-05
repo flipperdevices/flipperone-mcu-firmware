@@ -11,10 +11,10 @@ typedef struct Bq25792 Bq25792;
 typedef void (*Bq25792CallbackInput)(void* context);
 
 typedef enum {
-    Bq25792StatusOk = 0,
+    Bq25792StatusUnknown = 0,
+    Bq25792StatusOk = 1,
     Bq25792StatusError = -1,
     Bq25792StatusTimeout = -2,
-    Bq25792StatusUnknown = -3,
 } Bq25792Status;
 
 #ifdef __cplusplus

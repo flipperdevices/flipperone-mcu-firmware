@@ -32,6 +32,7 @@ struct Power {
     Ina219* ina219_header;
     Bq28z620* bq28z620_header;
     FuriMessageQueue* message_queue;
+    PowerDevice devices;
 };
 
 static void power_bq25792_print_charger_irq(Power* instance) {
@@ -214,25 +215,34 @@ static Power* power_alloc(void) {
     Power* instance = (Power*)malloc(sizeof(Power));
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(POWER_MAX_MESSAGES, sizeof(PowerMessage));
+    instance->devices = 0;
+
+    // init bq25792
     instance->bq25792_header = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);
-
-    // Set default charge voltage and current limits
-    bq25792_set_charge_voltage_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_VOLTAGE);
-    bq25792_set_charge_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_CURRENT);
-    bq25792_set_input_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_INPUT_CURRENT);
-
-    instance->ina219_header = ina219_init(&furi_hal_i2c_handle_main, INA219_ADDRESS, POWER_INA_SHUNT_RESISTOR_OHMS, POWER_INA_BUS_CURRENT_MAX);
-    instance->bq28z620_header = bq28z620_init(&furi_hal_i2c_handle_main, BQ28Z620_ADDRESS);
-
-    if(!instance->bq25792_header) {
-        FURI_LOG_E(TAG, "Failed to initialize BQ25792");
-    } else {
+    if(instance->bq25792_header) {
+        instance->devices |= PowerDeviceBq25792;
+        // Set default charge voltage and current limits
+        bq25792_set_charge_voltage_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_VOLTAGE);
+        bq25792_set_charge_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_CURRENT);
+        bq25792_set_input_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_INPUT_CURRENT);
         furi_bsp_expander_main_attach_bq25792_callback(power_bq25792_event_isr, instance);
+    } else {
+        FURI_LOG_E(TAG, "Failed to initialize BQ25792");
     }
-    if(!instance->ina219_header) {
+
+    // init ina219
+    instance->ina219_header = ina219_init(&furi_hal_i2c_handle_main, INA219_ADDRESS, POWER_INA_SHUNT_RESISTOR_OHMS, POWER_INA_BUS_CURRENT_MAX);
+    if(instance->ina219_header) {
+        instance->devices |= PowerDeviceIna219;
+    } else {
         FURI_LOG_E(TAG, "Failed to initialize INA219");
     }
-    if(!instance->bq28z620_header) {
+
+    // init bq28z620
+    instance->bq28z620_header = bq28z620_init(&furi_hal_i2c_handle_main, BQ28Z620_ADDRESS);
+    if(instance->bq28z620_header) {
+        instance->devices |= PowerDeviceBq28z620;
+    } else {
         FURI_LOG_E(TAG, "Failed to initialize BQ28Z620");
     }
 
@@ -243,6 +253,14 @@ static Power* power_alloc(void) {
     furi_record_create(RECORD_POWER, instance);
 
     return instance;
+}
+
+bool power_is_device_initialized(Power* instance, PowerDevice* device) {
+    furi_check(instance);
+    if(device) {
+        *device = instance->devices;
+    }
+    return (instance->devices & PowerDeviceAllInit) == PowerDeviceAllInit;
 }
 
 int32_t power_srv(void* p) {
@@ -259,36 +277,50 @@ FuriPubSub* power_get_pubsub(Power* power) {
     return power->event_pubsub;
 }
 
-#define POWER_API_CALL_PARAM(fn, ctx, par, res) \
-    do {                                        \
-        if(0) {                                 \
-            /* typechecking */                  \
-            res = fn(ctx, par);                 \
-        }                                       \
-        PowerMessage msg = {                    \
-            .function = fn##_api,               \
-            .context = ctx,                     \
-            .param = &(par),                    \
-            .result = &(res),                   \
-            .lock = api_lock_alloc_locked(),    \
-        };                                      \
-        power_send_message(instance, &msg);     \
+#define POWER_API_CALL_PARAM(dev, fn, ctx, par, res)                             \
+    do {                                                                         \
+        if(0) {                                                                  \
+            /* typechecking */                                                   \
+            res = fn(ctx, par);                                                  \
+        }                                                                        \
+        if(dev) {                                                                \
+            /* device checking */                                                \
+            if(!((instance)->devices & (dev))) {                                 \
+                FURI_LOG_E(TAG, "Device not initialized for API call: %s", #fn); \
+                break;                                                           \
+            }                                                                    \
+        }                                                                        \
+        PowerMessage msg = {                                                     \
+            .function = fn##_api,                                                \
+            .context = ctx,                                                      \
+            .param = &(par),                                                     \
+            .result = &(res),                                                    \
+            .lock = api_lock_alloc_locked(),                                     \
+        };                                                                       \
+        power_send_message(instance, &msg);                                      \
     } while(0);
 
-#define POWER_API_CALL(fn, ctx, res)         \
-    do {                                     \
-        if(0) {                              \
-            /* typechecking */               \
-            res = fn(ctx);                   \
-        }                                    \
-        PowerMessage msg = {                 \
-            .function = fn##_api,            \
-            .context = ctx,                  \
-            .param = NULL,                   \
-            .result = &(res),                \
-            .lock = api_lock_alloc_locked(), \
-        };                                   \
-        power_send_message(instance, &msg);  \
+#define POWER_API_CALL(dev, fn, ctx, res)                                        \
+    do {                                                                         \
+        if(0) {                                                                  \
+            /* typechecking */                                                   \
+            res = fn(ctx);                                                       \
+        }                                                                        \
+        if(dev) {                                                                \
+            /* device checking */                                                \
+            if(!((instance)->devices & (dev))) {                                 \
+                FURI_LOG_E(TAG, "Device not initialized for API call: %s", #fn); \
+                break;                                                           \
+            }                                                                    \
+        }                                                                        \
+        PowerMessage msg = {                                                     \
+            .function = fn##_api,                                                \
+            .context = ctx,                                                      \
+            .param = NULL,                                                       \
+            .result = &(res),                                                    \
+            .lock = api_lock_alloc_locked(),                                     \
+        };                                                                       \
+        power_send_message(instance, &msg);                                      \
     } while(0);
 
 // Ina219 API functions
@@ -296,28 +328,28 @@ FuriPubSub* power_get_pubsub(Power* power) {
 float_t power_ina219_get_voltage_v(Power* instance) {
     furi_check(instance);
     float_t voltage;
-    POWER_API_CALL(ina219_get_bus_voltage_v, instance->ina219_header, voltage);
+    POWER_API_CALL(PowerDeviceIna219, ina219_get_bus_voltage_v, instance->ina219_header, voltage);
     return voltage;
 }
 
 float_t power_ina219_get_current_a(Power* instance) {
     furi_check(instance);
     float_t current;
-    POWER_API_CALL(ina219_get_current_a, instance->ina219_header, current);
+    POWER_API_CALL(PowerDeviceIna219, ina219_get_current_a, instance->ina219_header, current);
     return current;
 }
 
 float_t power_ina219_get_power_w(Power* instance) {
     furi_check(instance);
     float_t power;
-    POWER_API_CALL(ina219_get_power_w, instance->ina219_header, power);
+    POWER_API_CALL(PowerDeviceIna219, ina219_get_power_w, instance->ina219_header, power);
     return power;
 }
 
 float_t power_ina219_get_shunt_voltage_mv(Power* instance) {
     furi_check(instance);
     float_t shunt_voltage;
-    POWER_API_CALL(ina219_get_shunt_voltage_mv, instance->ina219_header, shunt_voltage);
+    POWER_API_CALL(PowerDeviceIna219, ina219_get_shunt_voltage_mv, instance->ina219_header, shunt_voltage);
     return shunt_voltage;
 }
 
@@ -326,147 +358,147 @@ float_t power_ina219_get_shunt_voltage_mv(Power* instance) {
 bool power_bq25792_set_power_switch(Power* instance, Bq25792PowerSwitch power_switch) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_set_power_switch, instance->bq25792_header, power_switch, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_power_switch, instance->bq25792_header, power_switch, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ibus_ma(Power* instance, int16_t* ibus) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_ibus_ma, instance->bq25792_header, ibus, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_ibus_ma, instance->bq25792_header, ibus, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ibat_ma(Power* instance, int16_t* ibat) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_ibat_ma, instance->bq25792_header, ibat, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_ibat_ma, instance->bq25792_header, ibat, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vbus_mv(Power* instance, uint16_t* vbus) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_vbus_mv, instance->bq25792_header, vbus, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_vbus_mv, instance->bq25792_header, vbus, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vbat_mv(Power* instance, uint16_t* vbat) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_vbat_mv, instance->bq25792_header, vbat, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_vbat_mv, instance->bq25792_header, vbat, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_vsys_mv(Power* instance, uint16_t* vsys) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_vsys_mv, instance->bq25792_header, vsys, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_vsys_mv, instance->bq25792_header, vsys, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_temperature(Power* instance, float* temperature) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_charger_temperature, instance->bq25792_header, temperature, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charger_temperature, instance->bq25792_header, temperature, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_temperature_battery_celsius(Power* instance, float* temperature) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_temperature_battery_celsius, instance->bq25792_header, temperature, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_temperature_battery_celsius, instance->bq25792_header, temperature, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_input_current_limit_ma(Power* instance, uint16_t* input_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_set_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charge_voltage_limit_ma(Power* instance, uint16_t* charge_voltage_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_charge_voltage_limit_ma(Power* instance, uint16_t charge_voltage_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_set_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charge_current_limit_ma(Power* instance, uint16_t* charge_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_set_charge_current_limit_ma(Power* instance, uint16_t charge_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_set_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_charge_enable(Power* instance, bool enable) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_charge_enable, instance->bq25792_header, enable, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_charge_enable, instance->bq25792_header, enable, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_status(Power* instance, Bq25792ChargerStatusReg* status) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_charger_status, instance->bq25792_header, status, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charger_status, instance->bq25792_header, status, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_fault(Power* instance, Bq25792FaultStatusReg* fault) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_charger_fault, instance->bq25792_header, fault, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charger_fault, instance->bq25792_header, fault, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_charger_irq_flags(Power* instance, Bq25792ChargerFlagReg* irq_flags) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_charger_irq_flags, instance->bq25792_header, irq_flags, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charger_irq_flags, instance->bq25792_header, irq_flags, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_adc_enable(Power* instance, bool enable) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_adc_enable, instance->bq25792_header, enable, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_adc_enable, instance->bq25792_header, enable, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_watchdog_reset(Power* instance) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL(bq25792_watchdog_reset, instance->bq25792_header, result);
+    POWER_API_CALL(PowerDeviceBq25792, bq25792_watchdog_reset, instance->bq25792_header, result);
     return result == Bq25792StatusOk;
 }
 
 bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit) {
     furi_check(instance);
     Bq25792Status result;
-    POWER_API_CALL_PARAM(bq25792_get_ico_current_limit_ma, instance->bq25792_header, ico_current_limit, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_ico_current_limit_ma, instance->bq25792_header, ico_current_limit, result);
     return result == Bq25792StatusOk;
 }
 
@@ -475,160 +507,160 @@ bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_curre
 bool power_bq28z620_get_control_status(Power* instance, Bq28z620StdCmdControlStatusRegBits* control_status) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_control_status, instance->bq28z620_header, control_status, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_control_status, instance->bq28z620_header, control_status, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_time_to_empty(Power* instance, uint16_t* time_to_empty) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_time_to_empty, instance->bq28z620_header, time_to_empty, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_time_to_empty, instance->bq28z620_header, time_to_empty, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_temperature(Power* instance, float* temperature) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_temperature, instance->bq28z620_header, temperature, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_temperature, instance->bq28z620_header, temperature, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_voltage(Power* instance, float* voltage) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_voltage, instance->bq28z620_header, voltage, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_voltage, instance->bq28z620_header, voltage, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_battery_status(Power* instance, Bq28z620StdCmdBatteryStatusRegBits* battery_status) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_battery_status, instance->bq28z620_header, battery_status, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_battery_status, instance->bq28z620_header, battery_status, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_current(Power* instance, int16_t* current) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_current, instance->bq28z620_header, current, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_current, instance->bq28z620_header, current, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_remaining_capacity(Power* instance, uint16_t* remaining_capacity) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_remaining_capacity, instance->bq28z620_header, remaining_capacity, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_remaining_capacity, instance->bq28z620_header, remaining_capacity, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_full_charge_capacity(Power* instance, uint16_t* full_charge_capacity) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_full_charge_capacity, instance->bq28z620_header, full_charge_capacity, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_full_charge_capacity, instance->bq28z620_header, full_charge_capacity, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_average_current(Power* instance, int16_t* average_current) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_average_current, instance->bq28z620_header, average_current, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_average_current, instance->bq28z620_header, average_current, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_average_time_to_empty(Power* instance, uint16_t* average_time_to_empty) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_average_time_to_empty, instance->bq28z620_header, average_time_to_empty, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_average_time_to_empty, instance->bq28z620_header, average_time_to_empty, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_average_time_to_full(Power* instance, uint16_t* average_time_to_full) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_average_time_to_full, instance->bq28z620_header, average_time_to_full, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_average_time_to_full, instance->bq28z620_header, average_time_to_full, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_standby_current(Power* instance, int16_t* standby_current) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_standby_current, instance->bq28z620_header, standby_current, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_standby_current, instance->bq28z620_header, standby_current, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_standby_time_to_empty(Power* instance, uint16_t* standby_time_to_empty) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_standby_time_to_empty, instance->bq28z620_header, standby_time_to_empty, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_standby_time_to_empty, instance->bq28z620_header, standby_time_to_empty, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_max_load_current(Power* instance, int16_t* max_load_current) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_max_load_current, instance->bq28z620_header, max_load_current, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_max_load_current, instance->bq28z620_header, max_load_current, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_max_load_time_to_empty(Power* instance, uint16_t* max_load_time_to_empty) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_max_load_time_to_empty, instance->bq28z620_header, max_load_time_to_empty, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_max_load_time_to_empty, instance->bq28z620_header, max_load_time_to_empty, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_average_power(Power* instance, int16_t* average_power) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_average_power, instance->bq28z620_header, average_power, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_average_power, instance->bq28z620_header, average_power, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_internal_temperature(Power* instance, float* internal_temperature) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_internal_temperature, instance->bq28z620_header, internal_temperature, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_internal_temperature, instance->bq28z620_header, internal_temperature, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_cycle_count(Power* instance, uint16_t* cycle_count) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_cycle_count, instance->bq28z620_header, cycle_count, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_cycle_count, instance->bq28z620_header, cycle_count, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_relative_state_of_charge(Power* instance, uint8_t* relative_state_of_charge) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_relative_state_of_charge, instance->bq28z620_header, relative_state_of_charge, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_relative_state_of_charge, instance->bq28z620_header, relative_state_of_charge, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_state_of_health(Power* instance, uint8_t* state_of_health) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_state_of_health, instance->bq28z620_header, state_of_health, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_state_of_health, instance->bq28z620_header, state_of_health, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_charging_voltage(Power* instance, float* charging_voltage) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_charging_voltage, instance->bq28z620_header, charging_voltage, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_charging_voltage, instance->bq28z620_header, charging_voltage, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_charging_current(Power* instance, int16_t* charging_current) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_charging_current, instance->bq28z620_header, charging_current, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_charging_current, instance->bq28z620_header, charging_current, result);
     return result == Bq28z620StatusOk;
 }
 
 bool power_bq28z620_get_design_capacity(Power* instance, uint16_t* design_capacity) {
     furi_check(instance);
     Bq28z620Status result;
-    POWER_API_CALL_PARAM(bq28z620_get_design_capacity, instance->bq28z620_header, design_capacity, result);
+    POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_design_capacity, instance->bq28z620_header, design_capacity, result);
     return result == Bq28z620StatusOk;
 }

@@ -9,12 +9,12 @@
 typedef struct Bq28z620 Bq28z620;
 
 typedef enum {
-    Bq28z620StatusOk = 0,
+    Bq28z620StatusUnknown = 0,
+    Bq28z620StatusOk = 1,
     Bq28z620StatusRxEmpty,
     Bq28z620StatusTxEmpty,
     Bq28z620StatusError = -1,
     Bq28z620StatusTimeout = -2,
-    Bq28z620StatusUnknown = -3,
 } Bq28z620Status;
 
 #ifdef __cplusplus

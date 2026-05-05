@@ -4,27 +4,22 @@
 extern "C" {
 #endif
 
-typedef enum {
-    I2CRegFlagRead = 1 << 0,
-    I2CRegFlagWrite = 1 << 1,
-    I2CRegFlagReadToClear = 1 << 2,
+// Callback type for writable registers. Address will be always even, value is what in the register after high byte is written.
+typedef void (*I2CRegisterCallback)(void* context, uint16_t address, uint16_t value);
 
-    I2CRegFlagInterrupt = 1 << 3, // internal use only, do not use
-} I2CRegFlag;
+// Add a readable register to the register map. Address must be even.
+void i2c_register_add_readable(uint16_t address, uint16_t default_value);
 
-// Init register storage
-void i2c_registers_init(void);
-
-// Add a register to the register map. Address must be even, value is 16-bit but accessed as big-endian 8-bit.
-// Flags specify the register properties (readable, writable, read-to-clear), see I2CRegFlag.
-void i2c_register_add(uint16_t address, uint16_t default_value, uint32_t flags);
+// Add a writable register to the register map. Address must be even. Register will be readable as well.
+void i2c_register_add_writable(uint16_t address, uint16_t default_value, I2CRegisterCallback write_callback, void* write_callback_context);
 
 // Adds an interrupt register with a corresponding mask register and connects it to the status register.
 void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit);
 
 // Update register value with a mask. This is used to update only some bits of the register without affecting other bits.
 // @warning Must be called in a critical section, use with_i2c_register macro for convenience.
-void i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
+// @returns true if the register value is changed after the update, false otherwise.
+bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
 
 // Sets the interrupt bits if the interrupt is not masked. Also, the interrupt line will be raised if some interrupt bits are set.
 // @warning Must be called in a critical section, use with_i2c_register macro for convenience.

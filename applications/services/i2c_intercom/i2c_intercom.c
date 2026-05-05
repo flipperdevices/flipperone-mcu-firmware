@@ -4,49 +4,46 @@
 
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
+
+#include "i2c_intercom.h"
 #include "i2c_registers_i.h"
-#include "i2c_registers_map.h"
 
-// TODO: move somewhere
-#include <input/input.h>
-#include <input_touch/input_touch.h>
-#include <headphones/headphones.h>
+#define TAG "I2CIntercom"
 
-#define TAG                                   "I2cIntercom"
-#define I2C_INTERCOM_THREAD_FLAG_ISR          0x00000001
+#define I2C_INTERCOM_THREAD_SETUP_END_FLAG (1 << 0)
+
 #define I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER 0x00
 #define I2C_INTERCOM_TIMEOUT_MS               700
 #define I2C_INTERCOM_INVALID_ADDRESS_VALUE    0x00
 
 typedef enum {
-    I2cIntercomStateIdle,
-    I2cIntercomStateStart,
-    I2cIntercomStateAddressSet,
-    I2cIntercomStateAddressNoSet,
-    I2cIntercomStateDataTransmitted,
-} I2cIntercomState;
+    I2CIntercomStateIdle,
+    I2CIntercomStateStart,
+    I2CIntercomStateAddressSet,
+    I2CIntercomStateAddressNoSet,
+    I2CIntercomStateDataTransmitted,
+} I2CIntercomState;
 
 /** I2C Intercom state */
-typedef struct {
+struct I2CIntercom {
     FuriThreadId thread_id;
     const FuriHalI2cBusHandle* bus_handle;
     alarm_id_t timeout_alarm;
 
-    I2cIntercomState state;
+    I2CIntercomState state;
     size_t mem_address;
-
-} I2cIntercom;
+};
 
 static int64_t __isr __not_in_flash_func(i2c_intercom_timeout_callback)(alarm_id_t id, __unused void* user_data) {
     UNUSED(id);
-    I2cIntercom* instance = user_data;
+    I2CIntercom* instance = user_data;
 
-    instance->state = I2cIntercomStateIdle;
+    instance->state = I2CIntercomStateIdle;
     furi_hal_i2c_slave_bus_reset(instance->bus_handle);
     return 0;
 }
 
-static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle, I2cIntercom* instance) {
+static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
     uint8_t data;
     with_i2c_register({
         if(!i2c_register_read_start(instance->mem_address, &data)) {
@@ -60,7 +57,7 @@ static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle,
     });
 }
 
-static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle, I2cIntercom* instance) {
+static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
     size_t total = 0;
     size_t len = 0;
     do {
@@ -86,54 +83,54 @@ static inline bool i2c_intercom_receive_address_to(const FuriHalI2cBusHandle* ha
     }
 }
 
-static inline I2cIntercomState i2c_intercom_receive_address(const FuriHalI2cBusHandle* handle, size_t* mem_address) {
+static inline I2CIntercomState i2c_intercom_receive_address(const FuriHalI2cBusHandle* handle, size_t* mem_address) {
     if(i2c_intercom_receive_address_to(handle, mem_address)) {
-        return I2cIntercomStateAddressSet;
+        return I2CIntercomStateAddressSet;
     } else {
-        return I2cIntercomStateAddressNoSet;
+        return I2CIntercomStateAddressNoSet;
     }
 }
 
 void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveEvent event, void* context) {
-    I2cIntercom* instance = context;
+    I2CIntercom* instance = context;
     switch(event) {
     case FuriHalI2cBusSlaveEventStart:
         // Master has sent a Start signal, prepare to receive address
-        instance->state = I2cIntercomStateStart;
+        instance->state = I2CIntercomStateStart;
         instance->timeout_alarm = add_alarm_in_ms(I2C_INTERCOM_TIMEOUT_MS, i2c_intercom_timeout_callback, instance, true);
         break;
     case FuriHalI2cBusSlaveEventWrite:
         // Master is writing data to slave
-        if(instance->state == I2cIntercomStateStart) {
+        if(instance->state == I2CIntercomStateStart) {
             instance->state = i2c_intercom_receive_address(handle, &instance->mem_address);
         }
-        if(instance->state == I2cIntercomStateAddressSet) {
+        if(instance->state == I2CIntercomStateAddressSet) {
             i2c_intercom_data_receive(handle, instance);
         }
         break;
     case FuriHalI2cBusSlaveEventRead:
         // Master is requesting data from slave
-        instance->state = I2cIntercomStateDataTransmitted;
+        instance->state = I2CIntercomStateDataTransmitted;
         i2c_intercom_data_transmit(handle, instance);
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
-        if(instance->state == I2cIntercomStateStart || instance->state == I2cIntercomStateDataTransmitted) {
+        if(instance->state == I2CIntercomStateStart || instance->state == I2CIntercomStateDataTransmitted) {
             instance->state = i2c_intercom_receive_address(handle, &instance->mem_address);
         }
-        if(instance->state == I2cIntercomStateAddressNoSet || instance->state == I2cIntercomStateIdle) {
+        if(instance->state == I2CIntercomStateAddressNoSet || instance->state == I2CIntercomStateIdle) {
             instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
         }
         break;
     case FuriHalI2cBusSlaveEventStop:
         // Master has sent a Stop signal, finalize any ongoing operations
-        if(instance->state == I2cIntercomStateStart) {
+        if(instance->state == I2CIntercomStateStart) {
             instance->state = i2c_intercom_receive_address(handle, &instance->mem_address);
         }
-        if(instance->state == I2cIntercomStateAddressSet) {
+        if(instance->state == I2CIntercomStateAddressSet) {
             i2c_intercom_data_receive(handle, instance);
         }
 
-        instance->state = I2cIntercomStateIdle;
+        instance->state = I2CIntercomStateIdle;
         cancel_alarm(instance->timeout_alarm);
 
         break;
@@ -145,86 +142,38 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     // furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_FLAG_ISR);
 }
 
-static void i2c_registers_input_event_glue(const void* value, void* ctx) {
-    UNUSED(ctx);
-    furi_check(value);
-    InputEvent* event = (InputEvent*)value;
-    if(event->type == InputTypePress) {
-        with_i2c_register({
-            i2c_register_update(I2C_BUTTONS_STATE_REG_ADDRESS, event->key, event->key);
-            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
-        });
-    } else if(event->type == InputTypeRelease) {
-        with_i2c_register({
-            i2c_register_update(I2C_BUTTONS_STATE_REG_ADDRESS, 0, event->key);
-            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS);
-        });
-    }
-}
-
-static void i2c_registers_input_touch_event_glue(const void* value, void* ctx) {
-    UNUSED(ctx);
-    furi_check(value);
-    InputTouchEvent* event = (InputTouchEvent*)value;
-    if(event->type == InputTouchTypeStart || event->type == InputTouchTypeMove || event->type == InputTouchTypeEnd) {
-        with_i2c_register({
-            if(event->type == InputTouchTypeStart || event->type == InputTouchTypeMove) {
-                i2c_register_update(I2C_TOUCHPAD_X_REG_ADDRESS, event->x, 0xFFFF);
-                i2c_register_update(I2C_TOUCHPAD_Y_REG_ADDRESS, event->y, 0xFFFF);
-            }
-            i2c_register_update(I2C_TOUCHPAD_PRESS_REG_ADDRESS, event->pressure, 0xFFFF);
-            i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD);
-        });
-    }
-}
-
-static void i2c_registers_headphones_event_glue(const void* value, void* ctx) {
-    UNUSED(ctx);
-    furi_check(value);
-    HeadphonesEvent* event = (HeadphonesEvent*)value;
-    with_i2c_register({
-        i2c_register_update(I2C_HEADPHONES_STATE_REG_ADDRESS, event->hp_status, 0xFFFF);
-        i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES);
-    });
+void i2c_intercom_setup_end(I2CIntercom* instance) {
+    furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_SETUP_END_FLAG);
 }
 
 int32_t i2c_intercom_srv(void* p) {
     UNUSED(p);
 
-    I2cIntercom* instance = malloc(sizeof(I2cIntercom));
+    I2CIntercom* instance = malloc(sizeof(I2CIntercom));
     instance->thread_id = furi_thread_get_current_id();
     instance->bus_handle = &furi_hal_i2c_handle_cpu;
 
     i2c_registers_init();
 
-    // Version
-    i2c_register_add(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION, I2CRegFlagRead);
+    furi_record_create(RECORD_I2C_INTERCOM, instance);
 
-    // Input
-    // Interrupt register
-    i2c_register_add_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_INPUT);
+    FURI_LOG_I(TAG, "started");
 
-    // Buttons state
-    i2c_register_add(I2C_BUTTONS_STATE_REG_ADDRESS, 0, I2CRegFlagRead);
-    furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), i2c_registers_input_event_glue, NULL);
+    // wait to end of setup before allowing interrupts
+    {
+        uint32_t flags = furi_thread_flags_wait(I2C_INTERCOM_THREAD_SETUP_END_FLAG, FuriFlagWaitAny, FuriWaitForever);
+        furi_check(!(flags & FuriFlagError));
+    }
 
-    // Touchpad state
-    i2c_register_add(I2C_TOUCHPAD_X_REG_ADDRESS, 0, I2CRegFlagRead);
-    i2c_register_add(I2C_TOUCHPAD_Y_REG_ADDRESS, 0, I2CRegFlagRead);
-    i2c_register_add(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0, I2CRegFlagRead);
-    furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_TOUCH_EVENTS), i2c_registers_input_touch_event_glue, NULL);
-
-    // Headphones
-    i2c_register_add(I2C_HEADPHONES_STATE_REG_ADDRESS, 0, I2CRegFlagRead);
-    furi_pubsub_subscribe(furi_record_open(RECORD_HEADPHONES), i2c_registers_headphones_event_glue, NULL);
+    FURI_LOG_I(TAG, "setup completed, enabling I2C slave mode");
 
     furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
-    instance->state = I2cIntercomStateIdle;
+    instance->state = I2CIntercomStateIdle;
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
 
     while(1) {
-        furi_thread_flags_wait(I2C_INTERCOM_THREAD_FLAG_ISR, FuriFlagWaitAny, FuriWaitForever);
+        furi_delay_ms(FuriWaitForever);
     }
 
     return 0;

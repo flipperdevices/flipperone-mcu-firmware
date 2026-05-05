@@ -142,10 +142,9 @@ void furi_state_unsubscribe(FuriStateSub* sub) {
     free(sub);
 }
 
-void furi_state_get(FuriStateSub* sub, void* item_out) {
-    furi_check(sub);
+void furi_state_get(FuriState* state, void* item_out) {
+    furi_check(state);
     furi_check(item_out);
-    FuriState* state = sub->state;
 
     furi_state_lock(state);
     memcpy(item_out, state->item, state->item_size);

@@ -6,6 +6,9 @@
 extern "C" {
 #endif
 
+// Init register storage
+void i2c_registers_init(void);
+
 // Start register reading
 // @warning Must be called in a critical section, use with_i2c_register macro for convenience.
 bool i2c_register_read_start(uint16_t address, uint8_t* value);

@@ -17,6 +17,16 @@ This repository is part of [Flipper One MCU Firmware](https://github.com/orgs/fl
 
 The MCU and CPU are interconnected via several interfaces: SPI, I²C, and UART. Additional GPIO lines are used for BOOT_0, BOOT_1, and IRQ signals.
 
+## Automated builds
+Builds run automatically on every push to the `dev` branch, on tag pushes, and on pull requests. PR builds are linked from a bot comment on the pull request.
+
+### [`📥 Download latest dev firmware →`](https://update.flipperzero.one/builds/flipper-one-mcu/dev/)
+**⚠️ TODO:** make a proper build server address and folder structure instead of using `flipperzero.one`
+
+## Manual build 
+
+**⚠️ TODO:** how to build manually? 
+
 ## Join development
 
 * Check the public task tracker: [MCU Firmware Project](https://github.com/orgs/flipperdevices/projects/8)

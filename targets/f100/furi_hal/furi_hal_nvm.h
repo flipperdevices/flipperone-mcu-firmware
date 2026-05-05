@@ -109,6 +109,24 @@ FuriHalNvmStorage furi_hal_nvm_set_bool(const char* key, bool value);
  */
 FuriHalNvmStorage furi_hal_nvm_get_bool(const char* key, bool* value);
 
+/** Set a struct in NVM storage
+ *
+ * @param      key    The key
+ * @param      ptr    Pointer to the struct
+ * @param      size   Size of the struct
+ * @return     Storage status
+ */
+FuriHalNvmStorage furi_hal_nvm_set_struct(const char* key, const void* ptr, size_t size);
+
+/** Get a struct from NVM storage
+ *
+ * @param      key    The key
+ * @param      ptr    Pointer to the struct
+ * @param      size   Size of the struct
+ * @return     Storage status
+ */
+FuriHalNvmStorage furi_hal_nvm_get_struct(const char* key, void* ptr, size_t size);
+
 #ifdef __cplusplus
 }
 #endif

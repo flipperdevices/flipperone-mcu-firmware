@@ -7,11 +7,14 @@
 
 #define TAG "HapticTest"
 
+#define KEYPAD_BUTTON_WIDTH CLAY_SIZING_FIXED(80)
+
 typedef struct {
     uint32_t effect_index;
     int32_t play_time_ms;
     FuriString* effect_name;
     FuriString* play_time_ms_str;
+    bool sw_key_pressed;
 } HapticTestModel;
 
 typedef struct {
@@ -21,6 +24,22 @@ typedef struct {
     FuriThread* thread;
     Haptic* haptic;
 } HapticTest;
+
+static void keypad_test_app_create_keypad_button(Clay_String text, bool inverted) {
+    CLAY_AUTO_ID({
+        .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
+        .layout =
+            {
+                .padding = {8, 8, 4, 4},
+                .sizing = {.width = KEYPAD_BUTTON_WIDTH},
+                .childAlignment = {.x = CLAY_ALIGN_X_CENTER},
+            },
+        .backgroundColor = inverted ? COLOR_WHITE : COLOR_BLACK,
+        .cornerRadius = CLAY_CORNER_RADIUS(4),
+    }) {
+        CLAY_TEXT(text, CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = inverted ? COLOR_BLACK : COLOR_WHITE}));
+    }
+}
 
 static bool haptic_test_layout(void* _model) {
     furi_assert(_model);
@@ -98,6 +117,24 @@ static bool haptic_test_layout(void* _model) {
         }
     }
 
+    CLAY(
+        CLAY_APP_ID("Footer"),
+        {
+            .layout =
+                {
+                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                    .sizing = {.height = CLAY_SIZING_FIXED(28), .width = CLAY_SIZING_GROW(0)},
+                    .padding = {0, 6, 4, 6},
+                    .childAlignment = {.y = CLAY_ALIGN_Y_CENTER},
+                },
+        }) {
+        /* spacer grows to push button to the right */
+        CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(1)}}}) {
+        }
+        CLAY_AUTO_ID({.layout = {.sizing = {.width = KEYPAD_BUTTON_WIDTH}}}) {
+            keypad_test_app_create_keypad_button(CLAY_STRING("Calb_Key_Sw"), model->sw_key_pressed);
+        }
+    }
     return false;
 }
 
@@ -169,6 +206,12 @@ static bool haptic_test_input(InputEvent* event, void* context) {
                 true);
             consumed = true;
         }
+
+        if(event->key == InputKeySw) {
+            haptic_force_auto_calibrate(instance->haptic);
+            with_view_model(instance->view, HapticTestModel * model, { model->sw_key_pressed = true; }, true);
+            consumed = true;
+        }
     }
 
     if(event->type == InputTypeRepeat) {
@@ -217,6 +260,11 @@ static bool haptic_test_input(InputEvent* event, void* context) {
                 true);
             consumed = true;
         }
+    }
+\
+    if(event->type == InputTypeRelease && event->key == InputKeySw) {
+        with_view_model(instance->view, HapticTestModel * model, { model->sw_key_pressed = false; }, true);
+        consumed = true;
     }
 
     return consumed;

@@ -3,6 +3,8 @@
 #include <furi.h>
 #include <furi_bsp.h>
 
+#define TAG "InputService"
+
 #define INPUT_DEBOUNCE_TICKS      4
 #define INPUT_DEBOUNCE_TICKS_HALF (INPUT_DEBOUNCE_TICKS / 2)
 #define INPUT_PRESS_TICKS         150
@@ -96,11 +98,23 @@ int32_t input_srv(void* p) {
 
     InputPinState pin_states[input_pins_count];
 
+    furi_record_create(RECORD_INPUT_EVENTS, event_pubsub);
+
+    // Check if Control Expander is initialized
+    FuriBspDevice initialized_devices;
+    furi_bsp_expander_is_initialized(&initialized_devices);
+    if(!(initialized_devices & FuriBspDeviceExpanderControl)) {
+        FURI_LOG_E(TAG, "Control Expander not initialized, input service cannot run");
+        while (1)
+        {
+            furi_delay_ms(FuriWaitForever);
+        }
+        
+    }
+
     furi_bsp_expander_control_attach_buttons_callback(input_isr, thread_id);
 
     uint16_t input_state = furi_bsp_expander_control_read_buttons();
-
-    furi_record_create(RECORD_INPUT_EVENTS, event_pubsub);
 
     for(size_t i = 0; i < input_pins_count; i++) {
         pin_states[i].pin = &input_pins[i];

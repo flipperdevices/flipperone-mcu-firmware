@@ -39,6 +39,14 @@ struct Gui {
     FuriEventFlag* redraw_flag;
     FuriMessageQueue* input_queue;
     FuriMessageQueue* input_touch_queue;
+
+    // Unhandled input callbacks
+    struct {
+        ViewInputCallback input_callback;
+        void* input_context;
+        ViewInputTouchCallback input_touch_callback;
+        void* input_touch_context;
+    } unhandled;
 };
 
 static int gui_view_compare(const ViewHandle* a, const ViewHandle* b) {
@@ -162,17 +170,27 @@ static void gui_input_touch(Gui* gui, InputTouchEvent* input_event) {
 
     gui_lock(gui);
 
+    bool consumed = false;
     ViewHandleArray_it_t it;
     if(gui_view_find_any_from_top(gui->views, &it)) {
         do {
             View* view = gui_view_from_it(&it);
 
             // Break if input was consumed
-            if(view_input_touch(view, input_event)) break;
+            if(view_input_touch(view, input_event)) {
+                consumed = true;
+                break;
+            }
 
             // Break if view port is opaque
             if(!view_is_transparent(view)) break;
+
         } while(gui_view_find_any_previous(&it));
+    }
+
+    // If input was not consumed by any view, send to unhandled callback
+    if(!consumed && gui->unhandled.input_touch_callback) {
+        gui->unhandled.input_touch_callback(input_event, gui->unhandled.input_touch_context);
     }
 
     gui_unlock(gui);
@@ -184,17 +202,26 @@ static void gui_input(Gui* gui, InputEvent* input_event) {
 
     gui_lock(gui);
 
+    bool consumed = false;
     ViewHandleArray_it_t it;
     if(gui_view_find_any_from_top(gui->views, &it)) {
         do {
             View* view = gui_view_from_it(&it);
 
             // Break if input was consumed
-            if(view_input(view, input_event)) break;
+            if(view_input(view, input_event)) {
+                consumed = true;
+                break;
+            }
 
             // Break if view port is opaque
             if(!view_is_transparent(view)) break;
         } while(gui_view_find_any_previous(&it));
+    }
+
+    // If input was not consumed by any view, send to unhandled callback
+    if(!consumed && gui->unhandled.input_callback) {
+        gui->unhandled.input_callback(input_event, gui->unhandled.input_context);
     }
 
     gui_unlock(gui);
@@ -208,6 +235,20 @@ void gui_lock(Gui* gui) {
 void gui_unlock(Gui* gui) {
     furi_assert(gui);
     furi_check(furi_mutex_release(gui->mutex) == FuriStatusOk);
+}
+
+void gui_add_unhandled_input_callback(Gui* gui, ViewInputCallback callback, void* context) {
+    gui_lock(gui);
+    gui->unhandled.input_callback = callback;
+    gui->unhandled.input_context = context;
+    gui_unlock(gui);
+}
+
+void gui_add_unhandled_touch_input_callback(Gui* gui, ViewInputTouchCallback callback, void* context) {
+    gui_lock(gui);
+    gui->unhandled.input_touch_callback = callback;
+    gui->unhandled.input_touch_context = context;
+    gui_unlock(gui);
 }
 
 void gui_add_view(Gui* gui, View* view, GuiViewPriority priority) {

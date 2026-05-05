@@ -239,6 +239,9 @@ header file. */
     }
 #endif
 
+extern __attribute__((__noreturn__)) void furi_thread_catch(void);
+#define configTASK_RETURN_ADDRESS (furi_thread_catch + 2)
+
 // // Must be last line of config because of recursion
 // #include <core/check.h>
 

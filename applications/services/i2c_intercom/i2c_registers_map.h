@@ -39,22 +39,37 @@
  * 0x0200+4 Touchpad Y position         (read)
  * 0x0200+6 Touchpad press state        (read)
  * 0x0200+8 Headphones state            (read)
+ * 
+ * 0x0300+0 Link LED group brightness (write), 0 is off, 255 is max brightness
+ * 0x0300+2 Power LED group brightness (write), 0 is off, 255 is max brightness
+ * 0x0300+4 Wattmeter LED group brightness (write), 0 is off, 255 is max brightness
+ * 
+ * All LED colors are in RGB 565 format
+ * 0x0310+0 Link1 LED color (write)
+ * 0x0310+2 Link2 LED color (write)
+ * 0x0310+4 Link3 LED color (write)
+ * 0x0310+6 Link4 LED color (write)
  */
 
-#define I2C_DEVICE_ADDRESS       (0x69)
+// Device address
+#define I2C_DEVICE_ADDRESS (0x69)
+
+// Status register
 #define I2C_STATUS_REG_ADDRESS   (0x0000)
 #define I2C_STATUS_REG_BIT_INPUT (0)
 
+// Intercom version register
 #define I2C_INTERCOM_VERSION_REG_ADDRESS (0x0080)
 #define I2C_INTERCOM_VERSION             (0x0001)
 
+// Input interrupt register and mask
 #define I2C_INPUT_INTERRUPT_REG_ADDRESS        (0x0100 + 0)
+#define I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS   (0x0180 + 0)
 #define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS    (0)
 #define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
 #define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
 
-#define I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS (0x0180 + 0)
-
+// Buttons state register
 #define I2C_BUTTONS_STATE_REG_ADDRESS      (0x0200 + 0)
 #define I2C_BUTTONS_STATE_REG_BIT_KEY2     (0)
 #define I2C_BUTTONS_STATE_REG_BIT_KEY1     (1)
@@ -70,10 +85,12 @@
 #define I2C_BUTTONS_STATE_REG_BIT_KEYUP    (11)
 #define I2C_BUTTONS_STATE_REG_BIT_KEYPTT   (12)
 
+// Touchpad state registers
 #define I2C_TOUCHPAD_X_REG_ADDRESS     (0x0200 + 2)
 #define I2C_TOUCHPAD_Y_REG_ADDRESS     (0x0200 + 4)
 #define I2C_TOUCHPAD_PRESS_REG_ADDRESS (0x0200 + 6)
 
+// Headphones state register
 #define I2C_HEADPHONES_STATE_REG_ADDRESS                (0x0200 + 8)
 #define I2C_HEADPHONES_STATE_REG_HEADPHONES_PRESENT_BIT (0)
 #define I2C_HEADPHONES_STATE_REG_MIC_PRESENT_BIT        (1)
@@ -81,3 +98,14 @@
 #define I2C_HEADPHONES_STATE_REG_BUTTON_B_PRESSED_BIT   (3)
 #define I2C_HEADPHONES_STATE_REG_BUTTON_C_PRESSED_BIT   (4)
 #define I2C_HEADPHONES_STATE_REG_BUTTON_D_PRESSED_BIT   (5)
+
+// Led brightness registers
+#define I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS      (0x0300 + 0)
+#define I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS     (0x0300 + 2)
+#define I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS (0x0300 + 4)
+
+// Led color registers
+#define I2C_LED_LINK1_COLOR_REG_ADDRESS (0x0310 + 0)
+#define I2C_LED_LINK2_COLOR_REG_ADDRESS (0x0310 + 2)
+#define I2C_LED_LINK3_COLOR_REG_ADDRESS (0x0310 + 4)
+#define I2C_LED_LINK4_COLOR_REG_ADDRESS (0x0310 + 6)

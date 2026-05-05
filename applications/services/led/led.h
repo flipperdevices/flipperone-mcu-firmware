@@ -19,6 +19,13 @@ typedef struct {
 #define LED_COLOR_WHITE      (LedColor){255, 255, 255}
 #define LED_COLOR_BLACK      (LedColor){0, 0, 0}
 
+#define LED_COLOR_RGB565(color565)           \
+    {                                        \
+        .r = ((color565 >> 11) & 0x1F) << 3, \
+        .g = ((color565 >> 5) & 0x3F) << 2,  \
+        .b = ((color565 >> 0) & 0x1F) << 3,  \
+    }
+
 typedef enum {
     // line 1
     LedTypeNet,
@@ -59,12 +66,29 @@ typedef struct {
     const size_t count;
 } LedBatch;
 
+typedef enum {
+    LedGroupLink,
+    LedGroupPower,
+    LedGroupWattmeter,
+
+    LedGroupMax, // internal use only, keep it last
+} LedGroup;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void led_set_color_single(Led* instance, LedType type, LedColor color);
+
 void led_set_color_batch(Led* instance, const LedBatch* items);
+
+void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness);
+
+FuriState* led_get_link_brightness_state(Led* instance);
+
+FuriState* led_get_power_brightness_state(Led* instance);
+
+FuriState* led_get_wattmeter_brightness_state(Led* instance);
 
 #ifdef __cplusplus
 }

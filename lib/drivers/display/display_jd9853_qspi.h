@@ -21,6 +21,9 @@ void display_jd9853_qspi_fill(DisplayJd9853QSPI* display, uint8_t color);
 void display_jd9853_qspi_eco_mode(DisplayJd9853QSPI* display, bool enable);
 void display_jd9853_qspi_set_vci(DisplayJd9853QSPI* display, float_t voltage);
 float_t display_jd9853_qspi_get_vci(DisplayJd9853QSPI* display);
+bool display_jd9853_qspi_is_init(void);
+
+void display_jd9853_irq_qspi_write_buffer(const uint8_t* buffer, size_t size);
 
 #ifdef __cplusplus
 }

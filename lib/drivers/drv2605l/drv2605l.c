@@ -20,6 +20,14 @@ struct Drv2605l {
     uint8_t address;
 };
 
+struct Drv2605lCalibrationData {
+    uint8_t rated_voltage_reg;
+    uint8_t overdrive_clamp_reg;
+    uint8_t auto_cal_comp_reg;
+    uint8_t auto_cal_bemf_reg;
+    uint8_t feedback_reg;
+};
+
 static int drv2605l_write_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data) {
     furi_check(instance);
 
@@ -38,7 +46,7 @@ static int drv2605l_write_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data
     return ret;
 }
 
-static int drv2605l_read_reg(Drv2605l* instance, Drv2605lReg reg, uint16_t* data) {
+static int drv2605l_read_reg(Drv2605l* instance, Drv2605lReg reg, uint8_t* data) {
     furi_check(instance);
     furi_check(data);
 
@@ -70,7 +78,7 @@ FURI_ALWAYS_INLINE void drv2605l_disable(Drv2605l* instance) {
 }
 
 //https://www.ti.com/lit/an/sloa189/sloa189.pdf?ts=1763909348509&ref_url=https%253A%252F%252Fwww.google.com%252F
-bool drv2605l_auto_calibrate(Drv2605l* instance) {
+bool drv2605l_auto_calibration(Drv2605l* instance) {
     furi_check(instance);
 
     uint8_t rated_voltage_reg = 0x53; //Vrms = 2 <--Setting
@@ -80,6 +88,142 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
         .brake_factor = 3, //4x
         .loop_gain = 1, //Medium
         .bemf_gain = 2, //1.365x
+    };
+    
+    Drv2605lMode mode_reg = {
+        .device_reset = 0, //Normal operation
+        .standby = 0, //Active mode
+        .mode_select = 0b111, //Auto-calibration mode
+    };
+
+    Drv2605lGo go_reg = {
+        .go_bit = 1, //Start auto-calibration
+    };
+
+    drv2605l_write_reg(instance, Drv2605lRegRatedVoltage, &rated_voltage_reg);
+    drv2605l_write_reg(instance, Drv2605lRegOverdriveClamp, &overdrive_clamp_reg);
+    drv2605l_write_reg(instance, Drv2605lRegFeedback, (uint8_t*)&feedback_reg);
+    drv2605l_write_reg(instance, Drv2605lRegMode, (uint8_t*)&mode_reg);
+    drv2605l_write_reg(instance, Drv2605lRegGo, (uint8_t*)&go_reg);
+
+    // Wait for completion
+    uint32_t timeout = furi_get_tick() + 2000;
+    while(furi_get_tick() < timeout) {
+        uint8_t go_status = 0;
+        drv2605l_read_reg(instance, Drv2605lRegGo, &go_status);
+        Drv2605lGo* go_reg_status = (Drv2605lGo*)&go_status;
+        if(go_reg_status->go_bit == 0) {
+            break;
+        }
+        furi_delay_ms(10);
+    }
+
+    uint8_t status = 0;
+    drv2605l_read_reg(instance, Drv2605lRegStatus, &status);
+    Drv2605lStatus* status_reg = (Drv2605lStatus*)&status;
+
+    if(status_reg->diagnostic_result) {
+        FURI_LOG_E(TAG, "Auto-calibration failed");
+        return false;
+    }
+
+    FURI_LOG_I(TAG, "Auto-calibration successful");
+
+    //Calib reg 0x18, 0x19, 0x1A (BEMFGain)
+    uint8_t calib_data = 0;
+
+    drv2605l_read_reg(instance, Drv2605lRegAutoCalComp, (uint8_t*)&calib_data);
+    FURI_LOG_I(TAG, "Auto Cal Compensation: reg 0x%02X -> 0x%02X", Drv2605lRegAutoCalComp, calib_data);
+    drv2605l_read_reg(instance, Drv2605lRegAutoCalBemf, (uint8_t*)&calib_data);
+    FURI_LOG_I(TAG, "Auto Cal BEMF: reg 0x%02X -> 0x%02X", Drv2605lRegAutoCalBemf, calib_data);
+    drv2605l_read_reg(instance, Drv2605lRegFeedback, (uint8_t*)&calib_data);
+    FURI_LOG_I(TAG, "Feedback: reg 0x%02X -> 0x%02X", Drv2605lRegFeedback, calib_data);
+
+    return true;
+}
+
+bool drv2605l_get_calibration_data(Drv2605l* instance, Drv2605lCalibrationData* calib_data) {
+    furi_check(instance);
+    furi_check(calib_data);
+    int ret = 0;
+    do {
+        ret = drv2605l_read_reg(instance, Drv2605lRegRatedVoltage, (uint8_t*)&calib_data->rated_voltage_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to read Rated Voltage reg");
+            break;
+        }
+        ret = drv2605l_read_reg(instance, Drv2605lRegOverdriveClamp, (uint8_t*)&calib_data->overdrive_clamp_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to read Overdrive Clamp reg");
+            break;
+        }
+        ret = drv2605l_read_reg(instance, Drv2605lRegAutoCalComp, (uint8_t*)&calib_data->auto_cal_comp_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to read Auto Cal Comp reg");
+            break;
+        }
+        ret = drv2605l_read_reg(instance, Drv2605lRegAutoCalBemf, (uint8_t*)&calib_data->auto_cal_bemf_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to read Auto Cal BEMF reg");
+            break;
+        }
+        ret = drv2605l_read_reg(instance, Drv2605lRegFeedback, (uint8_t*)&calib_data->feedback_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to read Feedback reg");
+            break;
+        }
+    } while(0);
+    return ret >= PICO_OK;
+}
+
+bool drv2605l_set_calibration_data(Drv2605l* instance, const Drv2605lCalibrationData* calib_data) {
+    furi_check(instance);
+    furi_check(calib_data);
+    int ret = 0;
+    do {
+        ret = drv2605l_write_reg(instance, Drv2605lRegRatedVoltage, (uint8_t*)&calib_data->rated_voltage_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Rated Voltage reg");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegOverdriveClamp, (uint8_t*)&calib_data->overdrive_clamp_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Overdrive Clamp reg");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegAutoCalComp, (uint8_t*)&calib_data->auto_cal_comp_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Auto Cal Comp reg");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegAutoCalBemf, (uint8_t*)&calib_data->auto_cal_bemf_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Auto Cal BEMF reg");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegFeedback, (uint8_t*)&calib_data->feedback_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Feedback reg");
+            break;
+        }
+    } while(0);
+
+    return ret >= PICO_OK;
+}
+
+uint32_t drv2605l_size_calibration_data(Drv2605l* instance) {
+    furi_check(instance);
+    UNUSED(instance);
+    return sizeof(Drv2605lCalibrationData);
+}
+
+static bool drv2605l_load_settings(Drv2605l* instance) {
+    furi_assert(instance);
+
+    //Set LNA library
+    Drv2605lLibSelect lib_select_reg = {
+        .hi_z_mode = 0, //Normal mode
+        .library_sel = 6, //LRA
     };
     Drv2605lControl1 control1_reg = {
         .startup_boost = 1, //enabled
@@ -102,65 +246,42 @@ bool drv2605l_auto_calibrate(Drv2605l* instance) {
         .n_pwm_analog = 0, //PWM Input
         .lra_open_loop = 0, //Auto-resonance mode
     };
-    Drv2605lMode mode_reg = {
-        .device_reset = 0, //Normal operation
-        .standby = 0, //Active mode
-        .mode_select = 0b111, //Auto-calibration mode
-    };
     Drv2605lControl4 control4_reg = {
         .auto_cal_time = 2, //1000:1200 ms
         .otp_status = 0,
         .otp_program = 0, //OTP Memory has not been programmed
         .zc_det_time = 0, //100us
     };
-    Drv2605lGo go_reg = {
-        .go_bit = 1, //Start auto-calibration
-    };
 
-    drv2605l_write_reg(instance, Drv2605lRegRatedVoltage, &rated_voltage_reg);
-    drv2605l_write_reg(instance, Drv2605lRegOverdriveClamp, &overdrive_clamp_reg);
-    drv2605l_write_reg(instance, Drv2605lRegFeedback, (uint8_t*)&feedback_reg);
-    drv2605l_write_reg(instance, Drv2605lRegControl1, (uint8_t*)&control1_reg);
-    drv2605l_write_reg(instance, Drv2605lRegControl2, (uint8_t*)&control2_reg);
-    drv2605l_write_reg(instance, Drv2605lRegControl3, (uint8_t*)&control3_reg);
-    drv2605l_write_reg(instance, Drv2605lRegMode, (uint8_t*)&mode_reg);
-    drv2605l_write_reg(instance, Drv2605lRegControl4, (uint8_t*)&control4_reg);
-    drv2605l_write_reg(instance, Drv2605lRegGo, (uint8_t*)&go_reg);
-
-    // Wait for completion
-    uint32_t timeout = furi_get_tick() + 2000;
-    while(furi_get_tick() < timeout) {
-        uint16_t go_status = 0;
-        drv2605l_read_reg(instance, Drv2605lRegGo, &go_status);
-        Drv2605lGo* go_reg_status = (Drv2605lGo*)&go_status;
-        if(go_reg_status->go_bit == 0) {
+    int ret = 0;
+    do {
+        ret = drv2605l_write_reg(instance, Drv2605lRegLibSelect, (uint8_t*)&lib_select_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Lib Select reg");
             break;
         }
-        furi_delay_ms(10);
-    }
-
-    uint16_t status = 0;
-    drv2605l_read_reg(instance, Drv2605lRegStatus, &status);
-    Drv2605lStatus* status_reg = (Drv2605lStatus*)&status;
-
-    if(status_reg->diagnostic_result) {
-        FURI_LOG_E(TAG, "Auto-calibration failed");
-        return false;
-    }
-
-    FURI_LOG_I(TAG, "Auto-calibration successful");
-
-    //Calib reg 0x18, 0x19, 0x1A (BEMFGain)
-    uint8_t calib_data = 0;
-
-    drv2605l_read_reg(instance, Drv2605lRegAutoCalComp, (uint16_t*)&calib_data);
-    FURI_LOG_I(TAG, "Auto Cal Compensation: reg 0x%02X -> 0x%02X", Drv2605lRegAutoCalComp, calib_data);
-    drv2605l_read_reg(instance, Drv2605lRegAutoCalBemf, (uint16_t*)&calib_data);
-    FURI_LOG_I(TAG, "Auto Cal BEMF: reg 0x%02X -> 0x%02X", Drv2605lRegAutoCalBemf, calib_data);
-    drv2605l_read_reg(instance, Drv2605lRegFeedback, (uint16_t*)&calib_data);
-    FURI_LOG_I(TAG, "Feedback: reg 0x%02X -> 0x%02X", Drv2605lRegFeedback, calib_data);
-
-    return true;
+        ret = drv2605l_write_reg(instance, Drv2605lRegControl1, (uint8_t*)&control1_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Control1 reg");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegControl2, (uint8_t*)&control2_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Control2 reg");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegControl3, (uint8_t*)&control3_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Control3 reg");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegControl4, (uint8_t*)&control4_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Control4 reg");
+            break;
+        }
+    } while(0);
+    return ret >= PICO_OK;
 }
 
 Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pin_en, const GpioPin* pin_trigger, uint8_t address) {
@@ -183,15 +304,10 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     if(ret) {
         drv2605l_enable(instance);
 
-        //Set LNA library
-        Drv2605lLibSelect lib_select_reg = {
-            .hi_z_mode = 0, //Normal mode
-            .library_sel = 6, //LRA
-        };
-        drv2605l_write_reg(instance, Drv2605lRegLibSelect, (uint8_t*)&lib_select_reg);
-
-        drv2605l_auto_calibrate(instance);
-
+        if(!drv2605l_load_settings(instance)) {
+            FURI_LOG_E(TAG, "Failed to load settings");
+        }
+        
         drv2605l_disable(instance);
     } else {
         FURI_LOG_E(TAG, "DRV2605L device not ready at address 0x%02X", instance->address);
