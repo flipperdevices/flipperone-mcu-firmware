@@ -34,7 +34,7 @@ static bool self_check_layout(void* _model) {
          .layout = {
              .layoutDirection = CLAY_TOP_TO_BOTTOM,
              .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-             .padding = {4, 4, 4, 3},
+             .padding = {4, 4, 4, 4},
              .childGap = 4,
          }}) {
         CLAY(
@@ -45,10 +45,11 @@ static bool self_check_layout(void* _model) {
                     {
                         .layoutDirection = CLAY_LEFT_TO_RIGHT,
                         .childGap = 8,
-                        .padding = {.left = 6, .right = 6, .top = 6, .bottom = 6},
+                        .padding = {.left = 6, .right = 6, .top = 2, .bottom = 2},
                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                     },
             }) {
+            // image wrapper with floating position
             CLAY_AUTO_ID({
                 .layout =
                     {
@@ -61,15 +62,10 @@ static bool self_check_layout(void* _model) {
                         .attachTo = CLAY_ATTACH_TO_PARENT,
                     },
             }) {
-                CLAY_AUTO_ID({
-                    .layout =
-                        {
-                            .sizing = {.height = CLAY_SIZING_FIXED(bios.height), .width = CLAY_SIZING_FIXED(bios.width)},
-                        },
-                    .image = {.imageData = (void*)&bios},
-                }) {
-                }
+                clay_fixed_image(&logo_head);
             }
+
+            // text
             CLAY_AUTO_ID() {
                 CLAY_TEXT(clay_helper_string_from(model->status_str), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
@@ -176,7 +172,7 @@ static bool self_check_process(FuriString* status_str) {
         furi_string_cat_printf(status_str, "Gauge: %s\n", (power_device & PowerDeviceBq28z620) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Touchpad: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "USB Mux: %s\n", (usb_mux_device & UsbMuxDeviceHd3ss3220) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "           Press DEL to enter setup, OK or BACK to exit");
+        furi_string_cat_printf(status_str, "\nPress DEL to enter setup, OK or BACK to exit");
     }
 
     return all_ok;
