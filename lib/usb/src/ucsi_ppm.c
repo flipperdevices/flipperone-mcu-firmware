@@ -108,6 +108,7 @@ UcsiPpmStatus ucsi_ppm_init(UcsiPpm* ppm, const UcsiPpmConfig* config) {
 
     ppm->config = *config;
     regfile_reset(ppm);
+    ucsi_ppm_cmd_reset_state(ppm);
 
     // TODO: bring up L4 (FUSB302) and L3 (Type-C SM) per api.md §5.1 steps 4-5.
 
@@ -130,8 +131,9 @@ UcsiPpmStatus ucsi_ppm_reset(UcsiPpm* ppm) {
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
 
     regfile_reset(ppm);
+    ucsi_ppm_cmd_reset_state(ppm);
 
-    // TODO: reset L3 / L4 state, notification mask to 0, accept_*_swap to true.
+    // TODO: reset L3 / L4 state, accept_*_swap defaults to true.
 
     return UcsiPpmStatusOk;
 }
@@ -168,11 +170,11 @@ UcsiPpmStatus ucsi_ppm_register_write(UcsiPpm* ppm, uint16_t offset, uint16_t le
         ppm->regfile[i] = buf[i - offset];
     }
 
-    // A non-zero write to CONTROL[0] (Command opcode byte) triggers command
-    // processing (architecture.md §2). Trigger is captured by L1; the actual
-    // L2 dispatch is a TODO until the command pipeline lands.
-    if(offset == UCSI_PPM_OFFSET_CONTROL_COMMAND && ppm->regfile[UCSI_PPM_OFFSET_CONTROL_COMMAND] != 0) {
-        // TODO: notify L2 to dispatch the command.
+    // A non-zero write to CONTROL[0] (Command opcode byte) triggers L2
+    // command dispatch (architecture.md §2).
+    if(offset == UCSI_PPM_OFFSET_CONTROL_COMMAND &&
+       ppm->regfile[UCSI_PPM_OFFSET_CONTROL_COMMAND] != 0) {
+        ucsi_ppm_cmd_dispatch(ppm);
     }
 
     return UcsiPpmStatusOk;

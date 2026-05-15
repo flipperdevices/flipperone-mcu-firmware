@@ -30,6 +30,71 @@ extern "C" {
 // triggers command processing (architecture.md §2, api.md §6).
 #define UCSI_PPM_OFFSET_CONTROL_COMMAND UCSI_PPM_OFFSET_CONTROL
 
+// UCSI command opcodes (commands.md §1.4, Table 6-87 / Appendix A.1).
+#define UCSI_PPM_OPCODE_PPM_RESET                0x01u
+#define UCSI_PPM_OPCODE_CANCEL                   0x02u
+#define UCSI_PPM_OPCODE_CONNECTOR_RESET          0x03u
+#define UCSI_PPM_OPCODE_ACK_CC_CI                0x04u
+#define UCSI_PPM_OPCODE_SET_NOTIFICATION_ENABLE  0x05u
+#define UCSI_PPM_OPCODE_GET_CAPABILITY           0x06u
+#define UCSI_PPM_OPCODE_GET_CONNECTOR_CAPABILITY 0x07u
+#define UCSI_PPM_OPCODE_SET_CCOM                 0x08u
+#define UCSI_PPM_OPCODE_SET_UOR                  0x09u
+#define UCSI_PPM_OPCODE_SET_PDR                  0x0Bu
+#define UCSI_PPM_OPCODE_GET_PDOS                 0x10u
+#define UCSI_PPM_OPCODE_GET_CABLE_PROPERTY       0x11u
+#define UCSI_PPM_OPCODE_GET_CONNECTOR_STATUS     0x12u
+#define UCSI_PPM_OPCODE_GET_ERROR_STATUS         0x13u
+#define UCSI_PPM_OPCODE_SET_POWER_LEVEL          0x14u
+#define UCSI_PPM_OPCODE_MAX                      0x22u
+
+// CCI bits (commands.md §1.1, Table 4-3).
+#define UCSI_PPM_CCI_END_OF_MESSAGE         (1u << 0)
+#define UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT 1u
+#define UCSI_PPM_CCI_CONNECTOR_CHANGE_MASK  (0x7Fu << 1)
+#define UCSI_PPM_CCI_DATA_LENGTH_SHIFT      8u
+#define UCSI_PPM_CCI_DATA_LENGTH_MASK       (0xFFu << 8)
+#define UCSI_PPM_CCI_VENDOR_DEFINED         (1u << 16)
+#define UCSI_PPM_CCI_SECURITY_REQUEST       (1u << 23)
+#define UCSI_PPM_CCI_FW_UPDATE_REQUEST      (1u << 24)
+#define UCSI_PPM_CCI_NOT_SUPPORTED          (1u << 25)
+#define UCSI_PPM_CCI_CANCEL_COMPLETED       (1u << 26)
+#define UCSI_PPM_CCI_RESET_COMPLETED        (1u << 27)
+#define UCSI_PPM_CCI_BUSY                   (1u << 28)
+#define UCSI_PPM_CCI_ACK_COMMAND            (1u << 29)
+#define UCSI_PPM_CCI_ERROR                  (1u << 30)
+#define UCSI_PPM_CCI_COMMAND_COMPLETED      (1u << 31)
+
+// ACK_CC_CI bits in CONTROL (commands.md §2.4).
+// CONTROL bit 16 = byte 2 bit 0.
+#define UCSI_PPM_ACK_CC_CI_BYTE                       2u
+#define UCSI_PPM_ACK_CC_CI_CONNECTOR_CHANGE_ACK       (1u << 0)
+#define UCSI_PPM_ACK_CC_CI_COMMAND_COMPLETED_ACK      (1u << 1)
+
+// Error Information bits (commands.md §2.18 GET_ERROR_STATUS).
+#define UCSI_PPM_ERR_UNRECOGNIZED_COMMAND       (1u << 0)
+#define UCSI_PPM_ERR_NONEXISTENT_CONNECTOR      (1u << 1)
+#define UCSI_PPM_ERR_INVALID_CMD_PARAMS         (1u << 2)
+#define UCSI_PPM_ERR_INCOMPATIBLE_PARTNER       (1u << 3)
+#define UCSI_PPM_ERR_CC_COMMUNICATION           (1u << 4)
+#define UCSI_PPM_ERR_DEAD_BATTERY               (1u << 5)
+#define UCSI_PPM_ERR_CONTRACT_NEGOTIATION       (1u << 6)
+#define UCSI_PPM_ERR_OVERCURRENT                (1u << 7)
+#define UCSI_PPM_ERR_UNDEFINED                  (1u << 8)
+#define UCSI_PPM_ERR_PARTNER_REJECTED_SWAP      (1u << 9)
+#define UCSI_PPM_ERR_HARD_RESET                 (1u << 10)
+#define UCSI_PPM_ERR_PPM_POLICY_CONFLICT        (1u << 11)
+#define UCSI_PPM_ERR_SWAP_REJECTED              (1u << 12)
+#define UCSI_PPM_ERR_REVERSE_CURRENT_PROTECTION (1u << 13)
+#define UCSI_PPM_ERR_SET_SINK_PATH_REJECTED     (1u << 14)
+
+// L2 command state machine (architecture.md §3.3).
+// Busy/Processing are reserved for later; in v1 all handlers are synchronous.
+typedef enum {
+    UcsiPpmCmdStateIdle = 0,
+    UcsiPpmCmdStateWaitForAck,
+} UcsiPpmCmdState;
+
 typedef enum {
     UcsiPpmLifecycleAllocated,
     UcsiPpmLifecycleInitialized,
@@ -39,7 +104,38 @@ struct UcsiPpm {
     UcsiPpmLifecycle lifecycle;
     UcsiPpmConfig config;
     uint8_t regfile[UCSI_PPM_REGFILE_SIZE];
+
+    // L2 command state.
+    UcsiPpmCmdState cmd_state;
+    // 17-bit notification mask set via SET_NOTIFICATION_ENABLE
+    // (commands.md §2.5). Defaults to 0 — all notifications off.
+    uint32_t notification_mask;
+
+    // Runtime CC mode after SET_CCOM (commands.md §2.8). Resets to
+    // config.initial_cc_operation_mode on init / PPM_RESET.
+    UcsiPpmCcOperationMode current_cc_operation_mode;
+
+    // Policy flags for swap requests from the partner (api.md §4, defaults
+    // section). Both default to true after init / PPM_RESET; updated by
+    // SET_UOR bit 2 / SET_PDR bit 2.
+    bool accept_dr_swap;
+    bool accept_pr_swap;
+
+    // Accumulated Error Information bitmap (commands.md §2.18). Set on
+    // command failures; cleared on PPM_RESET or ACK_CC_CI that confirmed
+    // a CCI with Error Indicator (architecture.md §9).
+    uint16_t error_info;
 };
+
+// L2 entry point: invoked by L1 (register_write) when a non-zero CONTROL[0]
+// is detected. Reads the opcode + payload from the regfile, dispatches to
+// the handler, updates CCI / MESSAGE_IN, transitions cmd_state, and calls
+// the alert callback if CCI ends up non-zero. Defined in ucsi_ppm_cmd.c.
+void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm);
+
+// Reset L2 command state to defaults (cmd_state = Idle, notification_mask = 0).
+// Called from ucsi_ppm_init / ucsi_ppm_reset. Defined in ucsi_ppm_cmd.c.
+void ucsi_ppm_cmd_reset_state(UcsiPpm* ppm);
 
 #ifdef __cplusplus
 }
