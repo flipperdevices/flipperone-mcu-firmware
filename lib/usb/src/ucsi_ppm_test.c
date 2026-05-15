@@ -2,6 +2,9 @@
 
 #include "ucsi_ppm.h"
 #include "ucsi_ppm_i.h"
+#include "ucsi_ppm_phy.h"
+
+#include "drivers/fusb302/fusb302_reg.h"
 
 #include <furi.h>
 #include <string.h>
@@ -37,12 +40,97 @@ static void counting_alert(void* ctx) {
     g_alert_count++;
 }
 
+// Forward declaration — defined further down with the L1 helpers.
+static void make_valid_config(UcsiPpmConfig* c);
+
+// --- Mock I²C for FUSB302 (L4) tests ---------------------------------------
+// Records every i2c_read/i2c_write and exposes a simulated 256-byte FUSB302
+// register file. Reads pick up the register address from the immediately
+// preceding write (FUSB302 protocol: write reg addr, then repeated-start read).
+
+#define MOCK_I2C_MAX_TXNS 64
+
+typedef struct {
+    bool is_write;
+    uint8_t addr;
+    uint8_t data[16];
+    size_t len;
+} MockI2cTxn;
+
+static MockI2cTxn g_mock_txns[MOCK_I2C_MAX_TXNS];
+static size_t g_mock_txn_count;
+static uint8_t g_mock_regs[256];
+
+static void mock_i2c_reset(void) {
+    g_mock_txn_count = 0;
+    memset(g_mock_regs, 0, sizeof(g_mock_regs));
+}
+
+static UcsiPpmStatus mock_i2c_write_fn(void* ctx, uint8_t addr, const uint8_t* data, size_t len) {
+    (void)ctx;
+    if(g_mock_txn_count >= MOCK_I2C_MAX_TXNS) return UcsiPpmStatusInternal;
+    MockI2cTxn* t = &g_mock_txns[g_mock_txn_count++];
+    t->is_write = true;
+    t->addr = addr;
+    t->len = (len > sizeof(t->data)) ? sizeof(t->data) : len;
+    memcpy(t->data, data, t->len);
+    // 2-byte writes are register stores; update the simulated register file.
+    if(len == 2u) {
+        g_mock_regs[data[0]] = data[1];
+    }
+    return UcsiPpmStatusOk;
+}
+
+static UcsiPpmStatus mock_i2c_read_fn(void* ctx, uint8_t addr, uint8_t* data, size_t len) {
+    (void)ctx;
+    if(g_mock_txn_count == 0u) return UcsiPpmStatusInternal;
+    const MockI2cTxn* last = &g_mock_txns[g_mock_txn_count - 1u];
+    if(!last->is_write || last->len < 1u) return UcsiPpmStatusInternal;
+    const uint8_t reg = last->data[0];
+    for(size_t i = 0; i < len; ++i) {
+        data[i] = g_mock_regs[(reg + (uint8_t)i) & 0xFFu];
+    }
+    if(g_mock_txn_count < MOCK_I2C_MAX_TXNS) {
+        MockI2cTxn* t = &g_mock_txns[g_mock_txn_count++];
+        t->is_write = false;
+        t->addr = addr;
+        t->len = (len > sizeof(t->data)) ? sizeof(t->data) : len;
+        memcpy(t->data, data, t->len);
+    }
+    return UcsiPpmStatusOk;
+}
+
+// True if the last (or any) 2-byte write hit `reg` with `value` exactly.
+static bool mock_any_write_to(uint8_t reg, uint8_t value) {
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len == 2u && t->data[0] == reg && t->data[1] == value) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Builds a ppm with mock I²C wired in. Returns NULL on error.
+static UcsiPpm* mock_make_ppm(void) {
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    if(!ppm) return NULL;
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.i2c_read = mock_i2c_read_fn;
+    cfg.i2c_write = mock_i2c_write_fn;
+    if(ucsi_ppm_init(ppm, &cfg) != UcsiPpmStatusOk) {
+        ucsi_ppm_free(ppm);
+        return NULL;
+    }
+    return ppm;
+}
+
 // Reads CCI (4 bytes at offset 4) as a little-endian uint32_t.
 static uint32_t read_cci(UcsiPpm* ppm) {
     uint8_t buf[4];
     ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_CCI, 4, buf);
-    return (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) |
-           ((uint32_t)buf[3] << 24);
+    return (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
 }
 
 static UcsiPpmStatus stub_i2c_read(void* ctx, uint8_t addr, uint8_t* data, size_t len) {
@@ -561,8 +649,7 @@ static bool test_cmd_ppm_reset(void) {
     g_alert_count = 0;
 
     uint8_t opcode = UCSI_PPM_OPCODE_PPM_RESET;
-    TEST_ASSERT(ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &opcode) ==
-                UcsiPpmStatusOk);
+    TEST_ASSERT(ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &opcode) == UcsiPpmStatusOk);
 
     // PPM_RESET sets only Reset Completed; spec says all other CCI bits are 0.
     TEST_ASSERT(read_cci(ppm) == UCSI_PPM_CCI_RESET_COMPLETED);
@@ -623,8 +710,7 @@ static bool test_cmd_get_capability(void) {
     uint8_t msg[16];
     ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, 16, msg);
 
-    const uint32_t bm_attr = (uint32_t)msg[0] | ((uint32_t)msg[1] << 8) |
-                             ((uint32_t)msg[2] << 16) | ((uint32_t)msg[3] << 24);
+    const uint32_t bm_attr = (uint32_t)msg[0] | ((uint32_t)msg[1] << 8) | ((uint32_t)msg[2] << 16) | ((uint32_t)msg[3] << 24);
     TEST_ASSERT(bm_attr & (1u << 0)); // Disabled State
     TEST_ASSERT(bm_attr & (1u << 2)); // USB PD
     TEST_ASSERT(bm_attr & (1u << 6)); // Type-C Current
@@ -632,8 +718,7 @@ static bool test_cmd_get_capability(void) {
 
     TEST_ASSERT((msg[4] & 0x7Fu) == UCSI_PPM_NUM_CONNECTORS);
 
-    const uint32_t bm_opt = (uint32_t)msg[5] | ((uint32_t)msg[6] << 8) |
-                            ((uint32_t)msg[7] << 16);
+    const uint32_t bm_opt = (uint32_t)msg[5] | ((uint32_t)msg[6] << 8) | ((uint32_t)msg[7] << 16);
     TEST_ASSERT(bm_opt & (1u << 0)); // SET_CCOM
     TEST_ASSERT(bm_opt & (1u << 1)); // SET_POWER_LEVEL — spec-mandated always 1
     TEST_ASSERT(bm_opt & (1u << 14)); // Chunking
@@ -671,8 +756,7 @@ static bool test_cmd_get_connector_capability_drp(void) {
 
     uint8_t msg[4];
     ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, 4, msg);
-    const uint32_t cap = (uint32_t)msg[0] | ((uint32_t)msg[1] << 8) |
-                         ((uint32_t)msg[2] << 16) | ((uint32_t)msg[3] << 24);
+    const uint32_t cap = (uint32_t)msg[0] | ((uint32_t)msg[1] << 8) | ((uint32_t)msg[2] << 16) | ((uint32_t)msg[3] << 24);
 
     TEST_ASSERT(cap & (1u << 2)); // Operation Mode: DRP
     TEST_ASSERT(cap & (1u << 5)); // USB2
@@ -700,8 +784,7 @@ static bool test_cmd_get_connector_capability_rp_only(void) {
 
     uint8_t msg[4];
     ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, 4, msg);
-    const uint32_t cap = (uint32_t)msg[0] | ((uint32_t)msg[1] << 8) |
-                         ((uint32_t)msg[2] << 16) | ((uint32_t)msg[3] << 24);
+    const uint32_t cap = (uint32_t)msg[0] | ((uint32_t)msg[1] << 8) | ((uint32_t)msg[2] << 16) | ((uint32_t)msg[3] << 24);
 
     TEST_ASSERT(cap & (1u << 0)); // Operation Mode: Rp Only
     TEST_ASSERT(!(cap & (1u << 2))); // !DRP
@@ -724,13 +807,10 @@ static bool test_cmd_set_notification_enable(void) {
     // - byte 3 = 0x23 (mask bits 8..15)
     // - byte 4 bit 0 = 1 (mask bit 16)
     uint8_t payload[7] = {0u, 0x45u, 0x23u, 0x01u, 0u, 0u, 0u};
-    TEST_ASSERT(
-        ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 1, 7, payload) ==
-        UcsiPpmStatusOk);
+    TEST_ASSERT(ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 1, 7, payload) == UcsiPpmStatusOk);
 
     uint8_t opcode = UCSI_PPM_OPCODE_SET_NOTIFICATION_ENABLE;
-    TEST_ASSERT(ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &opcode) ==
-                UcsiPpmStatusOk);
+    TEST_ASSERT(ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &opcode) == UcsiPpmStatusOk);
 
     const uint32_t cci = read_cci(ppm);
     TEST_ASSERT(cci & UCSI_PPM_CCI_COMMAND_COMPLETED);
@@ -1057,10 +1137,8 @@ static bool test_cmd_get_pdos_own_source(void) {
 
     uint8_t buf[8];
     ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, 8, buf);
-    const uint32_t pdo0 = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) |
-                          ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
-    const uint32_t pdo1 = (uint32_t)buf[4] | ((uint32_t)buf[5] << 8) |
-                          ((uint32_t)buf[6] << 16) | ((uint32_t)buf[7] << 24);
+    const uint32_t pdo0 = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
+    const uint32_t pdo1 = (uint32_t)buf[4] | ((uint32_t)buf[5] << 8) | ((uint32_t)buf[6] << 16) | ((uint32_t)buf[7] << 24);
     TEST_ASSERT(pdo0 == cfg.source_caps.pdos[0]);
     TEST_ASSERT(pdo1 == cfg.source_caps.pdos[1]);
 
@@ -1087,8 +1165,7 @@ static bool test_cmd_get_pdos_own_sink(void) {
 
     uint8_t buf[4];
     ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, 4, buf);
-    const uint32_t pdo0 = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) |
-                          ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
+    const uint32_t pdo0 = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
     TEST_ASSERT(pdo0 == cfg.sink_caps.pdos[0]);
 
     ucsi_ppm_free(ppm);
@@ -1155,7 +1232,8 @@ static bool test_cmd_get_connector_status(void) {
     // In v1 (no L3) every byte of the 19-byte payload is zero.
     uint8_t buf[19];
     ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, 19, buf);
-    for(int i = 0; i < 19; i++) TEST_ASSERT(buf[i] == 0u);
+    for(int i = 0; i < 19; i++)
+        TEST_ASSERT(buf[i] == 0u);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1237,85 +1315,420 @@ static bool test_cmd_error_info_flows_through(void) {
     return true;
 }
 
+// --- L4 PHY (FUSB302) ------------------------------------------------------
+
+// Event collector for the pump tests.
+#define COLLECTED_MAX 16
+typedef struct {
+    UcsiPpmPhyEvent events[COLLECTED_MAX];
+    size_t count;
+} Collected;
+
+static void collect_event(void* ctx, const UcsiPpmPhyEvent* event) {
+    Collected* c = (Collected*)ctx;
+    if(c->count >= COLLECTED_MAX) return;
+    c->events[c->count++] = *event;
+}
+
+static bool test_phy_init_sequence(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    TEST_ASSERT(ppm != NULL);
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_phy_init(ppm) == UcsiPpmStatusOk);
+
+    // SW_RESET (RESET = 0x01).
+    TEST_ASSERT(mock_any_write_to(Fusb302RegReset, 0x01u));
+    // POWER = all blocks on (0x0F).
+    TEST_ASSERT(mock_any_write_to(Fusb302RegPower, 0x0Fu));
+    // All three masks programmed (don't pin specific values — just check
+    // any write reached them with our DEFAULT_MASK*_VAL).
+    TEST_ASSERT(g_mock_regs[Fusb302RegMask] != 0u); // some bits masked (WAKE/ALERT/CRC/ACTIVITY)
+    TEST_ASSERT(g_mock_regs[Fusb302RegMaskA] != 0u); // SOFTRST/SOFTFAIL/OCP_TEMP masked
+    // INT_MASK (CONTROL0 bit 5) cleared in final state.
+    TEST_ASSERT((g_mock_regs[Fusb302RegControl0] & (1u << 5)) == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_init_order_reset_first(void) {
+    // SW_RESET must be the first I²C write after entering phy_init —
+    // otherwise we'd reset register values we just programmed.
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+    ucsi_ppm_phy_init(ppm);
+
+    TEST_ASSERT(g_mock_txn_count >= 1u);
+    const MockI2cTxn* first = &g_mock_txns[0];
+    TEST_ASSERT(first->is_write);
+    TEST_ASSERT(first->len == 2u);
+    TEST_ASSERT(first->data[0] == Fusb302RegReset);
+    TEST_ASSERT(first->data[1] == 0x01u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_start_toggle_drp(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_phy_start_toggle(ppm, UcsiPpmPhyToggleModeDrp) == UcsiPpmStatusOk);
+
+    const uint8_t v = g_mock_regs[Fusb302RegControl2];
+    // TOGGLE = 1
+    TEST_ASSERT((v & 0x01u) == 0x01u);
+    // MODE = 01b (DRP) at bits 2:1
+    TEST_ASSERT(((v >> 1) & 0x03u) == 0x01u);
+    // TOG_SAVE_PWR = 01b (40 ms) at bits 7:6
+    TEST_ASSERT(((v >> 6) & 0x03u) == 0x01u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_start_toggle_src(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    ucsi_ppm_phy_start_toggle(ppm, UcsiPpmPhyToggleModeSrc);
+
+    const uint8_t v = g_mock_regs[Fusb302RegControl2];
+    TEST_ASSERT((v & 0x01u) == 0x01u);
+    TEST_ASSERT(((v >> 1) & 0x03u) == 0x03u); // SRC
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_stop_toggle(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    ucsi_ppm_phy_start_toggle(ppm, UcsiPpmPhyToggleModeDrp);
+    mock_i2c_reset();
+
+    // Pre-seed CONTROL2 with TOGGLE=1, MODE=DRP, TOG_SAVE_PWR=01b.
+    g_mock_regs[Fusb302RegControl2] = 0x43u; // 0100 0011
+    ucsi_ppm_phy_stop_toggle(ppm);
+    TEST_ASSERT((g_mock_regs[Fusb302RegControl2] & 0x01u) == 0u); // TOGGLE cleared
+    TEST_ASSERT(((g_mock_regs[Fusb302RegControl2] >> 1) & 0x03u) == 0x01u); // MODE preserved
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_set_rp_current(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    g_mock_regs[Fusb302RegControl0] = 0x00u; // start clean
+    TEST_ASSERT(ucsi_ppm_phy_set_rp_current(ppm, UcsiPpmRpCurrent3A) == UcsiPpmStatusOk);
+    // HOST_CUR = 11b at bits 3:2
+    TEST_ASSERT(((g_mock_regs[Fusb302RegControl0] >> 2) & 0x03u) == 0x03u);
+
+    ucsi_ppm_phy_set_rp_current(ppm, UcsiPpmRpCurrent1A5);
+    TEST_ASSERT(((g_mock_regs[Fusb302RegControl0] >> 2) & 0x03u) == 0x02u);
+
+    ucsi_ppm_phy_set_rp_current(ppm, UcsiPpmRpCurrentUsbDefault);
+    TEST_ASSERT(((g_mock_regs[Fusb302RegControl0] >> 2) & 0x03u) == 0x01u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_lock_polarity_cc1(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    g_mock_regs[Fusb302RegSwitches0] = 0x03u; // PDWN1+PDWN2 set (sink-like)
+    g_mock_regs[Fusb302RegSwitches1] = 0x00u;
+    TEST_ASSERT(ucsi_ppm_phy_lock_polarity(ppm, UcsiPpmPhyCc1) == UcsiPpmStatusOk);
+
+    // SWITCHES0: MEAS_CC1 set, MEAS_CC2 cleared; other bits preserved.
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & (1u << 2)) != 0u);
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & (1u << 3)) == 0u);
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & 0x03u) == 0x03u); // PDWN preserved
+    // SWITCHES1: TX_CC1 set, TX_CC2 cleared.
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 0)) != 0u);
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 1)) == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_lock_polarity_cc2(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    ucsi_ppm_phy_lock_polarity(ppm, UcsiPpmPhyCc2);
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & (1u << 3)) != 0u); // MEAS_CC2
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & (1u << 2)) == 0u);
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 1)) != 0u); // TX_CC2
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 0)) == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_enable_pd(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    g_mock_regs[Fusb302RegSwitches1] = 0x00u;
+    g_mock_regs[Fusb302RegControl3] = 0x00u;
+    TEST_ASSERT(ucsi_ppm_phy_enable_pd(ppm, 2u) == UcsiPpmStatusOk);
+
+    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 2)) != 0u); // AUTO_CRC
+    TEST_ASSERT((g_mock_regs[Fusb302RegControl3] & (1u << 0)) != 0u); // AUTO_RETRY
+    TEST_ASSERT(((g_mock_regs[Fusb302RegControl3] >> 1) & 0x03u) == 0x02u); // N_RETRIES=2
+    TEST_ASSERT((g_mock_regs[Fusb302RegControl3] & (1u << 3)) == 0u); // AUTO_SOFTRESET off
+    TEST_ASSERT((g_mock_regs[Fusb302RegControl3] & (1u << 4)) == 0u); // AUTO_HARDRESET off
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_pd_reset(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_phy_pd_reset(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT(mock_any_write_to(Fusb302RegReset, 0x02u));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_send_hard_reset(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    g_mock_regs[Fusb302RegControl3] = 0x00u;
+    TEST_ASSERT(ucsi_ppm_phy_send_hard_reset(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT((g_mock_regs[Fusb302RegControl3] & (1u << 6)) != 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_pump_vbus_changed(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    // Simulate: INTERRUPT.I_VBUSOK = 1 (bit 7), STATUS0.VBUSOK = 1 (bit 7).
+    g_mock_regs[Fusb302RegInterrupt] = (uint8_t)(1u << 7);
+    g_mock_regs[Fusb302RegStatus0] = (uint8_t)(1u << 7);
+    g_mock_regs[Fusb302RegInterruptA] = 0u;
+    g_mock_regs[Fusb302RegInterruptB] = 0u;
+
+    Collected c = {0};
+    TEST_ASSERT(ucsi_ppm_phy_pump(ppm, collect_event, &c) == UcsiPpmStatusOk);
+
+    TEST_ASSERT(c.count == 1u);
+    TEST_ASSERT(c.events[0].kind == UcsiPpmPhyEventVbusChanged);
+    TEST_ASSERT(c.events[0].u.vbus_ok == true);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_pump_toggle_done_src_cc1(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    // INTERRUPTA.I_TOG_DONE = bit 6. STATUS1A.TOGSS = 001b (settled SRC on CC1)
+    // at bits 5:3.
+    g_mock_regs[Fusb302RegInterruptA] = (uint8_t)(1u << 6);
+    g_mock_regs[Fusb302RegStatus1A] = (uint8_t)(0x01u << 3);
+
+    Collected c = {0};
+    ucsi_ppm_phy_pump(ppm, collect_event, &c);
+
+    TEST_ASSERT(c.count == 1u);
+    TEST_ASSERT(c.events[0].kind == UcsiPpmPhyEventToggleDone);
+    TEST_ASSERT(c.events[0].u.togss == 0x01u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_pump_multiple_events(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    // INTERRUPT: I_VBUSOK + I_BC_LVL set.
+    g_mock_regs[Fusb302RegInterrupt] = (uint8_t)((1u << 7) | (1u << 0));
+    g_mock_regs[Fusb302RegStatus0] = (uint8_t)((1u << 7) | 0x02u); // VBUSOK=1, BC_LVL=10b
+    // INTERRUPTA: I_TXSENT (bit 2).
+    g_mock_regs[Fusb302RegInterruptA] = (uint8_t)(1u << 2);
+    // INTERRUPTB: I_GCRCSENT (bit 0).
+    g_mock_regs[Fusb302RegInterruptB] = (uint8_t)(1u << 0);
+
+    Collected c = {0};
+    ucsi_ppm_phy_pump(ppm, collect_event, &c);
+
+    // Expect 4 events: BcLvlChanged, VbusChanged, TxSuccess, MessageRx.
+    TEST_ASSERT(c.count == 4u);
+    bool saw_bc = false, saw_vbus = false, saw_tx = false, saw_rx = false;
+    for(size_t i = 0; i < c.count; ++i) {
+        if(c.events[i].kind == UcsiPpmPhyEventBcLvlChanged) {
+            saw_bc = true;
+            TEST_ASSERT(c.events[i].u.bc_lvl == 0x02u);
+        }
+        if(c.events[i].kind == UcsiPpmPhyEventVbusChanged) {
+            saw_vbus = true;
+            TEST_ASSERT(c.events[i].u.vbus_ok == true);
+        }
+        if(c.events[i].kind == UcsiPpmPhyEventTxSuccess) saw_tx = true;
+        if(c.events[i].kind == UcsiPpmPhyEventMessageRx) saw_rx = true;
+    }
+    TEST_ASSERT(saw_bc && saw_vbus && saw_tx && saw_rx);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_pump_idle_no_events(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    // All INT regs zero.
+    Collected c = {0};
+    TEST_ASSERT(ucsi_ppm_phy_pump(ppm, collect_event, &c) == UcsiPpmStatusOk);
+    TEST_ASSERT(c.count == 0u);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 // --- entry point -----------------------------------------------------------
 
+typedef struct {
+    const char* name;
+    bool (*fn)(void);
+} TestEntry;
+
+#define TEST_ENTRY(f) {#f, f}
+
+static const TestEntry k_tests[] = {
+    // L1 alloc / free.
+    TEST_ENTRY(test_alloc_returns_nonnull),
+    TEST_ENTRY(test_free_null_is_noop),
+    TEST_ENTRY(test_free_auto_deinit),
+
+    // L1 init / deinit / reset.
+    TEST_ENTRY(test_init_null_args),
+    TEST_ENTRY(test_init_double),
+    TEST_ENTRY(test_init_validates_callbacks),
+    TEST_ENTRY(test_init_validates_i2c_addr),
+    TEST_ENTRY(test_init_validates_pdo),
+    TEST_ENTRY(test_init_validates_power_source),
+    TEST_ENTRY(test_init_validates_disabled_mode),
+    TEST_ENTRY(test_deinit_before_init),
+    TEST_ENTRY(test_deinit_then_reinit),
+    TEST_ENTRY(test_reset_before_init),
+
+    // L1 register_read.
+    TEST_ENTRY(test_register_read_before_init),
+    TEST_ENTRY(test_register_read_null),
+    TEST_ENTRY(test_register_read_bounds),
+    TEST_ENTRY(test_register_read_version),
+    TEST_ENTRY(test_register_read_zeros),
+
+    // L1 register_write.
+    TEST_ENTRY(test_register_write_before_init),
+    TEST_ENTRY(test_register_write_bounds),
+    TEST_ENTRY(test_register_write_readonly_zones),
+    TEST_ENTRY(test_register_write_reserved),
+    TEST_ENTRY(test_register_write_reserved_span),
+    TEST_ENTRY(test_register_write_control),
+    TEST_ENTRY(test_register_write_msg_out),
+    TEST_ENTRY(test_reset_clears_regfile),
+
+    // PDO helpers.
+    TEST_ENTRY(test_pdo_fixed_source_5v),
+    TEST_ENTRY(test_pdo_fixed_sink_5v),
+
+    // L2 command dispatcher base.
+    TEST_ENTRY(test_cmd_init_state_is_idle),
+    TEST_ENTRY(test_cmd_reset_returns_state_to_idle),
+    TEST_ENTRY(test_cmd_ppm_reset),
+    TEST_ENTRY(test_cmd_reset_clears_on_next_cmd),
+    TEST_ENTRY(test_cmd_get_capability),
+    TEST_ENTRY(test_cmd_get_connector_capability_drp),
+    TEST_ENTRY(test_cmd_get_connector_capability_rp_only),
+    TEST_ENTRY(test_cmd_set_notification_enable),
+    TEST_ENTRY(test_cmd_not_supported_unknown),
+    TEST_ENTRY(test_cmd_not_supported_in_scope),
+    TEST_ENTRY(test_cmd_ack_cc_ci_clears_cci),
+    TEST_ENTRY(test_cmd_ack_cc_ci_in_idle_ignored),
+
+    // L2 SET_CCOM / SET_UOR / SET_PDR.
+    TEST_ENTRY(test_cmd_set_ccom_picks_drp),
+    TEST_ENTRY(test_cmd_set_ccom_rejects_empty),
+    TEST_ENTRY(test_cmd_set_ccom_rejects_disabled_when_unsupported),
+    TEST_ENTRY(test_cmd_set_uor_stores_accept),
+    TEST_ENTRY(test_cmd_set_uor_rejects_both_swap_bits),
+    TEST_ENTRY(test_cmd_set_pdr_stores_accept),
+    TEST_ENTRY(test_cmd_set_pdr_rejects_all_zero),
+
+    // L2 GET_PDOS.
+    TEST_ENTRY(test_cmd_get_pdos_own_source),
+    TEST_ENTRY(test_cmd_get_pdos_own_sink),
+    TEST_ENTRY(test_cmd_get_pdos_partner_no_partner),
+    TEST_ENTRY(test_cmd_get_pdos_out_of_range),
+
+    // L2 GET_CONNECTOR_STATUS / GET_ERROR_STATUS.
+    TEST_ENTRY(test_cmd_get_connector_status),
+    TEST_ENTRY(test_cmd_get_error_status_initial_zero),
+    TEST_ENTRY(test_cmd_error_info_flows_through),
+
+    // L4 PHY (FUSB302) — mock I²C.
+    TEST_ENTRY(test_phy_init_sequence),
+    TEST_ENTRY(test_phy_init_order_reset_first),
+    TEST_ENTRY(test_phy_start_toggle_drp),
+    TEST_ENTRY(test_phy_start_toggle_src),
+    TEST_ENTRY(test_phy_stop_toggle),
+    TEST_ENTRY(test_phy_set_rp_current),
+    TEST_ENTRY(test_phy_lock_polarity_cc1),
+    TEST_ENTRY(test_phy_lock_polarity_cc2),
+    TEST_ENTRY(test_phy_enable_pd),
+    TEST_ENTRY(test_phy_pd_reset),
+    TEST_ENTRY(test_phy_send_hard_reset),
+    TEST_ENTRY(test_phy_pump_vbus_changed),
+    TEST_ENTRY(test_phy_pump_toggle_done_src_cc1),
+    TEST_ENTRY(test_phy_pump_multiple_events),
+    TEST_ENTRY(test_phy_pump_idle_no_events),
+};
+
+#define TEST_COUNT (sizeof(k_tests) / sizeof(k_tests[0]))
+
 bool ucsi_ppm_test_run(void) {
-    FURI_LOG_I(TAG, "L1+L2 suite: start");
-    bool ok = true;
-
-    ok = test_alloc_returns_nonnull() && ok;
-    ok = test_free_null_is_noop() && ok;
-    ok = test_free_auto_deinit() && ok;
-
-    ok = test_init_null_args() && ok;
-    ok = test_init_double() && ok;
-    ok = test_init_validates_callbacks() && ok;
-    ok = test_init_validates_i2c_addr() && ok;
-    ok = test_init_validates_pdo() && ok;
-    ok = test_init_validates_power_source() && ok;
-    ok = test_init_validates_disabled_mode() && ok;
-
-    ok = test_deinit_before_init() && ok;
-    ok = test_deinit_then_reinit() && ok;
-    ok = test_reset_before_init() && ok;
-
-    ok = test_register_read_before_init() && ok;
-    ok = test_register_read_null() && ok;
-    ok = test_register_read_bounds() && ok;
-    ok = test_register_read_version() && ok;
-    ok = test_register_read_zeros() && ok;
-
-    ok = test_register_write_before_init() && ok;
-    ok = test_register_write_bounds() && ok;
-    ok = test_register_write_readonly_zones() && ok;
-    ok = test_register_write_reserved() && ok;
-    ok = test_register_write_reserved_span() && ok;
-    ok = test_register_write_control() && ok;
-    ok = test_register_write_msg_out() && ok;
-
-    ok = test_reset_clears_regfile() && ok;
-
-    ok = test_pdo_fixed_source_5v() && ok;
-    ok = test_pdo_fixed_sink_5v() && ok;
-
-    // L2 command dispatcher.
-    ok = test_cmd_init_state_is_idle() && ok;
-    ok = test_cmd_reset_returns_state_to_idle() && ok;
-    ok = test_cmd_ppm_reset() && ok;
-    ok = test_cmd_reset_clears_on_next_cmd() && ok;
-    ok = test_cmd_get_capability() && ok;
-    ok = test_cmd_get_connector_capability_drp() && ok;
-    ok = test_cmd_get_connector_capability_rp_only() && ok;
-    ok = test_cmd_set_notification_enable() && ok;
-    ok = test_cmd_not_supported_unknown() && ok;
-    ok = test_cmd_not_supported_in_scope() && ok;
-    ok = test_cmd_ack_cc_ci_clears_cci() && ok;
-    ok = test_cmd_ack_cc_ci_in_idle_ignored() && ok;
-
-    // SET_CCOM / SET_UOR / SET_PDR.
-    ok = test_cmd_set_ccom_picks_drp() && ok;
-    ok = test_cmd_set_ccom_rejects_empty() && ok;
-    ok = test_cmd_set_ccom_rejects_disabled_when_unsupported() && ok;
-    ok = test_cmd_set_uor_stores_accept() && ok;
-    ok = test_cmd_set_uor_rejects_both_swap_bits() && ok;
-    ok = test_cmd_set_pdr_stores_accept() && ok;
-    ok = test_cmd_set_pdr_rejects_all_zero() && ok;
-
-    // GET_PDOS.
-    ok = test_cmd_get_pdos_own_source() && ok;
-    ok = test_cmd_get_pdos_own_sink() && ok;
-    ok = test_cmd_get_pdos_partner_no_partner() && ok;
-    ok = test_cmd_get_pdos_out_of_range() && ok;
-
-    // GET_CONNECTOR_STATUS / GET_ERROR_STATUS.
-    ok = test_cmd_get_connector_status() && ok;
-    ok = test_cmd_get_error_status_initial_zero() && ok;
-    ok = test_cmd_error_info_flows_through() && ok;
-
-    if(ok) {
-        FURI_LOG_I(TAG, "L1+L2 suite: PASS");
-    } else {
-        FURI_LOG_E(TAG, "L1+L2 suite: FAIL");
+    FURI_LOG_I(TAG, "suite: start (%u tests)", (unsigned)TEST_COUNT);
+    unsigned failed = 0;
+    for(size_t i = 0; i < TEST_COUNT; ++i) {
+        if(!k_tests[i].fn()) {
+            FURI_LOG_E(TAG, "FAIL: %s", k_tests[i].name);
+            failed++;
+        }
     }
-    return ok;
+
+    if(failed == 0) {
+        FURI_LOG_I(TAG, "suite: PASS (%u/%u)", (unsigned)TEST_COUNT, (unsigned)TEST_COUNT);
+        return true;
+    } else {
+        FURI_LOG_E(TAG, "suite: FAIL (%u/%u failed)", failed, (unsigned)TEST_COUNT);
+        return false;
+    }
 }
