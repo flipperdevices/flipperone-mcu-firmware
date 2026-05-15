@@ -3,20 +3,123 @@
 
 #include <string.h>
 
+// --- Spec-derived constants ------------------------------------------------
+
+// MESSAGE_IN response sizes per command (commands.md §2.x "CCI отличия").
+#define DATA_LEN_GET_CAPABILITY           16u
+#define DATA_LEN_GET_CONNECTOR_CAPABILITY 4u
+#define DATA_LEN_GET_CONNECTOR_STATUS     19u
+#define DATA_LEN_GET_ERROR_STATUS         16u
+
+// pd-scope.md §2: a single PDO is 32 bits = 4 bytes; SPR allows up to 7 PDOs.
+#define PDO_BYTES         4u
+#define SPR_MAX_PDO_COUNT 7u
+
+// GET_ERROR_STATUS layout (commands.md §2.18).
+#define ERROR_STATUS_OFFSET_INFO           0u // 2 bytes
+#define ERROR_STATUS_OFFSET_VENDOR         2u
+#define ERROR_STATUS_VENDOR_RESERVED_BYTES 14u
+
+// GET_CAPABILITY response field offsets (commands.md §2.6).
+#define GET_CAP_OFF_BM_ATTRIBUTES   0u // 4 bytes
+#define GET_CAP_OFF_NUM_CONNECTORS  4u // 7 bits + 1 reserved
+#define GET_CAP_OFF_BM_OPTIONAL     5u // 3 bytes (24 bits)
+#define GET_CAP_OFF_NUM_ALT_MODES   8u // 1 byte
+#define GET_CAP_OFF_RESERVED        9u // 1 byte
+#define GET_CAP_OFF_BCD_BC          10u // 2 bytes
+#define GET_CAP_OFF_BCD_PD          12u // 2 bytes
+#define GET_CAP_OFF_BCD_TYPEC       14u // 2 bytes
+#define GET_CAP_NUM_CONNECTORS_MASK 0x7Fu // 7-bit field
+
+// GET_CONNECTOR_CAPABILITY response bit positions (commands.md §2.7).
+#define CONN_CAP_OP_MODE_RP_ONLY (1u << 0)
+#define CONN_CAP_OP_MODE_RD_ONLY (1u << 1)
+#define CONN_CAP_OP_MODE_DRP     (1u << 2)
+#define CONN_CAP_OP_MODE_USB2    (1u << 5)
+#define CONN_CAP_OP_MODE_USB3    (1u << 6)
+#define CONN_CAP_PROVIDER        (1u << 8)
+#define CONN_CAP_CONSUMER        (1u << 9)
+#define CONN_CAP_SWAP_TO_DFP     (1u << 10)
+#define CONN_CAP_SWAP_TO_UFP     (1u << 11)
+#define CONN_CAP_SWAP_TO_SRC     (1u << 12)
+#define CONN_CAP_SWAP_TO_SNK     (1u << 13)
+
+// SET_CCOM CC Operation Mode bits (commands.md §2.8).
+#define SET_CCOM_RP_ONLY  (1u << 0)
+#define SET_CCOM_RD_ONLY  (1u << 1)
+#define SET_CCOM_DRP      (1u << 2)
+#define SET_CCOM_DISABLED (1u << 3)
+
+// SET_UOR / SET_PDR role bits (commands.md §2.9 / §2.10) — same layout,
+// reused. Bits 0/1 are "initiate swap" and are mutually exclusive in SET_UOR.
+#define ROLE_INITIATE_PRIMARY   (1u << 0) // swap to DFP (SET_UOR) / Source (SET_PDR)
+#define ROLE_INITIATE_SECONDARY (1u << 1) // swap to UFP / Sink
+#define ROLE_ACCEPT_SWAPS       (1u << 2)
+#define ROLE_INITIATE_MASK      (ROLE_INITIATE_PRIMARY | ROLE_INITIATE_SECONDARY)
+
+// CONTROL parameter bit offsets within the 64-bit CONTROL register
+// (commands.md §2.x — first column "Offset" in each command's CONTROL table).
+#define BIT_SET_CCOM_CC_MODE   23u
+#define WIDTH_SET_CCOM_CC_MODE 4u
+
+#define BIT_ROLE   23u // shared by SET_UOR / SET_PDR
+#define WIDTH_ROLE 3u
+
+#define BIT_NOTIFICATION_MASK   16u
+#define WIDTH_NOTIFICATION_MASK 17u
+
+#define BIT_GET_PDOS_PARTNER         23u
+#define WIDTH_GET_PDOS_PARTNER       1u
+#define BIT_GET_PDOS_OFFSET          24u
+#define WIDTH_GET_PDOS_OFFSET        8u
+#define BIT_GET_PDOS_NUM_MINUS_ONE   32u
+#define WIDTH_GET_PDOS_NUM_MINUS_ONE 2u
+#define BIT_GET_PDOS_SOURCE          34u
+#define WIDTH_GET_PDOS_SOURCE        1u
+
+// --- byte / field helpers --------------------------------------------------
+
+// Writes a little-endian uint16_t into dst[0..1].
+static void write_le16(uint8_t* dst, uint16_t v) {
+    dst[0] = (uint8_t)(v & 0xFFu);
+    dst[1] = (uint8_t)((v >> 8) & 0xFFu);
+}
+
+// Writes a little-endian uint32_t into dst[0..3].
+static void write_le32(uint8_t* dst, uint32_t v) {
+    dst[0] = (uint8_t)(v & 0xFFu);
+    dst[1] = (uint8_t)((v >> 8) & 0xFFu);
+    dst[2] = (uint8_t)((v >> 16) & 0xFFu);
+    dst[3] = (uint8_t)((v >> 24) & 0xFFu);
+}
+
+// Reads a little-endian uint32_t from src[0..3].
+static uint32_t read_le32(const uint8_t* src) {
+    return ((uint32_t)src[0]) | ((uint32_t)src[1] << 8) | ((uint32_t)src[2] << 16) | ((uint32_t)src[3] << 24);
+}
+
+// Extracts a `width`-bit field from CONTROL starting at bit `bit_offset`.
+// UCSI command parameters (commands.md §2.x) are specified by their bit
+// offset within the 64-bit CONTROL register; fields routinely straddle byte
+// boundaries. The helper isolates that detail.
+static uint32_t control_get_field(const UcsiPpm* ppm, uint8_t bit_offset, uint8_t width) {
+    const uint8_t* ctrl = &ppm->regfile[UCSI_PPM_OFFSET_CONTROL];
+    uint32_t v = 0;
+    for(uint8_t i = 0; i < width; ++i) {
+        const uint8_t bit = (uint8_t)(bit_offset + i);
+        v |= (uint32_t)((ctrl[bit / 8u] >> (bit % 8u)) & 1u) << i;
+    }
+    return v;
+}
+
 // --- CCI helpers -----------------------------------------------------------
 
 static void cci_store(UcsiPpm* ppm, uint32_t cci) {
-    ppm->regfile[UCSI_PPM_OFFSET_CCI + 0] = (uint8_t)(cci & 0xFFu);
-    ppm->regfile[UCSI_PPM_OFFSET_CCI + 1] = (uint8_t)((cci >> 8) & 0xFFu);
-    ppm->regfile[UCSI_PPM_OFFSET_CCI + 2] = (uint8_t)((cci >> 16) & 0xFFu);
-    ppm->regfile[UCSI_PPM_OFFSET_CCI + 3] = (uint8_t)((cci >> 24) & 0xFFu);
+    write_le32(&ppm->regfile[UCSI_PPM_OFFSET_CCI], cci);
 }
 
 static uint32_t cci_load(const UcsiPpm* ppm) {
-    return ((uint32_t)ppm->regfile[UCSI_PPM_OFFSET_CCI + 0]) |
-           ((uint32_t)ppm->regfile[UCSI_PPM_OFFSET_CCI + 1] << 8) |
-           ((uint32_t)ppm->regfile[UCSI_PPM_OFFSET_CCI + 2] << 16) |
-           ((uint32_t)ppm->regfile[UCSI_PPM_OFFSET_CCI + 3] << 24);
+    return read_le32(&ppm->regfile[UCSI_PPM_OFFSET_CCI]);
 }
 
 static uint32_t cci_with_data_length(uint32_t flags, uint8_t data_length) {
@@ -100,31 +203,22 @@ static uint32_t handle_get_capability(UcsiPpm* ppm) {
     const UcsiPpmConfig* c = &ppm->config;
     uint8_t* msg = &ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN];
 
-    const uint32_t bm_attr = pack_bm_attributes(c);
-    msg[0] = (uint8_t)(bm_attr & 0xFFu);
-    msg[1] = (uint8_t)((bm_attr >> 8) & 0xFFu);
-    msg[2] = (uint8_t)((bm_attr >> 16) & 0xFFu);
-    msg[3] = (uint8_t)((bm_attr >> 24) & 0xFFu);
+    write_le32(&msg[GET_CAP_OFF_BM_ATTRIBUTES], pack_bm_attributes(c));
+    msg[GET_CAP_OFF_NUM_CONNECTORS] = (uint8_t)(UCSI_PPM_NUM_CONNECTORS & GET_CAP_NUM_CONNECTORS_MASK);
 
-    // bNumConnectors (7 bits) + reserved (1 bit).
-    msg[4] = (uint8_t)(UCSI_PPM_NUM_CONNECTORS & 0x7Fu);
-
+    // bmOptionalFeatures is a 24-bit field; write 16 bits + 1 byte.
     const uint32_t bm_opt = pack_bm_optional_features(c);
-    msg[5] = (uint8_t)(bm_opt & 0xFFu);
-    msg[6] = (uint8_t)((bm_opt >> 8) & 0xFFu);
-    msg[7] = (uint8_t)((bm_opt >> 16) & 0xFFu);
+    write_le16(&msg[GET_CAP_OFF_BM_OPTIONAL], (uint16_t)(bm_opt & 0xFFFFu));
+    msg[GET_CAP_OFF_BM_OPTIONAL + 2u] = (uint8_t)((bm_opt >> 16) & 0xFFu);
 
-    msg[8] = (uint8_t)UCSI_PPM_NUM_ALT_MODES;
-    msg[9] = 0u; // reserved
+    msg[GET_CAP_OFF_NUM_ALT_MODES] = (uint8_t)UCSI_PPM_NUM_ALT_MODES;
+    msg[GET_CAP_OFF_RESERVED] = 0u;
 
-    msg[10] = (uint8_t)(UCSI_PPM_VERSION_BC & 0xFFu);
-    msg[11] = (uint8_t)((UCSI_PPM_VERSION_BC >> 8) & 0xFFu);
-    msg[12] = (uint8_t)(UCSI_PPM_VERSION_PD & 0xFFu);
-    msg[13] = (uint8_t)((UCSI_PPM_VERSION_PD >> 8) & 0xFFu);
-    msg[14] = (uint8_t)(UCSI_PPM_VERSION_TYPEC & 0xFFu);
-    msg[15] = (uint8_t)((UCSI_PPM_VERSION_TYPEC >> 8) & 0xFFu);
+    write_le16(&msg[GET_CAP_OFF_BCD_BC], UCSI_PPM_VERSION_BC);
+    write_le16(&msg[GET_CAP_OFF_BCD_PD], UCSI_PPM_VERSION_PD);
+    write_le16(&msg[GET_CAP_OFF_BCD_TYPEC], UCSI_PPM_VERSION_TYPEC);
 
-    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, 16u);
+    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, DATA_LEN_GET_CAPABILITY);
 }
 
 static uint32_t handle_get_connector_capability(UcsiPpm* ppm) {
@@ -135,53 +229,39 @@ static uint32_t handle_get_connector_capability(UcsiPpm* ppm) {
     // Operation Mode (bits 0..7).
     switch(c->initial_cc_operation_mode) {
     case UcsiPpmCcModeRpOnly:
-        cap |= (1u << 0);
+        cap |= CONN_CAP_OP_MODE_RP_ONLY;
         break;
     case UcsiPpmCcModeRdOnly:
-        cap |= (1u << 1);
+        cap |= CONN_CAP_OP_MODE_RD_ONLY;
         break;
     case UcsiPpmCcModeDrp:
-        cap |= (1u << 2);
+        cap |= CONN_CAP_OP_MODE_DRP;
         break;
     case UcsiPpmCcModeDisabled:
         break; // no Rp/Rd/DRP bit
     }
-    if(c->connector_usb2_capable) cap |= (1u << 5);
-    if(c->connector_usb3_capable) cap |= (1u << 6);
+    if(c->connector_usb2_capable) cap |= CONN_CAP_OP_MODE_USB2;
+    if(c->connector_usb3_capable) cap |= CONN_CAP_OP_MODE_USB3;
 
     // Provider/Consumer + swap flags (bits 8..13).
     const bool drp = (c->initial_cc_operation_mode == UcsiPpmCcModeDrp);
     const bool rp = drp || (c->initial_cc_operation_mode == UcsiPpmCcModeRpOnly);
     const bool rd = drp || (c->initial_cc_operation_mode == UcsiPpmCcModeRdOnly);
-    if(rp) cap |= (1u << 8); // Provider
-    if(rd) cap |= (1u << 9); // Consumer
-    if(drp) cap |= (1u << 10); // Swap to DFP
-    if(drp) cap |= (1u << 11); // Swap to UFP
-    if(drp) cap |= (1u << 12); // Swap to SRC
-    if(drp) cap |= (1u << 13); // Swap to SNK
+    if(rp) cap |= CONN_CAP_PROVIDER;
+    if(rd) cap |= CONN_CAP_CONSUMER;
+    if(drp) cap |= CONN_CAP_SWAP_TO_DFP | CONN_CAP_SWAP_TO_UFP | CONN_CAP_SWAP_TO_SRC | CONN_CAP_SWAP_TO_SNK;
 
     // Extended Operation Mode (bits 14..21), Misc (22..25), RCP (26),
     // Partner PD Revision (27..28), Reserved (29..31) — all zero in v1
     // (no USB4/EPR, no partner connected at GET_CONNECTOR_CAPABILITY time).
 
-    uint8_t* msg = &ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN];
-    msg[0] = (uint8_t)(cap & 0xFFu);
-    msg[1] = (uint8_t)((cap >> 8) & 0xFFu);
-    msg[2] = (uint8_t)((cap >> 16) & 0xFFu);
-    msg[3] = (uint8_t)((cap >> 24) & 0xFFu);
-
-    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, 4u);
+    write_le32(&ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN], cap);
+    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, DATA_LEN_GET_CONNECTOR_CAPABILITY);
 }
 
 static uint32_t handle_set_notification_enable(UcsiPpm* ppm) {
-    // commands.md §2.5: 17-bit Notification Enable bitmap starting at CONTROL bit 16.
-    // CONTROL bit 16 == byte 2 bit 0; the field spans byte 2 (8 bits) +
-    // byte 3 (8 bits) + byte 4 bit 0 (1 bit) = 17 bits.
-    const uint8_t* ctrl = &ppm->regfile[UCSI_PPM_OFFSET_CONTROL];
-    uint32_t mask = (uint32_t)ctrl[2];
-    mask |= ((uint32_t)ctrl[3]) << 8;
-    mask |= ((uint32_t)(ctrl[4] & 0x01u)) << 16;
-    ppm->notification_mask = mask;
+    // commands.md §2.5: 17-bit Notification Enable bitmap at CONTROL bit 16.
+    ppm->notification_mask = control_get_field(ppm, BIT_NOTIFICATION_MASK, WIDTH_NOTIFICATION_MASK);
     return UCSI_PPM_CCI_COMMAND_COMPLETED;
 }
 
@@ -198,9 +278,9 @@ static uint32_t handle_ack_cc_ci(UcsiPpm* ppm) {
         if(cci & UCSI_PPM_CCI_ERROR) {
             ppm->error_info = 0u;
         }
-        cci &= ~(UCSI_PPM_CCI_COMMAND_COMPLETED | UCSI_PPM_CCI_DATA_LENGTH_MASK |
-                 UCSI_PPM_CCI_NOT_SUPPORTED | UCSI_PPM_CCI_ERROR |
-                 UCSI_PPM_CCI_CANCEL_COMPLETED | UCSI_PPM_CCI_BUSY);
+        cci &=
+            ~(UCSI_PPM_CCI_COMMAND_COMPLETED | UCSI_PPM_CCI_DATA_LENGTH_MASK | UCSI_PPM_CCI_NOT_SUPPORTED | UCSI_PPM_CCI_ERROR | UCSI_PPM_CCI_CANCEL_COMPLETED |
+              UCSI_PPM_CCI_BUSY);
     }
     if(ack & UCSI_PPM_ACK_CC_CI_CONNECTOR_CHANGE_ACK) {
         cci &= ~UCSI_PPM_CCI_CONNECTOR_CHANGE_MASK;
@@ -223,26 +303,22 @@ static uint32_t fail_with_error(UcsiPpm* ppm, uint16_t error_bits) {
 }
 
 static uint32_t handle_set_ccom(UcsiPpm* ppm) {
-    // commands.md §2.8. CC Operation Mode is a 4-bit bitmap at CONTROL bits 23..26.
-    // bit 23 = byte 2 bit 7; bits 24..26 = byte 3 bits 0..2.
-    const uint8_t* ctrl = &ppm->regfile[UCSI_PPM_OFFSET_CONTROL];
-    const uint8_t cc_mode_bits = (uint8_t)(((ctrl[2] >> 7) & 0x01u) |
-                                           ((ctrl[3] & 0x07u) << 1));
+    // commands.md §2.8.
+    const uint8_t cc_mode_bits = (uint8_t)control_get_field(ppm, BIT_SET_CCOM_CC_MODE, WIDTH_SET_CCOM_CC_MODE);
 
     if(cc_mode_bits == 0) {
         return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
     }
 
-    // bit 0=Rp Only, 1=Rd Only, 2=DRP, 3=Disabled.
     // OPM provides a "subset of acceptable modes"; PPM picks the most capable.
     UcsiPpmCcOperationMode chosen;
-    if(cc_mode_bits & (1u << 2)) {
+    if(cc_mode_bits & SET_CCOM_DRP) {
         chosen = UcsiPpmCcModeDrp;
-    } else if(cc_mode_bits & (1u << 0)) {
+    } else if(cc_mode_bits & SET_CCOM_RP_ONLY) {
         chosen = UcsiPpmCcModeRpOnly;
-    } else if(cc_mode_bits & (1u << 1)) {
+    } else if(cc_mode_bits & SET_CCOM_RD_ONLY) {
         chosen = UcsiPpmCcModeRdOnly;
-    } else { // bit 3
+    } else { // SET_CCOM_DISABLED
         if(!ppm->config.supports_disabled_state) {
             return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
         }
@@ -253,47 +329,43 @@ static uint32_t handle_set_ccom(UcsiPpm* ppm) {
 }
 
 static uint32_t handle_set_uor(UcsiPpm* ppm) {
-    // commands.md §2.9. USB Operation Role is 3 bits at CONTROL bits 23..25.
-    const uint8_t* ctrl = &ppm->regfile[UCSI_PPM_OFFSET_CONTROL];
-    const uint8_t role = (uint8_t)(((ctrl[2] >> 7) & 0x01u) |
-                                   ((ctrl[3] & 0x03u) << 1));
+    // commands.md §2.9.
+    const uint8_t role = (uint8_t)control_get_field(ppm, BIT_ROLE, WIDTH_ROLE);
 
-    // bit 0 (swap to DFP) and bit 1 (swap to UFP) are mutually exclusive.
-    if((role & 0x03u) == 0x03u) {
+    // Initiate-DFP and Initiate-UFP are mutually exclusive (spec).
+    if((role & ROLE_INITIATE_MASK) == ROLE_INITIATE_MASK) {
         return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
     }
 
-    // bit 2: accept-swap policy flag (always stored; takes effect once L3 is up).
-    ppm->accept_dr_swap = (role & 0x04u) != 0u;
+    // accept-swap policy flag: always stored; takes effect once L3 is up.
+    ppm->accept_dr_swap = (role & ROLE_ACCEPT_SWAPS) != 0u;
 
-    // Initiate-swap bits (0/1) are a no-op in v1 (no PD partner). When L3
-    // lands they'll kick off a DR_Swap; for now we just report success so
-    // callers can configure policy before a connect.
+    // Initiate bits are a no-op in v1 (no PD partner). When L3 lands they'll
+    // kick off a DR_Swap; for now we just report success so callers can
+    // configure policy before a connect.
     return UCSI_PPM_CCI_COMMAND_COMPLETED;
 }
 
 static uint32_t handle_set_pdr(UcsiPpm* ppm) {
-    // commands.md §2.10. Power Direction Role: 3 bits at CONTROL bits 23..25.
-    const uint8_t* ctrl = &ppm->regfile[UCSI_PPM_OFFSET_CONTROL];
-    const uint8_t role = (uint8_t)(((ctrl[2] >> 7) & 0x01u) |
-                                   ((ctrl[3] & 0x03u) << 1));
+    // commands.md §2.10.
+    const uint8_t role = (uint8_t)control_get_field(ppm, BIT_ROLE, WIDTH_ROLE);
 
     if(role == 0u) {
         // Spec: "Все 0 — нелегально".
         return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
     }
 
-    ppm->accept_pr_swap = (role & 0x04u) != 0u;
+    ppm->accept_pr_swap = (role & ROLE_ACCEPT_SWAPS) != 0u;
     return UCSI_PPM_CCI_COMMAND_COMPLETED;
 }
 
 static uint32_t handle_get_pdos(UcsiPpm* ppm) {
-    // commands.md §2.15. Parameters span CONTROL bits 16..38.
-    const uint8_t* ctrl = &ppm->regfile[UCSI_PPM_OFFSET_CONTROL];
-    const bool partner_pdo = ((ctrl[2] >> 7) & 0x01u) != 0u;
-    const uint8_t pdo_offset = ctrl[3];
-    const uint8_t num_pdos = (uint8_t)((ctrl[4] & 0x03u) + 1u); // value+1, range 1..4
-    const bool want_source = ((ctrl[4] >> 2) & 0x01u) != 0u;
+    // commands.md §2.15.
+    const bool partner_pdo = control_get_field(ppm, BIT_GET_PDOS_PARTNER, WIDTH_GET_PDOS_PARTNER) != 0u;
+    const uint8_t pdo_offset = (uint8_t)control_get_field(ppm, BIT_GET_PDOS_OFFSET, WIDTH_GET_PDOS_OFFSET);
+    const uint8_t num_pdos = (uint8_t)(control_get_field(ppm, BIT_GET_PDOS_NUM_MINUS_ONE,
+                                                         WIDTH_GET_PDOS_NUM_MINUS_ONE) + 1u); // value+1, range 1..4
+    const bool want_source = control_get_field(ppm, BIT_GET_PDOS_SOURCE, WIDTH_GET_PDOS_SOURCE) != 0u;
     // Source Capabilities Type (bits 35..36) and Range (bits 37..38) — ignored
     // in v1: we have only static config caps; partner PDOs aren't tracked yet.
 
@@ -303,14 +375,11 @@ static uint32_t handle_get_pdos(UcsiPpm* ppm) {
         return fail_with_error(ppm, UCSI_PPM_ERR_CC_COMMUNICATION);
     }
 
-    const UcsiPpmPdoList* list = want_source ? &ppm->config.source_caps :
-                                               &ppm->config.sink_caps;
-    // SPR-only in v1 → max offset+count is 7 (pd-scope.md).
-    if((uint32_t)pdo_offset + (uint32_t)num_pdos > 7u) {
+    const UcsiPpmPdoList* list = want_source ? &ppm->config.source_caps : &ppm->config.sink_caps;
+    if((uint32_t)pdo_offset + (uint32_t)num_pdos > SPR_MAX_PDO_COUNT) {
         return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
     }
 
-    uint8_t emitted = 0u;
     uint8_t* msg = &ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN];
     for(uint8_t i = 0; i < num_pdos; ++i) {
         const uint8_t list_index = (uint8_t)(pdo_offset + i);
@@ -318,35 +387,29 @@ static uint32_t handle_get_pdos(UcsiPpm* ppm) {
         if(list_index < list->count) {
             pdo = list->pdos[list_index];
         }
-        // Past the end of the list we emit zero PDOs (commands.md §2.15
-        // doesn't error here — it just trims; the response carries
-        // Data Length = 4 * num_pdos regardless).
-        msg[i * 4 + 0] = (uint8_t)(pdo & 0xFFu);
-        msg[i * 4 + 1] = (uint8_t)((pdo >> 8) & 0xFFu);
-        msg[i * 4 + 2] = (uint8_t)((pdo >> 16) & 0xFFu);
-        msg[i * 4 + 3] = (uint8_t)((pdo >> 24) & 0xFFu);
-        emitted++;
+        // Past the end of the list we emit zero PDOs (commands.md §2.15 doesn't
+        // error here — it just trims; the response carries Data Length =
+        // PDO_BYTES * num_pdos regardless).
+        write_le32(&msg[(size_t)i * PDO_BYTES], pdo);
     }
-    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED,
-                                (uint8_t)(emitted * 4u));
+    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, (uint8_t)(num_pdos * PDO_BYTES));
 }
 
 static uint32_t handle_get_connector_status(UcsiPpm* ppm) {
     // commands.md §2.17. 19 bytes (152 bits). In v1 (no L3/L4) the connector
     // is always Unattached — every status bit is its default-zero value, and
     // there are no Connector Status Change events to report.
-    memset(&ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN], 0, 19u);
-    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, 19u);
+    memset(&ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN], 0, DATA_LEN_GET_CONNECTOR_STATUS);
+    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, DATA_LEN_GET_CONNECTOR_STATUS);
 }
 
 static uint32_t handle_get_error_status(UcsiPpm* ppm) {
     // commands.md §2.18. 16 bytes total: 2 bytes Error Information + 14 bytes
     // vendor-defined (0 in v1).
     uint8_t* msg = &ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN];
-    msg[0] = (uint8_t)(ppm->error_info & 0xFFu);
-    msg[1] = (uint8_t)((ppm->error_info >> 8) & 0xFFu);
-    memset(&msg[2], 0, 14u);
-    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, 16u);
+    write_le16(&msg[ERROR_STATUS_OFFSET_INFO], ppm->error_info);
+    memset(&msg[ERROR_STATUS_OFFSET_VENDOR], 0, ERROR_STATUS_VENDOR_RESERVED_BYTES);
+    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, DATA_LEN_GET_ERROR_STATUS);
 }
 
 // --- entry points ----------------------------------------------------------
