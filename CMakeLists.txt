@@ -72,6 +72,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/bq25792/*.c*"
     "lib/drivers/bq28z620/*.c*"
     "lib/drivers/fusb302/*.c*"
+    "lib/usb/src/*.c*"
     "lib/drivers/hd3ss3220/*.c*"
     "lib/drivers/i2c_multi_slave/*.c*"
     "lib/drivers/i2c_slave/*.c*"
@@ -125,6 +126,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb/include
 )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/mlib)

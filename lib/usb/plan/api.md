@@ -47,6 +47,28 @@ lib/usb/include/
 - **Bool**: `bool` из `<stdbool.h>`.
 - **Время**: только миллисекунды, `uint32_t`, монотонно растущее.
 
+### 1.1 Константы версий спецификаций
+
+Зафиксированы compile-time. Caller не может их переопределить — это
+функция от выбранного скоупа (см. [`pd-scope.md`](pd-scope.md)).
+
+```c
+#define UCSI_PPM_VERSION_UCSI    0x0300  // UCSI 3.0 (regfile VERSION)
+#define UCSI_PPM_VERSION_PD      0x0300  // PD 3.0 (commands.md §2.6 bcdPDVersion)
+#define UCSI_PPM_VERSION_TYPEC   0x0200  // Type-C 2.0 (bcdUSBTypeCVersion)
+#define UCSI_PPM_VERSION_BC      0x0000  // BC не реализуем (bcdBCVersion = 0)
+#define UCSI_PPM_NUM_ALT_MODES   0       // v1: alt-modes отсутствуют (bNumAltModes)
+#define UCSI_PPM_NUM_CONNECTORS  1       // bNumConnectors (architecture.md §1)
+```
+
+Версия публичного API библиотеки — отдельно:
+
+```c
+#define UCSI_PPM_API_VERSION_MAJOR 0
+#define UCSI_PPM_API_VERSION_MINOR 1
+#define UCSI_PPM_API_VERSION_PATCH 0
+```
+
 ---
 
 ## 2. Базовые типы
@@ -59,19 +81,17 @@ lib/usb/include/
 typedef struct UcsiPpm UcsiPpm;
 ```
 
-**Аллокация**: caller вызывает `ucsi_ppm_alloc()` — внутри библиотеки
-аллокация делается через project-wide allocator (например, FreeRTOS
-`pvPortMalloc` или статический пул; см. §10 «Открытые вопросы»).
+**Аллокация**: caller вызывает `ucsi_ppm_alloc()`; внутри библиотека
+использует project-wide allocator (Furi `malloc`/`free` поверх FreeRTOS
+heap). Структура `UcsiPpm` непрозрачна — размер не часть ABI.
 
 ```c
 UcsiPpm* ucsi_ppm_alloc(void);
 void     ucsi_ppm_free(UcsiPpm* ppm);
 ```
 
-> **Альтернатива (статическая)**: `UcsiPpm` — раскрытая структура,
-> размер известен compile-time. Это исключает любой malloc, но
-> ломает ABI при изменении внутренностей. Решаем при выборе target
-> платформы.
+`ucsi_ppm_free` на не-`deinit`-нутом инстансе сам делает `deinit` перед
+освобождением памяти. `ucsi_ppm_free(NULL)` — no-op.
 
 ### 2.2 Статус
 
@@ -79,6 +99,7 @@ void     ucsi_ppm_free(UcsiPpm* ppm);
 typedef enum {
     UcsiPpmStatusOk = 0,
     UcsiPpmStatusInvalidArg,        // NULL handle / out-of-range offset / etc.
+    UcsiPpmStatusInvalidConfig,     // конфиг не прошёл валидацию (см. §5.1)
     UcsiPpmStatusNotInitialized,    // вызов до ucsi_ppm_init
     UcsiPpmStatusAlreadyInitialized,
     UcsiPpmStatusBusy,              // operation queued, не fatal
@@ -132,6 +153,33 @@ typedef struct {
     UcsiPpmPdo pdos[UCSI_PPM_MAX_PDOS];
     uint8_t    count;  // 1..7
 } UcsiPpmPdoList;
+```
+
+### 2.4 Policy-энумы
+
+```c
+// Начальный CC operation mode (commands.md §2.8 SET_CCOM bits 0..3).
+// Переопределяется через UCSI SET_CCOM в runtime.
+typedef enum {
+    UcsiPpmCcModeRpOnly,    // только Source — Rp терминации
+    UcsiPpmCcModeRdOnly,    // только Sink — Rd терминации
+    UcsiPpmCcModeDrp,       // DRP toggling (Rp ↔ Rd)
+    UcsiPpmCcModeDisabled,  // терминаторы убраны; валиден только если supports_disabled_state == true
+} UcsiPpmCcOperationMode;
+
+// Какую роль анонсировать первой в DRP-цикле (type-c-sm.md).
+typedef enum {
+    UcsiPpmDrpFirstSrc,     // первый период tDRP — Rp
+    UcsiPpmDrpFirstSnk,     // первый период tDRP — Rd
+} UcsiPpmDrpFirstRole;
+
+// Advertised Rp current до PD-контракта (fusb302.md HOST_CUR).
+// После успешного PD-контракта значение не используется.
+typedef enum {
+    UcsiPpmRpCurrentUsbDefault,  // 80 µA — USB Default (500/900 мА)
+    UcsiPpmRpCurrent1A5,         // 180 µA — Type-C 1.5A
+    UcsiPpmRpCurrent3A,          // 330 µA — Type-C 3.0A
+} UcsiPpmRpCurrent;
 ```
 
 ---
@@ -195,12 +243,18 @@ typedef void (*UcsiPpmGpioWriteFn)(void* ctx, bool value);
 ```
 
 Используются для:
-- **FUSB302 INT pin** — read-only. Запрашивается из тика для poll-fallback
-  (если caller не дёргает `ucsi_ppm_notify_fusb302_irq`).
+- **FUSB302 INT pin** — read-only. **Optional fallback**: используется
+  только если caller **не** проводил INT через прерывание/`notify_fusb302_irq`.
+  При наличии IRQ-проводки этот callback не нужен (`NULL` в конфиге).
+  При его отсутствии и отсутствии notify библиотека не увидит событий
+  от FUSB302 → undefined behavior.
 - **VBUS source enable** — write. Включает/выключает внешний VBUS-switch
-  при роли Source.
+  при роли Source. **Семантика `value`**: `true` означает «активировать
+  switch» (на уровне HAL); физическую полярность инвертирует caller
+  внутри callback-а. Библиотека не знает о active-high / active-low.
 - **VBUS discharge** — write, optional. Помогает быстрее упасть до vSafe0V
-  при detach/Hard Reset.
+  при detach/Hard Reset. Та же семантика `value` (`true` = активировать
+  discharge).
 
 Конкретное назначение каждого callback-а — поле в `UcsiPpmConfig` (§4).
 
@@ -221,13 +275,21 @@ typedef UcsiPpmStatus (*UcsiPpmPowerSupplySetFn)(
 отреагирует Reject или ограничит advertise-ed PDO. Если в системе только
 vSafe5V Fixed — caller возвращает `Ok` только для voltage_mv==5000.
 
+> **Контракт консистентности**: caller отвечает за то, чтобы любой
+> voltage из `config.source_caps` (плюс runtime `SET_PDOS`) был
+> успешно обрабатываемым в `power_supply_set`. Если caller рекламирует
+> 20V PDO, а `power_supply_set(20000, ...)` возвращает error — PE
+> вынужден Reject-ить уже принятый Request от Sink-а, что выглядит
+> как баг порта снаружи. Библиотека не валидирует это в `init` —
+> это caller-config-error.
+
 После того как PSU отстоялся, caller обязан позвать:
 
 ```c
 UcsiPpmStatus ucsi_ppm_notify_power_supply_ready(UcsiPpm* ppm);
 ```
 
-(детали в §5.3). Это завершает `PSTransitionTimer` досрочно.
+(детали в §5.4). Это завершает `PSTransitionTimer` досрочно.
 
 ### 3.6 Альтернативный источник питания
 
@@ -262,7 +324,42 @@ typedef void (*UcsiPpmLogFn)(
 
 `NULL` callback = логирование выключено. Библиотека внутри использует
 макросы, которые компилируются в no-op если `UCSI_PPM_LOG_DISABLE`
-определён (см. §10 — открытый вопрос про формат).
+определён.
+
+### 3.8 Контексты вызова callback-ов
+
+| Callback                       | Контекст                | Может блокировать? |
+|:-------------------------------|:------------------------|:------------------:|
+| `time_ms`                      | tick / write / get      | нет — должен быть O(1) |
+| `alert`                        | tick / register_write   | желательно нет¹    |
+| `i2c_read` / `i2c_write`       | tick / init / deinit    | да (мс)            |
+| `gpio_read_fusb302_int`        | tick (fallback)         | нет — должен быть O(1) |
+| `gpio_write_vbus_*`            | tick / deinit           | нет (короткий switch) |
+| `power_supply_set`             | tick                    | нет — должен быть async (PSU сам сообщит готовность через `notify_power_supply_ready`) |
+| `has_alt_power`                | tick                    | нет — должен быть O(1) |
+| `log`                          | любой task-context²     | желательно нет¹    |
+
+¹ Не блокирует библиотеку, но удлиняет `tick` → влияет на latency
+  PD-таймингов (см. [`pd-scope.md`](pd-scope.md) §6 — tSenderResponse
+  500 мс, tPSTransition 500 мс и т.п. — запас большой, но не миллисекунды).
+
+² `log` никогда не зовётся из ISR-контекста библиотеки (`notify_*`
+  только выставляют флаги; логирование происходит когда `tick` их
+  обнаруживает).
+
+**Гарантия про `hal_ctx`**: caller обязан держать `hal_ctx` живым
+весь lifetime инстанса (`init` → `deinit`). Библиотека сохраняет
+указатель как есть и передаёт во все callback-и.
+
+**Реентрантность снаружи**: библиотека **не вызывает** свой публичный
+API из callback-ов. Caller волен из callback-а написать что-то в
+queue / flag, но **не** должен вызывать `ucsi_ppm_*` рекурсивно
+(см. §8).
+
+> **Портабельность `va_list`**: на большинстве toolchain-ов (arm-none-eabi-gcc,
+> clang) передача `va_list` через callback работает; на минимальных nano-libc
+> сборках возможны проблемы. Альтернатива — pre-formatted строка фиксированного
+> размера (`char buf[N]`); решаем при выборе target-libc.
 
 ---
 
@@ -274,53 +371,95 @@ typedef void (*UcsiPpmLogFn)(
 
 ```c
 typedef struct {
-    // Контекст для всех callback-ов (один общий).
+    // ---- Контекст для всех callback-ов (один общий) -----------------
     void* hal_ctx;
 
-    // Обязательные callback-и.
+    // ---- Обязательные callback-и ------------------------------------
     UcsiPpmTimeMsFn          time_ms;
     UcsiPpmAlertFn           alert;
     UcsiPpmI2cReadFn         i2c_read;
     UcsiPpmI2cWriteFn        i2c_write;
-    UcsiPpmGpioReadFn        gpio_read_fusb302_int;
     UcsiPpmGpioWriteFn       gpio_write_vbus_source;
     UcsiPpmPowerSupplySetFn  power_supply_set;
     UcsiPpmHasAltPowerFn     has_alt_power;
 
-    // Опциональные.
-    UcsiPpmGpioWriteFn       gpio_write_vbus_discharge;  // NULL = нет discharge
+    // ---- Опциональные callback-и (NULL допустимо) -------------------
+    UcsiPpmGpioReadFn        gpio_read_fusb302_int;      // см. §3.4: NULL если caller обеспечивает notify_fusb302_irq
+    UcsiPpmGpioWriteFn       gpio_write_vbus_discharge;  // NULL = discharge не поддерживается
     UcsiPpmLogFn             log;                        // NULL = silent
 
-    // FUSB302.
-    uint8_t fusb302_i2c_addr;  // 0x22..0x25
+    // ---- FUSB302 ----------------------------------------------------
+    uint8_t fusb302_i2c_addr;  // 0x22..0x25 (по версии чипа)
 
-    // Initial capabilities — могут быть переписаны через SET_PDOS.
-    UcsiPpmPdoList source_caps;
-    UcsiPpmPdoList sink_caps;
+    // ---- Type-C initial policy (commands.md §2.8, type-c-sm.md) -----
+    // Все три переопределяются в runtime: SET_CCOM (CC mode),
+    // SET_PDR (роль), SET_POWER_LEVEL (косвенно — Rp current).
+    UcsiPpmCcOperationMode  initial_cc_operation_mode;
+    UcsiPpmDrpFirstRole     drp_advertise_first;
+    UcsiPpmRpCurrent        source_rp_current;
 
-    // Identity (PD R3.0 §6.4.4.3).
-    // VID/PID/XID — для будущего Discover Identity (v1: используются только
-    // как plumbing; реальный VDM мы не отправляем, см. pd-scope.md).
-    uint16_t vendor_id;
-    uint16_t product_id;
-    uint16_t bcd_device;
+    // ---- Initial PD capabilities (переписываются через SET_PDOS) ----
+    UcsiPpmPdoList source_caps;  // count >= 1; PDO[0] обязан быть Fixed 5V
+    UcsiPpmPdoList sink_caps;    // count >= 1; PDO[0] обязан быть Fixed 5V
 
-    // Static UCSI flags (bmAttributes / bmOptionalFeatures
-    // см. commands.md §2.1 GET_CAPABILITY).
-    bool supports_set_uor;       // USB Role Swap
-    bool supports_set_pdr;       // Power Role Swap (DRP)
-    bool supports_get_pdos;
-    bool supports_get_cable_property;
-    bool supports_get_pd_message;
-    bool supports_async_notification;
-    // ... полный список — см. commands.md §2.1.
+    // ---- GET_CAPABILITY.bmAttributes (commands.md §2.6, Table 6-14) -
+    bool supports_disabled_state;      // bit 0
+    bool supports_battery_charging;    // bit 1 — для v1 false (pd-scope.md)
+    bool supports_usb_pd;              // bit 2 — обычно true
+    bool supports_typec_current;       // bit 6
+    // bmPowerSource: минимум ОДИН из трёх должен быть true.
+    bool power_source_ac;              // bit 8  — AC supply available
+    bool power_source_other;           // bit 10 — иной (battery, solar и т.п.)
+    bool power_source_vbus;            // bit 14 — питаемся от VBUS партнёра
+
+    // ---- GET_CAPABILITY.bmOptionalFeatures (commands.md §1.6) -------
+    bool supports_set_ccom;             // bit 0   — SET_CCOM
+    // bit 1 (SET_POWER_LEVEL) — всегда 1 по spec, не конфигурируется
+    bool supports_alt_mode_details;     // bit 2   — v1 false
+    bool supports_alt_mode_override;    // bit 3   — v1 false
+    bool supports_pdo_details;          // bit 4   — GET_PDOS
+    bool supports_cable_details;        // bit 5   — GET_CABLE_PROPERTY
+    bool supports_external_supply_notif;// bit 6   — внешний supply notify
+    bool supports_pd_reset_notif;       // bit 7   — PD reset notification
+    bool supports_get_pd_message;       // bit 8   — GET_PD_MESSAGE; v1 false
+    bool supports_get_attention_vdo;    // bit 9   — v1 false (VDM нет)
+    bool supports_fw_update_request;    // bit 10  — v1 false
+    bool supports_negotiated_pl_notif;  // bit 11  — Negotiated Power Level Change notification
+    bool supports_security_request;     // bit 12  — v1 false
+    bool supports_set_retimer_mode;     // bit 13  — v1 false
+    bool supports_chunking;             // bit 14  — chunking support
+
+    // ---- GET_CONNECTOR_CAPABILITY (commands.md §2.7) ----------------
+    // Operation Mode bits 0/1/2 (Rp/Rd/DRP) выводятся из source_caps
+    // (есть → Provider) и sink_caps (есть → Consumer) + initial mode.
+    bool connector_usb2_capable;       // bit 5 Operation Mode
+    bool connector_usb3_capable;       // bit 6 Operation Mode
+    // Provider / Consumer / Swap-флаги — выводятся из DRP policy и
+    // содержания source/sink_caps; в конфиге не задаются явно.
+
 } UcsiPpmConfig;
 ```
 
 > **Что НЕ в конфиге**: всё, что меняется в runtime через UCSI-команды —
-> notification mask (`SET_NOTIFICATION_ENABLE`), текущая CC operation mode,
-> текущая power/data role. Эти вещи живут в state библиотеки и сбрасываются
-> в дефолт через `PPM_RESET`.
+> notification mask (`SET_NOTIFICATION_ENABLE`), текущая CC operation mode
+> (после `SET_CCOM`), текущая power/data role, accept_pr_swap/accept_dr_swap
+> (после `SET_PDR`/`SET_UOR` bit 2). Эти вещи живут в state библиотеки и
+> сбрасываются в дефолт через `PPM_RESET` / `ucsi_ppm_reset`.
+>
+> **Defaults после `init` / `reset`** (соответствуют PD R3.0 spec):
+> - `notification mask` = 0 (все нотификации выключены, см.
+>   commands.md §2.5);
+> - `cc operation mode` = `initial_cc_operation_mode` из конфига;
+> - `accept_pr_swap` = `true` (commands.md §2.10 SET_PDR: «по умолчанию —
+>   принимать power swap-ы»);
+> - `accept_dr_swap` = `true` (commands.md §2.9 SET_UOR bit 2 default);
+> - power/data role — определяется по результату Type-C attach (для
+>   `CcModeDrp` зависит от того, кто первым стал Source/Sink).
+
+> **Identity (VID/PID/bcd_device)** в v1-конфиге **отсутствует**. PD VDM
+> (Discover Identity) — `❌ NS` по [`pd-scope.md`](pd-scope.md) §1.2;
+> мы отвечаем `Not_Supported` и identity не нужна. Поле вернётся в
+> конфиг при добавлении VDM-фичи.
 
 ---
 
@@ -334,14 +473,25 @@ UcsiPpmStatus ucsi_ppm_deinit(UcsiPpm* ppm);
 ```
 
 `init` делает:
-1. Валидирует конфиг (обязательные callback-и не NULL; PDO #1 — Fixed 5V;
-   `count >= 1` для source_caps/sink_caps).
+1. Валидирует конфиг — возвращает `UcsiPpmStatusInvalidConfig` если:
+   - обязательный callback NULL;
+   - `fusb302_i2c_addr` вне 0x22..0x25;
+   - `source_caps.count == 0` или `sink_caps.count == 0`;
+   - `source_caps.pdos[0]` или `sink_caps.pdos[0]` не Fixed 5V;
+   - `count > UCSI_PPM_MAX_PDOS`;
+   - `initial_cc_operation_mode == CcModeDisabled` при `supports_disabled_state == false`;
+   - ни один из `power_source_{ac,other,vbus}` не установлен в `true`
+     (см. commands.md §2.6: «минимум один обязан быть»).
 2. Копирует поля во внутреннее состояние.
-3. Заполняет regfile (VERSION=0x0300, CCI=0, MESSAGE_IN/OUT=0).
+3. Заполняет regfile (`VERSION=UCSI_PPM_VERSION_UCSI`, `CCI=0`,
+   `MESSAGE_IN/OUT=0`).
 4. Поднимает L4 (FUSB302 power-on reset, базовая конфигурация регистров,
-   маски прерываний).
-5. Запускает L3 в начальное состояние Type-C SM (Unattached.SRC или
-   Unattached.SNK в зависимости от DRP-policy).
+   маски прерываний; Rp current = `source_rp_current`).
+5. Запускает L3 в начальное состояние Type-C SM:
+   - `CcModeRpOnly` → Unattached.SRC;
+   - `CcModeRdOnly` → Unattached.SNK;
+   - `CcModeDrp` → Unattached.SRC или Unattached.SNK по `drp_advertise_first`;
+   - `CcModeDisabled` → Disabled.
 
 После `init` библиотека **не делает ничего**, пока caller не позовёт
 `tick` или `notify_*` — никаких background-операций (см.
@@ -351,7 +501,26 @@ UcsiPpmStatus ucsi_ppm_deinit(UcsiPpm* ppm);
 GPIO, освобождает внутренние ресурсы. После `deinit` инстанс невалиден
 до повторного `init`.
 
-### 5.2 Tick
+### 5.2 Reset
+
+```c
+UcsiPpmStatus ucsi_ppm_reset(UcsiPpm* ppm);
+```
+
+Тонкая обёртка над тем же кодом, что обрабатывает UCSI `PPM_RESET` opcode
+(commands.md §2.1) — даёт caller-у способ сбросить состояние без
+имитации OPM-write. Используется для self_check / автотестов.
+Эквивалент `register_write` с CONTROL=PPM_RESET, но синхронный
+(возврат после завершения сброса), без выставления CCI/alert.
+
+После `reset`:
+- regfile очищен (VERSION/Reserved сохраняются);
+- L3 в `Unattached.*` согласно `initial_cc_operation_mode`;
+- L4 (FUSB302) полностью переинициализирован;
+- notification mask сброшен в 0;
+- accept_pr_swap / accept_dr_swap — в дефолты (accept).
+
+### 5.3 Tick
 
 ```c
 UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm);
@@ -368,23 +537,28 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm);
 Внутри тика происходит всё: прокачка FUSB302, продвижение Type-C/PRL/PE,
 проверка таймаутов, доставка событий в CCI, alert наружу.
 
-### 5.3 Async notifications от caller-а
+### 5.4 Async notifications от caller-а
 
 ```c
 UcsiPpmStatus ucsi_ppm_notify_fusb302_irq(UcsiPpm* ppm);
 UcsiPpmStatus ucsi_ppm_notify_power_supply_ready(UcsiPpm* ppm);
-UcsiPpmStatus ucsi_ppm_notify_vbus_change(UcsiPpm* ppm);  // optional
 ```
 
 - `notify_fusb302_irq` — caller дёрнул из ISR (или bottom-half) на INT
-  pin. Эквивалентно «следующий тик прокачает FUSB302», но **не** ждёт
-  следующего тика, а делает прокачку сразу. Реентрант-безопасный
-  относительно `tick` **в той же thread** (см. §8).
+  pin. Только выставляет atomic-флаг «требуется прокачка FUSB302» и
+  возвращается. Реальное чтение регистров FUSB302 происходит в следующем
+  `tick` (см. §8 про concurrency).
 - `notify_power_supply_ready` — PSU отстоялся после `power_supply_set`.
-  Прерывает PSTransitionTimer ожидания.
-- `notify_vbus_change` — опционально, если caller имеет внешний VBUS
-  monitor вместо FUSB302-MDAC. В v1 — VBUS детектится через FUSB302,
-  этот callback зарезервирован.
+  Выставляет atomic-флаг; PSTransitionTimer завершается на следующем
+  тике досрочно. Альтернатива — caller не зовёт этот notify, и
+  библиотека дожидается vSafe-уровня через FUSB302 MDAC. Зов notify
+  **рекомендуется**, если caller имеет точный сигнал готовности PSU —
+  это экономит I²C-трафик на MDAC-опрос.
+
+> VBUS-уровень в v1 детектится через FUSB302 (`I_VBUSOK` + MDAC,
+> см. [`fusb302.md`](fusb302.md) §1.8). Внешний VBUS-monitor не
+> поддерживается; если в будущем понадобится — добавим `notify_vbus_change`
+> в v2.
 
 ---
 
@@ -421,6 +595,14 @@ UcsiPpmStatus ucsi_ppm_register_write(
 
 Размер `length` не ограничен 1 байтом — caller может писать MESSAGE_OUT
 целиком (255 байт) одной транзакцией.
+
+> **Порядок записи MESSAGE_OUT → CONTROL**. Для команд с payload-ом
+> (например, `SET_PDOS`) caller обязан **сначала** записать MESSAGE_OUT
+> (offset 272..526), **потом** CONTROL (offset 8..15). L1 триггерит
+> обработку команды по записи в CONTROL byte-0 (см. [`architecture.md`](architecture.md)
+> §2), поэтому MESSAGE_OUT должен быть валиден к этому моменту.
+> Обратный порядок — undefined behavior: библиотека прочитает старый
+> MESSAGE_OUT.
 
 ---
 
@@ -466,32 +648,42 @@ UcsiPpmStatus ucsi_ppm_get_contract(const UcsiPpm* ppm, UcsiPpmContractInfo* out
 
 Контракт (см. [`architecture.md`](architecture.md) §8):
 
-| API                               | Реентрант? | Из ISR? |
-|:----------------------------------|:----------:|:-------:|
-| `ucsi_ppm_alloc`/`free`           | нет        | нет     |
-| `ucsi_ppm_init`/`deinit`          | нет        | нет     |
-| `ucsi_ppm_tick`                   | нет        | да¹     |
-| `ucsi_ppm_register_read`/`write`  | нет        | нет²    |
-| `ucsi_ppm_notify_*`               | нет        | да      |
-| `ucsi_ppm_get_*` (интроспект)     | нет        | нет     |
+| API                               | Из ISR? | Заметка                                              |
+|:----------------------------------|:-------:|:-----------------------------------------------------|
+| `ucsi_ppm_alloc`/`free`           | нет     | task-context only                                    |
+| `ucsi_ppm_init`/`deinit`          | нет     | task-context only                                    |
+| `ucsi_ppm_tick`                   | нет     | блокируется на I²C, использовать `notify_*` из ISR¹  |
+| `ucsi_ppm_register_read`/`write`  | нет²    | task-context only (см. §6)                           |
+| `ucsi_ppm_get_*` (интроспект)     | нет     | task-context only                                    |
+| `ucsi_ppm_notify_fusb302_irq`     | **да**  | ISR-safe; lock-free относительно tick                |
+| `ucsi_ppm_notify_power_supply_ready` | **да** | ISR-safe; lock-free относительно tick              |
 
-¹ Дёрнуть `tick` из ISR можно технически, но не рекомендуется — он
-блокирует на I²C-операциях к FUSB302 (см. [`architecture.md`](architecture.md) §8).
-Реальный способ — `notify_fusb302_irq` из ISR, основной `tick` в loop.
+¹ `tick` блокируется на I²C-операциях к FUSB302 (см.
+  [`architecture.md`](architecture.md) §8). Из ISR — недопустимо.
+  Правильный паттерн: на INT pin → `notify_fusb302_irq` → возврат из
+  ISR. Основной `tick` идёт в task-context и прокачает FUSB302 на
+  следующей итерации.
 
 ² Transport-callback-и (OPM-сторона) обычно живут в отдельной задаче
-(HID-handler, I²C-slave-ISR). Если транспорт работает из ISR — caller
-обязан либо очередить событие в task-context, либо обеспечить
-mutual-exclusion с тиком.
+  (HID-handler, I²C-slave-ISR). Если транспорт работает из ISR — caller
+  обязан очередить событие в task-context перед `register_read/write`.
 
-**Caller обязан** сериализовать вызовы любой публичной функции (кроме
-`notify_*`) одним мьютексом/одной задачей. `notify_*` спроектированы
-быть **lock-free относительно ISR**: они только выставляют флаг в
-atomic-переменной, реальная работа происходит в следующем `tick`.
+**Контракт сериализации**:
 
-> **Уточнение v1**: «atomic-флаг» — это `volatile uint32_t` + memory
-> barrier через project HAL. Если требуется поддержка SMP — переходим
-> на `_Atomic` (C11), это правка L2 без изменения публичного API.
+- **Task-context API** (`tick`, `register_*`, `get_*`, `init`/`deinit`):
+  caller обязан сериализовать одним мьютексом или вызывать только из
+  одной задачи. Реентрантный вызов из callback-а наружу (например,
+  alert) **запрещён**.
+- **ISR-context API** (`notify_*`): ISR-safe; могут быть вызваны
+  одновременно с `tick` в другой thread, либо рекурсивно через
+  вложенные прерывания. Реализуются как atomic-set одного флага,
+  без I²C, без блокировок.
+
+> **Уточнение v1**: «atomic-флаг» реализуется через Furi/FreeRTOS
+> primitives — `FuriEventFlag` или `FuriThreadFlag`. `notify_*` делает
+> `furi_event_flag_set` (ISR-safe в FreeRTOS), `tick` опрашивает флаги
+> через `furi_event_flag_get` или ждёт с zero-timeout. Это
+> деталь имплементации L2; публичный API остаётся pure C99.
 
 ---
 
@@ -502,15 +694,24 @@ atomic-переменной, реальная работа происходит 
 ```c
 static UcsiPpmConfig config = {
     .hal_ctx = &my_hal_state,
+
     .time_ms                 = my_time_ms,
     .alert                   = my_opm_alert,
     .i2c_read                = my_i2c_read,
     .i2c_write               = my_i2c_write,
-    .gpio_read_fusb302_int   = my_gpio_int_read,
     .gpio_write_vbus_source  = my_vbus_set,
     .power_supply_set        = my_psu_set,
     .has_alt_power           = my_has_battery,
+
+    .gpio_read_fusb302_int   = NULL,  // caller wires INT через notify_fusb302_irq
+    .log                     = my_log_sink,
+
     .fusb302_i2c_addr        = 0x22,
+
+    .initial_cc_operation_mode = UcsiPpmCcModeDrp,
+    .drp_advertise_first       = UcsiPpmDrpFirstSrc,
+    .source_rp_current         = UcsiPpmRpCurrent3A,
+
     .source_caps = { .pdos = {
         ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true),
         ucsi_ppm_pdo_fixed_source(9000, 3000, true, false, true, true),
@@ -519,7 +720,24 @@ static UcsiPpmConfig config = {
     .sink_caps = { .pdos = {
         ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true),
     }, .count = 1 },
-    // ... identity, attributes ...
+
+    // bmAttributes
+    .supports_disabled_state = true,
+    .supports_usb_pd         = true,
+    .supports_typec_current  = true,
+    .power_source_other      = true,   // у нас battery
+    .power_source_vbus       = true,   // можем питаться от VBUS
+
+    // bmOptionalFeatures
+    .supports_set_ccom         = true,
+    .supports_pdo_details      = true,
+    .supports_cable_details    = true,
+    .supports_pd_reset_notif   = true,
+    .supports_negotiated_pl_notif = true,
+
+    // Connector capability
+    .connector_usb2_capable  = true,
+    .connector_usb3_capable  = false,
 };
 
 UcsiPpm* ppm = ucsi_ppm_alloc();
@@ -555,30 +773,40 @@ void on_opm_alert_from_lib(void* ctx) {
 
 ---
 
-## 10. Открытые вопросы
+## 10. Решения по архитектуре API
 
-Помечено `[OPEN]` — нужно решить до фиксации API.
+Все ранее открытые вопросы зафиксированы. Список решений — для
+последующих ревью и чтобы понимать «почему именно так».
 
-1. **[OPEN] Memory model**: `alloc/free` через project allocator или
-   полностью статический инстанс (один глобальный или caller-provided
-   buffer). Влияет на ABI: если структура раскрытая, размер becomes part
-   of API. Предложение по умолчанию — `alloc/free` с делегацией в project
-   allocator; если в проекте принят статический allocation — переключим.
-2. **[OPEN] Логирование**: формат `vprintf`-style vs structured key-value
-   vs furi-log-style макросы. Предложение — `vprintf`-style для простоты,
-   с возможностью отключить compile-time флагом.
-3. **[OPEN] Интроспект-API**: какие именно структуры экспонируем (текущий
-   §7 — минимум). Если `apps/self_check` потребует больше — расширим.
-4. **[OPEN] Регистрация vendor-extensions**: UCSI Vendor Defined Command
-   (см. [`architecture.md`](architecture.md) §10 п.3) — нужен ли в v1
-   regsiter-callback или достаточно scope-stub-а. Предложение — отложить.
-5. **[OPEN] Atomic-флаги для `notify_*` из ISR**: использовать platform
-   HAL барьер или C11 `_Atomic`. Зависит от выбора компилятора и
-   target-платформы.
-6. **[OPEN] Версионирование API**: семвер в макросе
-   `UCSI_PPM_API_VERSION` или git tag достаточно. Предложение — макрос
-   `UCSI_PPM_VERSION_{MAJOR,MINOR,PATCH}` в `ucsi_ppm.h`, чтобы caller
-   мог `#if`-гейтить новые поля конфига.
+- ✅ **Memory model**: `ucsi_ppm_alloc`/`free` поверх Furi malloc
+   (FreeRTOS heap). Структура `UcsiPpm` opaque — размер не часть ABI.
+   См. §2.1.
+- ✅ **Версионирование**: макросы `UCSI_PPM_API_VERSION_*` и
+   `UCSI_PPM_VERSION_*` для PD/Type-C/UCSI/BC — в §1.1.
+- ✅ **Identity (VID/PID)**: убрана из v1-конфига (VDM не делаем; см. §4).
+- ✅ **`notify_vbus_change`**: не вводим в v1 (VBUS детект через FUSB302).
+- ✅ **Логирование callback signature**: `vprintf`-style; полная
+   отключаемость через `UCSI_PPM_LOG_DISABLE`. На целевой Furi/arm-gcc
+   `va_list` работает; альтернатива не требуется (см. §3.7).
+- ✅ **GPIO INT pin polling**: optional fallback, `NULL` если caller
+   обеспечил IRQ → `notify_fusb302_irq` (см. §3.4).
+- ✅ **GPIO write polarity**: `value=true` означает «активировать»,
+   физическую инверсию делает caller (см. §3.4).
+- ✅ **Concurrency**: `tick`/`register_*` task-only; `notify_*` ISR-safe
+   (см. §8).
+- ✅ **Atomic-флаги для `notify_*`**: `FuriEventFlag`/`FuriThreadFlag`
+   из Furi-runtime — это деталь имплементации L2, публичный API
+   pure C99 (см. §8).
+- ✅ **Интроспект-API**: в v1 — минимум (§7). Расширение откладываем
+   до момента, когда `apps/self_check` или другой caller потребует
+   больше. Thread-safety snapshot не гарантируем — caller дёргает в
+   той же thread что и `tick`.
+- ✅ **Vendor-extensions**: scope-stub (handler возвращает
+   `Not_Supported` для VENDOR_DEFINED opcode). Регистрация
+   user-handler-ов не входит в v1 API.
+- ✅ **Public reset API**: `ucsi_ppm_reset` добавлен (§5.2).
+- ✅ **BIST API**: отложено до compliance-сертификации; в v1 любой
+   приём BIST → `Not_Supported`.
 
 ---
 
