@@ -9,6 +9,13 @@
 typedef struct Pcal6416 Pcal6416;
 typedef void (*Pcal6416CallbackInput)(void* context);
 
+typedef enum {
+    Pcal6416StatusUnknown = 0,
+    Pcal6416StatusOk = 1,
+    Pcal6416StatusError = -1,
+    Pcal6416StatusTimeout = -2,
+} Pcal6416Status;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
