@@ -51,14 +51,19 @@ bool cli_is_connected(Cli* cli) {
 bool cli_cmd_interrupt_received(Cli* cli) {
     furi_check(cli);
     char c = '\0';
-    if(cli_is_connected(cli)) {
-        if(cli->session->rx((uint8_t*)&c, 1, 0) == 1) {
-            return c == CliSymbolAsciiETX;
-        }
-    } else {
+    if(!cli_is_connected(cli)) {
+        while(cli->session->rx((uint8_t*)&c, 1, 0) == 1) {
+        }; // Clear RX buffer
         return true;
     }
-    return false;
+
+    bool ret = false;
+    while(cli->session->rx((uint8_t*)&c, 1, 0) == 1) {
+        if(!ret && c == CliSymbolAsciiETX) {
+            ret = true;
+        }
+    }
+    return ret;
 }
 
 void cli_print_usage(const char* cmd, const char* usage, const char* arg) {

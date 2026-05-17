@@ -229,7 +229,7 @@ static void power_cli_print_charger_status(Power* power, FuriString* arena) {
     power_bq25792_get_charger_status(power, &s);
     furi_string_set(arena, "");
 
-    printf("  Status0: 0x%02X", s.data[0]);
+    printf("\r\e[K  Status0: 0x%02X", s.data[0]);
     if(s.stat0.vbus_present_stat) furi_string_cat_printf(arena, " VBUS_PRESENT");
     if(s.stat0.ac1_present_stat) furi_string_cat_printf(arena, " AC1_PRESENT");
     if(s.stat0.ac2_present_stat) furi_string_cat_printf(arena, " AC2_PRESENT");
