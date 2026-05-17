@@ -64,6 +64,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/display/*.c*"  
     "lib/drivers/tps62868x/*.c*"
     "lib/drivers/tca6416a/*.c*"
+    "lib/drivers/pcal6416/*.c*"
     "lib/drivers/drv2605l/*.c*"
     "lib/drivers/iqs7211e/*.c*"
     "lib/drivers/spi_get_frame/*.c*"
