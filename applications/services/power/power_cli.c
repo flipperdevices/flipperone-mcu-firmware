@@ -71,13 +71,18 @@ static void power_cli_print_ina219(Power* power) {
     float power_w = power_ina219_get_power_w(power);
     float shunt_mv = power_ina219_get_shunt_voltage_mv(power);
 
+    // clang-format off
     printf(
-        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "INA219:\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VSYS:  %.3fV\r\n" ANSI_ERASE_LINE(
-            ANSI_ERASE_ENTIRE) "  ISYS:  %.2fmA\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Shunt: %.4fmV\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Power: %.2fW\r\n\r\n",
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "INA219:\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VSYS:  %.3fV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ISYS:  %.2fmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Shunt: %.4fmV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Power: %.2fW\r\n\r\n",
         bus_v,
         current_a * 1000.0f,
         shunt_mv,
         power_w);
+    // clang-format on
 }
 
 static void power_cli_print_bq25792(Power* power) {
@@ -105,9 +110,20 @@ static void power_cli_print_bq25792(Power* power) {
     power_bq25792_get_charge_current_limit_ma(power, &charge_current_limit_ma);
     power_bq25792_get_ico_current_limit_ma(power, &ico_current_limit_ma);
 
+    // clang-format off
     printf(
-        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "BQ25792:\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VSYS:    %.3fV\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VBUS:    %.3fV\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IBUS:    %dmA\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VBAT:    %.3fV\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IBAT:    %dmA\r\n" ANSI_ERASE_LINE(
-            ANSI_ERASE_ENTIRE) "  ChgTemp: %.2fC\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  BatTemp: %.2fC\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IINDPM:  %dmA\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VREG:    %dmV\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICHG:    %dmV\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICO:     %dmA\r\n\r\n",
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "BQ25792:\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VSYS:    %.3fV\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VBUS:    %.3fV\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IBUS:    %dmA\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VBAT:    %.3fV\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IBAT:    %dmA\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ChgTemp: %.2fC\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  BatTemp: %.2fC\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IINDPM:  %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VREG:    %dmV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICHG:    %dmV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICO:     %dmA\r\n\r\n",
         (float_t)vsys_mv / 1000.0f,
         (float_t)vbus_mv / 1000.0f,
         ibus_ma,
@@ -119,6 +135,7 @@ static void power_cli_print_bq25792(Power* power) {
         charge_voltage_limit_mv,
         charge_current_limit_ma,
         ico_current_limit_ma);
+    // clang-format on
 }
 
 static void power_cli_print_bq28z620(Power* power) {
@@ -166,9 +183,30 @@ static void power_cli_print_bq28z620(Power* power) {
     power_bq28z620_get_charging_current(power, &charging_current_ma);
     power_bq28z620_get_design_capacity(power, &design_capacity_mah);
 
+    // clang-format off
     printf(
-        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "BQ28Z620:\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Voltage:            %.3fV\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Current:            %dmA\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Temp:               %.2fC\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IntTemp:            %.2fC\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  RemCap:             %dmAh\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  FullCap:            %dmAh\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgCurr:            %dmA\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgPwr:             %dmW\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  CycleCt:            %d\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  SoC:                %d%%\r\n" ANSI_ERASE_LINE(
-            ANSI_ERASE_ENTIRE) "  SoH:                %d%%\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ChgVolt:            %.3fV\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ChgCurr:            %dmA\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  DesignCap:          %dmAh\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  TimeToEmpty:        %d min\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgTimeToEmpty:     %d min\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  TimeToFull:         %d min\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  StandbyCurr:        %dmA\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  StandbyTimeToEmpty: %d min\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  MaxLoadCurr:        %dmA\r\n" ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  MaxLoadTimeToEmpty: %d min\r\n",
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "BQ28Z620:\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Voltage:            %.3fV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Current:            %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Temp:               %.2fC\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IntTemp:            %.2fC\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  RemCap:             %dmAh\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  FullCap:            %dmAh\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgCurr:            %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgPwr:             %dmW\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  CycleCt:            %d\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  SoC:                %d%%\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  SoH:                %d%%\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ChgVolt:            %.3fV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ChgCurr:            %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  DesignCap:          %dmAh\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  TimeToEmpty:        %d min\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgTimeToEmpty:     %d min\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  TimeToFull:         %d min\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  StandbyCurr:        %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  StandbyTimeToEmpty: %d min\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  MaxLoadCurr:        %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  MaxLoadTimeToEmpty: %d min\r\n",
         voltage_v,
         current_ma,
         temperature_c,
@@ -190,6 +228,7 @@ static void power_cli_print_bq28z620(Power* power) {
         average_time_to_empty_min,
         max_load_current_ma,
         max_load_time_to_empty_min);
+    // clang-format on
 }
 
 static void power_cli_print_charger_status(Power* power, FuriString* arena) {
