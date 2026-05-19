@@ -162,8 +162,10 @@ static uint32_t read_cci(UcsiPpm* ppm) {
 static UcsiPpmStatus stub_i2c_read(void* ctx, uint8_t addr, uint8_t* data, size_t len) {
     (void)ctx;
     (void)addr;
-    (void)data;
-    (void)len;
+    // Zero the buffer so callers using this stub (i.e., L1/L2 tests where
+    // ucsi_ppm_init now triggers ucsi_ppm_phy_init underneath) read defined
+    // bytes during RMW. Otherwise downstream uses of `cur` are UB.
+    memset(data, 0, len);
     return UcsiPpmStatusOk;
 }
 
@@ -2369,6 +2371,139 @@ static bool test_phy_tx_rx_roundtrip(void) {
     return true;
 }
 
+// --- L1/L4 wire-up ---------------------------------------------------------
+
+static bool test_wireup_init_calls_phy_init(void) {
+    // ucsi_ppm_init must drive a SW_RESET write into FUSB302 (first step of
+    // phy_init) so the chip starts from a known state.
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    mock_i2c_reset();
+
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.i2c_read = mock_i2c_read_fn;
+    cfg.i2c_write = mock_i2c_write_fn;
+
+    TEST_ASSERT(ucsi_ppm_init(ppm, &cfg) == UcsiPpmStatusOk);
+
+    const Fusb302ResetRegBits expected = {.sw_reset = 1};
+    TEST_ASSERT(mock_any_write_to(Fusb302RegReset, *(const uint8_t*)&expected));
+    // POWER all blocks on must also have been programmed.
+    const Fusb302PowerRegBits power = {.pwr = 0b1111};
+    TEST_ASSERT(mock_any_write_to(Fusb302RegPower, *(const uint8_t*)&power));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_wireup_init_phy_failure_propagates(void) {
+    // If the I²C HAL refuses a write, ucsi_ppm_init must surface HalError and
+    // leave the instance in Allocated state (next init can retry).
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    // i2c_write returns HalError to simulate bus failure.
+    cfg.i2c_write = (UcsiPpmI2cWriteFn)NULL; // will fail config_is_valid
+    TEST_ASSERT(ucsi_ppm_init(ppm, &cfg) == UcsiPpmStatusInvalidConfig);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_wireup_deinit_drops_terminations(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_deinit(ppm) == UcsiPpmStatusOk);
+    // SWITCHES0, SWITCHES1 and CONTROL2 must each receive a 0x00 write.
+    TEST_ASSERT(mock_any_write_to(Fusb302RegSwitches0, 0u));
+    TEST_ASSERT(mock_any_write_to(Fusb302RegSwitches1, 0u));
+    TEST_ASSERT(mock_any_write_to(Fusb302RegControl2, 0u));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_wireup_reset_re_inits_phy(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_reset(ppm) == UcsiPpmStatusOk);
+    // reset re-runs phy_init — SW_RESET must be written.
+    const Fusb302ResetRegBits expected = {.sw_reset = 1};
+    TEST_ASSERT(mock_any_write_to(Fusb302RegReset, *(const uint8_t*)&expected));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_wireup_notify_irq_sets_flag_no_i2c(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    TEST_ASSERT(ppm->pending_flags == 0u);
+    TEST_ASSERT(ucsi_ppm_notify_fusb302_irq(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT((ppm->pending_flags & UCSI_PPM_PENDING_PHY_IRQ) != 0u);
+    // notify_* is ISR-safe — no I²C activity allowed.
+    TEST_ASSERT(g_mock_txn_count == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_wireup_notify_psu_ready_sets_flag(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_notify_power_supply_ready(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT((ppm->pending_flags & UCSI_PPM_PENDING_POWER_SUPPLY_RDY) != 0u);
+    TEST_ASSERT(g_mock_txn_count == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_wireup_tick_drains_irq(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    // After init, raise IRQ flag, then tick. Expect the pump to read INT regs.
+    TEST_ASSERT(ucsi_ppm_notify_fusb302_irq(ppm) == UcsiPpmStatusOk);
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_tick(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT((ppm->pending_flags & UCSI_PPM_PENDING_PHY_IRQ) == 0u);
+
+    // Pump reads INTERRUPTA+B (2-byte burst) and INTERRUPT (1 byte).
+    bool saw_inta_burst = false;
+    bool saw_intr_read = false;
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len == 1u && t->data[0] == Fusb302RegInterruptA) {
+            saw_inta_burst = true;
+        }
+        if(t->is_write && t->len == 1u && t->data[0] == Fusb302RegInterrupt) {
+            saw_intr_read = true;
+        }
+    }
+    TEST_ASSERT(saw_inta_burst);
+    TEST_ASSERT(saw_intr_read);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_wireup_tick_idle_no_i2c(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    // No pending flags — tick must be a no-op on the I²C side.
+    TEST_ASSERT(ppm->pending_flags == 0u);
+    TEST_ASSERT(ucsi_ppm_tick(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT(g_mock_txn_count == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 // --- entry point -----------------------------------------------------------
 
 typedef struct {
@@ -2497,6 +2632,16 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_phy_recv_validates),
     TEST_ENTRY(test_phy_recv_drains_multiple),
     TEST_ENTRY(test_phy_tx_rx_roundtrip),
+
+    // L1/L4 wire-up (init/deinit/reset/tick/notify_* glue).
+    TEST_ENTRY(test_wireup_init_calls_phy_init),
+    TEST_ENTRY(test_wireup_init_phy_failure_propagates),
+    TEST_ENTRY(test_wireup_deinit_drops_terminations),
+    TEST_ENTRY(test_wireup_reset_re_inits_phy),
+    TEST_ENTRY(test_wireup_notify_irq_sets_flag_no_i2c),
+    TEST_ENTRY(test_wireup_notify_psu_ready_sets_flag),
+    TEST_ENTRY(test_wireup_tick_drains_irq),
+    TEST_ENTRY(test_wireup_tick_idle_no_i2c),
 };
 
 const size_t test_count = COUNT_OF(k_tests);

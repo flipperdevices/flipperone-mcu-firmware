@@ -125,7 +125,17 @@ struct UcsiPpm {
     // command failures; cleared on PPM_RESET or ACK_CC_CI that confirmed
     // a CCI with Error Indicator (architecture.md §9).
     uint16_t error_info;
+
+    // Atomic flags set from ISR-context callers (notify_*); consumed in tick.
+    // api.md §8: v1 uses a simple volatile uint32_t with the single-writer-
+    // from-ISR / single-reader-from-task pattern (safe on Cortex-M without
+    // explicit barriers). Swap to FuriEventFlag if SMP is added.
+    volatile uint32_t pending_flags;
 };
+
+// pending_flags bits.
+#define UCSI_PPM_PENDING_PHY_IRQ           (1u << 0)
+#define UCSI_PPM_PENDING_POWER_SUPPLY_RDY  (1u << 1)
 
 // L2 entry point: invoked by L1 (register_write) when a non-zero CONTROL[0]
 // is detected. Reads the opcode + payload from the regfile, dispatches to

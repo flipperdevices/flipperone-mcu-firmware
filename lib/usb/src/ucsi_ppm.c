@@ -1,5 +1,6 @@
 #include "ucsi_ppm.h"
 #include "ucsi_ppm_i.h"
+#include "ucsi_ppm_phy.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -109,8 +110,13 @@ UcsiPpmStatus ucsi_ppm_init(UcsiPpm* ppm, const UcsiPpmConfig* config) {
     ppm->config = *config;
     regfile_reset(ppm);
     ucsi_ppm_cmd_reset_state(ppm);
+    ppm->pending_flags = 0u;
 
-    // TODO: bring up L4 (FUSB302) and L3 (Type-C SM) per api.md §5.1 steps 4-5.
+    // api.md §5.1 step 4: bring up L4 (FUSB302). Any I²C error stops init.
+    const UcsiPpmStatus s = ucsi_ppm_phy_init(ppm);
+    if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
+
+    // TODO: step 5 — kick L3 (Type-C SM) into initial Unattached.* state.
 
     ppm->lifecycle = UcsiPpmLifecycleInitialized;
     return UcsiPpmStatusOk;
@@ -120,7 +126,10 @@ UcsiPpmStatus ucsi_ppm_deinit(UcsiPpm* ppm) {
     if(!ppm) return UcsiPpmStatusInvalidArg;
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
 
-    // TODO: shut down L4 (FUSB302 terminations Open) and L3 state machines.
+    // Best-effort L4 teardown — drop terminations so the chip is inert.
+    (void)ucsi_ppm_phy_deinit(ppm);
+
+    // TODO: shut down L3 state machines once they exist.
 
     ppm->lifecycle = UcsiPpmLifecycleAllocated;
     return UcsiPpmStatusOk;
@@ -132,8 +141,14 @@ UcsiPpmStatus ucsi_ppm_reset(UcsiPpm* ppm) {
 
     regfile_reset(ppm);
     ucsi_ppm_cmd_reset_state(ppm);
+    ppm->pending_flags = 0u;
 
-    // TODO: reset L3 / L4 state, accept_*_swap defaults to true.
+    // api.md §5.2: full L4 re-init (SW_RESET + masks + INT_MASK clear) so
+    // the chip is brought back to the same state as after init.
+    const UcsiPpmStatus s = ucsi_ppm_phy_init(ppm);
+    if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
+
+    // TODO: reset L3 state once it exists.
 
     return UcsiPpmStatusOk;
 }
@@ -180,25 +195,44 @@ UcsiPpmStatus ucsi_ppm_register_write(UcsiPpm* ppm, uint16_t offset, uint16_t le
     return UcsiPpmStatusOk;
 }
 
+// L4 → L3 event sink. In v1 (no L3 yet) we drop events on the floor; the
+// PHY pump still drains FIFO bytes / clears INT flags, which is the part
+// that actually matters for the chip to keep functioning.
+static void phy_event_sink_drop(void* ctx, const UcsiPpmPhyEvent* event) {
+    (void)ctx;
+    (void)event;
+    // TODO: feed events into L3 Type-C SM / PRL / PE queue.
+}
+
 UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     if(!ppm) return UcsiPpmStatusInvalidArg;
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
-    // TODO: pump FUSB302 IRQs, advance L3 (Type-C / PRL / PE), check timeouts,
-    // deliver events to CCI (api.md §5.3).
+
+    // Drain FUSB302 IRQ if the ISR-context caller flagged one.
+    const uint32_t flags = ppm->pending_flags;
+    if(flags & UCSI_PPM_PENDING_PHY_IRQ) {
+        ppm->pending_flags = flags & ~UCSI_PPM_PENDING_PHY_IRQ;
+        (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_drop, ppm);
+    }
+
+    // TODO: power_supply_ready handling, L3 advancement, PD timeout checks,
+    // CCI event delivery (api.md §5.3).
+
     return UcsiPpmStatusOk;
 }
 
 UcsiPpmStatus ucsi_ppm_notify_fusb302_irq(UcsiPpm* ppm) {
     if(!ppm) return UcsiPpmStatusInvalidArg;
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
-    // TODO: atomic flag set (FuriEventFlag) for next tick (api.md §8).
+    // ISR-safe: single-writer-from-ISR, single-reader-from-tick (api.md §8).
+    ppm->pending_flags |= UCSI_PPM_PENDING_PHY_IRQ;
     return UcsiPpmStatusOk;
 }
 
 UcsiPpmStatus ucsi_ppm_notify_power_supply_ready(UcsiPpm* ppm) {
     if(!ppm) return UcsiPpmStatusInvalidArg;
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
-    // TODO: atomic flag set for PSTransitionTimer early-completion.
+    ppm->pending_flags |= UCSI_PPM_PENDING_POWER_SUPPLY_RDY;
     return UcsiPpmStatusOk;
 }
 
