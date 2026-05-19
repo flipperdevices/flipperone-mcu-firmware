@@ -1,5 +1,5 @@
-// #pragma once
+#pragma once
 
-// #include <cli/cli.h>
+#include <containers/pipe.h>
 
-// void power_cli(Cli* cli, FuriString* args, void* context);
+void power_cli(PipeSide* pipe, FuriString* args, void* context);
