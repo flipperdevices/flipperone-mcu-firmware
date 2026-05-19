@@ -48,7 +48,7 @@ static void make_valid_config(UcsiPpmConfig* c);
 // register file. Reads pick up the register address from the immediately
 // preceding write (FUSB302 protocol: write reg addr, then repeated-start read).
 
-#define MOCK_I2C_MAX_TXNS 64
+#define MOCK_I2C_MAX_TXNS 256
 
 typedef struct {
     bool is_write;
@@ -138,7 +138,10 @@ static bool mock_any_write_to(uint8_t reg, uint8_t value) {
 }
 
 // Builds a ppm with mock I²C wired in. Returns NULL on error.
+// Resets the mock state on entry so tests don't accidentally trip the
+// txn buffer cap with leftover entries from earlier tests.
 static UcsiPpm* mock_make_ppm(void) {
+    mock_i2c_reset();
     UcsiPpm* ppm = ucsi_ppm_alloc();
     if(!ppm) return NULL;
     UcsiPpmConfig cfg;
@@ -2504,6 +2507,233 @@ static bool test_wireup_tick_idle_no_i2c(void) {
     return true;
 }
 
+// --- L3 Type-C SM (scaffold + Unattached) ----------------------------------
+
+#include "ucsi_ppm_tc.h"
+
+// Helper: build a ppm with mock I²C wired in, custom CC mode (overrides
+// the default DRP from make_valid_config).
+static UcsiPpm* mock_make_ppm_with_mode(UcsiPpmCcOperationMode mode, bool supports_disabled) {
+    mock_i2c_reset();
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    if(!ppm) return NULL;
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.i2c_read = mock_i2c_read_fn;
+    cfg.i2c_write = mock_i2c_write_fn;
+    cfg.initial_cc_operation_mode = mode;
+    if(supports_disabled) cfg.supports_disabled_state = true;
+    if(ucsi_ppm_init(ppm, &cfg) != UcsiPpmStatusOk) {
+        ucsi_ppm_free(ppm);
+        return NULL;
+    }
+    return ppm;
+}
+
+// Simulates a ToggleDone IRQ by populating mock registers + setting the
+// pending IRQ flag, then ticks once.
+static void simulate_toggle_done(UcsiPpm* ppm, uint8_t togss) {
+    const Fusb302InterruptARegBits inta = {.i_tog_done = 1};
+    g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
+    const Fusb302Status1ARegBits s1a = {.togss = togss};
+    g_mock_regs[Fusb302RegStatus1A] = *(const uint8_t*)&s1a;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+static bool test_tc_init_drp_starts_drp_toggle(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    TEST_ASSERT(ppm != NULL);
+
+    const uint8_t c2 = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits c2_bits = *((const Fusb302Control2RegBits*)&c2);
+    TEST_ASSERT(c2_bits.toggle == 1);
+    TEST_ASSERT(c2_bits.mode == 0b01u); // DRP
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_init_rp_only_starts_src_toggle(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeRpOnly, false);
+
+    const uint8_t c2 = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits c2_bits = *((const Fusb302Control2RegBits*)&c2);
+    TEST_ASSERT(c2_bits.toggle == 1);
+    TEST_ASSERT(c2_bits.mode == 0b11u); // SRC
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_init_rd_only_starts_snk_toggle(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeRdOnly, false);
+
+    const uint8_t c2 = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits c2_bits = *((const Fusb302Control2RegBits*)&c2);
+    TEST_ASSERT(c2_bits.toggle == 1);
+    TEST_ASSERT(c2_bits.mode == 0b10u); // SNK
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_init_disabled_no_toggle(void) {
+    // supports_disabled_state required to let the config pass validation.
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDisabled, true);
+    TEST_ASSERT(ppm != NULL);
+
+    const uint8_t c2 = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits c2_bits = *((const Fusb302Control2RegBits*)&c2);
+    TEST_ASSERT(c2_bits.toggle == 0); // no toggle started
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateDisabled);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_toggle_done_src_cc1(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+    TEST_ASSERT(ppm->tc_orientation == (int)UcsiPpmPhyCc1);
+    TEST_ASSERT(ppm->tc_role_is_src == true);
+
+    // Polarity locked to CC1.
+    const uint8_t sw0 = g_mock_regs[Fusb302RegSwitches0];
+    const Fusb302Switches0RegBits sw0_bits = *((const Fusb302Switches0RegBits*)&sw0);
+    TEST_ASSERT(sw0_bits.meas_cc1 == 1);
+    TEST_ASSERT(sw0_bits.meas_cc2 == 0);
+    const uint8_t sw1 = g_mock_regs[Fusb302RegSwitches1];
+    const Fusb302Switches1RegBits sw1_bits = *((const Fusb302Switches1RegBits*)&sw1);
+    TEST_ASSERT(sw1_bits.tx_cc1 == 1);
+    TEST_ASSERT(sw1_bits.tx_cc2 == 0);
+
+    // Source-side Rp current programmed (default config = UsbDefault).
+    const uint8_t c0 = g_mock_regs[Fusb302RegControl0];
+    const Fusb302Control0RegBits c0_bits = *((const Fusb302Control0RegBits*)&c0);
+    TEST_ASSERT(c0_bits.host_cur == 0b11u); // make_valid_config sets 3A
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_toggle_done_src_cc2(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC2);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+    TEST_ASSERT(ppm->tc_orientation == (int)UcsiPpmPhyCc2);
+    TEST_ASSERT(ppm->tc_role_is_src == true);
+
+    const uint8_t sw0 = g_mock_regs[Fusb302RegSwitches0];
+    const Fusb302Switches0RegBits sw0_bits = *((const Fusb302Switches0RegBits*)&sw0);
+    TEST_ASSERT(sw0_bits.meas_cc2 == 1);
+    TEST_ASSERT(sw0_bits.meas_cc1 == 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_toggle_done_snk_cc1(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    // Pre-seed CONTROL0.host_cur to a non-zero value so we can verify the
+    // SNK path doesn't reprogram it (Rp current is source-only).
+    const Fusb302Control0RegBits seed = {.host_cur = 0b01u};
+    g_mock_regs[Fusb302RegControl0] = *(const uint8_t*)&seed;
+
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC1);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+    TEST_ASSERT(ppm->tc_orientation == (int)UcsiPpmPhyCc1);
+    TEST_ASSERT(ppm->tc_role_is_src == false);
+
+    // CONTROL0.host_cur untouched on SNK side (the chip ignores HOST_CUR
+    // unless PU_EN* is set, but the SM still shouldn't write it).
+    const uint8_t c0 = g_mock_regs[Fusb302RegControl0];
+    const Fusb302Control0RegBits c0_bits = *((const Fusb302Control0RegBits*)&c0);
+    TEST_ASSERT(c0_bits.host_cur == 0b01u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_toggle_done_snk_cc2(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC2);
+
+    TEST_ASSERT(ppm->tc_orientation == (int)UcsiPpmPhyCc2);
+    TEST_ASSERT(ppm->tc_role_is_src == false);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_toggle_done_audio_rearms_toggle(void) {
+    // Audio Accessory (TOGSS=0b111) is out of scope. SM should not transition
+    // to AttachWait; instead it re-arms the toggle for another attempt.
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_AUDIO_ACCESSORY);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    // CONTROL2 was re-written with TOGGLE=1 to re-arm.
+    const uint8_t c2 = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits c2_bits = *((const Fusb302Control2RegBits*)&c2);
+    TEST_ASSERT(c2_bits.toggle == 1);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_toggle_done_outside_unattached_dropped(void) {
+    // ToggleDone while already in AttachWait: must be silently dropped (no
+    // state regression, no polarity re-lock).
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // Snapshot SWITCHES0 (now holds MEAS_CC1 from polarity lock) and feed
+    // another stray ToggleDone with a different TOGSS. The handler must
+    // drop it — SWITCHES0 should be untouched. (No mock_i2c_reset between
+    // capture and second event, otherwise we'd compare against zero.)
+    const uint8_t sw0_before = g_mock_regs[Fusb302RegSwitches0];
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC2);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+    TEST_ASSERT(ppm->tc_orientation == (int)UcsiPpmPhyCc1); // still CC1
+    TEST_ASSERT(g_mock_regs[Fusb302RegSwitches0] == sw0_before);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_deinit_stops_toggle(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_deinit(ppm) == UcsiPpmStatusOk);
+
+    // CONTROL2.TOGGLE cleared (stop_toggle's RMW), plus phy_deinit zeros
+    // SWITCHES0/1 and CONTROL2. Final CONTROL2 = 0.
+    TEST_ASSERT(g_mock_regs[Fusb302RegControl2] == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 // --- entry point -----------------------------------------------------------
 
 typedef struct {
@@ -2642,6 +2872,19 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_wireup_notify_psu_ready_sets_flag),
     TEST_ENTRY(test_wireup_tick_drains_irq),
     TEST_ENTRY(test_wireup_tick_idle_no_i2c),
+
+    // L3 Type-C SM scaffold (Unattached + ToggleDone).
+    TEST_ENTRY(test_tc_init_drp_starts_drp_toggle),
+    TEST_ENTRY(test_tc_init_rp_only_starts_src_toggle),
+    TEST_ENTRY(test_tc_init_rd_only_starts_snk_toggle),
+    TEST_ENTRY(test_tc_init_disabled_no_toggle),
+    TEST_ENTRY(test_tc_toggle_done_src_cc1),
+    TEST_ENTRY(test_tc_toggle_done_src_cc2),
+    TEST_ENTRY(test_tc_toggle_done_snk_cc1),
+    TEST_ENTRY(test_tc_toggle_done_snk_cc2),
+    TEST_ENTRY(test_tc_toggle_done_audio_rearms_toggle),
+    TEST_ENTRY(test_tc_toggle_done_outside_unattached_dropped),
+    TEST_ENTRY(test_tc_deinit_stops_toggle),
 };
 
 const size_t test_count = COUNT_OF(k_tests);

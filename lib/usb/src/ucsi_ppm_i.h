@@ -131,6 +131,17 @@ struct UcsiPpm {
     // from-ISR / single-reader-from-task pattern (safe on Cortex-M without
     // explicit barriers). Swap to FuriEventFlag if SMP is added.
     volatile uint32_t pending_flags;
+
+    // L3 Type-C state machine (ucsi_ppm_tc.c). Defined inline to avoid an
+    // extra forward declaration / pointer chase.
+    //   tc_state         — current Type-C SM state (UcsiPpmTcState).
+    //   tc_orientation   — active CC pin once TOGGLE has settled.
+    //   tc_role_is_src   — true after TOGSS settled SRC; false after SNK.
+    // We keep the values as raw ints/bool here to avoid pulling more types
+    // into this header; the actual UcsiPpmTcState enum lives in ucsi_ppm_tc.h.
+    int tc_state;
+    int tc_orientation;
+    bool tc_role_is_src;
 };
 
 // pending_flags bits.

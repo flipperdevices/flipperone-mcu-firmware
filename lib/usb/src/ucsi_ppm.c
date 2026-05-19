@@ -1,6 +1,7 @@
 #include "ucsi_ppm.h"
 #include "ucsi_ppm_i.h"
 #include "ucsi_ppm_phy.h"
+#include "ucsi_ppm_tc.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -113,7 +114,7 @@ UcsiPpmStatus ucsi_ppm_init(UcsiPpm* ppm, const UcsiPpmConfig* config) {
     ppm->pending_flags = 0u;
 
     // api.md §5.1 step 4: bring up L4 (FUSB302). Any I²C error stops init.
-    const UcsiPpmStatus s = ucsi_ppm_phy_init(ppm);
+    UcsiPpmStatus s = ucsi_ppm_phy_init(ppm);
     if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
 
     // TODO: step 5 — kick L3 (Type-C SM) into initial Unattached.* state.
@@ -126,10 +127,10 @@ UcsiPpmStatus ucsi_ppm_deinit(UcsiPpm* ppm) {
     if(!ppm) return UcsiPpmStatusInvalidArg;
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
 
-    // Best-effort L4 teardown — drop terminations so the chip is inert.
+    // Tear down in reverse order: stop toggling first so SWITCHES0/1
+    // resets in phy_deinit aren't fighting the toggle state machine.
+    (void)ucsi_ppm_tc_deinit(ppm);
     (void)ucsi_ppm_phy_deinit(ppm);
-
-    // TODO: shut down L3 state machines once they exist.
 
     ppm->lifecycle = UcsiPpmLifecycleAllocated;
     return UcsiPpmStatusOk;
@@ -145,10 +146,11 @@ UcsiPpmStatus ucsi_ppm_reset(UcsiPpm* ppm) {
 
     // api.md §5.2: full L4 re-init (SW_RESET + masks + INT_MASK clear) so
     // the chip is brought back to the same state as after init.
-    const UcsiPpmStatus s = ucsi_ppm_phy_init(ppm);
+    UcsiPpmStatus s = ucsi_ppm_phy_init(ppm);
     if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
 
-    // TODO: reset L3 state once it exists.
+    s = ucsi_ppm_tc_reset(ppm);
+    if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
 
     return UcsiPpmStatusOk;
 }
@@ -195,13 +197,11 @@ UcsiPpmStatus ucsi_ppm_register_write(UcsiPpm* ppm, uint16_t offset, uint16_t le
     return UcsiPpmStatusOk;
 }
 
-// L4 → L3 event sink. In v1 (no L3 yet) we drop events on the floor; the
-// PHY pump still drains FIFO bytes / clears INT flags, which is the part
-// that actually matters for the chip to keep functioning.
-static void phy_event_sink_drop(void* ctx, const UcsiPpmPhyEvent* event) {
-    (void)ctx;
-    (void)event;
-    // TODO: feed events into L3 Type-C SM / PRL / PE queue.
+// L4 → L3 event sink. Today this only routes to the Type-C SM; once PRL/PE
+// land they'll consume the PD-message-related events from the same stream.
+static void phy_event_sink_to_tc(void* ctx, const UcsiPpmPhyEvent* event) {
+    UcsiPpm* ppm = (UcsiPpm*)ctx;
+    ucsi_ppm_tc_handle_phy_event(ppm, event);
 }
 
 UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
@@ -212,7 +212,7 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     const uint32_t flags = ppm->pending_flags;
     if(flags & UCSI_PPM_PENDING_PHY_IRQ) {
         ppm->pending_flags = flags & ~UCSI_PPM_PENDING_PHY_IRQ;
-        (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_drop, ppm);
+        (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_to_tc, ppm);
     }
 
     // TODO: power_supply_ready handling, L3 advancement, PD timeout checks,
@@ -239,7 +239,20 @@ UcsiPpmStatus ucsi_ppm_notify_power_supply_ready(UcsiPpm* ppm) {
 UcsiPpmConnectorState ucsi_ppm_get_connector_state(const UcsiPpm* ppm) {
     if(!ppm) return UcsiPpmStateDisabled;
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStateDisabled;
-    // TODO: return real Type-C SM state.
+    switch((UcsiPpmTcState)ppm->tc_state) {
+    case UcsiPpmTcStateDisabled:
+        return UcsiPpmStateDisabled;
+    case UcsiPpmTcStateUnattached:
+        return UcsiPpmStateUnattached;
+    case UcsiPpmTcStateAttachWait:
+        return UcsiPpmStateAttachWait;
+    case UcsiPpmTcStateAttachedSrc:
+        return UcsiPpmStateAttachedSrc;
+    case UcsiPpmTcStateAttachedSnk:
+        return UcsiPpmStateAttachedSnk;
+    case UcsiPpmTcStateErrorRecovery:
+        return UcsiPpmStateErrorRecovery;
+    }
     return UcsiPpmStateUnattached;
 }
 
