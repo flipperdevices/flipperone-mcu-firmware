@@ -131,11 +131,13 @@ bool pcal6416_write_mode(Pcal6416* instance, uint16_t port_mask) {
     do {
         ret = pcal6416_write_reg(instance, Pcal6416RegInterruptMaskPort0, ~port_mask);
         if(ret != Pcal6416StatusOk) {
-            break;
+            // ToDo: uncomment break if use pcal6416
+           //break;
         }
         ret = pcal6416_write_reg(instance, Pcal6416RegInputLatchPort0, port_mask);
         if(ret != Pcal6416StatusOk) {
-            break;
+            // ToDo: uncomment break if use pcal6416
+            //break;
         }
         ret = pcal6416_write_reg(instance, Pcal6416RegConfigurationPort0, port_mask);
         if(ret != Pcal6416StatusOk) {
