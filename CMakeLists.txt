@@ -137,6 +137,8 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/rtt)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/cli)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/containers)
 
 # Add the standard library to the build
 target_link_libraries(${PROJECT_NAME}
@@ -153,6 +155,8 @@ target_link_libraries(${PROJECT_NAME}
     pico_unique_id
     uart_pio
     tinyusb_device
+    cli
+    containers
     ws2812
     pio_i2c
     i2c_multi

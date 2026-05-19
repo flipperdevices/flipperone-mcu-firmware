@@ -1,8 +1,6 @@
 #include "args.h"
-#include "hex.h"
-#include "strint.h"
-
-#include <m-core.h>
+#include <toolbox/hex.h>
+#include <toolbox/strint.h>
 
 size_t args_get_first_word_length(FuriString* args) {
     size_t ws = furi_string_search_char(args, ' ');
@@ -67,34 +65,28 @@ bool args_read_probably_quoted_string_and_trim(FuriString* args, FuriString* wor
 }
 
 bool args_char_to_hex(char hi_nibble, char low_nibble, uint8_t* byte) {
-    uint8_t hi_nibble_value = 0;
-    uint8_t low_nibble_value = 0;
-    bool result = false;
-
-    if(hex_char_to_hex_nibble(hi_nibble, &hi_nibble_value)) {
-        if(hex_char_to_hex_nibble(low_nibble, &low_nibble_value)) {
-            result = true;
-            *byte = (hi_nibble_value << 4) | low_nibble_value;
-        }
-    }
-
-    return result;
+    return hex_char_to_uint8(hi_nibble, low_nibble, byte);
 }
 
 bool args_read_hex_bytes(FuriString* args, uint8_t* bytes, size_t bytes_count) {
-    bool result = true;
-    const char* str_pointer = furi_string_get_cstr(args);
+    const size_t expected_length = bytes_count * 2;
+    const size_t word_length = args_get_first_word_length(args);
 
-    if(args_get_first_word_length(args) == (bytes_count * 2)) {
-        for(size_t i = 0; i < bytes_count; i++) {
-            if(!args_char_to_hex(str_pointer[i * 2], str_pointer[i * 2 + 1], &(bytes[i]))) {
-                result = false;
-                break;
-            }
-        }
-    } else {
-        result = false;
+    if(word_length != expected_length) {
+        return false;
     }
 
-    return result;
+    if(bytes_count == 0) {
+        return true;
+    }
+
+    FuriString* hex_word = furi_string_alloc();
+    furi_string_set_n(hex_word, args, 0, word_length);
+
+    size_t parsed = 0;
+    bool success = hex_string_to_bytes(hex_word, bytes, bytes_count, &parsed);
+
+    furi_string_free(hex_word);
+
+    return success && (parsed == bytes_count);
 }

@@ -103,6 +103,52 @@ typedef enum FURI_PACKED {
 } CliKey;
 static_assert(sizeof(CliKey) == sizeof(char));
 
+typedef enum {
+    CliModKeyNo = 0,
+    CliModKeyAlt = 2,
+    CliModKeyCtrl = 4,
+    CliModKeyMeta = 8,
+} CliModKey;
+
+typedef struct {
+    CliModKey modifiers;
+    CliKey key;
+} CliKeyCombo;
+
+typedef struct CliAnsiParser CliAnsiParser;
+
+typedef struct {
+    bool is_done;
+    CliKeyCombo result;
+} CliAnsiParserResult;
+
+/**
+ * @brief Allocates an ANSI parser
+ */
+CliAnsiParser* cli_ansi_parser_alloc(void);
+
+/**
+ * @brief Frees an ANSI parser
+ */
+void cli_ansi_parser_free(CliAnsiParser* parser);
+
+/**
+ * @brief Feeds an ANSI parser a character
+ */
+CliAnsiParserResult cli_ansi_parser_feed(CliAnsiParser* parser, char c);
+
+/**
+ * @brief Feeds an ANSI parser a timeout event
+ * 
+ * As a user of the ANSI parser API, you are responsible for calling this
+ * function some time after the last character was fed into the parser. The
+ * recommended timeout is about 10 ms. The exact value does not matter as long
+ * as it is small enough for the user not notice a delay, but big enough that
+ * when a terminal is sending an escape sequence, this function does not get
+ * called in between the characters of the sequence.
+ */
+CliAnsiParserResult cli_ansi_parser_feed_timeout(CliAnsiParser* parser);
+
 #ifdef __cplusplus
 }
 #endif

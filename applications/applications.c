@@ -15,11 +15,14 @@ extern int32_t desktop_srv(void* p);
 extern int32_t led_srv(void* p);
 extern int32_t usb_srv(void* p);
 extern int32_t power_srv(void* p);
-extern int32_t cli_srv(void* p);
+//extern int32_t cli_srv(void* p);
 extern int32_t pd_srv(void* p);
 extern int32_t power_menu_srv(void* p);
 extern int32_t headphones_srv(void* p);
 extern int32_t usb_mux_srv(void* p);
+extern int32_t cli_uart_srv(void* p);
+
+
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -27,11 +30,12 @@ extern int32_t touchpad_test_app(void* p);
 extern int32_t cpu_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
+extern int32_t cli_on_system_start(void* p);
 
-// CLI commands
-extern void power_cli(Cli* cli, FuriString* args, void* context);
-extern void power_consumption_cli(Cli* cli, FuriString* args, void* context);
-extern void led_cli(Cli* cli, FuriString* args, void* context);
+// // CLI commands
+// extern void power_cli(Cli* cli, FuriString* args, void* context);
+// extern void power_consumption_cli(Cli* cli, FuriString* args, void* context);
+// extern void led_cli(Cli* cli, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -125,10 +129,17 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+    // {
+    //     .app = cli_srv,
+    //     .name = "CliSrv",
+    //     .appid = "cli_srv",
+    //     .stack_size = 1024 * 2,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    // },
     {
-        .app = cli_srv,
-        .name = "CliSrv",
-        .appid = "cli_srv",
+        .app = cli_uart_srv,
+        .name = "CliUartSrv",
+        .appid = "cli_uart_srv",
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
@@ -203,24 +214,31 @@ const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+    {
+        .app = cli_on_system_start,
+        .name = "CliOnSystemStart",
+        .appid = "cli_on_system_start",
+        .stack_size = 1024 * 2,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
 };
 const size_t FLIPPER_AUTORUN_APPS_COUNT = COUNT_OF(FLIPPER_AUTORUN_APPS);
 
-const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
-    {
-        .callback = power_cli,
-        .name = "power",
-        .flags = CliCommandFlagParallelSafe,
-    },
-    {
-        .callback = power_consumption_cli,
-        .name = "power_consumption",
-        .flags = CliCommandFlagParallelSafe,
-    },
-    {
-        .callback = led_cli,
-        .name = "led",
-        .flags = CliCommandFlagParallelSafe,
-    },
-};
-const size_t FLIPPER_CLI_COMMANDS_COUNT = COUNT_OF(FLIPPER_CLI_COMMANDS);
+// const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
+//     {
+//         .callback = power_cli,
+//         .name = "power",
+//         .flags = CliCommandFlagParallelSafe,
+//     },
+//     {
+//         .callback = power_consumption_cli,
+//         .name = "power_consumption",
+//         .flags = CliCommandFlagParallelSafe,
+//     },
+//     {
+//         .callback = led_cli,
+//         .name = "led",
+//         .flags = CliCommandFlagParallelSafe,
+//     },
+// };
+// const size_t FLIPPER_CLI_COMMANDS_COUNT = COUNT_OF(FLIPPER_CLI_COMMANDS);

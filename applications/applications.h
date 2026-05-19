@@ -1,7 +1,7 @@
 #pragma once
 
 #include <furi.h>
-#include <cli/cli.h>
+//#include <cli/cli.h>
 
 typedef enum {
     FlipperInternalApplicationFlagDefault = 0,
@@ -23,11 +23,11 @@ typedef struct {
 
 typedef void (*FlipperInternalOnStartHook)(void);
 
-typedef struct {
-    const CliCallback callback;
-    const char* name;
-    const CliCommandFlag flags;
-} FlipperInternalCommandApplication;
+// typedef struct {
+//     const CliCallback callback;
+//     const char* name;
+//     const CliCommandFlag flags;
+// } FlipperInternalCommandApplication;
 
 extern const char* FLIPPER_AUTORUN_APP_NAME;
 
@@ -49,8 +49,8 @@ extern const size_t FLIPPER_APPS_COUNT;
 extern const FlipperInternalApplication FLIPPER_AUTORUN_APPS[];
 extern const size_t FLIPPER_AUTORUN_APPS_COUNT;
 
-/* Internal CLI commands
- * Added to main CLI registry by CLI startup hook
- */
-extern const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[];
-extern const size_t FLIPPER_CLI_COMMANDS_COUNT;
+// /* Internal CLI commands
+//  * Added to main CLI registry by CLI startup hook
+//  */
+// extern const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[];
+// extern const size_t FLIPPER_CLI_COMMANDS_COUNT;

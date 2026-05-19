@@ -68,3 +68,36 @@ void uint8_to_hex_chars(const uint8_t* src, uint8_t* target, int length) {
     while(--length >= 0)
         target[length] = chars[(src[length >> 1] >> ((1 - (length & 1)) << 2)) & 0xF];
 }
+
+void hex_bytes_to_string(const uint8_t* bytes, size_t bytes_length, FuriString* string) {
+    furi_check(bytes);
+    furi_check(string);
+
+    furi_string_reset(string);
+    for(size_t i = 0; i < bytes_length; i++) {
+        furi_string_cat_printf(string, "%02x", bytes[i]);
+    }
+}
+
+bool hex_string_to_bytes(
+    const FuriString* string,
+    uint8_t* bytes,
+    size_t bytes_count,
+    size_t* bytes_written) {
+    furi_check(string);
+    furi_check(bytes);
+
+    size_t str_size = furi_string_size(string);
+    size_t max_bytes = str_size / 2;
+    if(bytes_written) *bytes_written = 0;
+    bool parse_success = false;
+
+    const char* str_pointer = furi_string_get_cstr(string);
+
+    for(size_t i = 0; i < max_bytes && i < bytes_count; i++) {
+        parse_success = hex_char_to_uint8(str_pointer[i * 2], str_pointer[i * 2 + 1], &bytes[i]);
+        if(!parse_success) break;
+        if(bytes_written) (*bytes_written)++;
+    }
+    return parse_success;
+}

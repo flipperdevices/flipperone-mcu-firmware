@@ -1,5 +1,5 @@
-#pragma once
+// #pragma once
 
-#include <cli/cli.h>
+// #include <cli/cli.h>
 
-void power_consumption_cli(Cli* cli, FuriString* args, void* context);
+// void power_consumption_cli(Cli* cli, FuriString* args, void* context);
