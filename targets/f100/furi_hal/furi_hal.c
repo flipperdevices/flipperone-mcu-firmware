@@ -22,11 +22,7 @@ void furi_hal_deinit_early(void) {
 
 void furi_hal_init(void) {
     furi_hal_gpio_interrupt_init();
-    furi_hal_serial_control_init();
     furi_hal_adc_init();
-
-    // Set the UART for logging output
-    furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart1, 230400);
 
     furi_hal_otp_init();
 }
