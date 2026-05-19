@@ -1378,12 +1378,14 @@ static bool test_phy_start_toggle_drp(void) {
     TEST_ASSERT(ucsi_ppm_phy_start_toggle(ppm, UcsiPpmPhyToggleModeDrp) == UcsiPpmStatusOk);
 
     const uint8_t v = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits v_struct = *((const Fusb302Control2RegBits*)&v);
+
     // TOGGLE = 1
-    TEST_ASSERT((v & 0x01u) == 0x01u);
+    TEST_ASSERT(v_struct.toggle == 1);
     // MODE = 01b (DRP) at bits 2:1
-    TEST_ASSERT(((v >> 1) & 0x03u) == 0x01u);
+    TEST_ASSERT(v_struct.mode == 0b01u);
     // TOG_SAVE_PWR = 01b (40 ms) at bits 7:6
-    TEST_ASSERT(((v >> 6) & 0x03u) == 0x01u);
+    TEST_ASSERT(v_struct.tog_save_pwr == 0b01u);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1612,6 +1614,125 @@ static bool test_phy_pump_idle_no_events(void) {
     return true;
 }
 
+// --- L4 measurements (MDAC + BC_LVL) ---------------------------------------
+
+static bool test_phy_measure_vbus_threshold_above(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    // STATUS0.COMP = 1 → VBUS above threshold.
+    g_mock_regs[Fusb302RegStatus0] = (uint8_t)(1u << 5);
+
+    bool above = false;
+    TEST_ASSERT(ucsi_ppm_phy_measure_vbus_threshold(ppm, 4500u, &above) == UcsiPpmStatusOk);
+    TEST_ASSERT(above == true);
+    // MEASURE must have MEAS_VBUS=1 (bit 6) + non-zero MDAC.
+    const uint8_t measure = g_mock_regs[Fusb302RegMeasure];
+    TEST_ASSERT((measure & (1u << 6)) != 0u);
+    TEST_ASSERT((measure & 0x3Fu) != 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_measure_vbus_threshold_below(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus0] = 0u; // COMP=0
+
+    bool above = true;
+    TEST_ASSERT(ucsi_ppm_phy_measure_vbus_threshold(ppm, 4500u, &above) == UcsiPpmStatusOk);
+    TEST_ASSERT(above == false);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_measure_vbus_threshold_mdac_calc(void) {
+    // VBUS step is 420 mV; ceil(4500/420) = 11 = 0x0B.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    bool above = false;
+    ucsi_ppm_phy_measure_vbus_threshold(ppm, 4500u, &above);
+    TEST_ASSERT((g_mock_regs[Fusb302RegMeasure] & 0x3Fu) == 11u);
+
+    // vSafe0V (~800 mV): ceil(800/420) = 2.
+    ucsi_ppm_phy_measure_vbus_threshold(ppm, 800u, &above);
+    TEST_ASSERT((g_mock_regs[Fusb302RegMeasure] & 0x3Fu) == 2u);
+
+    // 20 V renegotiated rail: ceil(20000/420) = 48 = 0x30.
+    ucsi_ppm_phy_measure_vbus_threshold(ppm, 20000u, &above);
+    TEST_ASSERT((g_mock_regs[Fusb302RegMeasure] & 0x3Fu) == 48u);
+
+    // Voltage that overflows the 6-bit field gets clamped at 0x3F.
+    ucsi_ppm_phy_measure_vbus_threshold(ppm, 30000u, &above);
+    TEST_ASSERT((g_mock_regs[Fusb302RegMeasure] & 0x3Fu) == 0x3Fu);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_measure_vbus_threshold_null_out(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    TEST_ASSERT(ucsi_ppm_phy_measure_vbus_threshold(ppm, 4500u, NULL) == UcsiPpmStatusInvalidArg);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_arm_vbus_compare(void) {
+    // Programs MEASURE the same way as measure_vbus_threshold, but doesn't
+    // touch STATUS0 — the comparator fires asynchronously via I_COMP_CHNG.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_phy_arm_vbus_compare(ppm, 4500u) == UcsiPpmStatusOk);
+    const uint8_t measure = g_mock_regs[Fusb302RegMeasure];
+    TEST_ASSERT((measure & (1u << 6)) != 0u); // MEAS_VBUS
+    TEST_ASSERT((measure & 0x3Fu) == 11u); // MDAC
+
+    // No read on STATUS0 should have happened.
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len == 1u) {
+            TEST_ASSERT(t->data[0] != Fusb302RegStatus0);
+        }
+    }
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_read_bc_lvl(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    // BC_LVL is bits 0:1 of STATUS0. Set the rest to verify masking.
+    g_mock_regs[Fusb302RegStatus0] = (uint8_t)((1u << 7) | (1u << 5) | 0x02u);
+
+    uint8_t lvl = 0xFFu;
+    TEST_ASSERT(ucsi_ppm_phy_read_bc_lvl(ppm, &lvl) == UcsiPpmStatusOk);
+    TEST_ASSERT(lvl == 0x02u); // 1.5 A capability
+
+    g_mock_regs[Fusb302RegStatus0] = 0x03u; // 3 A capability
+    ucsi_ppm_phy_read_bc_lvl(ppm, &lvl);
+    TEST_ASSERT(lvl == 0x03u);
+
+    g_mock_regs[Fusb302RegStatus0] = 0x00u; // no Rd
+    ucsi_ppm_phy_read_bc_lvl(ppm, &lvl);
+    TEST_ASSERT(lvl == 0x00u);
+
+    TEST_ASSERT(ucsi_ppm_phy_read_bc_lvl(ppm, NULL) == UcsiPpmStatusInvalidArg);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 // --- entry point -----------------------------------------------------------
 
 typedef struct {
@@ -1710,6 +1831,14 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_phy_pump_toggle_done_src_cc1),
     TEST_ENTRY(test_phy_pump_multiple_events),
     TEST_ENTRY(test_phy_pump_idle_no_events),
+
+    // L4 measurements (MDAC + BC_LVL).
+    TEST_ENTRY(test_phy_measure_vbus_threshold_above),
+    TEST_ENTRY(test_phy_measure_vbus_threshold_below),
+    TEST_ENTRY(test_phy_measure_vbus_threshold_mdac_calc),
+    TEST_ENTRY(test_phy_measure_vbus_threshold_null_out),
+    TEST_ENTRY(test_phy_arm_vbus_compare),
+    TEST_ENTRY(test_phy_read_bc_lvl),
 };
 
 #define TEST_COUNT (sizeof(k_tests) / sizeof(k_tests[0]))

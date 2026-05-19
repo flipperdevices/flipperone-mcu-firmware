@@ -114,11 +114,7 @@ UcsiPpmStatus ucsi_ppm_phy_set_rp_current(UcsiPpm* ppm, UcsiPpmRpCurrent current
 // Sets the header bits FUSB302 uses to build auto-GoodCRC responses:
 // SWITCHES1.{POWER_ROLE, DATA_ROLE, SPEC_REV}. Must reflect the current
 // negotiated PD state.
-UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(
-    UcsiPpm* ppm,
-    bool power_role_src,
-    bool data_role_dfp,
-    uint8_t spec_rev);
+UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp, uint8_t spec_rev);
 
 // --- PD path ---------------------------------------------------------------
 
@@ -138,6 +134,37 @@ UcsiPpmStatus ucsi_ppm_phy_send_hard_reset(UcsiPpm* ppm);
 // bit; FUSB302 self-clears them. plan/fusb302.md §8.2 — fix #1.
 UcsiPpmStatus ucsi_ppm_phy_flush_tx(UcsiPpm* ppm);
 UcsiPpmStatus ucsi_ppm_phy_flush_rx(UcsiPpm* ppm);
+
+// --- Measurements (MDAC + BC_LVL) ------------------------------------------
+
+// One-shot VBUS threshold check. Programs MEASURE with MEAS_VBUS=1 and the
+// MDAC value closest to (and >=) `voltage_mv`, then reads STATUS0.COMP.
+// `*above` is set to true if VBUS is currently above the threshold.
+//
+// Resolution is coarse — VBUS is divided by 10 inside the chip, so the
+// effective MDAC step is 420 mV. The threshold rounds **up** to keep
+// "above X mV" detections conservative (the actual threshold is >= X mV).
+// Used for vSafe0V / vSafe5V detection (plan/fusb302.md §2.6).
+UcsiPpmStatus ucsi_ppm_phy_measure_vbus_threshold(UcsiPpm* ppm, uint16_t voltage_mv, bool* above);
+
+// Arms continuous VBUS threshold monitoring. Programs MEASURE the same way
+// as `measure_vbus_threshold` but doesn't read STATUS0 — instead, I_COMP_CHNG
+// fires whenever VBUS crosses the threshold in either direction (subsequent
+// `pump` calls emit `UcsiPpmPhyEventCompChanged` with `comp_above`).
+// Used by PE during Hard Reset / PR_Swap (plan/architecture.md §1 — direct
+// PE → L4 access).
+UcsiPpmStatus ucsi_ppm_phy_arm_vbus_compare(UcsiPpm* ppm, uint16_t voltage_mv);
+
+// Reads STATUS0.BC_LVL (2-bit field). Used by Type-C SM after polarity lock
+// to determine partner Rp current level for `Power Operation Mode` in
+// GET_CONNECTOR_STATUS (plan/fusb302.md §5.2):
+//   0b00 — < 200 mV (no Rd / not present)
+//   0b01 — > 200 mV, < 660 mV  (USB Default 80 µA / 500 mA)
+//   0b10 — > 660 mV, < 1.23 V  (1.5 A capability)
+//   0b11 — > 1.23 V            (3 A capability)
+// Caller must ensure SWITCHES0.MEAS_CC{1,2} is set on the active CC pin
+// before calling.
+UcsiPpmStatus ucsi_ppm_phy_read_bc_lvl(UcsiPpm* ppm, uint8_t* out_bc_lvl);
 
 // --- Interrupt pump --------------------------------------------------------
 

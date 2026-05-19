@@ -66,9 +66,7 @@ static UcsiPpmStatus phy_rmw_reg(UcsiPpm* ppm, uint8_t reg, uint8_t mask, uint8_
 //
 // INTERRUPT: open BC_LVL, COLLISION, COMP_CHNG, VBUSOK. Mask WAKE, ALERT,
 // CRC_CHK (auto-GoodCRC handles), ACTIVITY.
-#define DEFAULT_MASK_VAL                                       \
-    ((1u << 2 /* WAKE */) | (1u << 3 /* ALERT */) |            \
-     (1u << 4 /* CRC_CHK */) | (1u << 6 /* ACTIVITY */))
+#define DEFAULT_MASK_VAL ((1u << 2 /* WAKE */) | (1u << 3 /* ALERT */) | (1u << 4 /* CRC_CHK */) | (1u << 6 /* ACTIVITY */))
 
 // INTERRUPTA: open HARDRST, TXSENT, HARDSENT, RETRYFAIL, TOGDONE.
 // Mask SOFTRST (we detect via RX FIFO), SOFTFAIL (we don't use AUTO_SOFTRESET),
@@ -156,9 +154,7 @@ UcsiPpmStatus ucsi_ppm_phy_deinit(UcsiPpm* ppm) {
 UcsiPpmStatus ucsi_ppm_phy_start_toggle(UcsiPpm* ppm, UcsiPpmPhyToggleMode mode) {
     // CONTROL2: TOGGLE=1, MODE, TOG_RD_ONLY=0 (settle on Rd or Ra),
     // TOG_SAVE_PWR=01b (40 ms tDIS), WAKE_EN=0.
-    const uint8_t val = (uint8_t)(
-        1u /* TOGGLE */ | ((mode_to_field(mode) & 0x3u) << 1) |
-        (CONTROL2_TOG_SAVE_PWR << 6));
+    const uint8_t val = (uint8_t)(1u /* TOGGLE */ | ((mode_to_field(mode) & 0x3u) << 1) | (CONTROL2_TOG_SAVE_PWR << 6));
     return phy_write_reg(ppm, Fusb302RegControl2, val);
 }
 
@@ -205,18 +201,11 @@ UcsiPpmStatus ucsi_ppm_phy_set_rp_current(UcsiPpm* ppm, UcsiPpmRpCurrent current
     return phy_rmw_reg(ppm, Fusb302RegControl0, 0xCu /* HOST_CUR mask */, v);
 }
 
-UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(
-    UcsiPpm* ppm,
-    bool power_role_src,
-    bool data_role_dfp,
-    uint8_t spec_rev) {
+UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp, uint8_t spec_rev) {
     // SWITCHES1: AUTO_CRC (bit 2), DATA_ROLE (bit 4), SPEC_REV (bits 6:5),
     // POWER_ROLE (bit 7). We touch the role/rev bits and leave AUTO_CRC alone.
     const uint8_t mask = (uint8_t)((1u << 4) | (3u << 5) | (1u << 7));
-    const uint8_t value = (uint8_t)(
-        ((data_role_dfp ? 1u : 0u) << 4) |
-        (((uint32_t)spec_rev & 0x3u) << 5) |
-        ((power_role_src ? 1u : 0u) << 7));
+    const uint8_t value = (uint8_t)(((data_role_dfp ? 1u : 0u) << 4) | (((uint32_t)spec_rev & 0x3u) << 5) | ((power_role_src ? 1u : 0u) << 7));
     return phy_rmw_reg(ppm, Fusb302RegSwitches1, mask, value);
 }
 
@@ -231,9 +220,7 @@ UcsiPpmStatus ucsi_ppm_phy_enable_pd(UcsiPpm* ppm, uint8_t n_retries) {
     // We keep the higher-level reset logic in PE rather than letting the
     // chip auto-fire it (plan/fusb302.md §1.4).
     if(n_retries > 3u) n_retries = 3u;
-    const uint8_t mask = (uint8_t)(
-        (1u << 0 /* AUTO_RETRY */) | (3u << 1 /* N_RETRIES */) |
-        (1u << 3 /* AUTO_SOFTRESET */) | (1u << 4 /* AUTO_HARDRESET */));
+    const uint8_t mask = (uint8_t)((1u << 0 /* AUTO_RETRY */) | (3u << 1 /* N_RETRIES */) | (1u << 3 /* AUTO_SOFTRESET */) | (1u << 4 /* AUTO_HARDRESET */));
     const uint8_t val = (uint8_t)((1u << 0) | ((uint32_t)n_retries << 1));
     return phy_rmw_reg(ppm, Fusb302RegControl3, mask, val);
 }
@@ -256,6 +243,58 @@ UcsiPpmStatus ucsi_ppm_phy_flush_tx(UcsiPpm* ppm) {
 UcsiPpmStatus ucsi_ppm_phy_flush_rx(UcsiPpm* ppm) {
     // CONTROL1.RX_FLUSH = 1 (self-clearing).
     return phy_rmw_reg(ppm, Fusb302RegControl1, 1u << 2, 1u << 2);
+}
+
+// --- Measurements (MDAC + BC_LVL) ------------------------------------------
+
+// MDAC field is 6 bits (MEASURE[5:0]); each step is 42 mV on the comparator
+// reference. When MEAS_VBUS=1 the VBUS input is divided by 10, so the
+// effective threshold step on actual VBUS is 420 mV.
+#define MDAC_LSB_MV       42u
+#define MDAC_VBUS_DIVISOR 10u
+#define MDAC_VBUS_STEP_MV (MDAC_LSB_MV * MDAC_VBUS_DIVISOR)
+#define MDAC_FIELD_MASK   0x3Fu
+#define MEASURE_MEAS_VBUS (1u << 6)
+
+// STATUS0.COMP is bit 5 (datasheet Fusb302Status0RegBits).
+#define STATUS0_COMP (1u << 5)
+
+// Rounds up so the actual threshold is >= voltage_mv (conservative for
+// "above X mV" detection — see header doc).
+static uint8_t vbus_mv_to_mdac(uint16_t voltage_mv) {
+    uint32_t v = ((uint32_t)voltage_mv + (MDAC_VBUS_STEP_MV - 1u)) / MDAC_VBUS_STEP_MV;
+    if(v > MDAC_FIELD_MASK) v = MDAC_FIELD_MASK;
+    return (uint8_t)v;
+}
+
+UcsiPpmStatus ucsi_ppm_phy_measure_vbus_threshold(UcsiPpm* ppm, uint16_t voltage_mv, bool* above) {
+    if(!above) return UcsiPpmStatusInvalidArg;
+    const uint8_t mdac = vbus_mv_to_mdac(voltage_mv);
+    const uint8_t measure = (uint8_t)(MEASURE_MEAS_VBUS | (mdac & MDAC_FIELD_MASK));
+    UcsiPpmStatus s = phy_write_reg(ppm, Fusb302RegMeasure, measure);
+    if(s != UcsiPpmStatusOk) return s;
+    // The two I²C round-trips (write MEASURE then read STATUS0) far exceed
+    // the ~30 µs comparator settling time, so we read once and trust it.
+    uint8_t status0;
+    s = phy_read_reg(ppm, Fusb302RegStatus0, &status0);
+    if(s != UcsiPpmStatusOk) return s;
+    *above = (status0 & STATUS0_COMP) != 0u;
+    return UcsiPpmStatusOk;
+}
+
+UcsiPpmStatus ucsi_ppm_phy_arm_vbus_compare(UcsiPpm* ppm, uint16_t voltage_mv) {
+    const uint8_t mdac = vbus_mv_to_mdac(voltage_mv);
+    const uint8_t measure = (uint8_t)(MEASURE_MEAS_VBUS | (mdac & MDAC_FIELD_MASK));
+    return phy_write_reg(ppm, Fusb302RegMeasure, measure);
+}
+
+UcsiPpmStatus ucsi_ppm_phy_read_bc_lvl(UcsiPpm* ppm, uint8_t* out_bc_lvl) {
+    if(!out_bc_lvl) return UcsiPpmStatusInvalidArg;
+    uint8_t status0;
+    UcsiPpmStatus s = phy_read_reg(ppm, Fusb302RegStatus0, &status0);
+    if(s != UcsiPpmStatusOk) return s;
+    *out_bc_lvl = (uint8_t)(status0 & 0x03u); // bits 0:1
+    return UcsiPpmStatusOk;
 }
 
 // --- Interrupt pump --------------------------------------------------------
