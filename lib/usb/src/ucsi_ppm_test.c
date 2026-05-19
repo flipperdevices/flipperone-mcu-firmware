@@ -53,7 +53,7 @@ static void make_valid_config(UcsiPpmConfig* c);
 typedef struct {
     bool is_write;
     uint8_t addr;
-    uint8_t data[16];
+    uint8_t data[64]; // PD message TX burst can be up to ~40 bytes
     size_t len;
 } MockI2cTxn;
 
@@ -61,9 +61,27 @@ static MockI2cTxn g_mock_txns[MOCK_I2C_MAX_TXNS];
 static size_t g_mock_txn_count;
 static uint8_t g_mock_regs[256];
 
+// FUSB302 FIFOS is a port-like register: every read dequeues one byte.
+// The mock keeps a separate byte queue for FIFOS reads to model this
+// (g_mock_regs[FIFOS] would auto-increment to neighbouring addresses,
+// which is wrong for a queue).
+#define MOCK_FIFO_MAX 128
+static uint8_t g_mock_fifo[MOCK_FIFO_MAX];
+static size_t g_mock_fifo_len;
+static size_t g_mock_fifo_pos;
+
+static void mock_fifo_load(const uint8_t* bytes, size_t n) {
+    if(n > MOCK_FIFO_MAX) n = MOCK_FIFO_MAX;
+    memcpy(g_mock_fifo, bytes, n);
+    g_mock_fifo_len = n;
+    g_mock_fifo_pos = 0;
+}
+
 static void mock_i2c_reset(void) {
     g_mock_txn_count = 0;
     memset(g_mock_regs, 0, sizeof(g_mock_regs));
+    g_mock_fifo_len = 0;
+    g_mock_fifo_pos = 0;
 }
 
 static UcsiPpmStatus mock_i2c_write_fn(void* ctx, uint8_t addr, const uint8_t* data, size_t len) {
@@ -87,8 +105,16 @@ static UcsiPpmStatus mock_i2c_read_fn(void* ctx, uint8_t addr, uint8_t* data, si
     const MockI2cTxn* last = &g_mock_txns[g_mock_txn_count - 1u];
     if(!last->is_write || last->len < 1u) return UcsiPpmStatusInternal;
     const uint8_t reg = last->data[0];
-    for(size_t i = 0; i < len; ++i) {
-        data[i] = g_mock_regs[(reg + (uint8_t)i) & 0xFFu];
+    if(reg == Fusb302RegFifos) {
+        // FIFOS is a port; each byte comes from the queue, not from
+        // neighbouring register addresses.
+        for(size_t i = 0; i < len; ++i) {
+            data[i] = (g_mock_fifo_pos < g_mock_fifo_len) ? g_mock_fifo[g_mock_fifo_pos++] : 0u;
+        }
+    } else {
+        for(size_t i = 0; i < len; ++i) {
+            data[i] = g_mock_regs[(reg + (uint8_t)i) & 0xFFu];
+        }
     }
     if(g_mock_txn_count < MOCK_I2C_MAX_TXNS) {
         MockI2cTxn* t = &g_mock_txns[g_mock_txn_count++];
@@ -1809,6 +1835,540 @@ static bool test_phy_read_bc_lvl(void) {
     return true;
 }
 
+// --- L4 PD message TX ------------------------------------------------------
+
+// Finds the I²C burst write to FIFOS (first byte = Fusb302RegFifos, length > 2).
+// Returns -1 if no such transaction was recorded.
+static int mock_find_fifo_burst(void) {
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len > 2u && t->data[0] == Fusb302RegFifos) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+// Verifies the 4 SOP tokens at `fifo[0..3]` match the SOP destination.
+static bool check_sop_tokens(const uint8_t* fifo, UcsiPpmPhySopType type) {
+    switch(type) {
+    case UcsiPpmPhySopTypeSop:
+        return fifo[0] == FUSB302_TX_TOKEN_SYNC1 && fifo[1] == FUSB302_TX_TOKEN_SYNC1 && fifo[2] == FUSB302_TX_TOKEN_SYNC1 && fifo[3] == FUSB302_TX_TOKEN_SYNC2;
+    case UcsiPpmPhySopTypeSopPrime:
+        return fifo[0] == FUSB302_TX_TOKEN_SYNC1 && fifo[1] == FUSB302_TX_TOKEN_SYNC1 && fifo[2] == FUSB302_TX_TOKEN_SYNC3 && fifo[3] == FUSB302_TX_TOKEN_SYNC3;
+    case UcsiPpmPhySopTypeSopDoublePrime:
+        return fifo[0] == FUSB302_TX_TOKEN_SYNC1 && fifo[1] == FUSB302_TX_TOKEN_SYNC3 && fifo[2] == FUSB302_TX_TOKEN_SYNC1 && fifo[3] == FUSB302_TX_TOKEN_SYNC3;
+    }
+    return false;
+}
+
+// Verifies JAMCRC + EOP + TXOFF + TXON at the tail of the FIFO burst.
+static bool check_trailer(const uint8_t* fifo, size_t len) {
+    if(len < 4u) return false;
+    return fifo[len - 4u] == FUSB302_TX_TOKEN_JAMCRC && fifo[len - 3u] == FUSB302_TX_TOKEN_EOP && fifo[len - 2u] == FUSB302_TX_TOKEN_TXOFF &&
+           fifo[len - 1u] == FUSB302_TX_TOKEN_TXON;
+}
+
+static bool test_phy_send_message_control(void) {
+    // Accept (opcode 0x03) — 0 data objects. Just a header.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    const UcsiPpmPhyPdMsg msg = {
+        .sop_type = UcsiPpmPhySopTypeSop,
+        .header = 0x0303u, // arbitrary header bits + Accept opcode
+        .object_count = 0,
+    };
+    TEST_ASSERT(ucsi_ppm_phy_send_message(ppm, &msg) == UcsiPpmStatusOk);
+
+    const int idx = mock_find_fifo_burst();
+    TEST_ASSERT(idx >= 0);
+    const MockI2cTxn* t = &g_mock_txns[idx];
+
+    const uint8_t* fifo = &t->data[1]; // skip reg address byte
+    const size_t fifo_len = t->len - 1u;
+    // Expected: 4 SOP + 1 PACKSYM + 2 header + 0 objects + 4 trailer = 11 bytes.
+    TEST_ASSERT(fifo_len == 11u);
+
+    TEST_ASSERT(check_sop_tokens(fifo, UcsiPpmPhySopTypeSop));
+    // PACKSYM with length = 2 (header only).
+    TEST_ASSERT(fifo[4] == (uint8_t)(FUSB302_TX_TOKEN_PACKSYM | 2u));
+    // Header LE; NumberOfDataObjects (bits 14:12) cleared since object_count==0.
+    TEST_ASSERT(fifo[5] == 0x03u);
+    TEST_ASSERT(fifo[6] == 0x03u);
+    TEST_ASSERT(check_trailer(fifo, fifo_len));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_send_message_one_object(void) {
+    // Request (opcode 0x02) — 1 RDO.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    const UcsiPpmPhyPdMsg msg = {
+        .sop_type = UcsiPpmPhySopTypeSop,
+        .header = 0x0042u, // base header; NDO field will be overwritten
+        .objects = {0x12345678u},
+        .object_count = 1,
+    };
+    TEST_ASSERT(ucsi_ppm_phy_send_message(ppm, &msg) == UcsiPpmStatusOk);
+
+    const int idx = mock_find_fifo_burst();
+    TEST_ASSERT(idx >= 0);
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const size_t fifo_len = g_mock_txns[idx].len - 1u;
+    // 4 SOP + 1 PACKSYM + 2 header + 4 object + 4 trailer = 15 bytes.
+    TEST_ASSERT(fifo_len == 15u);
+
+    TEST_ASSERT(check_sop_tokens(fifo, UcsiPpmPhySopTypeSop));
+    // PACKSYM length = 2 + 4 = 6.
+    TEST_ASSERT(fifo[4] == (uint8_t)(FUSB302_TX_TOKEN_PACKSYM | 6u));
+    // Header: NDO field (bits 14:12) patched to 1, low byte preserved.
+    const uint16_t expected_hdr = (uint16_t)(0x0042u | (1u << 12));
+    TEST_ASSERT(fifo[5] == (uint8_t)(expected_hdr & 0xFFu));
+    TEST_ASSERT(fifo[6] == (uint8_t)((expected_hdr >> 8) & 0xFFu));
+    // Object LE.
+    TEST_ASSERT(fifo[7] == 0x78u);
+    TEST_ASSERT(fifo[8] == 0x56u);
+    TEST_ASSERT(fifo[9] == 0x34u);
+    TEST_ASSERT(fifo[10] == 0x12u);
+    TEST_ASSERT(check_trailer(fifo, fifo_len));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_send_message_three_objects(void) {
+    // Source_Capabilities-style: 3 PDOs.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    const UcsiPpmPhyPdMsg msg = {
+        .sop_type = UcsiPpmPhySopTypeSop,
+        .header = 0x0001u, // Source_Capabilities opcode
+        .objects = {0xAABBCCDDu, 0x11223344u, 0xDEADBEEFu},
+        .object_count = 3,
+    };
+    TEST_ASSERT(ucsi_ppm_phy_send_message(ppm, &msg) == UcsiPpmStatusOk);
+
+    const int idx = mock_find_fifo_burst();
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const size_t fifo_len = g_mock_txns[idx].len - 1u;
+    // 4 SOP + 1 PACKSYM + 2 header + 12 objects + 4 trailer = 23 bytes.
+    TEST_ASSERT(fifo_len == 23u);
+    TEST_ASSERT(fifo[4] == (uint8_t)(FUSB302_TX_TOKEN_PACKSYM | 14u));
+
+    // Header with NDO=3 patched in.
+    const uint16_t expected_hdr = (uint16_t)(0x0001u | (3u << 12));
+    TEST_ASSERT(fifo[5] == (uint8_t)(expected_hdr & 0xFFu));
+    TEST_ASSERT(fifo[6] == (uint8_t)((expected_hdr >> 8) & 0xFFu));
+
+    // Objects in order, each LE.
+    const uint8_t expected[12] = {
+        0xDDu,
+        0xCCu,
+        0xBBu,
+        0xAAu, // obj 0
+        0x44u,
+        0x33u,
+        0x22u,
+        0x11u, // obj 1
+        0xEFu,
+        0xBEu,
+        0xADu,
+        0xDEu, // obj 2
+    };
+    for(size_t i = 0; i < 12u; ++i) {
+        TEST_ASSERT(fifo[7u + i] == expected[i]);
+    }
+    TEST_ASSERT(check_trailer(fifo, fifo_len));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_send_message_header_ndo_patched(void) {
+    // Caller passes a header with stale NDO=5; encoder must rewrite it to
+    // match object_count=2 so partner sees the correct count.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    const UcsiPpmPhyPdMsg msg = {
+        .sop_type = UcsiPpmPhySopTypeSop,
+        .header = (uint16_t)((5u << 12) | 0x0042u), // stale NDO=5
+        .objects = {0xAAAAAAAAu, 0xBBBBBBBBu},
+        .object_count = 2,
+    };
+    ucsi_ppm_phy_send_message(ppm, &msg);
+
+    const int idx = mock_find_fifo_burst();
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+
+    const uint16_t hdr = (uint16_t)(fifo[5] | (fifo[6] << 8));
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == 2u); // NDO field == object_count
+    TEST_ASSERT((hdr & ~0x7000u) == 0x0042u); // other bits preserved
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_send_message_sop_prime(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    const UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSopPrime, .object_count = 0};
+    ucsi_ppm_phy_send_message(ppm, &msg);
+    const int idx = mock_find_fifo_burst();
+    TEST_ASSERT(check_sop_tokens(&g_mock_txns[idx].data[1], UcsiPpmPhySopTypeSopPrime));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_send_message_sop_double_prime(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    const UcsiPpmPhyPdMsg msg = {
+        .sop_type = UcsiPpmPhySopTypeSopDoublePrime,
+        .object_count = 0,
+    };
+    ucsi_ppm_phy_send_message(ppm, &msg);
+    const int idx = mock_find_fifo_burst();
+    TEST_ASSERT(check_sop_tokens(&g_mock_txns[idx].data[1], UcsiPpmPhySopTypeSopDoublePrime));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_send_message_validates(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+
+    TEST_ASSERT(ucsi_ppm_phy_send_message(ppm, NULL) == UcsiPpmStatusInvalidArg);
+
+    UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .object_count = 8};
+    TEST_ASSERT(ucsi_ppm_phy_send_message(ppm, &msg) == UcsiPpmStatusInvalidArg);
+
+    msg.object_count = 0;
+    msg.sop_type = (UcsiPpmPhySopType)99; // invalid
+    TEST_ASSERT(ucsi_ppm_phy_send_message(ppm, &msg) == UcsiPpmStatusInvalidArg);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// --- L4 PD message RX ------------------------------------------------------
+
+// Builds an RX FIFO byte stream for a given SOP-type message: SOP-token +
+// header LE + objects LE + 4-byte stub CRC. Returns total bytes written.
+static size_t build_rx_stream(uint8_t* dst, uint8_t sop_token, uint16_t header, const uint32_t* objects, uint8_t object_count) {
+    size_t len = 0;
+    dst[len++] = sop_token;
+    dst[len++] = (uint8_t)(header & 0xFFu);
+    dst[len++] = (uint8_t)((header >> 8) & 0xFFu);
+    for(uint8_t i = 0; i < object_count; ++i) {
+        const uint32_t o = objects[i];
+        dst[len++] = (uint8_t)(o & 0xFFu);
+        dst[len++] = (uint8_t)((o >> 8) & 0xFFu);
+        dst[len++] = (uint8_t)((o >> 16) & 0xFFu);
+        dst[len++] = (uint8_t)((o >> 24) & 0xFFu);
+    }
+    // Stub CRC32 (chip validates it before placing the message in FIFO; we
+    // just need 4 bytes to consume).
+    dst[len++] = 0xDEu;
+    dst[len++] = 0xADu;
+    dst[len++] = 0xBEu;
+    dst[len++] = 0xEFu;
+    return len;
+}
+
+static bool test_phy_recv_empty(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    // STATUS1.RX_EMPTY = 1.
+    const Fusb302Status1RegBits s1 = {.rx_empty = 1};
+    g_mock_regs[Fusb302RegStatus1] = *(const uint8_t*)&s1;
+
+    UcsiPpmPhyPdMsg msg;
+    bool received = true;
+    TEST_ASSERT(ucsi_ppm_phy_recv_message(ppm, &msg, &received) == UcsiPpmStatusOk);
+    TEST_ASSERT(received == false);
+    // No FIFO bytes should have been consumed.
+    TEST_ASSERT(g_mock_fifo_pos == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_sop_control(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u; // rx_empty = 0
+
+    // Accept (opcode 0x03), 0 objects → header NDO field = 0.
+    const uint16_t header = 0x0303u;
+    uint8_t stream[16];
+    const size_t n = build_rx_stream(stream, FUSB302_RX_TOKEN_SOP, header, NULL, 0);
+    mock_fifo_load(stream, n);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = false;
+    TEST_ASSERT(ucsi_ppm_phy_recv_message(ppm, &msg, &received) == UcsiPpmStatusOk);
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(msg.sop_type == UcsiPpmPhySopTypeSop);
+    TEST_ASSERT(msg.header == header);
+    TEST_ASSERT(msg.object_count == 0u);
+    // All bytes (token + 2 header + 4 CRC = 7) must have been consumed.
+    TEST_ASSERT(g_mock_fifo_pos == 7u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_sop_one_object(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u;
+
+    // Header with NDO = 1.
+    const uint16_t header = (uint16_t)(0x0042u | (1u << 12));
+    const uint32_t obj = 0x12345678u;
+    uint8_t stream[32];
+    const size_t n = build_rx_stream(stream, FUSB302_RX_TOKEN_SOP, header, &obj, 1);
+    mock_fifo_load(stream, n);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = false;
+    TEST_ASSERT(ucsi_ppm_phy_recv_message(ppm, &msg, &received) == UcsiPpmStatusOk);
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(msg.sop_type == UcsiPpmPhySopTypeSop);
+    TEST_ASSERT(msg.header == header);
+    TEST_ASSERT(msg.object_count == 1u);
+    TEST_ASSERT(msg.objects[0] == 0x12345678u);
+    // 1 token + 2 header + 4 obj + 4 CRC = 11 bytes consumed.
+    TEST_ASSERT(g_mock_fifo_pos == 11u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_sop_three_objects(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u;
+
+    const uint16_t header = (uint16_t)(0x0001u | (3u << 12));
+    const uint32_t objects[3] = {0xAABBCCDDu, 0x11223344u, 0xDEADBEEFu};
+    uint8_t stream[32];
+    const size_t n = build_rx_stream(stream, FUSB302_RX_TOKEN_SOP, header, objects, 3);
+    mock_fifo_load(stream, n);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = false;
+    ucsi_ppm_phy_recv_message(ppm, &msg, &received);
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(msg.object_count == 3u);
+    TEST_ASSERT(msg.objects[0] == 0xAABBCCDDu);
+    TEST_ASSERT(msg.objects[1] == 0x11223344u);
+    TEST_ASSERT(msg.objects[2] == 0xDEADBEEFu);
+    // 1 + 2 + 12 + 4 = 19 bytes.
+    TEST_ASSERT(g_mock_fifo_pos == 19u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_sop_prime(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u;
+
+    uint8_t stream[16];
+    const size_t n = build_rx_stream(stream, FUSB302_RX_TOKEN_SOP1, 0x0000u, NULL, 0);
+    mock_fifo_load(stream, n);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = false;
+    ucsi_ppm_phy_recv_message(ppm, &msg, &received);
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(msg.sop_type == UcsiPpmPhySopTypeSopPrime);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_sop_double_prime(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u;
+
+    uint8_t stream[16];
+    const size_t n = build_rx_stream(stream, FUSB302_RX_TOKEN_SOP2, 0x0000u, NULL, 0);
+    mock_fifo_load(stream, n);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = false;
+    ucsi_ppm_phy_recv_message(ppm, &msg, &received);
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(msg.sop_type == UcsiPpmPhySopTypeSopDoublePrime);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_token_low_bits_ignored(void) {
+    // Real chip may set low bits of the SOP-token byte to non-zero metadata.
+    // Only the top 3 bits (mask 0xE0) matter for SOP-type decoding.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u;
+
+    uint8_t stream[16];
+    const size_t n = build_rx_stream(stream, (uint8_t)(FUSB302_RX_TOKEN_SOP | 0x1Fu), 0u, NULL, 0);
+    mock_fifo_load(stream, n);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = false;
+    ucsi_ppm_phy_recv_message(ppm, &msg, &received);
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(msg.sop_type == UcsiPpmPhySopTypeSop);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_sop_debug_returns_internal(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u;
+
+    uint8_t stream[16];
+    const size_t n = build_rx_stream(stream, FUSB302_RX_TOKEN_SOP1DB, 0u, NULL, 0);
+    mock_fifo_load(stream, n);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = true;
+    TEST_ASSERT(ucsi_ppm_phy_recv_message(ppm, &msg, &received) == UcsiPpmStatusInternal);
+    TEST_ASSERT(received == false);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_validates(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = false;
+    TEST_ASSERT(ucsi_ppm_phy_recv_message(ppm, NULL, &received) == UcsiPpmStatusInvalidArg);
+    TEST_ASSERT(ucsi_ppm_phy_recv_message(ppm, &msg, NULL) == UcsiPpmStatusInvalidArg);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_recv_drains_multiple(void) {
+    // Two back-to-back messages stack in the FIFO between I_GCRCSENT events;
+    // the second recv must pick up where the first left off.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u;
+
+    uint8_t stream[32];
+    size_t off = 0;
+    off += build_rx_stream(&stream[off], FUSB302_RX_TOKEN_SOP, 0x0101u, NULL, 0);
+    const uint32_t obj = 0xCAFEBABEu;
+    off += build_rx_stream(&stream[off], FUSB302_RX_TOKEN_SOP, (uint16_t)(0x0042u | (1u << 12)), &obj, 1);
+    mock_fifo_load(stream, off);
+
+    UcsiPpmPhyPdMsg msg = {0};
+    bool received = false;
+
+    ucsi_ppm_phy_recv_message(ppm, &msg, &received);
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(msg.header == 0x0101u);
+    TEST_ASSERT(msg.object_count == 0u);
+
+    ucsi_ppm_phy_recv_message(ppm, &msg, &received);
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(msg.object_count == 1u);
+    TEST_ASSERT(msg.objects[0] == 0xCAFEBABEu);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_phy_tx_rx_roundtrip(void) {
+    // Encode a message via send_message, copy the resulting header + objects
+    // out of the TX burst into an RX-style stream, feed it back through
+    // recv_message and verify identity.
+    UcsiPpm* ppm = mock_make_ppm();
+    ucsi_ppm_phy_init(ppm);
+    mock_i2c_reset();
+
+    const UcsiPpmPhyPdMsg sent = {
+        .sop_type = UcsiPpmPhySopTypeSop,
+        .header = (uint16_t)(0x0042u | (2u << 12)),
+        .objects = {0x11223344u, 0xAABBCCDDu},
+        .object_count = 2,
+    };
+    TEST_ASSERT(ucsi_ppm_phy_send_message(ppm, &sent) == UcsiPpmStatusOk);
+
+    const int idx = mock_find_fifo_burst();
+    TEST_ASSERT(idx >= 0);
+    const uint8_t* tx = &g_mock_txns[idx].data[1];
+    // TX layout: 4 SOP + 1 PACKSYM + 2 header + 4*N objects + 4 trailer.
+    // Header + objects start at offset 5, length 2 + 4*N.
+    const size_t payload_len = 2u + 4u * sent.object_count;
+
+    // Reset transaction log so the RX reads aren't mixed with TX bytes.
+    mock_i2c_reset();
+    g_mock_regs[Fusb302RegStatus1] = 0u;
+
+    // Build RX stream: SOP token + payload bytes from TX + stub CRC.
+    uint8_t stream[32];
+    stream[0] = FUSB302_RX_TOKEN_SOP;
+    memcpy(&stream[1], &tx[5], payload_len);
+    stream[1 + payload_len + 0] = 0x00u;
+    stream[1 + payload_len + 1] = 0x00u;
+    stream[1 + payload_len + 2] = 0x00u;
+    stream[1 + payload_len + 3] = 0x00u;
+    mock_fifo_load(stream, 1u + payload_len + 4u);
+
+    UcsiPpmPhyPdMsg recv = {0};
+    bool received = false;
+    ucsi_ppm_phy_recv_message(ppm, &recv, &received);
+
+    TEST_ASSERT(received == true);
+    TEST_ASSERT(recv.sop_type == sent.sop_type);
+    TEST_ASSERT(recv.header == sent.header);
+    TEST_ASSERT(recv.object_count == sent.object_count);
+    TEST_ASSERT(recv.objects[0] == sent.objects[0]);
+    TEST_ASSERT(recv.objects[1] == sent.objects[1]);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 // --- entry point -----------------------------------------------------------
 
 typedef struct {
@@ -1915,6 +2475,28 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_phy_measure_vbus_threshold_null_out),
     TEST_ENTRY(test_phy_arm_vbus_compare),
     TEST_ENTRY(test_phy_read_bc_lvl),
+
+    // L4 PD message TX (FIFO encoding).
+    TEST_ENTRY(test_phy_send_message_control),
+    TEST_ENTRY(test_phy_send_message_one_object),
+    TEST_ENTRY(test_phy_send_message_three_objects),
+    TEST_ENTRY(test_phy_send_message_header_ndo_patched),
+    TEST_ENTRY(test_phy_send_message_sop_prime),
+    TEST_ENTRY(test_phy_send_message_sop_double_prime),
+    TEST_ENTRY(test_phy_send_message_validates),
+
+    // L4 PD message RX (FIFO decoding).
+    TEST_ENTRY(test_phy_recv_empty),
+    TEST_ENTRY(test_phy_recv_sop_control),
+    TEST_ENTRY(test_phy_recv_sop_one_object),
+    TEST_ENTRY(test_phy_recv_sop_three_objects),
+    TEST_ENTRY(test_phy_recv_sop_prime),
+    TEST_ENTRY(test_phy_recv_sop_double_prime),
+    TEST_ENTRY(test_phy_recv_token_low_bits_ignored),
+    TEST_ENTRY(test_phy_recv_sop_debug_returns_internal),
+    TEST_ENTRY(test_phy_recv_validates),
+    TEST_ENTRY(test_phy_recv_drains_multiple),
+    TEST_ENTRY(test_phy_tx_rx_roundtrip),
 };
 
 const size_t test_count = COUNT_OF(k_tests);

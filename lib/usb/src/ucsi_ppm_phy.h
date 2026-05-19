@@ -116,6 +116,27 @@ UcsiPpmStatus ucsi_ppm_phy_set_rp_current(UcsiPpm* ppm, UcsiPpmRpCurrent current
 // negotiated PD state.
 UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp, uint8_t spec_rev);
 
+// --- PD messages -----------------------------------------------------------
+
+// Maximum number of Data Objects in a PD message (spec: 7).
+#define UCSI_PPM_PHY_MAX_OBJECTS 7
+
+// SOP* destination for outgoing / incoming PD messages.
+// v1 only originates SOP (port partner); SOP'/SOP'' are reserved for future
+// cable communication and are accepted by the encoder for forward compat.
+typedef enum {
+    UcsiPpmPhySopTypeSop, // SOP — port partner
+    UcsiPpmPhySopTypeSopPrime, // SOP' — first cable plug
+    UcsiPpmPhySopTypeSopDoublePrime, // SOP'' — second cable plug
+} UcsiPpmPhySopType;
+
+typedef struct {
+    UcsiPpmPhySopType sop_type;
+    uint16_t header;
+    uint32_t objects[UCSI_PPM_PHY_MAX_OBJECTS];
+    uint8_t object_count; // 0..7; control messages use 0
+} UcsiPpmPhyPdMsg;
+
 // --- PD path ---------------------------------------------------------------
 
 // Enables PD reception: SWITCHES1.AUTO_CRC = 1, CONTROL3.{AUTO_RETRY,
@@ -134,6 +155,41 @@ UcsiPpmStatus ucsi_ppm_phy_send_hard_reset(UcsiPpm* ppm);
 // bit; FUSB302 self-clears them. plan/fusb302.md §8.2 — fix #1.
 UcsiPpmStatus ucsi_ppm_phy_flush_tx(UcsiPpm* ppm);
 UcsiPpmStatus ucsi_ppm_phy_flush_rx(UcsiPpm* ppm);
+
+// Encodes the PD message into the FUSB302 TX FIFO and triggers transmission
+// via a single I²C burst write to the FIFOS register:
+//   SOP destination tokens (4 bytes) +
+//   PACKSYM with payload length +
+//   PD message header (2 bytes, little-endian) +
+//   data objects (4 bytes each, little-endian) +
+//   JAMCRC + EOP + TXOFF + TXON
+//
+// The hardware computes CRC32, encodes BMC, and transmits. Completion
+// surfaces later via `pump` as TxSuccess (I_TXSENT) or TxRetryFail
+// (I_RETRYFAIL). This call does **not** flush the TX FIFO or wait for any
+// earlier transmission — caller orchestrates that via flush_tx and the
+// previous send's completion event (plan/fusb302.md §8.2 fix #1).
+//
+// The "Number of Data Objects" field (header bits 14:12) is overwritten to
+// match `object_count` so the spec invariant (PD R3.0 §6.2.1.1.5) holds
+// even if the caller's header value is stale.
+UcsiPpmStatus ucsi_ppm_phy_send_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg);
+
+// Reads one PD message from the RX FIFO into `*out`. Drains:
+//   1 byte SOP token + 2 bytes header + 4*N bytes objects + 4 bytes CRC32
+//
+// The CRC has already been validated by FUSB302 auto-GoodCRC (any failure
+// surfaces as the chip ignoring the message and never raising I_GCRCSENT);
+// the trailing 4 bytes are read out and discarded.
+//
+// On an empty FIFO (STATUS1.RX_EMPTY=1) returns Ok with *out_received=false
+// and consumes no FIFO bytes. On non-empty: *out_received=true and *out is
+// populated. Caller should call this in a loop after I_GCRCSENT — multiple
+// messages can stack between events.
+//
+// Receiving SOP'_DEBUG or SOP''_DEBUG tokens (we don't enable those code
+// paths in v1) returns Internal as a "chip in unexpected state" signal.
+UcsiPpmStatus ucsi_ppm_phy_recv_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* out, bool* out_received);
 
 // --- Measurements (MDAC + BC_LVL) ------------------------------------------
 

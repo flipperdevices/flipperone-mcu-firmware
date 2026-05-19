@@ -245,6 +245,145 @@ UcsiPpmStatus ucsi_ppm_phy_flush_rx(UcsiPpm* ppm) {
     return phy_rmw_reg(ppm, Fusb302RegControl1, 1u << 2, 1u << 2);
 }
 
+// --- PD message TX ---------------------------------------------------------
+
+// PACKSYM token marker is the top 3 bits (0b100, i.e. 0x80); low 5 bits
+// carry the count of payload bytes that follow.
+#define PACKSYM_LEN_MASK 0x1Fu
+
+// Message Header "Number of Data Objects" field (bits 14:12). Patched from
+// `object_count` so the spec invariant (PD R3.0 §6.2.1.1.5) is preserved
+// even if the caller passed a stale header.
+#define MSG_HDR_NUM_OBJ_SHIFT 12u
+#define MSG_HDR_NUM_OBJ_MASK  (0x07u << MSG_HDR_NUM_OBJ_SHIFT)
+
+// SOP destination tokens (FUSB302 datasheet Table 26 / fusb302_reg.h
+// FUSB302_TX_TOKEN_*).
+static void emit_sop_tokens(uint8_t* buf, UcsiPpmPhySopType sop_type) {
+    switch(sop_type) {
+    case UcsiPpmPhySopTypeSop:
+        buf[0] = FUSB302_TX_TOKEN_SYNC1;
+        buf[1] = FUSB302_TX_TOKEN_SYNC1;
+        buf[2] = FUSB302_TX_TOKEN_SYNC1;
+        buf[3] = FUSB302_TX_TOKEN_SYNC2;
+        break;
+    case UcsiPpmPhySopTypeSopPrime:
+        buf[0] = FUSB302_TX_TOKEN_SYNC1;
+        buf[1] = FUSB302_TX_TOKEN_SYNC1;
+        buf[2] = FUSB302_TX_TOKEN_SYNC3;
+        buf[3] = FUSB302_TX_TOKEN_SYNC3;
+        break;
+    case UcsiPpmPhySopTypeSopDoublePrime:
+    default:
+        buf[0] = FUSB302_TX_TOKEN_SYNC1;
+        buf[1] = FUSB302_TX_TOKEN_SYNC3;
+        buf[2] = FUSB302_TX_TOKEN_SYNC1;
+        buf[3] = FUSB302_TX_TOKEN_SYNC3;
+        break;
+    }
+}
+
+UcsiPpmStatus ucsi_ppm_phy_send_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
+    if(!msg) return UcsiPpmStatusInvalidArg;
+    if(msg->object_count > UCSI_PPM_PHY_MAX_OBJECTS) return UcsiPpmStatusInvalidArg;
+    if(msg->sop_type != UcsiPpmPhySopTypeSop && msg->sop_type != UcsiPpmPhySopTypeSopPrime && msg->sop_type != UcsiPpmPhySopTypeSopDoublePrime) {
+        return UcsiPpmStatusInvalidArg;
+    }
+
+    // [reg_addr] + 4 SOP + 1 PACKSYM + 2 header + 4*N objects + 4 trailing.
+    // Max: 1 + 11 + 4*7 = 40 bytes.
+    uint8_t buf[1u + 4u + 1u + 2u + 4u * UCSI_PPM_PHY_MAX_OBJECTS + 4u];
+    size_t len = 0u;
+
+    buf[len++] = Fusb302RegFifos;
+
+    emit_sop_tokens(&buf[len], msg->sop_type);
+    len += 4u;
+
+    const uint8_t payload_bytes = (uint8_t)(2u + 4u * msg->object_count);
+    buf[len++] = (uint8_t)(FUSB302_TX_TOKEN_PACKSYM | (payload_bytes & PACKSYM_LEN_MASK));
+
+    // Patch NumberOfDataObjects then write header LE.
+    const uint16_t header = (uint16_t)((msg->header & ~MSG_HDR_NUM_OBJ_MASK) | ((uint16_t)(msg->object_count & 0x07u) << MSG_HDR_NUM_OBJ_SHIFT));
+    buf[len++] = (uint8_t)(header & 0xFFu);
+    buf[len++] = (uint8_t)((header >> 8) & 0xFFu);
+
+    // Data objects, little-endian.
+    for(uint8_t i = 0; i < msg->object_count; ++i) {
+        const uint32_t obj = msg->objects[i];
+        buf[len++] = (uint8_t)(obj & 0xFFu);
+        buf[len++] = (uint8_t)((obj >> 8) & 0xFFu);
+        buf[len++] = (uint8_t)((obj >> 16) & 0xFFu);
+        buf[len++] = (uint8_t)((obj >> 24) & 0xFFu);
+    }
+
+    buf[len++] = FUSB302_TX_TOKEN_JAMCRC;
+    buf[len++] = FUSB302_TX_TOKEN_EOP;
+    buf[len++] = FUSB302_TX_TOKEN_TXOFF;
+    buf[len++] = FUSB302_TX_TOKEN_TXON;
+
+    return ppm->config.i2c_write(ppm->config.hal_ctx, ppm->config.fusb302_i2c_addr, buf, len);
+}
+
+// --- PD message RX ---------------------------------------------------------
+
+// RX CRC32 follows the payload in the FIFO; we read and discard the bytes
+// (hardware has already validated the CRC).
+#define RX_CRC_BYTES 4u
+
+UcsiPpmStatus ucsi_ppm_phy_recv_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* out, bool* out_received) {
+    if(!out || !out_received) return UcsiPpmStatusInvalidArg;
+    *out_received = false;
+
+    // STATUS1.RX_EMPTY tells us whether to bother reading FIFOS at all —
+    // a stray read would dequeue an undefined byte and corrupt the next
+    // message boundary.
+    uint8_t status1;
+    UcsiPpmStatus s = phy_read_reg(ppm, Fusb302RegStatus1, &status1);
+    if(s != UcsiPpmStatusOk) return s;
+    const Fusb302Status1RegBits s1_bits = *((const Fusb302Status1RegBits*)&status1);
+    if(s1_bits.rx_empty) return UcsiPpmStatusOk;
+
+    // SOP token + header (3 bytes from FIFOS).
+    uint8_t head[3];
+    s = phy_read_regs(ppm, Fusb302RegFifos, head, sizeof(head));
+    if(s != UcsiPpmStatusOk) return s;
+
+    switch(head[0] & FUSB302_RX_TOKEN_SOP_MASK) {
+    case FUSB302_RX_TOKEN_SOP:
+        out->sop_type = UcsiPpmPhySopTypeSop;
+        break;
+    case FUSB302_RX_TOKEN_SOP1:
+        out->sop_type = UcsiPpmPhySopTypeSopPrime;
+        break;
+    case FUSB302_RX_TOKEN_SOP2:
+        out->sop_type = UcsiPpmPhySopTypeSopDoublePrime;
+        break;
+    default:
+        // SOP'_DEBUG / SOP''_DEBUG aren't in our v1 enum. We also never
+        // enable ENSOP1/ENSOP2 in CONTROL1, so seeing those tokens means
+        // the chip drifted from our expected configuration.
+        return UcsiPpmStatusInternal;
+    }
+
+    out->header = (uint16_t)(head[1] | ((uint16_t)head[2] << 8));
+    out->object_count = (uint8_t)((out->header >> 12) & 0x07u);
+
+    // Objects + trailing CRC32 (drained but ignored).
+    uint8_t tail[UCSI_PPM_PHY_MAX_OBJECTS * 4u + RX_CRC_BYTES];
+    const size_t tail_len = (size_t)out->object_count * 4u + RX_CRC_BYTES;
+    s = phy_read_regs(ppm, Fusb302RegFifos, tail, tail_len);
+    if(s != UcsiPpmStatusOk) return s;
+
+    for(uint8_t i = 0; i < out->object_count; ++i) {
+        const size_t base = (size_t)i * 4u;
+        out->objects[i] = (uint32_t)tail[base + 0] | ((uint32_t)tail[base + 1] << 8) | ((uint32_t)tail[base + 2] << 16) | ((uint32_t)tail[base + 3] << 24);
+    }
+
+    *out_received = true;
+    return UcsiPpmStatusOk;
+}
+
 // --- Measurements (MDAC + BC_LVL) ------------------------------------------
 
 // MDAC field is 6 bits (MEASURE[5:0]); each step is 42 mV on the comparator
