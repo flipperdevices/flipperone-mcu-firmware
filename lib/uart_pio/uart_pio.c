@@ -19,6 +19,7 @@ void uart_pio_init(uint32_t baud_rate, const GpioPin* gpio_tx) {
     uart_pio_instance->baud_rate = baud_rate;
     bool success = pio_claim_free_sm_and_add_program_for_gpio_range(
         &uart_tx_program, &uart_pio_instance->pio, &uart_pio_instance->sm, &uart_pio_instance->offset, uart_pio_instance->gpio_tx->pin, 1, true);
+    furi_check(success);
     uart_tx_program_init(uart_pio_instance->pio, uart_pio_instance->sm, uart_pio_instance->offset, uart_pio_instance->gpio_tx->pin, baud_rate);
 }
 
