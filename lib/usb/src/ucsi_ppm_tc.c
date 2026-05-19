@@ -2,6 +2,13 @@
 
 #include "drivers/fusb302/fusb302_reg.h"
 
+// Type-C CC debounce (Type-C R2.0 §5.3.3.5 — tCCDebounce, 100..200 ms).
+// We use the nominal lower bound from plan/type-c-sm.md.
+#define UCSI_PPM_TC_CC_DEBOUNCE_MS 100u
+
+// PD auto-retry count (PD R3.0 nRetryCount = 2 per plan/pd-scope.md §7).
+#define UCSI_PPM_TC_PD_RETRIES 2u
+
 // Maps the configured CC operation mode to the TOGGLE mode the chip
 // should run in. Disabled returns false → caller skips phy_start_toggle.
 static bool cc_mode_to_toggle(UcsiPpmCcOperationMode mode, UcsiPpmPhyToggleMode* out) {
@@ -41,9 +48,13 @@ UcsiPpmStatus ucsi_ppm_tc_deinit(UcsiPpm* ppm) {
     // Stop the toggle so the chip doesn't keep cycling CC terminations
     // while we tear down. Best-effort.
     (void)ucsi_ppm_phy_stop_toggle(ppm);
+    // Drop external VBUS source — if we were Attached.SRC we'd have raised
+    // it. Idempotent on the caller side.
+    ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, false);
     ppm->tc_state = (int)UcsiPpmTcStateDisabled;
     ppm->tc_orientation = (int)UcsiPpmPhyCcNone;
     ppm->tc_role_is_src = false;
+    ppm->tc_vbus_seen = false;
     return UcsiPpmStatusOk;
 }
 
@@ -102,15 +113,49 @@ static void handle_toggle_done(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     ppm->tc_orientation = (int)cc;
     ppm->tc_role_is_src = is_src;
     ppm->tc_state = (int)UcsiPpmTcStateAttachWait;
+    ppm->tc_attach_wait_start_ms = ppm->config.time_ms(ppm->config.hal_ctx);
+    ppm->tc_vbus_seen = false;
     (void)ucsi_ppm_phy_lock_polarity(ppm, cc);
     // Source-side Rp current advert — once locked we drive the configured
     // Rp value so partner's Rd sees the right termination current. (No
     // effect on sink-side; HOST_CUR is gated by PU_EN*.)
     if(is_src) {
         (void)ucsi_ppm_phy_set_rp_current(ppm, ppm->config.source_rp_current);
+        // Turn on the external VBUS source switch so the partner sees 5V.
+        ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, true);
     }
-    // TODO (1b): start CCDebounce/PDDebounce timers and transition to
-    // AttachedSrc/AttachedSnk on expiry; enable PD on AttachedSrc.
+    // Sink-side: nothing more — partner brings up VBUS and FUSB302's
+    // I_VBUSOK will fire, taking us to Attached once the debounce expires.
+}
+
+// Commits AttachWait → Attached.{Src,Snk} when both conditions hold:
+//   (a) VBUS has been observed (either we drove it as SRC and the chip's
+//       I_VBUSOK fired, or partner provided it on SNK side).
+//   (b) tCCDebounce has elapsed since AttachWait entry.
+// Enables PD auto-CRC on entry to Attached so subsequent PD frames are
+// accepted by the chip without per-frame software intervention.
+static void tc_try_commit_attached(UcsiPpm* ppm) {
+    if(ppm->tc_state != (int)UcsiPpmTcStateAttachWait) return;
+    if(!ppm->tc_vbus_seen) return;
+    const uint32_t now = ppm->config.time_ms(ppm->config.hal_ctx);
+    const uint32_t elapsed = (uint32_t)(now - ppm->tc_attach_wait_start_ms);
+    if(elapsed < UCSI_PPM_TC_CC_DEBOUNCE_MS) return;
+
+    ppm->tc_state = ppm->tc_role_is_src ? (int)UcsiPpmTcStateAttachedSrc :
+                                          (int)UcsiPpmTcStateAttachedSnk;
+    (void)ucsi_ppm_phy_enable_pd(ppm, UCSI_PPM_TC_PD_RETRIES);
+}
+
+static void handle_vbus_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
+    if(event->u.vbus_ok) {
+        if(ppm->tc_state == (int)UcsiPpmTcStateAttachWait) {
+            ppm->tc_vbus_seen = true;
+            tc_try_commit_attached(ppm);
+        }
+        // TODO (1c): vbus_ok=1 outside AttachWait — log/ignore for now.
+    } else {
+        // TODO (1c): vbus_ok=0 in Attached.SNK → detach path.
+    }
 }
 
 void ucsi_ppm_tc_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
@@ -118,10 +163,20 @@ void ucsi_ppm_tc_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     case UcsiPpmPhyEventToggleDone:
         handle_toggle_done(ppm, event);
         break;
-    // TODO (1b/1c): VbusChanged, CompChanged, BcLvlChanged, HardResetRx,
-    // HardResetSent. PRL/PE events (MessageRx/TxSuccess/TxRetryFail/Collision)
-    // are routed elsewhere when those layers exist.
+    case UcsiPpmPhyEventVbusChanged:
+        handle_vbus_changed(ppm, event);
+        break;
+    // TODO (1c): CompChanged, BcLvlChanged, HardResetRx, HardResetSent.
+    // PRL/PE events (MessageRx/TxSuccess/TxRetryFail/Collision) are routed
+    // elsewhere when those layers exist.
     default:
         break;
     }
+}
+
+void ucsi_ppm_tc_tick(UcsiPpm* ppm) {
+    // The CCDebounce timer expires on wall-clock time, so we re-evaluate
+    // the commit condition on every tick regardless of whether new PHY
+    // events arrived.
+    tc_try_commit_attached(ppm);
 }

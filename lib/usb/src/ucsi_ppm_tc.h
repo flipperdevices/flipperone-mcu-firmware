@@ -40,10 +40,15 @@ UcsiPpmStatus ucsi_ppm_tc_deinit(UcsiPpm* ppm);
 UcsiPpmStatus ucsi_ppm_tc_reset(UcsiPpm* ppm);
 
 // Consumes one event from the PHY pump. Handles only events relevant to
-// the connector state machine (ToggleDone today; VbusChanged / CompChanged /
-// HardReset* once Attached states are implemented). Unknown events are
-// dropped silently — PRL/PE will pick them up via their own sinks later.
+// the connector state machine (ToggleDone, VbusChanged today; CompChanged /
+// HardReset* once detach/recovery is in). Unknown events are dropped
+// silently — PRL/PE will pick them up via their own sinks later.
 void ucsi_ppm_tc_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event);
+
+// Time-tick — re-evaluates time-dependent transitions (AttachWait debounce
+// expiry today). Cheap no-op when nothing has changed. Call from
+// `ucsi_ppm_tick` after the PHY pump.
+void ucsi_ppm_tc_tick(UcsiPpm* ppm);
 
 #ifdef __cplusplus
 }

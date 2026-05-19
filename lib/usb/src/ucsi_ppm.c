@@ -117,7 +117,9 @@ UcsiPpmStatus ucsi_ppm_init(UcsiPpm* ppm, const UcsiPpmConfig* config) {
     UcsiPpmStatus s = ucsi_ppm_phy_init(ppm);
     if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
 
-    // TODO: step 5 — kick L3 (Type-C SM) into initial Unattached.* state.
+    // Step 5: kick L3 Type-C SM into initial Unattached.* (or Disabled).
+    s = ucsi_ppm_tc_init(ppm);
+    if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
 
     ppm->lifecycle = UcsiPpmLifecycleInitialized;
     return UcsiPpmStatusOk;
@@ -215,8 +217,11 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
         (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_to_tc, ppm);
     }
 
-    // TODO: power_supply_ready handling, L3 advancement, PD timeout checks,
-    // CCI event delivery (api.md §5.3).
+    // Advance time-dependent TC state (AttachWait debounce expiry today).
+    ucsi_ppm_tc_tick(ppm);
+
+    // TODO: power_supply_ready handling, PRL/PE advancement, PD timeout
+    // checks, CCI event delivery (api.md §5.3).
 
     return UcsiPpmStatusOk;
 }

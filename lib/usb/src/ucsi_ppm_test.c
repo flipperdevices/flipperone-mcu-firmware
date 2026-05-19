@@ -61,6 +61,24 @@ static MockI2cTxn g_mock_txns[MOCK_I2C_MAX_TXNS];
 static size_t g_mock_txn_count;
 static uint8_t g_mock_regs[256];
 
+// Controllable wall-clock for time-dependent TC tests. Default 0 — tests
+// that don't care about time get the same behaviour as stub_time_ms.
+static uint32_t g_mock_time_ms = 0;
+static uint32_t mock_time_ms(void* ctx) {
+    (void)ctx;
+    return g_mock_time_ms;
+}
+
+// Records calls to gpio_write_vbus_source so tests can verify the source-side
+// VBUS switch toggles at the right state transitions.
+static int g_mock_vbus_source_calls = 0;
+static bool g_mock_vbus_source_last = false;
+static void mock_gpio_write_vbus_source(void* ctx, bool value) {
+    (void)ctx;
+    g_mock_vbus_source_calls++;
+    g_mock_vbus_source_last = value;
+}
+
 // FUSB302 FIFOS is a port-like register: every read dequeues one byte.
 // The mock keeps a separate byte queue for FIFOS reads to model this
 // (g_mock_regs[FIFOS] would auto-increment to neighbouring addresses,
@@ -82,6 +100,9 @@ static void mock_i2c_reset(void) {
     memset(g_mock_regs, 0, sizeof(g_mock_regs));
     g_mock_fifo_len = 0;
     g_mock_fifo_pos = 0;
+    g_mock_time_ms = 0;
+    g_mock_vbus_source_calls = 0;
+    g_mock_vbus_source_last = false;
 }
 
 static UcsiPpmStatus mock_i2c_write_fn(void* ctx, uint8_t addr, const uint8_t* data, size_t len) {
@@ -137,7 +158,7 @@ static bool mock_any_write_to(uint8_t reg, uint8_t value) {
     return false;
 }
 
-// Builds a ppm with mock I²C wired in. Returns NULL on error.
+// Builds a ppm with mock I²C / time / GPIO wired in. Returns NULL on error.
 // Resets the mock state on entry so tests don't accidentally trip the
 // txn buffer cap with leftover entries from earlier tests.
 static UcsiPpm* mock_make_ppm(void) {
@@ -148,6 +169,8 @@ static UcsiPpm* mock_make_ppm(void) {
     make_valid_config(&cfg);
     cfg.i2c_read = mock_i2c_read_fn;
     cfg.i2c_write = mock_i2c_write_fn;
+    cfg.time_ms = mock_time_ms;
+    cfg.gpio_write_vbus_source = mock_gpio_write_vbus_source;
     if(ucsi_ppm_init(ppm, &cfg) != UcsiPpmStatusOk) {
         ucsi_ppm_free(ppm);
         return NULL;
@@ -2521,6 +2544,8 @@ static UcsiPpm* mock_make_ppm_with_mode(UcsiPpmCcOperationMode mode, bool suppor
     make_valid_config(&cfg);
     cfg.i2c_read = mock_i2c_read_fn;
     cfg.i2c_write = mock_i2c_write_fn;
+    cfg.time_ms = mock_time_ms;
+    cfg.gpio_write_vbus_source = mock_gpio_write_vbus_source;
     cfg.initial_cc_operation_mode = mode;
     if(supports_disabled) cfg.supports_disabled_state = true;
     if(ucsi_ppm_init(ppm, &cfg) != UcsiPpmStatusOk) {
@@ -2531,12 +2556,28 @@ static UcsiPpm* mock_make_ppm_with_mode(UcsiPpmCcOperationMode mode, bool suppor
 }
 
 // Simulates a ToggleDone IRQ by populating mock registers + setting the
-// pending IRQ flag, then ticks once.
+// pending IRQ flag, then ticks once. All other INT registers are cleared
+// so we don't accidentally fire spurious events alongside ToggleDone.
 static void simulate_toggle_done(UcsiPpm* ppm, uint8_t togss) {
+    g_mock_regs[Fusb302RegInterrupt] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
     const Fusb302InterruptARegBits inta = {.i_tog_done = 1};
     g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
     const Fusb302Status1ARegBits s1a = {.togss = togss};
     g_mock_regs[Fusb302RegStatus1A] = *(const uint8_t*)&s1a;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+// Simulates a VBUS-changed IRQ (INTERRUPT.I_VBUSOK) with STATUS0.VBUSOK set
+// to `vbus_ok`. Pump emits UcsiPpmPhyEventVbusChanged into the TC handler.
+static void simulate_vbus_changed(UcsiPpm* ppm, bool vbus_ok) {
+    g_mock_regs[Fusb302RegInterruptA] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptRegBits intr = {.i_vbusok = 1};
+    g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
+    const Fusb302Status0RegBits s0 = {.vbusok = vbus_ok ? 1u : 0u};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
     ucsi_ppm_notify_fusb302_irq(ppm);
     ucsi_ppm_tick(ppm);
 }
@@ -2734,6 +2775,154 @@ static bool test_tc_deinit_stops_toggle(void) {
     return true;
 }
 
+// --- L3 Type-C SM 1b (AttachWait debounce + Attached commit) ---------------
+
+static bool test_tc_attach_wait_src_raises_vbus_source(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+    TEST_ASSERT(g_mock_vbus_source_calls >= 1);
+    TEST_ASSERT(g_mock_vbus_source_last == true);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_attach_wait_snk_does_not_raise_vbus(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC1);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+    // Sink doesn't drive VBUS — partner provides it.
+    TEST_ASSERT(g_mock_vbus_source_calls == 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_attach_commits_src_after_debounce(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // VBUS appears at t=10 — too early to commit.
+    g_mock_time_ms = 10;
+    simulate_vbus_changed(ppm, true);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // Past CCDebounce (100 ms). Tick commits.
+    g_mock_time_ms = 110;
+    TEST_ASSERT(ucsi_ppm_tick(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+
+    // PD reception enabled (AUTO_CRC bit set on SWITCHES1).
+    const uint8_t sw1 = g_mock_regs[Fusb302RegSwitches1];
+    const Fusb302Switches1RegBits sw1_bits = *((const Fusb302Switches1RegBits*)&sw1);
+    TEST_ASSERT(sw1_bits.auto_crc == 1);
+    // And n_retries programmed via CONTROL3.
+    const uint8_t c3 = g_mock_regs[Fusb302RegControl3];
+    const Fusb302Control3RegBits c3_bits = *((const Fusb302Control3RegBits*)&c3);
+    TEST_ASSERT(c3_bits.auto_retry == 1);
+    TEST_ASSERT(c3_bits.n_retries == 2);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_attach_commits_snk_after_debounce(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC2);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // Partner brings VBUS up almost immediately.
+    g_mock_time_ms = 2;
+    simulate_vbus_changed(ppm, true);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    g_mock_time_ms = 150;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+    TEST_ASSERT(ppm->tc_role_is_src == false);
+    TEST_ASSERT(ppm->tc_orientation == (int)UcsiPpmPhyCc2);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_attach_no_vbus_stays_attach_wait(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+
+    // Plenty of time elapsed — but no VBUS_OK event arrived.
+    g_mock_time_ms = 500;
+    TEST_ASSERT(ucsi_ppm_tick(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_attach_vbus_before_debounce_holds(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+
+    g_mock_time_ms = 5;
+    simulate_vbus_changed(ppm, true);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // Halfway through debounce — still waiting.
+    g_mock_time_ms = 50;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // Just past CCDebounce — commit.
+    g_mock_time_ms = 101;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_vbus_changed_in_unattached_ignored(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    simulate_vbus_changed(ppm, true);
+
+    // Stayed Unattached — VBUS event without prior ToggleDone is meaningless.
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_deinit_drops_vbus_source(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+    // VBUS source raised — capture and verify deinit drops it.
+    TEST_ASSERT(g_mock_vbus_source_last == true);
+
+    g_mock_vbus_source_calls = 0;
+    ucsi_ppm_deinit(ppm);
+
+    TEST_ASSERT(g_mock_vbus_source_calls >= 1);
+    TEST_ASSERT(g_mock_vbus_source_last == false);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 // --- entry point -----------------------------------------------------------
 
 typedef struct {
@@ -2885,6 +3074,16 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_tc_toggle_done_audio_rearms_toggle),
     TEST_ENTRY(test_tc_toggle_done_outside_unattached_dropped),
     TEST_ENTRY(test_tc_deinit_stops_toggle),
+
+    // L3 Type-C SM 1b (AttachWait → Attached debounce + commit).
+    TEST_ENTRY(test_tc_attach_wait_src_raises_vbus_source),
+    TEST_ENTRY(test_tc_attach_wait_snk_does_not_raise_vbus),
+    TEST_ENTRY(test_tc_attach_commits_src_after_debounce),
+    TEST_ENTRY(test_tc_attach_commits_snk_after_debounce),
+    TEST_ENTRY(test_tc_attach_no_vbus_stays_attach_wait),
+    TEST_ENTRY(test_tc_attach_vbus_before_debounce_holds),
+    TEST_ENTRY(test_tc_vbus_changed_in_unattached_ignored),
+    TEST_ENTRY(test_tc_deinit_drops_vbus_source),
 };
 
 const size_t test_count = COUNT_OF(k_tests);

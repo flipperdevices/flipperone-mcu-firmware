@@ -134,14 +134,20 @@ struct UcsiPpm {
 
     // L3 Type-C state machine (ucsi_ppm_tc.c). Defined inline to avoid an
     // extra forward declaration / pointer chase.
-    //   tc_state         — current Type-C SM state (UcsiPpmTcState).
-    //   tc_orientation   — active CC pin once TOGGLE has settled.
-    //   tc_role_is_src   — true after TOGSS settled SRC; false after SNK.
+    //   tc_state                 — current Type-C SM state (UcsiPpmTcState).
+    //   tc_orientation           — active CC pin once TOGGLE has settled.
+    //   tc_role_is_src           — true after TOGSS settled SRC; false after SNK.
+    //   tc_attach_wait_start_ms  — time_ms() at AttachWait entry; basis for
+    //                              the CCDebounce timer.
+    //   tc_vbus_seen             — true after VBUS_OK observed in AttachWait;
+    //                              gate for the AttachWait → Attached commit.
     // We keep the values as raw ints/bool here to avoid pulling more types
     // into this header; the actual UcsiPpmTcState enum lives in ucsi_ppm_tc.h.
     int tc_state;
     int tc_orientation;
     bool tc_role_is_src;
+    uint32_t tc_attach_wait_start_ms;
+    bool tc_vbus_seen;
 };
 
 // pending_flags bits.
