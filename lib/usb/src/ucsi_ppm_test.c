@@ -1337,16 +1337,22 @@ static bool test_phy_init_sequence(void) {
 
     TEST_ASSERT(ucsi_ppm_phy_init(ppm) == UcsiPpmStatusOk);
 
-    // SW_RESET (RESET = 0x01).
-    TEST_ASSERT(mock_any_write_to(Fusb302RegReset, 0x01u));
-    // POWER = all blocks on (0x0F).
-    TEST_ASSERT(mock_any_write_to(Fusb302RegPower, 0x0Fu));
+    // SW_RESET sets RESET.sw_reset = 1.
+    const Fusb302ResetRegBits sw_reset = {.sw_reset = 1};
+    TEST_ASSERT(mock_any_write_to(Fusb302RegReset, *(const uint8_t*)&sw_reset));
+
+    // POWER: all blocks on.
+    const Fusb302PowerRegBits all_on = {.pwr = 0b1111};
+    TEST_ASSERT(mock_any_write_to(Fusb302RegPower, *(const uint8_t*)&all_on));
+
     // All three masks programmed (don't pin specific values — just check
     // any write reached them with our DEFAULT_MASK*_VAL).
-    TEST_ASSERT(g_mock_regs[Fusb302RegMask] != 0u); // some bits masked (WAKE/ALERT/CRC/ACTIVITY)
-    TEST_ASSERT(g_mock_regs[Fusb302RegMaskA] != 0u); // SOFTRST/SOFTFAIL/OCP_TEMP masked
-    // INT_MASK (CONTROL0 bit 5) cleared in final state.
-    TEST_ASSERT((g_mock_regs[Fusb302RegControl0] & (1u << 5)) == 0u);
+    TEST_ASSERT(g_mock_regs[Fusb302RegMask] != 0u);
+    TEST_ASSERT(g_mock_regs[Fusb302RegMaskA] != 0u);
+    // INT_MASK cleared in final state.
+    const uint8_t c0 = g_mock_regs[Fusb302RegControl0];
+    const Fusb302Control0RegBits c0_bits = *((const Fusb302Control0RegBits*)&c0);
+    TEST_ASSERT(c0_bits.int_mask == 0);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1364,7 +1370,9 @@ static bool test_phy_init_order_reset_first(void) {
     TEST_ASSERT(first->is_write);
     TEST_ASSERT(first->len == 2u);
     TEST_ASSERT(first->data[0] == Fusb302RegReset);
-    TEST_ASSERT(first->data[1] == 0x01u);
+    const Fusb302ResetRegBits payload = *((const Fusb302ResetRegBits*)&first->data[1]);
+    TEST_ASSERT(payload.sw_reset == 1);
+    TEST_ASSERT(payload.pd_reset == 0);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1399,8 +1407,9 @@ static bool test_phy_start_toggle_src(void) {
     ucsi_ppm_phy_start_toggle(ppm, UcsiPpmPhyToggleModeSrc);
 
     const uint8_t v = g_mock_regs[Fusb302RegControl2];
-    TEST_ASSERT((v & 0x01u) == 0x01u);
-    TEST_ASSERT(((v >> 1) & 0x03u) == 0x03u); // SRC
+    const Fusb302Control2RegBits v_struct = *((const Fusb302Control2RegBits*)&v);
+    TEST_ASSERT(v_struct.toggle == 1);
+    TEST_ASSERT(v_struct.mode == 0b11u); // SRC
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1413,10 +1422,16 @@ static bool test_phy_stop_toggle(void) {
     mock_i2c_reset();
 
     // Pre-seed CONTROL2 with TOGGLE=1, MODE=DRP, TOG_SAVE_PWR=01b.
-    g_mock_regs[Fusb302RegControl2] = 0x43u; // 0100 0011
+    const Fusb302Control2RegBits pre = {.toggle = 1, .mode = 0b01, .tog_save_pwr = 0b01};
+    g_mock_regs[Fusb302RegControl2] = *(const uint8_t*)&pre;
+
     ucsi_ppm_phy_stop_toggle(ppm);
-    TEST_ASSERT((g_mock_regs[Fusb302RegControl2] & 0x01u) == 0u); // TOGGLE cleared
-    TEST_ASSERT(((g_mock_regs[Fusb302RegControl2] >> 1) & 0x03u) == 0x01u); // MODE preserved
+
+    const uint8_t after = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits after_bits = *((const Fusb302Control2RegBits*)&after);
+    TEST_ASSERT(after_bits.toggle == 0); // cleared
+    TEST_ASSERT(after_bits.mode == 0b01u); // preserved
+    TEST_ASSERT(after_bits.tog_save_pwr == 0b01u); // preserved
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1429,14 +1444,25 @@ static bool test_phy_set_rp_current(void) {
 
     g_mock_regs[Fusb302RegControl0] = 0x00u; // start clean
     TEST_ASSERT(ucsi_ppm_phy_set_rp_current(ppm, UcsiPpmRpCurrent3A) == UcsiPpmStatusOk);
-    // HOST_CUR = 11b at bits 3:2
-    TEST_ASSERT(((g_mock_regs[Fusb302RegControl0] >> 2) & 0x03u) == 0x03u);
+    {
+        const uint8_t v = g_mock_regs[Fusb302RegControl0];
+        const Fusb302Control0RegBits b = *((const Fusb302Control0RegBits*)&v);
+        TEST_ASSERT(b.host_cur == 0b11u); // 330 µA — High Current 3 A
+    }
 
     ucsi_ppm_phy_set_rp_current(ppm, UcsiPpmRpCurrent1A5);
-    TEST_ASSERT(((g_mock_regs[Fusb302RegControl0] >> 2) & 0x03u) == 0x02u);
+    {
+        const uint8_t v = g_mock_regs[Fusb302RegControl0];
+        const Fusb302Control0RegBits b = *((const Fusb302Control0RegBits*)&v);
+        TEST_ASSERT(b.host_cur == 0b10u); // 180 µA — Medium 1.5 A
+    }
 
     ucsi_ppm_phy_set_rp_current(ppm, UcsiPpmRpCurrentUsbDefault);
-    TEST_ASSERT(((g_mock_regs[Fusb302RegControl0] >> 2) & 0x03u) == 0x01u);
+    {
+        const uint8_t v = g_mock_regs[Fusb302RegControl0];
+        const Fusb302Control0RegBits b = *((const Fusb302Control0RegBits*)&v);
+        TEST_ASSERT(b.host_cur == 0b01u); // 80 µA — USB Default
+    }
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1447,17 +1473,24 @@ static bool test_phy_lock_polarity_cc1(void) {
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
-    g_mock_regs[Fusb302RegSwitches0] = 0x03u; // PDWN1+PDWN2 set (sink-like)
-    g_mock_regs[Fusb302RegSwitches1] = 0x00u;
+    // Sink-like start state: PDWN1+PDWN2 = 1.
+    const Fusb302Switches0RegBits pre0 = {.pdwn1 = 1, .pdwn2 = 1};
+    g_mock_regs[Fusb302RegSwitches0] = *(const uint8_t*)&pre0;
+    g_mock_regs[Fusb302RegSwitches1] = 0u;
+
     TEST_ASSERT(ucsi_ppm_phy_lock_polarity(ppm, UcsiPpmPhyCc1) == UcsiPpmStatusOk);
 
-    // SWITCHES0: MEAS_CC1 set, MEAS_CC2 cleared; other bits preserved.
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & (1u << 2)) != 0u);
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & (1u << 3)) == 0u);
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & 0x03u) == 0x03u); // PDWN preserved
-    // SWITCHES1: TX_CC1 set, TX_CC2 cleared.
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 0)) != 0u);
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 1)) == 0u);
+    const uint8_t sw0 = g_mock_regs[Fusb302RegSwitches0];
+    const Fusb302Switches0RegBits sw0_bits = *((const Fusb302Switches0RegBits*)&sw0);
+    TEST_ASSERT(sw0_bits.meas_cc1 == 1);
+    TEST_ASSERT(sw0_bits.meas_cc2 == 0);
+    TEST_ASSERT(sw0_bits.pdwn1 == 1); // preserved
+    TEST_ASSERT(sw0_bits.pdwn2 == 1); // preserved
+
+    const uint8_t sw1 = g_mock_regs[Fusb302RegSwitches1];
+    const Fusb302Switches1RegBits sw1_bits = *((const Fusb302Switches1RegBits*)&sw1);
+    TEST_ASSERT(sw1_bits.tx_cc1 == 1);
+    TEST_ASSERT(sw1_bits.tx_cc2 == 0);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1469,10 +1502,16 @@ static bool test_phy_lock_polarity_cc2(void) {
     mock_i2c_reset();
 
     ucsi_ppm_phy_lock_polarity(ppm, UcsiPpmPhyCc2);
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & (1u << 3)) != 0u); // MEAS_CC2
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches0] & (1u << 2)) == 0u);
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 1)) != 0u); // TX_CC2
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 0)) == 0u);
+
+    const uint8_t sw0 = g_mock_regs[Fusb302RegSwitches0];
+    const Fusb302Switches0RegBits sw0_bits = *((const Fusb302Switches0RegBits*)&sw0);
+    TEST_ASSERT(sw0_bits.meas_cc2 == 1);
+    TEST_ASSERT(sw0_bits.meas_cc1 == 0);
+
+    const uint8_t sw1 = g_mock_regs[Fusb302RegSwitches1];
+    const Fusb302Switches1RegBits sw1_bits = *((const Fusb302Switches1RegBits*)&sw1);
+    TEST_ASSERT(sw1_bits.tx_cc2 == 1);
+    TEST_ASSERT(sw1_bits.tx_cc1 == 0);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1483,15 +1522,20 @@ static bool test_phy_enable_pd(void) {
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
-    g_mock_regs[Fusb302RegSwitches1] = 0x00u;
-    g_mock_regs[Fusb302RegControl3] = 0x00u;
+    g_mock_regs[Fusb302RegSwitches1] = 0u;
+    g_mock_regs[Fusb302RegControl3] = 0u;
     TEST_ASSERT(ucsi_ppm_phy_enable_pd(ppm, 2u) == UcsiPpmStatusOk);
 
-    TEST_ASSERT((g_mock_regs[Fusb302RegSwitches1] & (1u << 2)) != 0u); // AUTO_CRC
-    TEST_ASSERT((g_mock_regs[Fusb302RegControl3] & (1u << 0)) != 0u); // AUTO_RETRY
-    TEST_ASSERT(((g_mock_regs[Fusb302RegControl3] >> 1) & 0x03u) == 0x02u); // N_RETRIES=2
-    TEST_ASSERT((g_mock_regs[Fusb302RegControl3] & (1u << 3)) == 0u); // AUTO_SOFTRESET off
-    TEST_ASSERT((g_mock_regs[Fusb302RegControl3] & (1u << 4)) == 0u); // AUTO_HARDRESET off
+    const uint8_t sw1 = g_mock_regs[Fusb302RegSwitches1];
+    const Fusb302Switches1RegBits sw1_bits = *((const Fusb302Switches1RegBits*)&sw1);
+    TEST_ASSERT(sw1_bits.auto_crc == 1);
+
+    const uint8_t c3 = g_mock_regs[Fusb302RegControl3];
+    const Fusb302Control3RegBits c3_bits = *((const Fusb302Control3RegBits*)&c3);
+    TEST_ASSERT(c3_bits.auto_retry == 1);
+    TEST_ASSERT(c3_bits.n_retries == 0b10u); // 2 retries
+    TEST_ASSERT(c3_bits.auto_softreset == 0);
+    TEST_ASSERT(c3_bits.auto_hardreset == 0);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1503,7 +1547,8 @@ static bool test_phy_pd_reset(void) {
     mock_i2c_reset();
 
     TEST_ASSERT(ucsi_ppm_phy_pd_reset(ppm) == UcsiPpmStatusOk);
-    TEST_ASSERT(mock_any_write_to(Fusb302RegReset, 0x02u));
+    const Fusb302ResetRegBits expected = {.pd_reset = 1};
+    TEST_ASSERT(mock_any_write_to(Fusb302RegReset, *(const uint8_t*)&expected));
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1514,9 +1559,12 @@ static bool test_phy_send_hard_reset(void) {
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
-    g_mock_regs[Fusb302RegControl3] = 0x00u;
+    g_mock_regs[Fusb302RegControl3] = 0u;
     TEST_ASSERT(ucsi_ppm_phy_send_hard_reset(ppm) == UcsiPpmStatusOk);
-    TEST_ASSERT((g_mock_regs[Fusb302RegControl3] & (1u << 6)) != 0u);
+
+    const uint8_t c3 = g_mock_regs[Fusb302RegControl3];
+    const Fusb302Control3RegBits c3_bits = *((const Fusb302Control3RegBits*)&c3);
+    TEST_ASSERT(c3_bits.send_hard_reset == 1);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1527,9 +1575,10 @@ static bool test_phy_pump_vbus_changed(void) {
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
-    // Simulate: INTERRUPT.I_VBUSOK = 1 (bit 7), STATUS0.VBUSOK = 1 (bit 7).
-    g_mock_regs[Fusb302RegInterrupt] = (uint8_t)(1u << 7);
-    g_mock_regs[Fusb302RegStatus0] = (uint8_t)(1u << 7);
+    const Fusb302InterruptRegBits intr = {.i_vbusok = 1};
+    g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
+    const Fusb302Status0RegBits s0 = {.vbusok = 1};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
     g_mock_regs[Fusb302RegInterruptA] = 0u;
     g_mock_regs[Fusb302RegInterruptB] = 0u;
 
@@ -1549,17 +1598,17 @@ static bool test_phy_pump_toggle_done_src_cc1(void) {
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
-    // INTERRUPTA.I_TOG_DONE = bit 6. STATUS1A.TOGSS = 001b (settled SRC on CC1)
-    // at bits 5:3.
-    g_mock_regs[Fusb302RegInterruptA] = (uint8_t)(1u << 6);
-    g_mock_regs[Fusb302RegStatus1A] = (uint8_t)(0x01u << 3);
+    const Fusb302InterruptARegBits inta = {.i_tog_done = 1};
+    g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
+    const Fusb302Status1ARegBits s1a = {.togss = FUSB302_STATUS1A_TOGSS_SRCON_CC1};
+    g_mock_regs[Fusb302RegStatus1A] = *(const uint8_t*)&s1a;
 
     Collected c = {0};
     ucsi_ppm_phy_pump(ppm, collect_event, &c);
 
     TEST_ASSERT(c.count == 1u);
     TEST_ASSERT(c.events[0].kind == UcsiPpmPhyEventToggleDone);
-    TEST_ASSERT(c.events[0].u.togss == 0x01u);
+    TEST_ASSERT(c.events[0].u.togss == FUSB302_STATUS1A_TOGSS_SRCON_CC1);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1570,13 +1619,14 @@ static bool test_phy_pump_multiple_events(void) {
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
-    // INTERRUPT: I_VBUSOK + I_BC_LVL set.
-    g_mock_regs[Fusb302RegInterrupt] = (uint8_t)((1u << 7) | (1u << 0));
-    g_mock_regs[Fusb302RegStatus0] = (uint8_t)((1u << 7) | 0x02u); // VBUSOK=1, BC_LVL=10b
-    // INTERRUPTA: I_TXSENT (bit 2).
-    g_mock_regs[Fusb302RegInterruptA] = (uint8_t)(1u << 2);
-    // INTERRUPTB: I_GCRCSENT (bit 0).
-    g_mock_regs[Fusb302RegInterruptB] = (uint8_t)(1u << 0);
+    const Fusb302InterruptRegBits intr = {.i_vbusok = 1, .i_bc_lvl = 1};
+    g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
+    const Fusb302Status0RegBits s0 = {.vbusok = 1, .bc_lvl = 0b10}; // 1.5 A capability
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    const Fusb302InterruptARegBits inta = {.i_tx_sent = 1};
+    g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
+    const Fusb302InterruptBRegBits intb = {.i_gcrc_sent = 1};
+    g_mock_regs[Fusb302RegInterruptB] = *(const uint8_t*)&intb;
 
     Collected c = {0};
     ucsi_ppm_phy_pump(ppm, collect_event, &c);
@@ -1587,7 +1637,7 @@ static bool test_phy_pump_multiple_events(void) {
     for(size_t i = 0; i < c.count; ++i) {
         if(c.events[i].kind == UcsiPpmPhyEventBcLvlChanged) {
             saw_bc = true;
-            TEST_ASSERT(c.events[i].u.bc_lvl == 0x02u);
+            TEST_ASSERT(c.events[i].u.bc_lvl == 0b10u);
         }
         if(c.events[i].kind == UcsiPpmPhyEventVbusChanged) {
             saw_vbus = true;
@@ -1620,16 +1670,18 @@ static bool test_phy_measure_vbus_threshold_above(void) {
     UcsiPpm* ppm = mock_make_ppm();
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
-    // STATUS0.COMP = 1 → VBUS above threshold.
-    g_mock_regs[Fusb302RegStatus0] = (uint8_t)(1u << 5);
+
+    const Fusb302Status0RegBits s0 = {.comp = 1};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
 
     bool above = false;
     TEST_ASSERT(ucsi_ppm_phy_measure_vbus_threshold(ppm, 4500u, &above) == UcsiPpmStatusOk);
     TEST_ASSERT(above == true);
-    // MEASURE must have MEAS_VBUS=1 (bit 6) + non-zero MDAC.
+
     const uint8_t measure = g_mock_regs[Fusb302RegMeasure];
-    TEST_ASSERT((measure & (1u << 6)) != 0u);
-    TEST_ASSERT((measure & 0x3Fu) != 0u);
+    const Fusb302MeasureRegBits m_bits = *((const Fusb302MeasureRegBits*)&measure);
+    TEST_ASSERT(m_bits.meas_vbus == 1);
+    TEST_ASSERT(m_bits.mdac != 0);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1639,7 +1691,9 @@ static bool test_phy_measure_vbus_threshold_below(void) {
     UcsiPpm* ppm = mock_make_ppm();
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
-    g_mock_regs[Fusb302RegStatus0] = 0u; // COMP=0
+
+    const Fusb302Status0RegBits s0 = {.comp = 0};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
 
     bool above = true;
     TEST_ASSERT(ucsi_ppm_phy_measure_vbus_threshold(ppm, 4500u, &above) == UcsiPpmStatusOk);
@@ -1650,26 +1704,44 @@ static bool test_phy_measure_vbus_threshold_below(void) {
 }
 
 static bool test_phy_measure_vbus_threshold_mdac_calc(void) {
-    // VBUS step is 420 mV; ceil(4500/420) = 11 = 0x0B.
+    // VBUS step is 420 mV.
     UcsiPpm* ppm = mock_make_ppm();
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
     bool above = false;
+
+    // vSafe5V (~4500 mV): ceil(4500/420) = 11.
     ucsi_ppm_phy_measure_vbus_threshold(ppm, 4500u, &above);
-    TEST_ASSERT((g_mock_regs[Fusb302RegMeasure] & 0x3Fu) == 11u);
+    {
+        const uint8_t m = g_mock_regs[Fusb302RegMeasure];
+        const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
+        TEST_ASSERT(b.mdac == 11u);
+    }
 
     // vSafe0V (~800 mV): ceil(800/420) = 2.
     ucsi_ppm_phy_measure_vbus_threshold(ppm, 800u, &above);
-    TEST_ASSERT((g_mock_regs[Fusb302RegMeasure] & 0x3Fu) == 2u);
+    {
+        const uint8_t m = g_mock_regs[Fusb302RegMeasure];
+        const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
+        TEST_ASSERT(b.mdac == 2u);
+    }
 
-    // 20 V renegotiated rail: ceil(20000/420) = 48 = 0x30.
+    // 20 V renegotiated rail: ceil(20000/420) = 48.
     ucsi_ppm_phy_measure_vbus_threshold(ppm, 20000u, &above);
-    TEST_ASSERT((g_mock_regs[Fusb302RegMeasure] & 0x3Fu) == 48u);
+    {
+        const uint8_t m = g_mock_regs[Fusb302RegMeasure];
+        const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
+        TEST_ASSERT(b.mdac == 48u);
+    }
 
     // Voltage that overflows the 6-bit field gets clamped at 0x3F.
     ucsi_ppm_phy_measure_vbus_threshold(ppm, 30000u, &above);
-    TEST_ASSERT((g_mock_regs[Fusb302RegMeasure] & 0x3Fu) == 0x3Fu);
+    {
+        const uint8_t m = g_mock_regs[Fusb302RegMeasure];
+        const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
+        TEST_ASSERT(b.mdac == 0x3Fu);
+    }
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1692,8 +1764,9 @@ static bool test_phy_arm_vbus_compare(void) {
 
     TEST_ASSERT(ucsi_ppm_phy_arm_vbus_compare(ppm, 4500u) == UcsiPpmStatusOk);
     const uint8_t measure = g_mock_regs[Fusb302RegMeasure];
-    TEST_ASSERT((measure & (1u << 6)) != 0u); // MEAS_VBUS
-    TEST_ASSERT((measure & 0x3Fu) == 11u); // MDAC
+    const Fusb302MeasureRegBits m_bits = *((const Fusb302MeasureRegBits*)&measure);
+    TEST_ASSERT(m_bits.meas_vbus == 1);
+    TEST_ASSERT(m_bits.mdac == 11u);
 
     // No read on STATUS0 should have happened.
     for(size_t i = 0; i < g_mock_txn_count; ++i) {
@@ -1712,20 +1785,23 @@ static bool test_phy_read_bc_lvl(void) {
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
-    // BC_LVL is bits 0:1 of STATUS0. Set the rest to verify masking.
-    g_mock_regs[Fusb302RegStatus0] = (uint8_t)((1u << 7) | (1u << 5) | 0x02u);
+    // BC_LVL = 1.5 A capability; vbusok/comp also set to verify masking.
+    const Fusb302Status0RegBits s0a = {.bc_lvl = 0b10, .comp = 1, .vbusok = 1};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0a;
 
     uint8_t lvl = 0xFFu;
     TEST_ASSERT(ucsi_ppm_phy_read_bc_lvl(ppm, &lvl) == UcsiPpmStatusOk);
-    TEST_ASSERT(lvl == 0x02u); // 1.5 A capability
+    TEST_ASSERT(lvl == 0b10u);
 
-    g_mock_regs[Fusb302RegStatus0] = 0x03u; // 3 A capability
+    const Fusb302Status0RegBits s0b = {.bc_lvl = 0b11};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0b;
     ucsi_ppm_phy_read_bc_lvl(ppm, &lvl);
-    TEST_ASSERT(lvl == 0x03u);
+    TEST_ASSERT(lvl == 0b11u); // 3 A capability
 
-    g_mock_regs[Fusb302RegStatus0] = 0x00u; // no Rd
+    const Fusb302Status0RegBits s0c = {.bc_lvl = 0b00};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0c;
     ucsi_ppm_phy_read_bc_lvl(ppm, &lvl);
-    TEST_ASSERT(lvl == 0x00u);
+    TEST_ASSERT(lvl == 0b00u); // no Rd
 
     TEST_ASSERT(ucsi_ppm_phy_read_bc_lvl(ppm, NULL) == UcsiPpmStatusInvalidArg);
 
@@ -1841,12 +1917,12 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_phy_read_bc_lvl),
 };
 
-#define TEST_COUNT (sizeof(k_tests) / sizeof(k_tests[0]))
+const size_t test_count = COUNT_OF(k_tests);
 
 bool ucsi_ppm_test_run(void) {
-    FURI_LOG_I(TAG, "suite: start (%u tests)", (unsigned)TEST_COUNT);
+    FURI_LOG_I(TAG, "suite: start (%zu tests)", test_count);
     unsigned failed = 0;
-    for(size_t i = 0; i < TEST_COUNT; ++i) {
+    for(size_t i = 0; i < test_count; ++i) {
         if(!k_tests[i].fn()) {
             FURI_LOG_E(TAG, "FAIL: %s", k_tests[i].name);
             failed++;
@@ -1854,10 +1930,10 @@ bool ucsi_ppm_test_run(void) {
     }
 
     if(failed == 0) {
-        FURI_LOG_I(TAG, "suite: PASS (%u/%u)", (unsigned)TEST_COUNT, (unsigned)TEST_COUNT);
+        FURI_LOG_I(TAG, "suite: PASS (%zu/%zu)", test_count, test_count);
         return true;
     } else {
-        FURI_LOG_E(TAG, "suite: FAIL (%u/%u failed)", failed, (unsigned)TEST_COUNT);
+        FURI_LOG_E(TAG, "suite: FAIL (%u/%zu failed)", failed, test_count);
         return false;
     }
 }
