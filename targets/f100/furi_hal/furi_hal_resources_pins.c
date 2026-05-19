@@ -66,6 +66,8 @@ const GpioPin gpio_main_expander_int = {.pin = 39};
 const GpioPin gpio_uart0_tx = {.pin = 32};
 const GpioPin gpio_uart0_rx = {.pin = 33};
 
+const GpioPin gpio_debug_tx = {.pin = 41}; // Todo: In the new version, this needs to be corrected to GPIO 44.
+
 const GpioPinRecord gpio_pins[] = {};
 const size_t gpio_pins_count = COUNT_OF(gpio_pins);
 

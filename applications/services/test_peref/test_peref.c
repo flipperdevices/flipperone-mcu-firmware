@@ -1,5 +1,6 @@
 #include "test_peref.h"
 #include <furi.h>
+#include <furi_hal.h>
 
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
@@ -11,8 +12,8 @@
 #include <furi_hal_nvm.h>
 #include <power/power.h>
 
-#include <drivers/ina4230/ina4230.h>
-#include <drivers/display/display_jd9853_qspi.h>
+
+#include <furi_hal_serial.h>
 
 #define TAG "PerefTest"
 
@@ -70,12 +71,6 @@ void test_nvm(void) {
 
 uint8_t data_buffer[258 * 144] = {0};
 
-static int64_t __isr __not_in_flash_func(irq_callback)(alarm_id_t id, __unused void* user_data) {
-    UNUSED(id);
-    display_jd9853_irq_qspi_write_buffer(data_buffer, sizeof(data_buffer));
-    return 0;
-}
-
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
 
@@ -92,12 +87,14 @@ int32_t test_peref_srv(void* p) {
     //test_nvm();
 
     //Power* power = furi_record_open(RECORD_POWER);
-
+    FuriHalSerialHandle* serial_handle;
+    serial_handle = furi_hal_serial_control_acquire(FuriHalSerialIdUartPio);
+    furi_hal_serial_init(serial_handle, 230400);
+    uint8_t buffer[] = "Hello, UART PIO!";
     while(true) {
         FURI_LOG_I(TAG, "Test");
-        //generate irq event every 5 seconds
-        add_alarm_in_us(5 * 1000 * 1000, irq_callback, NULL, true);
-        furi_delay_ms(5000);
+        furi_hal_serial_tx(serial_handle, buffer, sizeof(buffer), 1000);
+        furi_delay_ms(500);
     }
     furi_crash();
 }

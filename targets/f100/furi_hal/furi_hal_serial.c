@@ -8,6 +8,8 @@
 #include <hardware/structs/uart.h>
 #include <hardware/uart.h>
 
+#include <uart_pio.h>
+
 typedef struct {
     FuriHalSerialHandle* handle;
     uart_inst_t* periph_ptr;
@@ -56,6 +58,21 @@ static const FuriHalSerialResources furi_hal_serial_resources[FuriHalSerialIdMax
                     [FuriHalSerialPinCts] = NULL,
                 },
             .irq = FuriHalInterruptIdUart1,
+            .tx_dma_request = 0,
+            .rx_dma_request = 0,
+        },
+    [FuriHalSerialIdUartPio] =
+        {
+            .periph = uart1,
+            .alt_fn = GpioAltFn7Pio1,
+            .gpio =
+                {
+                    [FuriHalSerialPinTx] = &gpio_debug_tx,
+                    [FuriHalSerialPinRx] = NULL,
+                    [FuriHalSerialPinRts] = NULL,
+                    [FuriHalSerialPinCts] = NULL,
+                },
+            .irq = FuriHalInterruptIdPio1Irq0,
             .tx_dma_request = 0,
             .rx_dma_request = 0,
         },
@@ -132,111 +149,13 @@ static void furi_hal_serial_irq_callback(void* context) {
 static void furi_hal_serial_dma_tx_init(FuriHalSerialHandle* handle) {
     furi_assert(handle);
 
-    // FuriHalSerialId serial_id = handle->id;
-    // FuriHalSerial* serial = furi_hal_serial[serial_id];
-    // furi_assert(serial);
-
-    // furi_check(furi_hal_dma_allocate_gpdma_channel(&serial->dma_tx_channel));
-
-    // const uint32_t dma_channel = serial->dma_tx_channel;
-    // const uint32_t dma_request = furi_hal_serial_resources[serial_id].tx_dma_request;
-
-    // LL_DMA_InitTypeDef dma_init_struct = {
-    //     .SrcAddress = 0,
-    //     .DestAddress = LL_USART_DMA_GetRegAddr(serial->periph_ptr, LL_USART_DMA_REG_DATA_TRANSMIT),
-    //     .BlkDataLength = 0,
-    //     .Request = dma_request,
-
-    //     .Direction = LL_DMA_DIRECTION_MEMORY_TO_PERIPH,
-    //     .BlkHWRequest = LL_DMA_HWREQUEST_SINGLEBURST,
-    //     .DataAlignment = LL_DMA_DATA_ALIGN_ZEROPADD,
-
-    //     .SrcAllocatedPort = LL_DMA_SRC_ALLOCATED_PORT1,
-    //     .SrcBurstLength = 1,
-    //     .SrcIncMode = LL_DMA_SRC_INCREMENT,
-    //     .SrcDataWidth = LL_DMA_SRC_DATAWIDTH_BYTE,
-
-    //     .DestAllocatedPort = LL_DMA_DEST_ALLOCATED_PORT0,
-    //     .DestBurstLength = 1,
-    //     .DestIncMode = LL_DMA_DEST_FIXED,
-    //     .DestDataWidth = LL_DMA_DEST_DATAWIDTH_BYTE,
-
-    //     .TriggerMode = LL_DMA_TRIGM_BLK_TRANSFER,
-    //     .TriggerPolarity = LL_DMA_TRIG_POLARITY_MASKED,
-    //     .TriggerSelection = 0,
-
-    //     .TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER,
-
-    //     .Priority = LL_DMA_LOW_PRIORITY_MID_WEIGHT,
-    //     .LinkAllocatedPort = LL_DMA_LINK_ALLOCATED_PORT1,
-    //     .LinkStepMode = LL_DMA_LSM_FULL_EXECUTION,
-    //     .LinkedListBaseAddr = 0,
-    //     .LinkedListAddrOffset = 0,
-    // };
-
-    // LL_DMA_Init(GPDMA1, dma_channel, &dma_init_struct);
-
-    // furi_hal_interrupt_set_isr(
-    //     furi_hal_dma_get_gpdma_interrupt_id(dma_channel),
-    //     furi_hal_serial_dma_irq_callback,
-    //     handle);
-
-    // LL_DMA_EnableIT_TC(GPDMA1, dma_channel);
+    // Not implemented
 }
 
 static void furi_hal_serial_dma_rx_init(FuriHalSerialHandle* handle) {
     furi_assert(handle);
 
-    // FuriHalSerialId serial_id = handle->id;
-    // FuriHalSerial* serial = furi_hal_serial[serial_id];
-    // furi_assert(serial);
-
-    // furi_check(furi_hal_dma_allocate_gpdma_channel(&serial->dma_rx_channel));
-
-    // const uint32_t dma_channel = serial->dma_rx_channel;
-    // const uint32_t dma_request = furi_hal_serial_resources[serial_id].rx_dma_request;
-
-    // LL_DMA_InitTypeDef dma_init_struct = {
-    //     .SrcAddress = LL_USART_DMA_GetRegAddr(serial->periph_ptr, LL_USART_DMA_REG_DATA_RECEIVE),
-    //     .DestAddress = 0,
-    //     .BlkDataLength = 0,
-    //     .Request = dma_request,
-
-    //     .Direction = LL_DMA_DIRECTION_PERIPH_TO_MEMORY,
-    //     .BlkHWRequest = LL_DMA_HWREQUEST_SINGLEBURST,
-    //     .DataAlignment = LL_DMA_DATA_ALIGN_ZEROPADD,
-
-    //     .SrcAllocatedPort = LL_DMA_SRC_ALLOCATED_PORT0,
-    //     .SrcBurstLength = 1,
-    //     .SrcIncMode = LL_DMA_SRC_FIXED,
-    //     .SrcDataWidth = LL_DMA_SRC_DATAWIDTH_BYTE,
-
-    //     .DestAllocatedPort = LL_DMA_DEST_ALLOCATED_PORT1,
-    //     .DestBurstLength = 1,
-    //     .DestIncMode = LL_DMA_DEST_INCREMENT,
-    //     .DestDataWidth = LL_DMA_DEST_DATAWIDTH_BYTE,
-
-    //     .TriggerMode = LL_DMA_TRIGM_BLK_TRANSFER,
-    //     .TriggerPolarity = LL_DMA_TRIG_POLARITY_MASKED,
-    //     .TriggerSelection = 0,
-
-    //     .TransferEventMode = LL_DMA_TCEM_BLK_TRANSFER,
-
-    //     .Priority = LL_DMA_LOW_PRIORITY_MID_WEIGHT,
-    //     .LinkAllocatedPort = LL_DMA_LINK_ALLOCATED_PORT1,
-    //     .LinkStepMode = LL_DMA_LSM_FULL_EXECUTION,
-    //     .LinkedListBaseAddr = 0,
-    //     .LinkedListAddrOffset = 0,
-    // };
-
-    // LL_DMA_Init(GPDMA1, dma_channel, &dma_init_struct);
-
-    // furi_hal_interrupt_set_isr(
-    //     furi_hal_dma_get_gpdma_interrupt_id(dma_channel),
-    //     furi_hal_serial_dma_irq_callback,
-    //     handle);
-
-    // LL_DMA_EnableIT_TC(GPDMA1, dma_channel);
+    // Not implemented
 }
 
 void furi_hal_serial_init(FuriHalSerialHandle* handle, uint32_t baud_rate) {
@@ -244,6 +163,11 @@ void furi_hal_serial_init(FuriHalSerialHandle* handle, uint32_t baud_rate) {
 
     const FuriHalSerialId serial_id = handle->id;
     furi_check(furi_hal_serial[serial_id] == NULL);
+
+    if(serial_id == FuriHalSerialIdUartPio) {
+        uart_pio_init(baud_rate, furi_hal_serial_resources[serial_id].gpio[FuriHalSerialPinTx]);
+        return;
+    }
 
     furi_hal_serial[serial_id] = malloc(sizeof(FuriHalSerial));
 
@@ -263,7 +187,7 @@ void furi_hal_serial_init(FuriHalSerialHandle* handle, uint32_t baud_rate) {
     for(size_t i = 0; i < FuriHalSerialPinMax; i++) {
         const GpioPin* gpio = furi_hal_serial_resources[serial_id].gpio[i];
         if(gpio != NULL) {
-            furi_hal_gpio_init_ex(gpio, GpioModeOutputPushPull, GpioPullNo, GpioSpeedFast, furi_hal_serial_resources[serial_id].alt_fn);
+            furi_hal_gpio_init_ex(gpio, GpioModeOutputPushPull, GpioPullUp, GpioSpeedFast, furi_hal_serial_resources[serial_id].alt_fn);
         }
     }
 
@@ -278,33 +202,25 @@ void furi_hal_serial_init(FuriHalSerialHandle* handle, uint32_t baud_rate) {
 static void furi_hal_serial_dma_tx_deinit(FuriHalSerialHandle* handle) {
     furi_assert(handle);
 
-    // FuriHalSerial* serial = furi_hal_serial[handle->id];
-    // LL_USART_DisableDMAReq_TX(serial->periph_ptr);
-
-    // LL_DMA_DisableChannel(GPDMA1, serial->dma_tx_channel);
-
-    // furi_hal_interrupt_set_isr(furi_hal_dma_get_gpdma_interrupt_id(serial->dma_tx_channel), NULL, NULL);
-
-    // furi_hal_dma_free_gpdma_channel(serial->dma_tx_channel);
+    // Not implemented
 }
 
 static void furi_hal_serial_dma_rx_deinit(FuriHalSerialHandle* handle) {
     furi_assert(handle);
 
-    // FuriHalSerial* serial = furi_hal_serial[handle->id];
-    // LL_USART_DisableDMAReq_RX(serial->periph_ptr);
-
-    // LL_DMA_DisableChannel(GPDMA1, serial->dma_rx_channel);
-
-    // furi_hal_interrupt_set_isr(furi_hal_dma_get_gpdma_interrupt_id(serial->dma_rx_channel), NULL, NULL);
-
-    // furi_hal_dma_free_gpdma_channel(serial->dma_rx_channel);
+    // Not implemented
 }
 
 void furi_hal_serial_deinit(FuriHalSerialHandle* handle) {
     furi_check(handle);
 
     FuriHalSerialId serial_id = handle->id;
+
+    if(serial_id == FuriHalSerialIdUartPio) {
+        uart_pio_deinit();
+        return;
+    }
+
     FuriHalSerial* serial = furi_hal_serial[serial_id];
     uart_inst_t* periph = serial->periph_ptr;
     // TODO: deinit() should NOT be called before init()
@@ -331,6 +247,11 @@ void furi_hal_serial_deinit(FuriHalSerialHandle* handle) {
 inline void furi_hal_serial_suspend(FuriHalSerialHandle* handle) {
     furi_hal_serial_check(handle);
 
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
+
     uart_inst_t* periph = furi_hal_serial[handle->id]->periph_ptr;
     uart_hw_t* hw = uart_get_hw(periph);
     hw_write_masked(&hw->cr, 0, UART_UARTCR_UARTEN_BITS);
@@ -338,6 +259,11 @@ inline void furi_hal_serial_suspend(FuriHalSerialHandle* handle) {
 
 inline void furi_hal_serial_resume(FuriHalSerialHandle* handle) {
     furi_hal_serial_check(handle);
+
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
 
     uart_inst_t* periph = furi_hal_serial[handle->id]->periph_ptr;
     uart_hw_t* hw = uart_get_hw(periph);
@@ -352,6 +278,10 @@ bool furi_hal_serial_is_baud_rate_supported(FuriHalSerialHandle* handle, uint32_
 uint32_t furi_hal_serial_get_baud_rate(FuriHalSerialHandle* handle) {
     furi_check(handle);
 
+    if(handle->id == FuriHalSerialIdUartPio) {
+        return uart_pio_get_baud_rate();
+    }
+
     FuriHalSerial* serial = furi_hal_serial[handle->id];
     furi_check(serial);
 
@@ -362,6 +292,11 @@ void furi_hal_serial_set_baud_rate(FuriHalSerialHandle* handle, uint32_t baud_ra
     furi_check(handle);
     furi_check(furi_hal_serial_is_baud_rate_supported(handle, baud_rate));
 
+    if(handle->id == FuriHalSerialIdUartPio) {
+        uart_pio_set_baud_rate(baud_rate);
+        return;
+    }
+
     FuriHalSerial* serial = furi_hal_serial[handle->id];
     furi_check(serial);
 
@@ -371,6 +306,11 @@ void furi_hal_serial_set_baud_rate(FuriHalSerialHandle* handle, uint32_t baud_ra
 
 void furi_hal_serial_set_hw_flow_control(FuriHalSerialHandle* handle, FuriHalSerialHwFlowControl flow_control) {
     furi_check(handle);
+
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
 
     const FuriHalSerialResources* resources = &furi_hal_serial_resources[handle->id];
 
@@ -426,6 +366,11 @@ void furi_hal_serial_set_hw_flow_control(FuriHalSerialHandle* handle, FuriHalSer
 void furi_hal_serial_set_callback(FuriHalSerialHandle* handle, FuriHalSerialTxCallback tx_callback, FuriHalSerialRxCallback rx_callback, void* context) {
     furi_check(handle);
 
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
+
     FuriHalSerial* serial = furi_hal_serial[handle->id];
     furi_check(serial);
 
@@ -439,6 +384,10 @@ size_t furi_hal_serial_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, si
     furi_check(buffer);
     furi_check(buffer_size);
 
+    if(handle->id == FuriHalSerialIdUartPio) {
+        return uart_pio_bloking_tx(buffer, buffer_size);
+    }
+
     //Todo: implement timeout
     uart_write_blocking(furi_hal_serial_resources[handle->id].periph, buffer, buffer_size);
     //Todo: You can remove the wait for sending all bytes of data, but hope to implement the wait before going into deep sleep
@@ -449,11 +398,25 @@ size_t furi_hal_serial_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, si
 
 bool furi_hal_serial_tx_wait_complete(FuriHalSerialHandle* handle, uint32_t timeout) {
     furi_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return true;
+    }
     //Todo: implement timeout
     UNUSED(timeout);
     uart_tx_wait_blocking(furi_hal_serial_resources[handle->id].periph);
 
     return true;
+}
+
+void furi_hal_serial_tx_non_blocking(FuriHalSerialHandle* handle, uint8_t data) {
+    furi_check(handle);
+    uart_get_hw(furi_hal_serial_resources[handle->id].periph)->dr = data;
+}
+
+bool furi_hal_serial_tx_ready(FuriHalSerialHandle* handle) {
+    furi_check(handle);
+    return uart_is_writable(furi_hal_serial_resources[handle->id].periph);
 }
 
 bool furi_hal_serial_rx_available(FuriHalSerialHandle* handle) {
@@ -469,6 +432,10 @@ uint8_t furi_hal_serial_rx(FuriHalSerialHandle* handle) {
 
 FURI_ALWAYS_INLINE size_t furi_hal_serial_rx_data_non_blocking(FuriHalSerialHandle* handle, uint8_t* data, size_t data_size) {
     furi_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return 0;
+    }
     size_t received = 0;
     while(received < data_size && uart_is_readable(furi_hal_serial_resources[handle->id].periph)) {
         data[received++] = (uint8_t)uart_get_hw(furi_hal_serial_resources[handle->id].periph)->dr;
@@ -478,6 +445,10 @@ FURI_ALWAYS_INLINE size_t furi_hal_serial_rx_data_non_blocking(FuriHalSerialHand
 
 void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_errors) {
     furi_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
     const FuriHalSerialResources* resources = &furi_hal_serial_resources[handle->id];
     uart_inst_t* periph = resources->periph;
 
@@ -496,11 +467,20 @@ void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_err
             (bool_to_bit(report_errors) << UART_UARTIMSC_PEIM_LSB) | (bool_to_bit(report_errors) << UART_UARTIMSC_FEIM_LSB),
         (UART_UARTIMSC_OEIM_BITS | UART_UARTIMSC_BEIM_BITS | UART_UARTIMSC_PEIM_BITS | UART_UARTIMSC_FEIM_BITS));
 
+    if(serial->rx_callback) {
+        // Set minimum threshold
+        uint32_t rx_threshold = 0b010; // Trigger interrupt when 1/2 rx fifo is full (32 bytes)
+        hw_write_masked(&uart_get_hw(periph)->ifls, (rx_threshold) << UART_UARTIFLS_RXIFLSEL_LSB, UART_UARTIFLS_RXIFLSEL_BITS);
+    }
     FURI_CRITICAL_EXIT();
 }
 
 void furi_hal_serial_async_rx_stop(FuriHalSerialHandle* handle) {
     furi_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
     const FuriHalSerialResources* resources = &furi_hal_serial_resources[handle->id];
     uart_inst_t* periph = resources->periph;
 
@@ -515,22 +495,7 @@ void furi_hal_serial_dma_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, 
     UNUSED(buffer);
     UNUSED(buffer_size);
 
-    // FuriHalSerial* serial = furi_hal_serial[handle->id];
-    // furi_check(serial);
-
-    // uart_inst_t* periph = serial->periph_ptr;
-    // const uint32_t dma_channel = serial->dma_tx_channel;
-
-    // FURI_CRITICAL_ENTER();
-    // LL_USART_DisableDMAReq_TX(periph);
-
-    // LL_DMA_DisableChannel(GPDMA1, dma_channel);
-    // LL_DMA_SetBlkDataLength(GPDMA1, dma_channel, buffer_size);
-    // LL_DMA_SetSrcAddress(GPDMA1, dma_channel, (uint32_t)buffer);
-    // LL_DMA_EnableChannel(GPDMA1, dma_channel);
-
-    // LL_USART_EnableDMAReq_TX(periph);
-    // FURI_CRITICAL_EXIT();
+    // Not implemented
 }
 
 void furi_hal_serial_dma_rx_start(FuriHalSerialHandle* handle, uint8_t* buffer, size_t buffer_size) {
@@ -538,40 +503,21 @@ void furi_hal_serial_dma_rx_start(FuriHalSerialHandle* handle, uint8_t* buffer, 
     furi_check(buffer);
     furi_check(buffer_size);
 
-    // FuriHalSerial* serial = furi_hal_serial[handle->id];
-    // furi_check(serial);
-
-    // uart_inst_t* periph = serial->periph_ptr;
-    // const uint32_t dma_channel = serial->dma_rx_channel;
-
-    // FURI_CRITICAL_ENTER();
-    // LL_USART_DisableDMAReq_RX(periph);
-
-    // LL_DMA_DisableChannel(GPDMA1, dma_channel);
-    // LL_DMA_SetBlkDataLength(GPDMA1, dma_channel, buffer_size);
-    // LL_DMA_SetDestAddress(GPDMA1, dma_channel, (uint32_t)buffer);
-    // LL_DMA_EnableChannel(GPDMA1, dma_channel);
-
-    // LL_USART_EnableDMAReq_RX(periph);
-    // FURI_CRITICAL_EXIT();
+    // Not implemented
 }
 
 void furi_hal_serial_dma_rx_stop(FuriHalSerialHandle* handle) {
     furi_check(handle);
-    // FuriHalSerial* serial = furi_hal_serial[handle->id];
-    // furi_check(serial);
 
-    // uart_inst_t* periph = serial->periph_ptr;
-    // const uint32_t dma_channel = serial->dma_rx_channel;
-
-    // FURI_CRITICAL_ENTER();
-    // LL_USART_DisableDMAReq_RX(periph);
-    // LL_DMA_DisableChannel(GPDMA1, dma_channel);
-    // FURI_CRITICAL_EXIT();
+    // Not implemented
 }
 
 void furi_hal_serial_clear(FuriHalSerialHandle* handle) {
     furi_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
     uart_inst_t* periph = furi_hal_serial_resources[handle->id].periph;
 
     // Wait until TX is complete
@@ -585,6 +531,10 @@ void furi_hal_serial_clear(FuriHalSerialHandle* handle) {
 
 const GpioPin* furi_hal_serial_gpio_get_pin(FuriHalSerialHandle* handle, FuriHalSerialPin pin) {
     furi_hal_serial_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return NULL;
+    }
     return furi_hal_serial_resources[handle->id].gpio[pin];
 }
 
@@ -594,6 +544,12 @@ void furi_hal_serial_set_config(
     FuriHalSerialConfigParity parity,
     FuriHalSerialConfigStopBits stop_bits) {
     furi_hal_serial_check(handle);
+
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
+
     uint32_t data_width = 8;
     uint32_t parity_mode = UART_PARITY_NONE;
     uint32_t stop_bits_mode = 1;
@@ -657,5 +613,9 @@ void furi_hal_serial_set_config(
 
 inline bool furi_hal_serial_is_enabled(FuriHalSerialHandle* handle) {
     furi_hal_serial_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return true;
+    }
     return uart_is_enabled(furi_hal_serial[handle->id]->periph_ptr);
 }
