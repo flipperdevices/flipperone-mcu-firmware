@@ -161,11 +161,21 @@ static void tc_try_commit_attached(UcsiPpm* ppm) {
     ppm->tc_state = ppm->tc_role_is_src ? (int)UcsiPpmTcStateAttachedSrc : (int)UcsiPpmTcStateAttachedSnk;
     (void)ucsi_ppm_phy_enable_pd(ppm, UCSI_PPM_TC_PD_RETRIES);
 
-    // Hand off to PE. Source path (pe_on_attach_src) lands in a later milestone;
-    // for now only the Sink contract flow is wired up.
-    if(!ppm->tc_role_is_src) {
+    // Hand off to PE: source-side starts retransmitting Source_Capabilities,
+    // sink-side arms SinkWaitCapTimer.
+    if(ppm->tc_role_is_src) {
+        ucsi_ppm_pe_on_attach_src(ppm);
+    } else {
         ucsi_ppm_pe_on_attach_snk(ppm);
     }
+
+    // Tell OPM the connector just lit up. Power Operation Mode change is
+    // also raised because Connect Status flipped to 1 (the partner type is
+    // now meaningful — see GET_CONNECTOR_STATUS).
+    ucsi_ppm_notify_connector_change(
+        ppm,
+        UCSI_PPM_CSC_CONNECT_CHANGE | UCSI_PPM_CSC_PARTNER_CHANGED |
+            UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
 }
 
 // Tears down the active session and returns to Unattached + re-armed toggle.
@@ -175,6 +185,8 @@ static void tc_try_commit_attached(UcsiPpm* ppm) {
 // to Disabled instead.
 static void tc_enter_unattached(UcsiPpm* ppm) {
     const bool was_src = ppm->tc_role_is_src;
+    const bool was_attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc ||
+                              ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
 
     (void)ucsi_ppm_phy_disable_pd(ppm);
     if(was_src) {
@@ -192,6 +204,16 @@ static void tc_enter_unattached(UcsiPpm* ppm) {
     // from MsgID=0 on both directions (PD R3.0 §6.8.1).
     (void)ucsi_ppm_prl_reset(ppm);
     ucsi_ppm_pe_on_detach(ppm);
+
+    // Tell OPM the partner is gone — but only on a genuine detach from
+    // Attached.*. A failed-attach drop (AttachWait → Unattached without
+    // ever committing) doesn't change OPM-visible Connect Status.
+    if(was_attached) {
+        ucsi_ppm_notify_connector_change(
+            ppm,
+            UCSI_PPM_CSC_CONNECT_CHANGE | UCSI_PPM_CSC_PARTNER_CHANGED |
+                UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
+    }
 
     UcsiPpmPhyToggleMode toggle_mode;
     if(cc_mode_to_toggle(ppm->current_cc_operation_mode, &toggle_mode)) {

@@ -214,6 +214,7 @@ static void phy_event_sink_to_l3(void* ctx, const UcsiPpmPhyEvent* event) {
     UcsiPpm* ppm = (UcsiPpm*)ctx;
     ucsi_ppm_tc_handle_phy_event(ppm, event);
     ucsi_ppm_prl_handle_phy_event(ppm, event);
+    ucsi_ppm_pe_handle_phy_event(ppm, event);
 }
 
 UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
@@ -221,10 +222,17 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
 
     // Drain FUSB302 IRQ if the ISR-context caller flagged one.
-    const uint32_t flags = ppm->pending_flags;
+    uint32_t flags = ppm->pending_flags;
     if(flags & UCSI_PPM_PENDING_PHY_IRQ) {
         ppm->pending_flags = flags & ~UCSI_PPM_PENDING_PHY_IRQ;
         (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_to_l3, ppm);
+    }
+    // Power-supply settled signal from caller — drives PE source-side
+    // PS_RDY emission. Re-read pending_flags in case pump cleared/set it.
+    flags = ppm->pending_flags;
+    if(flags & UCSI_PPM_PENDING_POWER_SUPPLY_RDY) {
+        ppm->pending_flags = flags & ~UCSI_PPM_PENDING_POWER_SUPPLY_RDY;
+        ucsi_ppm_pe_on_power_supply_ready(ppm);
     }
 
     // Advance time-dependent TC state (AttachWait debounce expiry today).

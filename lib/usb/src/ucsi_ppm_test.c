@@ -79,6 +79,27 @@ static void mock_gpio_write_vbus_source(void* ctx, bool value) {
     g_mock_vbus_source_last = value;
 }
 
+// Records calls to power_supply_set so source-path tests can verify PE
+// drove the external PSU with the negotiated voltage/current.
+static int g_mock_psu_calls = 0;
+static uint16_t g_mock_psu_last_voltage_mv = 0;
+static uint16_t g_mock_psu_last_current_ma = 0;
+static UcsiPpmStatus
+    mock_power_supply_set(void* ctx, uint16_t voltage_mv, uint16_t current_limit_ma) {
+    (void)ctx;
+    g_mock_psu_calls++;
+    g_mock_psu_last_voltage_mv = voltage_mv;
+    g_mock_psu_last_current_ma = current_limit_ma;
+    return UcsiPpmStatusOk;
+}
+
+// Counts L2 alert callbacks so tests can verify OPM was woken on state changes.
+static int g_mock_alert_calls = 0;
+static void mock_alert(void* ctx) {
+    (void)ctx;
+    g_mock_alert_calls++;
+}
+
 // FUSB302 FIFOS is a port-like register: every read dequeues one byte.
 // The mock keeps a separate byte queue for FIFOS reads to model this
 // (g_mock_regs[FIFOS] would auto-increment to neighbouring addresses,
@@ -107,6 +128,10 @@ static void mock_i2c_reset(void) {
     g_mock_time_ms = 0;
     g_mock_vbus_source_calls = 0;
     g_mock_vbus_source_last = false;
+    g_mock_psu_calls = 0;
+    g_mock_psu_last_voltage_mv = 0;
+    g_mock_psu_last_current_ma = 0;
+    g_mock_alert_calls = 0;
     g_test_partner_msg_id = 0;
 }
 
@@ -188,6 +213,8 @@ static UcsiPpm* mock_make_ppm(void) {
     cfg.i2c_write = mock_i2c_write_fn;
     cfg.time_ms = mock_time_ms;
     cfg.gpio_write_vbus_source = mock_gpio_write_vbus_source;
+    cfg.power_supply_set = mock_power_supply_set;
+    cfg.alert = mock_alert;
     if(ucsi_ppm_init(ppm, &cfg) != UcsiPpmStatusOk) {
         ucsi_ppm_free(ppm);
         return NULL;
@@ -2563,6 +2590,8 @@ static UcsiPpm* mock_make_ppm_with_mode(UcsiPpmCcOperationMode mode, bool suppor
     cfg.i2c_write = mock_i2c_write_fn;
     cfg.time_ms = mock_time_ms;
     cfg.gpio_write_vbus_source = mock_gpio_write_vbus_source;
+    cfg.power_supply_set = mock_power_supply_set;
+    cfg.alert = mock_alert;
     cfg.initial_cc_operation_mode = mode;
     if(supports_disabled) cfg.supports_disabled_state = true;
     if(ucsi_ppm_init(ppm, &cfg) != UcsiPpmStatusOk) {
@@ -3419,60 +3448,63 @@ static bool test_pe_snk_accept_then_ps_rdy_completes_contract(void) {
     return true;
 }
 
-static bool test_pe_snk_reject_goes_to_error(void) {
+static bool test_pe_snk_reject_triggers_hard_reset(void) {
     UcsiPpm* ppm = mock_attach(false);
     const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
     simulate_pd_message(ppm, 0x01u, &pdo, 1);
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
 
     simulate_pd_message(ppm, 0x04u /* Reject */, NULL, 0);
-    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateError);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
 
     ucsi_ppm_free(ppm);
     return true;
 }
 
-static bool test_pe_snk_wait_response_goes_to_error(void) {
+static bool test_pe_snk_wait_response_triggers_hard_reset(void) {
     UcsiPpm* ppm = mock_attach(false);
     const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
     simulate_pd_message(ppm, 0x01u, &pdo, 1);
 
     simulate_pd_message(ppm, 0x0Cu /* Wait */, NULL, 0);
-    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateError);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
 
     ucsi_ppm_free(ppm);
     return true;
 }
 
-static bool test_pe_snk_wait_cap_timeout(void) {
+static bool test_pe_snk_wait_cap_timeout_triggers_hard_reset(void) {
     UcsiPpm* ppm = mock_attach(false);
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
 
-    // tTypeCSinkWaitCap = 465 ms — advance past it, then tick.
     g_mock_time_ms += 600;
     ucsi_ppm_tick(ppm);
-    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateError);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+    // PHY register reflects the SEND_HARD_RESET bit.
+    const uint8_t c3 = g_mock_regs[Fusb302RegControl3];
+    const Fusb302Control3RegBits c3_bits = *((const Fusb302Control3RegBits*)&c3);
+    TEST_ASSERT(c3_bits.send_hard_reset == 1);
 
     ucsi_ppm_free(ppm);
     return true;
 }
 
-static bool test_pe_snk_sender_response_timeout(void) {
+static bool test_pe_snk_sender_response_timeout_triggers_hard_reset(void) {
     UcsiPpm* ppm = mock_attach(false);
     const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
     simulate_pd_message(ppm, 0x01u, &pdo, 1);
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
 
-    // No Accept arrives within tSenderResponse (500 ms).
     g_mock_time_ms += 600;
     ucsi_ppm_tick(ppm);
-    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateError);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
 
     ucsi_ppm_free(ppm);
     return true;
 }
 
-static bool test_pe_snk_ps_transition_timeout(void) {
+static bool test_pe_snk_ps_transition_timeout_triggers_hard_reset(void) {
     UcsiPpm* ppm = mock_attach(false);
     const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
     simulate_pd_message(ppm, 0x01u, &pdo, 1);
@@ -3481,7 +3513,7 @@ static bool test_pe_snk_ps_transition_timeout(void) {
 
     g_mock_time_ms += 600;
     ucsi_ppm_tick(ppm);
-    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateError);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -3501,6 +3533,516 @@ static bool test_pe_snk_ready_ignores_late_accept(void) {
     simulate_pd_message(ppm, 0x03u, NULL, 0);
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
     TEST_ASSERT(ppm->pe_negotiated_voltage_mv == 9000u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// Scans recorded I²C transactions for a FIFO burst whose PD message header
+// has the given msg_type (header LE at bytes 6..7 of the burst payload).
+// Returns transaction index, or -1.
+static int find_fifo_burst_by_msg_type(uint8_t want_type) {
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len > 7u && t->data[0] == Fusb302RegFifos) {
+            const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+            if((hdr & 0x1Fu) == (uint16_t)want_type) return (int)i;
+        }
+    }
+    return -1;
+}
+
+static int count_fifo_bursts(void) {
+    int n = 0;
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len > 2u && t->data[0] == Fusb302RegFifos) n++;
+    }
+    return n;
+}
+
+// Builds a Fixed/Variable Request RDO selecting `obj_pos` (1-based) at
+// `op_current_ma`. Tests use this to simulate a partner Request to us as
+// source.
+static uint32_t make_request_rdo(uint8_t obj_pos, uint16_t op_current_ma) {
+    uint32_t rdo = ((uint32_t)(obj_pos & 0x07u) << 28);
+    rdo |= (((uint32_t)op_current_ma / 10u) & 0x3FFu) << 10;
+    rdo |= ((uint32_t)op_current_ma / 10u) & 0x3FFu;
+    return rdo;
+}
+
+static bool test_pe_src_attach_sends_source_caps(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+
+    const int idx = find_fifo_burst_by_msg_type(0x01u /* Source_Capabilities */);
+    TEST_ASSERT(idx >= 0);
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+    TEST_ASSERT((hdr & (1u << 8)) != 0u); // power role = Source
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == ppm->config.source_caps.count);
+
+    // First PDO bytes match config.source_caps.pdos[0].
+    const uint32_t pdo0 = (uint32_t)t->data[8] | ((uint32_t)t->data[9] << 8) |
+                          ((uint32_t)t->data[10] << 16) | ((uint32_t)t->data[11] << 24);
+    TEST_ASSERT(pdo0 == ppm->config.source_caps.pdos[0]);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_recv_request_sends_accept_and_drives_psu(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+    mock_i2c_reset();
+    g_mock_psu_calls = 0;
+
+    // Partner picks PDO #1 (5 V) at 3 A.
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message(ppm, 0x02u /* Request */, &rdo, 1);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcTransitionSupply);
+    TEST_ASSERT(ppm->pe_requested_pdo_index == 1u);
+    TEST_ASSERT(ppm->pe_negotiated_voltage_mv == 5000u);
+    TEST_ASSERT(ppm->pe_negotiated_current_ma == 3000u);
+
+    // Accept transmitted.
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x03u /* Accept */) >= 0);
+    // PSU driven to the negotiated voltage/current.
+    TEST_ASSERT(g_mock_psu_calls == 1);
+    TEST_ASSERT(g_mock_psu_last_voltage_mv == 5000u);
+    TEST_ASSERT(g_mock_psu_last_current_ma == 3000u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_psu_ready_sends_ps_rdy(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message(ppm, 0x02u, &rdo, 1);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcTransitionSupply);
+    mock_i2c_reset();
+
+    // Caller signals PSU settled.
+    TEST_ASSERT(ucsi_ppm_notify_power_supply_ready(ppm) == UcsiPpmStatusOk);
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x06u /* PS_RDY */) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_invalid_pdo_rejects(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+    mock_i2c_reset();
+
+    // PDO position 5 — outside our advertised count.
+    const uint32_t rdo = make_request_rdo(5u, 1000u);
+    simulate_pd_message(ppm, 0x02u, &rdo, 1);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateError);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x04u /* Reject */) >= 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x03u /* Accept */) < 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_source_cap_timer_resends(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+
+    const int initial = count_fifo_bursts();
+    // tTypeCSendSourceCap = 150 ms — advance past it.
+    g_mock_time_ms += 200;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(count_fifo_bursts() > initial);
+
+    // Still in SrcSendCapabilities — waiting for partner Request.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+    TEST_ASSERT(ppm->pe_caps_counter >= 2u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_ps_transition_timeout_triggers_hard_reset(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message(ppm, 0x02u, &rdo, 1);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcTransitionSupply);
+
+    g_mock_time_ms += 600;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_detach_returns_to_idle(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message(ppm, 0x02u, &rdo, 1);
+    TEST_ASSERT(ucsi_ppm_notify_power_supply_ready(ppm) == UcsiPpmStatusOk);
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+
+    // BC_LVL goes high → source-side detach → tc_enter_unattached → PE idle.
+    simulate_bc_lvl_changed(ppm, 0b11u);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateIdle);
+    TEST_ASSERT(ppm->pe_negotiated_voltage_mv == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// Symmetric counterpart of cmd.c::write_field — extracts a `width`-bit
+// little-endian field at bit_offset from a packed buffer.
+static uint64_t read_packed_field(const uint8_t* buf, uint32_t bit_offset, uint32_t width) {
+    uint64_t value = 0;
+    for(uint32_t i = 0; i < width; ++i) {
+        const uint32_t bit = bit_offset + i;
+        const uint32_t byte_idx = bit / 8u;
+        const uint8_t bit_mask = (uint8_t)(1u << (bit % 8u));
+        if(buf[byte_idx] & bit_mask) value |= ((uint64_t)1u << i);
+    }
+    return value;
+}
+
+// Sends GET_CONNECTOR_STATUS via the regfile transport and reads the 19-byte
+// response into `out_payload`. Returns the resulting CCI.
+static uint32_t send_get_connector_status(UcsiPpm* ppm, uint8_t* out_payload) {
+    uint8_t op = UCSI_PPM_OPCODE_GET_CONNECTOR_STATUS;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+    ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, 19, out_payload);
+    return read_cci(ppm);
+}
+
+// Drives the sink-side PD handshake to SnkReady. Caller must have already
+// done mock_attach(false). Partner advertises one PDO at the given current.
+static void drive_sink_contract(UcsiPpm* ppm, uint16_t advertised_ma) {
+    const uint32_t pdo =
+        ucsi_ppm_pdo_fixed_source(5000, advertised_ma, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+    simulate_pd_message(ppm, 0x06u /* PS_RDY */, NULL, 0);
+}
+
+static bool test_cs_attach_alerts_opm_and_sets_cci(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    // mock_attach commits to Attached.SNK → notify fires alert + stamps CCI.
+    TEST_ASSERT(g_mock_alert_calls >= 1);
+    const uint32_t cci = read_cci(ppm);
+    const uint32_t conn = (cci >> UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT) & 0x7Fu;
+    TEST_ASSERT(conn == UCSI_PPM_NUM_CONNECTORS);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_attach_sets_connect_change_bitmap(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    uint8_t resp[19];
+    send_get_connector_status(ppm, resp);
+
+    const uint16_t bitmap = (uint16_t)read_packed_field(resp, 0u, 16u);
+    TEST_ASSERT(bitmap & UCSI_PPM_CSC_CONNECT_CHANGE);
+    TEST_ASSERT(bitmap & UCSI_PPM_CSC_PARTNER_CHANGED);
+    TEST_ASSERT(bitmap & UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
+
+    // Connect Status = 1, Power Direction = 0 (sink), Partner Type = 1 (DFP).
+    TEST_ASSERT(read_packed_field(resp, 19u, 1u) == 1u);
+    TEST_ASSERT(read_packed_field(resp, 20u, 1u) == 0u);
+    TEST_ASSERT(read_packed_field(resp, 29u, 3u) == 1u);
+    // Power Operation Mode = USB Default (no PD contract yet).
+    TEST_ASSERT(read_packed_field(resp, 16u, 3u) == 1u);
+    // Sink Path Status = 1 (sink-side attached).
+    TEST_ASSERT(read_packed_field(resp, 87u, 1u) == 1u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_second_get_clears_bitmap(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    uint8_t resp[19];
+    send_get_connector_status(ppm, resp);
+    TEST_ASSERT((read_packed_field(resp, 0u, 16u) & UCSI_PPM_CSC_CONNECT_CHANGE) != 0u);
+
+    // ACK the previous Command Completed so dispatch can run again.
+    uint8_t ack_byte = UCSI_PPM_ACK_CC_CI_COMMAND_COMPLETED_ACK;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 2, 1, &ack_byte);
+    uint8_t ack_op = UCSI_PPM_OPCODE_ACK_CC_CI;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &ack_op);
+
+    send_get_connector_status(ppm, resp);
+    // Bitmap cleared; persistent state still readable (Connect Status etc).
+    TEST_ASSERT(read_packed_field(resp, 0u, 16u) == 0u);
+    TEST_ASSERT(read_packed_field(resp, 19u, 1u) == 1u); // still attached
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_pd_contract_sets_pom_pd_and_rdo(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    drive_sink_contract(ppm, 3000);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    uint8_t resp[19];
+    send_get_connector_status(ppm, resp);
+
+    // Bitmap accumulated both attach (3 bits) and contract Ready (2 bits).
+    const uint16_t bitmap = (uint16_t)read_packed_field(resp, 0u, 16u);
+    TEST_ASSERT(bitmap & UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
+    TEST_ASSERT(bitmap & UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE);
+    // Power Operation Mode = 3 (PD).
+    TEST_ASSERT(read_packed_field(resp, 16u, 3u) == 3u);
+    // RDO populated and matches PE's stored value.
+    const uint32_t rdo = (uint32_t)read_packed_field(resp, 32u, 32u);
+    TEST_ASSERT(rdo == ppm->pe_current_rdo);
+    TEST_ASSERT(((rdo >> 28) & 0x07u) == 1u); // PDO #1 selected
+    // bcdPDVersion = UCSI_PPM_VERSION_PD.
+    TEST_ASSERT(read_packed_field(resp, 70u, 16u) == UCSI_PPM_VERSION_PD);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_detach_sets_connect_change(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    // Drain attach notification.
+    uint8_t resp[19];
+    send_get_connector_status(ppm, resp);
+    uint8_t ack_byte = UCSI_PPM_ACK_CC_CI_COMMAND_COMPLETED_ACK |
+                       UCSI_PPM_ACK_CC_CI_CONNECTOR_CHANGE_ACK;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 2, 1, &ack_byte);
+    uint8_t ack_op = UCSI_PPM_OPCODE_ACK_CC_CI;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &ack_op);
+
+    g_mock_alert_calls = 0;
+    simulate_vbus_changed(ppm, false);
+    TEST_ASSERT(g_mock_alert_calls >= 1); // detach woke OPM
+
+    send_get_connector_status(ppm, resp);
+    TEST_ASSERT(read_packed_field(resp, 0u, 16u) & UCSI_PPM_CSC_CONNECT_CHANGE);
+    TEST_ASSERT(read_packed_field(resp, 19u, 1u) == 0u); // no longer connected
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_src_partner_type_and_direction(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    uint8_t resp[19];
+    send_get_connector_status(ppm, resp);
+
+    TEST_ASSERT(read_packed_field(resp, 19u, 1u) == 1u); // attached
+    TEST_ASSERT(read_packed_field(resp, 20u, 1u) == 1u); // power direction = src
+    TEST_ASSERT(read_packed_field(resp, 29u, 3u) == 2u); // partner = UFP
+    TEST_ASSERT(read_packed_field(resp, 87u, 1u) == 0u); // sink path off (we are src)
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_orientation_cc2_flipped(void) {
+    // Force CC2 settlement.
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC2);
+    g_mock_time_ms = 10;
+    simulate_vbus_changed(ppm, true);
+    g_mock_time_ms = 150;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+
+    uint8_t resp[19];
+    send_get_connector_status(ppm, resp);
+    TEST_ASSERT(read_packed_field(resp, 86u, 1u) == 1u); // flipped
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_ack_clears_indicator_not_bitmap(void) {
+    // Architecture §9 / commands.md §2.4: ACK_CC_CI with Connector Change Ack
+    // clears CCI.Connector Change Indicator, but the Connector Status Change
+    // bitmap inside GET_CONNECTOR_STATUS is only cleared on read.
+    UcsiPpm* ppm = mock_attach(false);
+    uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(((cci >> UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT) & 0x7Fu) != 0u);
+
+    // Ack the indicator only — bitmap should survive.
+    uint8_t ack_byte = UCSI_PPM_ACK_CC_CI_CONNECTOR_CHANGE_ACK;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 2, 1, &ack_byte);
+    uint8_t ack_op = UCSI_PPM_OPCODE_ACK_CC_CI;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &ack_op);
+
+    cci = read_cci(ppm);
+    TEST_ASSERT(((cci >> UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT) & 0x7Fu) == 0u);
+    TEST_ASSERT(ppm->connector_status_change != 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// --- L3 PE Hard Reset orchestration ----------------------------------------
+
+static void simulate_hard_reset_sent(UcsiPpm* ppm) {
+    g_mock_regs[Fusb302RegInterrupt] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptARegBits inta = {.i_hard_sent = 1};
+    g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+static void simulate_hard_reset_rx(UcsiPpm* ppm) {
+    g_mock_regs[Fusb302RegInterrupt] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptARegBits inta = {.i_hard_rst = 1};
+    g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+static bool test_pe_snk_hard_reset_sent_returns_to_wait_caps(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    g_mock_time_ms += 600; // expire SinkWaitCapTimer
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+
+    simulate_hard_reset_sent(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    // Counter holds (1 attempt used so far).
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+    // PRL counters reset by PRL handler (it also saw HardResetSent).
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_hard_reset_sent_returns_to_send_caps(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message(ppm, 0x02u, &rdo, 1);
+    // Force PS transition timeout.
+    g_mock_time_ms += 600;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+    mock_i2c_reset();
+
+    simulate_hard_reset_sent(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+    // Source_Capabilities re-advertised after recovery.
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x01u) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_hard_reset_rx_restarts_without_counter_bump(void) {
+    // Partner Hard Resets us — we recover but don't consume our own retry
+    // budget (per PD §6.8.2, counter is for self-initiated Hard Resets).
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u, &pdo, 1);
+    simulate_pd_message(ppm, 0x03u, NULL, 0);
+    simulate_pd_message(ppm, 0x06u, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 0u);
+
+    simulate_hard_reset_rx(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 0u); // not bumped on partner-HR
+    TEST_ASSERT(ppm->pe_current_rdo == 0u); // contract details wiped
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_hard_reset_counter_caps_at_max(void) {
+    // Two attempts allowed; the third escalates to permanent Error.
+    UcsiPpm* ppm = mock_attach(false);
+
+    for(int i = 0; i < 2; ++i) {
+        g_mock_time_ms += 600;
+        ucsi_ppm_tick(ppm);
+        TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+        simulate_hard_reset_sent(ppm);
+        TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    }
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 2u);
+
+    // Third timeout — counter would go to 3, but cap rejects → Error.
+    g_mock_time_ms += 600;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateError);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_hard_reset_counter_resets_on_ready(void) {
+    // A clean contract should refill the Hard Reset budget for subsequent
+    // protocol upsets — otherwise a long session burns through the counter.
+    UcsiPpm* ppm = mock_attach(false);
+    g_mock_time_ms += 600;
+    ucsi_ppm_tick(ppm);
+    simulate_hard_reset_sent(ppm); // counter = 1
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+
+    // Recover into a real contract.
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u, &pdo, 1);
+    simulate_pd_message(ppm, 0x03u, NULL, 0);
+    simulate_pd_message(ppm, 0x06u, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_failed_attach_does_not_notify(void) {
+    // AttachWait → Unattached via timeout (no VBUS) must NOT raise a
+    // Connect Change — we never actually attached as far as OPM is concerned.
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+    g_mock_alert_calls = 0;
+
+    g_mock_time_ms = 600; // past AttachWait timeout
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    TEST_ASSERT(g_mock_alert_calls == 0);
+    TEST_ASSERT(ppm->connector_status_change == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_psu_ready_ignored_outside_transition(void) {
+    // notify_power_supply_ready arriving when we're not in SrcTransitionSupply
+    // (e.g., before Request) must be a no-op — must not emit PS_RDY or
+    // misadvance state.
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+    mock_i2c_reset();
+
+    ucsi_ppm_notify_power_supply_ready(ppm);
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x06u) < 0); // no PS_RDY
 
     ucsi_ppm_free(ppm);
     return true;
@@ -3731,13 +4273,41 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_snk_attach_enters_wait_capabilities),
     TEST_ENTRY(test_pe_snk_recv_source_caps_sends_request),
     TEST_ENTRY(test_pe_snk_accept_then_ps_rdy_completes_contract),
-    TEST_ENTRY(test_pe_snk_reject_goes_to_error),
-    TEST_ENTRY(test_pe_snk_wait_response_goes_to_error),
-    TEST_ENTRY(test_pe_snk_wait_cap_timeout),
-    TEST_ENTRY(test_pe_snk_sender_response_timeout),
-    TEST_ENTRY(test_pe_snk_ps_transition_timeout),
+    TEST_ENTRY(test_pe_snk_reject_triggers_hard_reset),
+    TEST_ENTRY(test_pe_snk_wait_response_triggers_hard_reset),
+    TEST_ENTRY(test_pe_snk_wait_cap_timeout_triggers_hard_reset),
+    TEST_ENTRY(test_pe_snk_sender_response_timeout_triggers_hard_reset),
+    TEST_ENTRY(test_pe_snk_ps_transition_timeout_triggers_hard_reset),
     TEST_ENTRY(test_pe_snk_ready_ignores_late_accept),
     TEST_ENTRY(test_pe_snk_detach_returns_to_idle),
+
+    // L3 PE Source path.
+    TEST_ENTRY(test_pe_src_attach_sends_source_caps),
+    TEST_ENTRY(test_pe_src_recv_request_sends_accept_and_drives_psu),
+    TEST_ENTRY(test_pe_src_psu_ready_sends_ps_rdy),
+    TEST_ENTRY(test_pe_src_invalid_pdo_rejects),
+    TEST_ENTRY(test_pe_src_source_cap_timer_resends),
+    TEST_ENTRY(test_pe_src_ps_transition_timeout_triggers_hard_reset),
+    TEST_ENTRY(test_pe_src_detach_returns_to_idle),
+    TEST_ENTRY(test_pe_src_psu_ready_ignored_outside_transition),
+
+    // L3 → L2 event flow (Connector Status Change bitmap + alert + CCI).
+    TEST_ENTRY(test_cs_attach_alerts_opm_and_sets_cci),
+    TEST_ENTRY(test_cs_attach_sets_connect_change_bitmap),
+    TEST_ENTRY(test_cs_second_get_clears_bitmap),
+    TEST_ENTRY(test_cs_pd_contract_sets_pom_pd_and_rdo),
+    TEST_ENTRY(test_cs_detach_sets_connect_change),
+    TEST_ENTRY(test_cs_src_partner_type_and_direction),
+    TEST_ENTRY(test_cs_orientation_cc2_flipped),
+    TEST_ENTRY(test_cs_ack_clears_indicator_not_bitmap),
+    TEST_ENTRY(test_cs_failed_attach_does_not_notify),
+
+    // L3 PE Hard Reset orchestration.
+    TEST_ENTRY(test_pe_snk_hard_reset_sent_returns_to_wait_caps),
+    TEST_ENTRY(test_pe_src_hard_reset_sent_returns_to_send_caps),
+    TEST_ENTRY(test_pe_hard_reset_rx_restarts_without_counter_bump),
+    TEST_ENTRY(test_pe_hard_reset_counter_caps_at_max),
+    TEST_ENTRY(test_pe_hard_reset_counter_resets_on_ready),
 };
 
 const size_t test_count = COUNT_OF(k_tests);

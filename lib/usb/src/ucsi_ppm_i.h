@@ -179,7 +179,46 @@ struct UcsiPpm {
     uint8_t pe_requested_pdo_index;
     uint16_t pe_negotiated_voltage_mv;
     uint16_t pe_negotiated_current_ma;
+    // Source-side: counts retransmissions of Source_Capabilities while waiting
+    // for partner's Request. Bounded by nCapsCount (PD R3.0 §7.10.4) — exceeding
+    // it means partner is Type-C only / non-PD-capable.
+    uint8_t pe_caps_counter;
+    // Current PD RDO held by the explicit contract — sink side stores the
+    // RDO we sent; source side stores partner's RDO. Surfaced through
+    // GET_CONNECTOR_STATUS (commands.md §2.17 bits 32..63).
+    uint32_t pe_current_rdo;
+    // Bounded retry count for self-initiated Hard Resets. PD R3.0 caps it at
+    // nHardResetCount = 2 (Table 7.12). Reset on entry to *Ready.
+    uint8_t pe_hard_reset_counter;
+
+    // Accumulated Connector Status Change bitmap (commands.md §2.17 / Table
+    // 6-44). PE / TC layers OR new bits in via ucsi_ppm_notify_connector_change;
+    // GET_CONNECTOR_STATUS reads + clears it. Not gated by notification mask
+    // — the mask only filters the OPM-facing alert (architecture.md §4.3).
+    uint16_t connector_status_change;
 };
+
+// Connector Status Change bit positions (Table 6-44 in commands.md §2.17).
+#define UCSI_PPM_CSC_EXTERNAL_SUPPLY_CHANGE  (1u << 1)
+#define UCSI_PPM_CSC_POWER_OP_MODE_CHANGE    (1u << 2)
+#define UCSI_PPM_CSC_ATTENTION               (1u << 3)
+#define UCSI_PPM_CSC_SUPPORTED_PROVIDER_CAPS (1u << 5)
+#define UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE    (1u << 6)
+#define UCSI_PPM_CSC_PD_RESET_COMPLETE       (1u << 7)
+#define UCSI_PPM_CSC_SUPPORTED_CAM_CHANGE    (1u << 8)
+#define UCSI_PPM_CSC_BATTERY_CHARGING_STATUS (1u << 9)
+#define UCSI_PPM_CSC_PARTNER_CHANGED         (1u << 11)
+#define UCSI_PPM_CSC_POWER_DIRECTION_CHANGED (1u << 12)
+#define UCSI_PPM_CSC_SINK_PATH_STATUS_CHANGE (1u << 13)
+#define UCSI_PPM_CSC_CONNECT_CHANGE          (1u << 14)
+#define UCSI_PPM_CSC_ERROR                   (1u << 15)
+
+// L3 → L2 event hook. PE/TC call this when they cross a state boundary OPM
+// might care about. Accumulates `change_bits` in the change bitmap, stamps
+// CCI.Connector Change Indicator (=our port number), and raises the alert
+// callback. Safe to call multiple times in a single tick — bits OR together
+// and the alert fires per call.
+void ucsi_ppm_notify_connector_change(UcsiPpm* ppm, uint16_t change_bits);
 
 // pending_flags bits.
 #define UCSI_PPM_PENDING_PHY_IRQ           (1u << 0)

@@ -1,5 +1,7 @@
 #include "ucsi_ppm.h"
 #include "ucsi_ppm_i.h"
+#include "ucsi_ppm_pe.h"
+#include "ucsi_ppm_tc.h"
 
 #include <string.h>
 
@@ -395,12 +397,102 @@ static uint32_t handle_get_pdos(UcsiPpm* ppm) {
     return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, (uint8_t)(num_pdos * PDO_BYTES));
 }
 
+// Writes a `width`-bit field at bit offset `bit_offset` into `buf`, LSB first.
+// Symmetric counterpart to control_get_field; handles fields that straddle
+// byte boundaries (GET_CONNECTOR_STATUS layout has plenty of those).
+static void write_field(uint8_t* buf, uint32_t bit_offset, uint32_t width, uint64_t value) {
+    for(uint32_t i = 0; i < width; ++i) {
+        const uint32_t bit = bit_offset + i;
+        const uint32_t byte_idx = bit / 8u;
+        const uint8_t bit_mask = (uint8_t)(1u << (bit % 8u));
+        if((value >> i) & 1u) {
+            buf[byte_idx] |= bit_mask;
+        } else {
+            buf[byte_idx] &= (uint8_t)~bit_mask;
+        }
+    }
+}
+
+// commands.md §2.17 Power Operation Mode values (Table 6-43).
+#define CONNSTAT_POM_USB_DEFAULT 1u
+#define CONNSTAT_POM_PD          3u
+
+// Bit offsets within the GET_CONNECTOR_STATUS payload (commands.md §2.17).
+#define CONNSTAT_OFF_CHANGE_BITMAP    0u
+#define CONNSTAT_OFF_POWER_OP_MODE    16u
+#define CONNSTAT_OFF_CONNECT_STATUS   19u
+#define CONNSTAT_OFF_POWER_DIRECTION  20u
+#define CONNSTAT_OFF_PARTNER_FLAGS    21u
+#define CONNSTAT_OFF_PARTNER_TYPE     29u
+#define CONNSTAT_OFF_RDO              32u
+#define CONNSTAT_OFF_BCD_PD           70u
+#define CONNSTAT_OFF_ORIENTATION      86u
+#define CONNSTAT_OFF_SINK_PATH_STATUS 87u
+
 static uint32_t handle_get_connector_status(UcsiPpm* ppm) {
-    // commands.md §2.17. 19 bytes (152 bits). In v1 (no L3/L4) the connector
-    // is always Unattached — every status bit is its default-zero value, and
-    // there are no Connector Status Change events to report.
-    memset(&ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN], 0, DATA_LEN_GET_CONNECTOR_STATUS);
+    // 19 bytes (152 bits) of packed layout per commands.md §2.17.
+    uint8_t* msg = &ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN];
+    memset(msg, 0, DATA_LEN_GET_CONNECTOR_STATUS);
+
+    // Connector Status Change bitmap — return current value and reset
+    // (spec: "Сбрасывается при чтении GET_CONNECTOR_STATUS").
+    write_field(msg, CONNSTAT_OFF_CHANGE_BITMAP, 16u, ppm->connector_status_change);
+    ppm->connector_status_change = 0u;
+
+    const bool is_attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc ||
+                             ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
+    const bool is_pd = ppm->pe_state == (int)UcsiPpmPeSnkReady ||
+                       ppm->pe_state == (int)UcsiPpmPeSrcReady;
+
+    if(is_attached) {
+        const uint8_t pom = is_pd ? CONNSTAT_POM_PD : CONNSTAT_POM_USB_DEFAULT;
+        write_field(msg, CONNSTAT_OFF_POWER_OP_MODE, 3u, pom);
+        write_field(msg, CONNSTAT_OFF_CONNECT_STATUS, 1u, 1u);
+        write_field(msg, CONNSTAT_OFF_POWER_DIRECTION, 1u, ppm->tc_role_is_src ? 1u : 0u);
+
+        // Partner Type (Table 6-43): 1 = DFP attached, 2 = UFP attached.
+        // We're DFP when source, UFP when sink — so partner is the opposite.
+        const uint8_t partner_type = ppm->tc_role_is_src ? 2u : 1u;
+        write_field(msg, CONNSTAT_OFF_PARTNER_TYPE, 3u, partner_type);
+        // Partner Flags bit 0 = USB capability; we assume true once attached.
+        write_field(msg, CONNSTAT_OFF_PARTNER_FLAGS, 1u, 1u);
+
+        // Orientation: 0 = direct (CC1), 1 = flipped (CC2).
+        if(ppm->tc_orientation == (int)UcsiPpmPhyCc2) {
+            write_field(msg, CONNSTAT_OFF_ORIENTATION, 1u, 1u);
+        }
+        // Sink Path Status — 1 when consuming (sink-side attached).
+        if(!ppm->tc_role_is_src) {
+            write_field(msg, CONNSTAT_OFF_SINK_PATH_STATUS, 1u, 1u);
+        }
+    }
+
+    if(is_pd) {
+        write_field(msg, CONNSTAT_OFF_RDO, 32u, ppm->pe_current_rdo);
+        write_field(msg, CONNSTAT_OFF_BCD_PD, 16u, UCSI_PPM_VERSION_PD);
+    }
+
     return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, DATA_LEN_GET_CONNECTOR_STATUS);
+}
+
+void ucsi_ppm_notify_connector_change(UcsiPpm* ppm, uint16_t change_bits) {
+    // Accumulate — bitmap is part of port state and persists across the
+    // notification mask filter (architecture.md §4.3).
+    ppm->connector_status_change |= change_bits;
+
+    // Stamp our connector number (1) into CCI.Connector Change Indicator,
+    // preserving all other CCI bits (e.g., Command Completed in flight).
+    uint32_t cci = cci_load(ppm);
+    cci = (cci & ~UCSI_PPM_CCI_CONNECTOR_CHANGE_MASK) |
+          (((uint32_t)UCSI_PPM_NUM_CONNECTORS & 0x7Fu)
+           << UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT);
+    cci_store(ppm, cci);
+
+    // Wake OPM. Real notification-mask gating lives in a future milestone;
+    // v1 wakes unconditionally and lets OPM filter on its side.
+    if(ppm->config.alert) {
+        ppm->config.alert(ppm->config.hal_ctx);
+    }
 }
 
 static uint32_t handle_get_error_status(UcsiPpm* ppm) {
@@ -429,17 +521,17 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
     const uint8_t opcode = ppm->regfile[UCSI_PPM_OFFSET_CONTROL_COMMAND];
     if(opcode == 0u) return;
 
-    // ACK_CC_CI is special: only valid in WaitForAck; it consumes CCI rather
-    // than producing it; no alert is raised (CCI ends at 0).
+    // ACK_CC_CI is special: it consumes CCI bits rather than producing them,
+    // and is allowed in *any* state. The Connector Change Acknowledge in
+    // particular arrives without a preceding UCSI command (it acks an async
+    // event raised by L3 via ucsi_ppm_notify_connector_change). No alert is
+    // raised on the ACK path — CCI only goes down here.
     if(opcode == UCSI_PPM_OPCODE_ACK_CC_CI) {
-        if(ppm->cmd_state != UcsiPpmCmdStateWaitForAck) {
-            // Outside WaitForAck the command is meaningless; spec doesn't
-            // require us to error explicitly. Silently ignore for v1.
-            return;
-        }
         const uint32_t new_cci = handle_ack_cc_ci(ppm);
         cci_store(ppm, new_cci);
-        if(new_cci == 0u) {
+        // Drop back to Idle only when CCI has fully cleared *and* we were
+        // waiting on a command response (otherwise we were already Idle).
+        if(ppm->cmd_state == UcsiPpmCmdStateWaitForAck && new_cci == 0u) {
             ppm->cmd_state = UcsiPpmCmdStateIdle;
         }
         return;
