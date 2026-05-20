@@ -219,6 +219,10 @@ static UcsiPpm* mock_make_ppm(void) {
         ucsi_ppm_free(ppm);
         return NULL;
     }
+    // Simulate OPM having called SET_NOTIFICATION_ENABLE with all CSC bits
+    // enabled so notify_connector_change actually raises alerts in tests.
+    // Mask-filter behaviour itself is covered by dedicated tests below.
+    ppm->notification_mask = 0xFFFEu;
     return ppm;
 }
 
@@ -2598,6 +2602,9 @@ static UcsiPpm* mock_make_ppm_with_mode(UcsiPpmCcOperationMode mode, bool suppor
         ucsi_ppm_free(ppm);
         return NULL;
     }
+    // Simulate OPM having called SET_NOTIFICATION_ENABLE with all CSC bits
+    // enabled — see note in mock_make_ppm.
+    ppm->notification_mask = 0xFFFEu;
     return ppm;
 }
 
@@ -4272,6 +4279,114 @@ static bool test_prl_detach_resets_counter(void) {
     return true;
 }
 
+// --- notification mask filtering (architecture.md §4.3) -------------------
+
+static bool test_notify_mask_zero_blocks_alert(void) {
+    // Default notification_mask = 0 after init. notify_connector_change must
+    // still accumulate the bitmap and stamp CCI.Connector Change Indicator,
+    // but must NOT raise the alert callback.
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = mock_alert;
+    ucsi_ppm_init(ppm, &cfg);
+    TEST_ASSERT(ppm->notification_mask == 0u);
+    g_mock_alert_calls = 0;
+
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_CONNECT_CHANGE);
+
+    TEST_ASSERT(g_mock_alert_calls == 0);
+    TEST_ASSERT(ppm->connector_status_change == UCSI_PPM_CSC_CONNECT_CHANGE);
+    const uint32_t cci = read_cci(ppm);
+    const uint32_t conn = (cci >> UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT) & 0x7Fu;
+    TEST_ASSERT(conn == UCSI_PPM_NUM_CONNECTORS);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_notify_mask_enables_specific_bit(void) {
+    // Mask with only Connect Change enabled — notify with the same bit fires
+    // the alert exactly once.
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = mock_alert;
+    ucsi_ppm_init(ppm, &cfg);
+    ppm->notification_mask = UCSI_PPM_CSC_CONNECT_CHANGE;
+    g_mock_alert_calls = 0;
+
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_CONNECT_CHANGE);
+    TEST_ASSERT(g_mock_alert_calls == 1);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_notify_mask_blocks_mismatched_bit(void) {
+    // Mask enables ATTENTION only; notify raises CONNECT_CHANGE. No alert
+    // fires (no intersecting bits) but bitmap is still accumulated.
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = mock_alert;
+    ucsi_ppm_init(ppm, &cfg);
+    ppm->notification_mask = UCSI_PPM_CSC_ATTENTION;
+    g_mock_alert_calls = 0;
+
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_CONNECT_CHANGE);
+    TEST_ASSERT(g_mock_alert_calls == 0);
+    TEST_ASSERT(ppm->connector_status_change == UCSI_PPM_CSC_CONNECT_CHANGE);
+
+    // Raise an intersecting bit — alert fires now, bitmap accumulates both.
+    ucsi_ppm_notify_connector_change(
+        ppm, (uint16_t)(UCSI_PPM_CSC_ATTENTION | UCSI_PPM_CSC_PD_RESET_COMPLETE));
+    TEST_ASSERT(g_mock_alert_calls == 1);
+    TEST_ASSERT(
+        ppm->connector_status_change ==
+        (UCSI_PPM_CSC_CONNECT_CHANGE | UCSI_PPM_CSC_ATTENTION | UCSI_PPM_CSC_PD_RESET_COMPLETE));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_notify_mask_set_via_command_takes_effect(void) {
+    // SET_NOTIFICATION_ENABLE writes the mask; subsequent notify_connector_change
+    // honours the new value.
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = mock_alert;
+    ucsi_ppm_init(ppm, &cfg);
+
+    // Build SET_NOTIFICATION_ENABLE CONTROL: opcode + 17-bit mask at bit 16.
+    uint8_t ctrl[8] = {0};
+    ctrl[0] = UCSI_PPM_OPCODE_SET_NOTIFICATION_ENABLE;
+    const uint32_t mask = UCSI_PPM_CSC_PD_RESET_COMPLETE;
+    ctrl[2] = (uint8_t)(mask & 0xFFu);
+    ctrl[3] = (uint8_t)((mask >> 8) & 0xFFu);
+    ctrl[4] = (uint8_t)((mask >> 16) & 0x01u);
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 8, ctrl);
+    TEST_ASSERT(ppm->notification_mask == mask);
+
+    // ACK to clear CCI before we count alerts.
+    uint8_t ack_byte = UCSI_PPM_ACK_CC_CI_COMMAND_COMPLETED_ACK;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 2, 1, &ack_byte);
+    uint8_t ack_op = UCSI_PPM_OPCODE_ACK_CC_CI;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &ack_op);
+    g_mock_alert_calls = 0;
+
+    // Wrong-bit notify is silent.
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_CONNECT_CHANGE);
+    TEST_ASSERT(g_mock_alert_calls == 0);
+    // Matching bit wakes OPM.
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_PD_RESET_COMPLETE);
+    TEST_ASSERT(g_mock_alert_calls == 1);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 // --- entry point -----------------------------------------------------------
 
 typedef struct {
@@ -4489,6 +4604,12 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_cs_orientation_cc2_flipped),
     TEST_ENTRY(test_cs_ack_clears_indicator_not_bitmap),
     TEST_ENTRY(test_cs_failed_attach_does_not_notify),
+
+    // Notification mask filtering (architecture.md §4.3).
+    TEST_ENTRY(test_notify_mask_zero_blocks_alert),
+    TEST_ENTRY(test_notify_mask_enables_specific_bit),
+    TEST_ENTRY(test_notify_mask_blocks_mismatched_bit),
+    TEST_ENTRY(test_notify_mask_set_via_command_takes_effect),
 
     // L3 PE Hard Reset orchestration.
     TEST_ENTRY(test_pe_snk_hard_reset_sent_returns_to_wait_caps),

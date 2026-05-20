@@ -216,8 +216,10 @@ struct UcsiPpm {
 // L3 → L2 event hook. PE/TC call this when they cross a state boundary OPM
 // might care about. Accumulates `change_bits` in the change bitmap, stamps
 // CCI.Connector Change Indicator (=our port number), and raises the alert
-// callback. Safe to call multiple times in a single tick — bits OR together
-// and the alert fires per call.
+// callback IF any of the raised CSC bits intersect notification_mask
+// (architecture.md §4.3 — mask gates alert only; bitmap/CCI persist). Safe
+// to call multiple times in a single tick — bits OR together and the alert
+// fires once per call when gated through.
 void ucsi_ppm_notify_connector_change(UcsiPpm* ppm, uint16_t change_bits);
 
 // pending_flags bits.

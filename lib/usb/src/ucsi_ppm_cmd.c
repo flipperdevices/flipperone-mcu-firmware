@@ -535,9 +535,12 @@ void ucsi_ppm_notify_connector_change(UcsiPpm* ppm, uint16_t change_bits) {
     cci = (cci & ~UCSI_PPM_CCI_CONNECTOR_CHANGE_MASK) | (((uint32_t)UCSI_PPM_NUM_CONNECTORS & 0x7Fu) << UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT);
     cci_store(ppm, cci);
 
-    // Wake OPM. Real notification-mask gating lives in a future milestone;
-    // v1 wakes unconditionally and lets OPM filter on its side.
-    if(ppm->config.alert) {
+    // Wake OPM only if at least one of the raised CSC bits is enabled in the
+    // notification mask. UCSI Notification Enable (commands.md §2.5 Table 6-25)
+    // bits 1..15 map 1:1 to the Connector Status Change bitmap bits (Table
+    // 6-44); bit 0 is Command Completed and unrelated to this path.
+    const uint32_t alert_gate = (uint32_t)change_bits & ppm->notification_mask;
+    if(alert_gate != 0u && ppm->config.alert) {
         ppm->config.alert(ppm->config.hal_ctx);
     }
 }
