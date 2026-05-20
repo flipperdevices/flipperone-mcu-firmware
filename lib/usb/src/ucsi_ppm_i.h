@@ -148,6 +148,21 @@ struct UcsiPpm {
     bool tc_role_is_src;
     uint32_t tc_attach_wait_start_ms;
     bool tc_vbus_seen;
+
+    // L3 PRL (Protocol Layer) state, ucsi_ppm_prl.c.
+    //   prl_next_tx_msg_id      — MessageID stamped into the next outgoing
+    //                             header (PD R3.0 §6.2.1.1.4, 3-bit field).
+    //   prl_last_rx_msg_id      — MessageID of the last accepted SOP message,
+    //                             used for duplicate detection (PD §6.8.1).
+    //   prl_last_rx_valid       — gate for last_rx_msg_id: only meaningful
+    //                             after the first non-dup SOP delivery.
+    //   prl_messages_delivered  — running count of non-duplicate messages
+    //                             passed up to PE (introspection / tests;
+    //                             real PE would just consume them).
+    uint8_t prl_next_tx_msg_id;
+    uint8_t prl_last_rx_msg_id;
+    bool prl_last_rx_valid;
+    uint32_t prl_messages_delivered;
 };
 
 // pending_flags bits.

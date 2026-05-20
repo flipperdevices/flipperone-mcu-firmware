@@ -134,7 +134,19 @@ static UcsiPpmStatus mock_i2c_read_fn(void* ctx, uint8_t addr, uint8_t* data, si
         }
     } else {
         for(size_t i = 0; i < len; ++i) {
-            data[i] = g_mock_regs[(reg + (uint8_t)i) & 0xFFu];
+            const uint8_t cur_reg = (uint8_t)((reg + (uint8_t)i) & 0xFFu);
+            uint8_t value = g_mock_regs[cur_reg];
+            // STATUS1.RX_EMPTY (bit 5) is derived from the FIFO queue state
+            // so phy_recv_message's empty check stays consistent without
+            // tests having to keep g_mock_regs[STATUS1] in sync by hand.
+            if(cur_reg == Fusb302RegStatus1) {
+                if(g_mock_fifo_pos >= g_mock_fifo_len) {
+                    value |= (uint8_t)(1u << 5);
+                } else {
+                    value &= (uint8_t)~(1u << 5);
+                }
+            }
+            data[i] = value;
         }
     }
     if(g_mock_txn_count < MOCK_I2C_MAX_TXNS) {
@@ -2596,6 +2608,24 @@ static void simulate_bc_lvl_changed(UcsiPpm* ppm, uint8_t bc_lvl) {
     ucsi_ppm_tick(ppm);
 }
 
+// Simulates a "GoodCRC sent" IRQ — the FUSB302 raises I_GCRCSENT after
+// it auto-ACKs an incoming PD frame, which is the cue for software to
+// drain the RX FIFO. The FIFO contents must be pre-loaded via mock_fifo_load.
+static void simulate_message_rx_event(UcsiPpm* ppm) {
+    g_mock_regs[Fusb302RegInterrupt] = 0;
+    g_mock_regs[Fusb302RegInterruptA] = 0;
+    const Fusb302InterruptBRegBits intb = {.i_gcrc_sent = 1};
+    g_mock_regs[Fusb302RegInterruptB] = *(const uint8_t*)&intb;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+// Builds a PD message header with the given MessageID and arbitrary other
+// fields. MessageID lives at bits 11:9 of the header.
+static uint16_t make_header_with_msg_id(uint16_t base, uint8_t msg_id) {
+    return (uint16_t)((base & ~(0x07u << 9)) | ((uint16_t)(msg_id & 0x07u) << 9));
+}
+
 // Drives the SM all the way to Attached.{Src,Snk} for the requested role.
 // Used by detach tests so they can focus on the detach assertions.
 static UcsiPpm* mock_attach(bool as_src) {
@@ -3087,6 +3117,224 @@ static bool test_tc_vbus_lost_in_attached_src_no_detach(void) {
     return true;
 }
 
+// --- L3 PRL (MessageID counter + duplicate detection) ----------------------
+
+#include "ucsi_ppm_prl.h"
+
+static bool test_prl_init_zero_state(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 0u);
+    TEST_ASSERT(ppm->prl_last_rx_valid == false);
+    TEST_ASSERT(ppm->prl_messages_delivered == 0u);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// Extracts the MessageID field (bits 11:9) from the header in a TX FIFO burst.
+static uint8_t tx_msg_id_from_last_burst(void) {
+    const int idx = mock_find_fifo_burst();
+    if(idx < 0) return 0xFFu;
+    // FIFO layout: [reg=FIFOS] + 4 SOP + 1 PACKSYM + 2 header LE + ...
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const uint16_t header = (uint16_t)(fifo[5] | ((uint16_t)fifo[6] << 8));
+    return (uint8_t)((header >> 9) & 0x07u);
+}
+
+static bool test_prl_send_stamps_msg_id_zero(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0x0003u};
+    TEST_ASSERT(ucsi_ppm_prl_send_message(ppm, &msg) == UcsiPpmStatusOk);
+    TEST_ASSERT(tx_msg_id_from_last_burst() == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_send_increments_counter(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0x0003u};
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    TEST_ASSERT(tx_msg_id_from_last_burst() == 0u);
+
+    mock_i2c_reset();
+    msg.header = 0x0003u;
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    TEST_ASSERT(tx_msg_id_from_last_burst() == 1u);
+
+    mock_i2c_reset();
+    msg.header = 0x0003u;
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    TEST_ASSERT(tx_msg_id_from_last_burst() == 2u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_send_wraps_after_seven(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    // First send → 0, then 1..7, then wraps back to 0.
+    for(uint8_t i = 0; i < 8; ++i) {
+        mock_i2c_reset();
+        UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0x0003u};
+        ucsi_ppm_prl_send_message(ppm, &msg);
+        TEST_ASSERT(tx_msg_id_from_last_burst() == i);
+    }
+    // 9th send wraps to 0.
+    mock_i2c_reset();
+    UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0x0003u};
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    TEST_ASSERT(tx_msg_id_from_last_burst() == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_send_preserves_other_header_bits(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    // Advance counter once so we stamp a non-zero MsgID and can see the
+    // other bits surviving alongside it.
+    UcsiPpmPhyPdMsg pad = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0u};
+    ucsi_ppm_prl_send_message(ppm, &pad); // counter → 1
+
+    mock_i2c_reset();
+    // Header with port-data-role (bit 5), spec-rev (bits 7:6), msg type
+    // (bits 4:0) set; MsgID bits 11:9 must be replaced.
+    const uint16_t base = (uint16_t)((1u << 5) | (0b10u << 6) | 0x07u);
+    UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = base};
+    ucsi_ppm_prl_send_message(ppm, &msg);
+
+    const int idx = mock_find_fifo_burst();
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const uint16_t actual = (uint16_t)(fifo[5] | ((uint16_t)fifo[6] << 8));
+    TEST_ASSERT(((actual >> 9) & 0x07u) == 1u); // MsgID stamped
+    TEST_ASSERT((actual & ~(0x07u << 9)) == base); // other bits intact
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_recv_first_message_delivered(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    // One SOP control message with MsgID=3 in the FIFO.
+    uint8_t stream[16];
+    const size_t n = build_rx_stream(
+        stream, FUSB302_RX_TOKEN_SOP, make_header_with_msg_id(0x0003u, 3u), NULL, 0);
+    mock_fifo_load(stream, n);
+    simulate_message_rx_event(ppm);
+
+    TEST_ASSERT(ppm->prl_messages_delivered == 1u);
+    TEST_ASSERT(ppm->prl_last_rx_valid == true);
+    TEST_ASSERT(ppm->prl_last_rx_msg_id == 3u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_recv_duplicate_dropped(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    // Two messages with the same MsgID — second must be dropped as a dup.
+    uint8_t stream[32];
+    size_t pos = 0;
+    pos += build_rx_stream(
+        &stream[pos], FUSB302_RX_TOKEN_SOP, make_header_with_msg_id(0x0003u, 5u),
+        NULL, 0);
+    pos += build_rx_stream(
+        &stream[pos], FUSB302_RX_TOKEN_SOP, make_header_with_msg_id(0x0042u, 5u),
+        NULL, 0);
+    mock_fifo_load(stream, pos);
+    simulate_message_rx_event(ppm);
+
+    TEST_ASSERT(ppm->prl_messages_delivered == 1u);
+    TEST_ASSERT(ppm->prl_last_rx_msg_id == 5u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_recv_different_ids_all_delivered(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    mock_i2c_reset();
+
+    uint8_t stream[48];
+    size_t pos = 0;
+    pos += build_rx_stream(
+        &stream[pos], FUSB302_RX_TOKEN_SOP, make_header_with_msg_id(0u, 0u), NULL, 0);
+    pos += build_rx_stream(
+        &stream[pos], FUSB302_RX_TOKEN_SOP, make_header_with_msg_id(0u, 1u), NULL, 0);
+    pos += build_rx_stream(
+        &stream[pos], FUSB302_RX_TOKEN_SOP, make_header_with_msg_id(0u, 2u), NULL, 0);
+    mock_fifo_load(stream, pos);
+    simulate_message_rx_event(ppm);
+
+    TEST_ASSERT(ppm->prl_messages_delivered == 3u);
+    TEST_ASSERT(ppm->prl_last_rx_msg_id == 2u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_reset_clears_state(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0u};
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 2u);
+
+    TEST_ASSERT(ucsi_ppm_prl_reset(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 0u);
+    TEST_ASSERT(ppm->prl_last_rx_valid == false);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_hard_reset_event_resets_counter(void) {
+    UcsiPpm* ppm = mock_make_ppm();
+    UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0u};
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 1u);
+
+    // Simulate HardResetRx via PHY pump.
+    g_mock_regs[Fusb302RegInterrupt] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptARegBits inta = {.i_hard_rst = 1};
+    g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 0u);
+    TEST_ASSERT(ppm->prl_last_rx_valid == false);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_detach_resets_counter(void) {
+    // Get into Attached.SNK, advance the counter, then detach. PRL state
+    // must reset so the next attach starts fresh.
+    UcsiPpm* ppm = mock_attach(false);
+    UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0u};
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    ucsi_ppm_prl_send_message(ppm, &msg);
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 2u);
+
+    // Partner drops VBUS → tc_enter_unattached → prl_reset.
+    simulate_vbus_changed(ppm, false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 // --- entry point -----------------------------------------------------------
 
 typedef struct {
@@ -3257,6 +3505,19 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_tc_attach_wait_timeout_restarts_toggle),
     TEST_ENTRY(test_tc_detach_reattach_full_cycle),
     TEST_ENTRY(test_tc_vbus_lost_in_attached_src_no_detach),
+
+    // L3 PRL (Protocol Layer): MessageID counter + duplicate detection.
+    TEST_ENTRY(test_prl_init_zero_state),
+    TEST_ENTRY(test_prl_send_stamps_msg_id_zero),
+    TEST_ENTRY(test_prl_send_increments_counter),
+    TEST_ENTRY(test_prl_send_wraps_after_seven),
+    TEST_ENTRY(test_prl_send_preserves_other_header_bits),
+    TEST_ENTRY(test_prl_recv_first_message_delivered),
+    TEST_ENTRY(test_prl_recv_duplicate_dropped),
+    TEST_ENTRY(test_prl_recv_different_ids_all_delivered),
+    TEST_ENTRY(test_prl_reset_clears_state),
+    TEST_ENTRY(test_prl_hard_reset_event_resets_counter),
+    TEST_ENTRY(test_prl_detach_resets_counter),
 };
 
 const size_t test_count = COUNT_OF(k_tests);

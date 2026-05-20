@@ -2,6 +2,7 @@
 #include "ucsi_ppm_i.h"
 #include "ucsi_ppm_phy.h"
 #include "ucsi_ppm_tc.h"
+#include "ucsi_ppm_prl.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -121,6 +122,9 @@ UcsiPpmStatus ucsi_ppm_init(UcsiPpm* ppm, const UcsiPpmConfig* config) {
     s = ucsi_ppm_tc_init(ppm);
     if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
 
+    // PRL state (MessageID counters etc) starts clean.
+    (void)ucsi_ppm_prl_init(ppm);
+
     ppm->lifecycle = UcsiPpmLifecycleInitialized;
     return UcsiPpmStatusOk;
 }
@@ -153,6 +157,8 @@ UcsiPpmStatus ucsi_ppm_reset(UcsiPpm* ppm) {
 
     s = ucsi_ppm_tc_reset(ppm);
     if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
+
+    (void)ucsi_ppm_prl_reset(ppm);
 
     return UcsiPpmStatusOk;
 }
@@ -199,11 +205,13 @@ UcsiPpmStatus ucsi_ppm_register_write(UcsiPpm* ppm, uint16_t offset, uint16_t le
     return UcsiPpmStatusOk;
 }
 
-// L4 → L3 event sink. Today this only routes to the Type-C SM; once PRL/PE
-// land they'll consume the PD-message-related events from the same stream.
-static void phy_event_sink_to_tc(void* ctx, const UcsiPpmPhyEvent* event) {
+// L4 → L3 event sink. Each event kind is meaningful to exactly one of the
+// L3 layers in v1, but we fan out to all of them and let each filter what
+// it cares about. Cheap (most handlers exit immediately on default branch).
+static void phy_event_sink_to_l3(void* ctx, const UcsiPpmPhyEvent* event) {
     UcsiPpm* ppm = (UcsiPpm*)ctx;
     ucsi_ppm_tc_handle_phy_event(ppm, event);
+    ucsi_ppm_prl_handle_phy_event(ppm, event);
 }
 
 UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
@@ -214,7 +222,7 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     const uint32_t flags = ppm->pending_flags;
     if(flags & UCSI_PPM_PENDING_PHY_IRQ) {
         ppm->pending_flags = flags & ~UCSI_PPM_PENDING_PHY_IRQ;
-        (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_to_tc, ppm);
+        (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_to_l3, ppm);
     }
 
     // Advance time-dependent TC state (AttachWait debounce expiry today).

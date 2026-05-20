@@ -1,5 +1,7 @@
 #include "ucsi_ppm_tc.h"
 
+#include "ucsi_ppm_prl.h"
+
 #include "drivers/fusb302/fusb302_reg.h"
 
 // Type-C CC debounce (Type-C R2.0 §5.3.3.5 — tCCDebounce, 100..200 ms).
@@ -178,6 +180,10 @@ static void tc_enter_unattached(UcsiPpm* ppm) {
     ppm->tc_orientation = (int)UcsiPpmPhyCcNone;
     ppm->tc_role_is_src = false;
     ppm->tc_vbus_seen = false;
+
+    // PD session ended — clear MessageID counters so a fresh attach starts
+    // from MsgID=0 on both directions (PD R3.0 §6.8.1).
+    (void)ucsi_ppm_prl_reset(ppm);
 
     UcsiPpmPhyToggleMode toggle_mode;
     if(cc_mode_to_toggle(ppm->current_cc_operation_mode, &toggle_mode)) {
