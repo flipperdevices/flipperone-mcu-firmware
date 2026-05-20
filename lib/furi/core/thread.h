@@ -88,7 +88,7 @@ typedef void (*FuriThreadStdoutWriteCallback)(const char* data, size_t size, voi
  * @param[in] context optional context
  * @returns number of bytes that was actually read into the buffer
  */
-typedef size_t (*FuriThreadStdinReadCallback)(uint8_t* buffer, size_t size, uint32_t timeout, void* context);
+typedef size_t (*FuriThreadStdinReadCallback)(char* buffer, size_t size, FuriWait timeout, void* context);
 
 /**
  * @brief         State change callback function pointer type.

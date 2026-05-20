@@ -89,9 +89,6 @@ int32_t test_peref_srv(void* p) {
 
     //Power* power = furi_record_open(RECORD_POWER);
     furi_delay_ms(2000);
-    CliVcp* cli_vcp = furi_record_open(RECORD_CLI_VCP);
-    cli_vcp_enable(cli_vcp);
-    furi_record_close(RECORD_CLI_VCP);
 
     while(true) {
         FURI_LOG_I(TAG, "Test");

@@ -708,7 +708,7 @@ static size_t __furi_thread_stdout_write(FuriThread* thread, const char* data, s
 
 static size_t __furi_thread_stdin_read(FuriThread* thread, char* data, size_t size, FuriWait timeout) {
     if(thread->input.read_callback != NULL) {
-        return thread->input.read_callback((uint8_t*)data, size, timeout, thread->input.context);
+        return thread->input.read_callback(data, size, timeout, thread->input.context);
     } else {
         return 0;
     }

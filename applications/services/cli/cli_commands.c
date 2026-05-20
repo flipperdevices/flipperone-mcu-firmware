@@ -1,12 +1,6 @@
-// #include <core/thread.h>
-// #include <core/thread_list.h>
 #include <furi_hal.h>
-// #include <furi_hal_info.h>
-// #include <task_control_block.h>
-// #include <time.h>
 #include <cli/args.h>
 #include <cli/cli_registry.h>
-//#include <cli/cli_ansi.h>
 #include <cli/cli_commands.h>
 #include <applications.h>
 
@@ -40,8 +34,8 @@ int32_t cli_on_system_start(void* p) {
     CliRegistry* registry = cli_registry_alloc();
     cli_commands_init(registry);
     furi_record_create(RECORD_CLI, registry);
-    // CliVcp* cli_vcp = furi_record_open(RECORD_CLI_VCP);
-    // cli_vcp_enable(cli_vcp);
-    // furi_record_close(RECORD_CLI_VCP);
+    CliVcp* cli_vcp = furi_record_open(RECORD_CLI_VCP);
+    cli_vcp_enable(cli_vcp);
+    furi_record_close(RECORD_CLI_VCP);
     return 0;
 }

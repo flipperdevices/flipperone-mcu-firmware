@@ -130,7 +130,7 @@ static void pipe_stdout_cb(const char* data, size_t size, void* context) {
     pipe_send(pipe, data, size);
 }
 
-static size_t pipe_stdin_cb(uint8_t* data, size_t size, uint32_t timeout, void* context) {
+static size_t pipe_stdin_cb(char* data, size_t size, FuriWait timeout, void* context) {
     UNUSED(timeout);
     furi_assert(context);
     PipeSide* pipe = context;
