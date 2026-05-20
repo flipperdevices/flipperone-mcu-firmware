@@ -202,6 +202,82 @@ void ucsi_shim_log_status(UcsiPpm* ppm) {
     log_status_from_resp(ppm, resp);
 }
 
+// PDO format reference: PD R3.0 §6.4.1, Tables 6-9 / 6-12 / 6-13 / 6-14.
+static void log_pdo(uint8_t idx, uint32_t pdo) {
+    const uint8_t type = (uint8_t)((pdo >> 30) & 0x3u);
+    switch(type) {
+    case 0u: { // Fixed Supply
+        const uint16_t mv = (uint16_t)(((pdo >> 10) & 0x3FFu) * 50u);
+        const uint16_t ma = (uint16_t)((pdo & 0x3FFu) * 10u);
+        FURI_LOG_I(
+            TAG,
+            "  PDO%u Fixed   %u mV / %u mA [DRP=%u USBcom=%u Unconstr=%u DRD=%u UsbSusp=%u EPR=%u]",
+            idx,
+            mv,
+            ma,
+            (unsigned)((pdo >> 29) & 1u),
+            (unsigned)((pdo >> 26) & 1u),
+            (unsigned)((pdo >> 27) & 1u),
+            (unsigned)((pdo >> 25) & 1u),
+            (unsigned)((pdo >> 28) & 1u),
+            (unsigned)((pdo >> 23) & 1u));
+        break;
+    }
+    case 1u: { // Battery
+        const uint16_t maxv = (uint16_t)(((pdo >> 20) & 0x3FFu) * 50u);
+        const uint16_t minv = (uint16_t)(((pdo >> 10) & 0x3FFu) * 50u);
+        const uint32_t maxp_mw = (uint32_t)((pdo & 0x3FFu) * 250u);
+        FURI_LOG_I(TAG, "  PDO%u Battery %u-%u mV / %lu mW", idx, minv, maxv, (unsigned long)maxp_mw);
+        break;
+    }
+    case 2u: { // Variable Supply
+        const uint16_t maxv = (uint16_t)(((pdo >> 20) & 0x3FFu) * 50u);
+        const uint16_t minv = (uint16_t)(((pdo >> 10) & 0x3FFu) * 50u);
+        const uint16_t maxi = (uint16_t)((pdo & 0x3FFu) * 10u);
+        FURI_LOG_I(TAG, "  PDO%u Var     %u-%u mV / %u mA", idx, minv, maxv, maxi);
+        break;
+    }
+    case 3u: { // Augmented PDO
+        const uint8_t apdo_type = (uint8_t)((pdo >> 28) & 0x3u);
+        if(apdo_type == 0u) {
+            // SPR PPS: bits 24:17 max V (100 mV), bits 15:8 min V (100 mV),
+            // bits 6:0 max current (50 mA). PD R3.0 Table 6-13.
+            const uint16_t maxv = (uint16_t)(((pdo >> 17) & 0xFFu) * 100u);
+            const uint16_t minv = (uint16_t)(((pdo >> 8) & 0xFFu) * 100u);
+            const uint16_t maxi = (uint16_t)((pdo & 0x7Fu) * 50u);
+            FURI_LOG_I(
+                TAG,
+                "  PDO%u PPS     %u-%u mV / %u mA [PwrLim=%u]",
+                idx,
+                minv,
+                maxv,
+                maxi,
+                (unsigned)((pdo >> 27) & 1u));
+        } else {
+            FURI_LOG_I(TAG, "  PDO%u APDO subtype=%u raw=0x%08lX", idx, apdo_type, (unsigned long)pdo);
+        }
+        break;
+    }
+    }
+}
+
+void ucsi_shim_dump_partner_source_caps(UcsiPpm* ppm) {
+    uint32_t pdos[4];
+    const uint8_t n1 = ucsi_shim_get_pdos(ppm, true /*partner*/, 0u, 4u, true /*source*/, pdos);
+    if(n1 == 0u) {
+        FURI_LOG_W(TAG, "no partner Source caps cached");
+        return;
+    }
+    FURI_LOG_I(TAG, "partner Source caps (%u shown):", n1);
+    for(uint8_t i = 0; i < n1; ++i) log_pdo((uint8_t)(i + 1u), pdos[i]);
+
+    // PD allows up to 7 PDOs; UCSI's NumPDOs field is 2 bits (1..4) so we
+    // need a second fetch at offset 4 to cover the remainder.
+    uint32_t pdos2[4];
+    const uint8_t n2 = ucsi_shim_get_pdos(ppm, true, 4u, 3u, true, pdos2);
+    for(uint8_t i = 0; i < n2; ++i) log_pdo((uint8_t)(4u + i + 1u), pdos2[i]);
+}
+
 bool ucsi_shim_log_status_if_changed(UcsiPpm* ppm) {
     uint8_t resp[19] = {0};
     if(!ucsi_shim_get_connector_status(ppm, resp)) {

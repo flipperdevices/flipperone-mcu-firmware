@@ -53,6 +53,12 @@ uint8_t ucsi_shim_get_pdos(UcsiPpm* ppm, bool partner, uint8_t pdo_offset, uint8
 // liner for bring-up monitoring loops.
 void ucsi_shim_log_status(UcsiPpm* ppm);
 
+// Reads partner's Source PDOs (cached from the most recent Source_Capabilities
+// message) and prints each decoded line via FURI_LOG_I. Supports Fixed,
+// Battery, Variable and SPR-PPS APDO formats per PD R3.0 §6.4.1. Safe to
+// call after a PD contract is established; no-op (warns) otherwise.
+void ucsi_shim_dump_partner_source_caps(UcsiPpm* ppm);
+
 // Same, but only logs when the Connector Status Change bitmap is non-zero
 // (PE/TC raise CSC bits on any meaningful transition; reading clears them).
 // Use in periodic poll loops to keep the log quiet when nothing happens.

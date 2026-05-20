@@ -214,8 +214,7 @@ static void run_scripted_probes(PdUcsi* host) {
     // Anchor to TC-level attach, not contract — otherwise the brief PE bounce
     // during a SET_POWER_LEVEL renegotiate (SnkReady → WaitForAccept → ...)
     // would reset the timer and re-fire the probe forever.
-    if(host->last_state != UcsiPpmStateAttachedSnk &&
-       host->last_state != UcsiPpmStateAttachedSrc) {
+    if(host->last_state != UcsiPpmStateAttachedSnk && host->last_state != UcsiPpmStateAttachedSrc) {
         host->contract_first_seen_tick = 0;
         host->probe = ProbePending;
         return;
@@ -225,6 +224,7 @@ static void run_scripted_probes(PdUcsi* host) {
         UcsiPpmContractInfo c = {0};
         if(ucsi_ppm_get_contract(host->ppm, &c) == UcsiPpmStatusOk && c.contract_in_place) {
             host->contract_first_seen_tick = furi_get_tick();
+            ucsi_shim_dump_partner_source_caps(host->ppm);
         } else {
             return;
         }
@@ -289,9 +289,10 @@ static int32_t pd_ucsi_thread(void* arg) {
             FURI_LOG_I(TAG, "state: %s → %s", state_str(host->last_state), state_str(now));
             host->last_state = now;
             ucsi_shim_log_status(host->ppm);
-            if(now == UcsiPpmStateAttachedSnk || now == UcsiPpmStateAttachedSrc) {
-                dump_fusb302_regs(host);
-            }
+            // if(now == UcsiPpmStateAttachedSnk || now == UcsiPpmStateAttachedSrc) {
+            //     dump_fusb302_regs(host);
+            // }
+            UNUSED(dump_fusb302_regs);
         }
 
         if(furi_get_tick() - host->last_log_tick >= STATUS_LOG_MS) {
