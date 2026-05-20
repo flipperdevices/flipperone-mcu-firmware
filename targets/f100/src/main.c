@@ -14,7 +14,7 @@ int32_t init_task(void* context) {
 
     // Set the UART for logging output
     furi_hal_log_hardware_init();
-
+    furi_log_set_level(FuriLogLevelDebug);
     // Flipper FURI HAL
     furi_hal_init();
 

@@ -138,14 +138,14 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = cli_vcp_srv,
         .name = "CliVcpSrv",
         .appid = "cli_vcp_srv",
-        .stack_size = 1024 * 4,
+        .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
         .app = power_menu_srv,
         .name = "PowerMenuSrv",
         .appid = "power_menu_srv",
-        .stack_size = 1024 * 4,
+        .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {

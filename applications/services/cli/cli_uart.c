@@ -7,15 +7,16 @@
 // #include <furi_hal_dma.h>
 
 #define TAG "CliUart"
-// #define CLI_UART_TRACE_ENABLE
 
 #define PIPE_SZ_PER_DIRECTION 1024UL
 #define UART_BAUD_RATE        230400UL
 #define UART_SERIAL_ID        FuriHalSerialIdUart1
 #define TRANSFER_BATCH_SIZE   256UL
 
+//#define CLI_UART_TRACE_ENABLE
+
 #ifdef CLI_UART_TRACE_ENABLE
-#define CLI_UART_TRACE(...) FURI_LOG_T(__VA_ARGS__)
+#define CLI_UART_TRACE(...) FURI_LOG_D(__VA_ARGS__)
 #else
 #define CLI_UART_TRACE(...)
 #endif
@@ -79,7 +80,6 @@ static CliUart* cli_uart_alloc(void) {
     furi_check(cli_uart->uart_handle);
     furi_hal_serial_init(cli_uart->uart_handle, UART_BAUD_RATE);
 
-    //furi_hal_serial_set_rx_callback(cli_uart->uart_handle, cli_uart_rx_callback, cli_uart);
     //Todo: implement tx callback tx complete 
     furi_hal_serial_set_callback(cli_uart->uart_handle, NULL, cli_uart_rx_callback, cli_uart);
 

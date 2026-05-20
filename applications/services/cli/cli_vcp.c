@@ -10,15 +10,15 @@
 
 #define TAG "CliVcp"
 
-#define USB_CDC_PKT_LEN   CFG_TUD_CDC_RX_BUFSIZE
-#define VCP_BUF_SIZE      (USB_CDC_PKT_LEN * 3)
+#define USB_CDC_PKT_LEN   (CFG_TUD_CDC_RX_BUFSIZE - 1)
+#define VCP_BUF_SIZE      (USB_CDC_PKT_LEN * 16)
 #define VCP_IF_NUM        0
 #define VCP_MESSAGE_Q_LEN 8
 
 //#define CLI_VCP_DEBUG_ENABLE
 
 #ifdef CLI_VCP_DEBUG_ENABLE
-#define CLI_VCP_DEBUG(...) FURI_LOG_I(__VA_ARGS__)
+#define CLI_VCP_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
 #define CLI_VCP_DEBUG(...)
 #endif
@@ -36,6 +36,7 @@ typedef enum {
     CliVcpInternalEventConnected,
     CliVcpInternalEventDisconnected,
     CliVcpInternalEventTxDone,
+    CliVcpInternalEventTx,
     CliVcpInternalEventRx,
 } CliVcpInternalEvent;
 
@@ -49,6 +50,7 @@ struct CliVcp {
     PipeSide* own_pipe;
     PipeSide* shell_pipe;
     volatile bool is_currently_transmitting;
+
     size_t previous_tx_length;
 
     CliRegistry* main_registry;
@@ -72,8 +74,8 @@ static void cli_vcp_maybe_send_data(CliVcp* cli_vcp) {
     size_t to_receive_from_pipe = MIN(sizeof(buf), pipe_bytes_available(cli_vcp->own_pipe));
     size_t length = pipe_receive(cli_vcp->own_pipe, buf, to_receive_from_pipe);
     if(length > 0 || cli_vcp->previous_tx_length == USB_CDC_PKT_LEN) {
-        CLI_VCP_DEBUG(TAG, "cdc_send length=%zu", length);
         cli_vcp->is_currently_transmitting = true;
+        CLI_VCP_DEBUG(TAG, "cdc_send length=%zu", length);
         furi_hal_cdc_send(VCP_IF_NUM, buf, length);
     }
     cli_vcp->previous_tx_length = length;
@@ -100,12 +102,14 @@ static void cli_vcp_maybe_receive_data(CliVcp* cli_vcp) {
 // =============
 
 static void cli_vcp_signal_internal_event(CliVcp* cli_vcp, CliVcpInternalEvent event) {
+    uint32_t count = furi_message_queue_get_count(cli_vcp->internal_evt_queue);
+    CLI_VCP_DEBUG(TAG, "internal_event count=%lu event=%d", count, event);
     furi_check(furi_message_queue_put(cli_vcp->internal_evt_queue, &event, FuriWaitForever) == FuriStatusOk);
 }
 
 static void cli_vcp_cdc_tx_done(void* context) {
     CliVcp* cli_vcp = context;
-    cli_vcp->is_currently_transmitting = false;
+    //cli_vcp->is_currently_transmitting = false;
     cli_vcp_signal_internal_event(cli_vcp, CliVcpInternalEventTxDone);
 }
 
@@ -148,12 +152,18 @@ static CdcCallbacks cdc_cb = {
 static void cli_vcp_data_from_shell(PipeSide* pipe, void* context) {
     UNUSED(pipe);
     CliVcp* cli_vcp = context;
-    cli_vcp_maybe_send_data(cli_vcp);
+    CLI_VCP_DEBUG(TAG, "data_from_shell");
+    // cli_vcp_maybe_send_data(cli_vcp);
+    // furi_delay_ms(1000);
+    if(!cli_vcp->is_currently_transmitting) {
+        cli_vcp_signal_internal_event(cli_vcp, CliVcpInternalEventTx);
+    }
 }
 
 static void cli_vcp_shell_ready(PipeSide* pipe, void* context) {
     UNUSED(pipe);
     CliVcp* cli_vcp = context;
+    CLI_VCP_DEBUG(TAG, "shell_ready");
     cli_vcp_maybe_receive_data(cli_vcp);
 }
 
@@ -196,6 +206,9 @@ static void cli_vcp_internal_event_happened(FuriEventLoopObject* object, void* c
     CliVcpInternalEvent event;
     furi_check(furi_message_queue_get(object, &event, 0) == FuriStatusOk);
 
+    // uint32_t count = furi_message_queue_get_count(cli_vcp->internal_evt_queue);
+    // CLI_VCP_DEBUG(TAG, "out event count=%lu, event=%d", count, event);
+    furi_delay_us(200);
     switch(event) {
     case CliVcpInternalEventRx: {
         CLI_VCP_DEBUG(TAG, "Rx");
@@ -203,8 +216,15 @@ static void cli_vcp_internal_event_happened(FuriEventLoopObject* object, void* c
         break;
     }
 
+    case CliVcpInternalEventTx: {
+        CLI_VCP_DEBUG(TAG, "Tx");
+        cli_vcp_maybe_send_data(cli_vcp);
+        break;
+    }
+
     case CliVcpInternalEventTxDone: {
         CLI_VCP_DEBUG(TAG, "TxDone");
+        cli_vcp->is_currently_transmitting = false;
         cli_vcp_maybe_send_data(cli_vcp);
         break;
     }
@@ -262,7 +282,7 @@ static CliVcp* cli_vcp_alloc(void) {
 
     cli_vcp->internal_evt_queue = furi_message_queue_alloc(VCP_MESSAGE_Q_LEN, sizeof(CliVcpInternalEvent));
     furi_event_loop_subscribe_message_queue(cli_vcp->event_loop, cli_vcp->internal_evt_queue, FuriEventLoopEventIn, cli_vcp_internal_event_happened, cli_vcp);
-    
+
     cli_vcp->main_registry = furi_record_open(RECORD_CLI);
 
     return cli_vcp;
