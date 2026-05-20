@@ -65,6 +65,12 @@ extern "C" {
 #define UCSI_PPM_CCI_ERROR                  (1u << 30)
 #define UCSI_PPM_CCI_COMMAND_COMPLETED      (1u << 31)
 
+// SET_NOTIFICATION_ENABLE bit positions (commands.md §2.5 Table 6-25).
+// Bits 1..15 mirror the Connector Status Change bitmap (Table 6-44) and
+// gate alerts raised via ucsi_ppm_notify_connector_change. Bit 0 gates the
+// L2 Command Completed alert independently.
+#define UCSI_PPM_NOTIF_CMD_COMPLETED         (1u << 0)
+
 // ACK_CC_CI bits in CONTROL (commands.md §2.4).
 // CONTROL bit 16 = byte 2 bit 0.
 #define UCSI_PPM_ACK_CC_CI_BYTE                       2u

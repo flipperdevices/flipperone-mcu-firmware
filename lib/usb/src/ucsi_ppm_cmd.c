@@ -646,8 +646,16 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
     cci_store(ppm, result_cci);
     ppm->cmd_state = stays_idle ? UcsiPpmCmdStateIdle : UcsiPpmCmdStateWaitForAck;
 
-    // Alert when CCI is non-zero — OPM has something to read.
+    // OPM alert: gated by SET_NOTIFICATION_ENABLE bit 0 (Command Completed
+    // Notification Enable, commands.md §2.5 Table 6-25). Reset Completed is
+    // exempt — PPM_RESET clears notification_mask back to 0, so without
+    // this carve-out OPM would never see the reset acknowledged.
     if(result_cci != 0u && ppm->config.alert) {
-        ppm->config.alert(ppm->config.hal_ctx);
+        const bool reset_completed = (result_cci & UCSI_PPM_CCI_RESET_COMPLETED) != 0u;
+        const bool cmd_alert_enabled =
+            (ppm->notification_mask & UCSI_PPM_NOTIF_CMD_COMPLETED) != 0u;
+        if(reset_completed || cmd_alert_enabled) {
+            ppm->config.alert(ppm->config.hal_ctx);
+        }
     }
 }

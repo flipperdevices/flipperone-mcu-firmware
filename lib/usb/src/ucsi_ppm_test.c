@@ -222,7 +222,7 @@ static UcsiPpm* mock_make_ppm(void) {
     // Simulate OPM having called SET_NOTIFICATION_ENABLE with all CSC bits
     // enabled so notify_connector_change actually raises alerts in tests.
     // Mask-filter behaviour itself is covered by dedicated tests below.
-    ppm->notification_mask = 0xFFFEu;
+    ppm->notification_mask = 0xFFFFu;
     return ppm;
 }
 
@@ -798,6 +798,9 @@ static bool test_cmd_get_capability(void) {
     cfg.supports_chunking = true; // bmOpt bit 14
     cfg.connector_usb2_capable = true;
     ucsi_ppm_init(ppm, &cfg);
+    // Command Completed alert is gated by notification_mask bit 0 — enable
+    // it so the dispatcher actually wakes OPM on completion.
+    ppm->notification_mask = UCSI_PPM_NOTIF_CMD_COMPLETED;
     g_alert_count = 0;
 
     uint8_t opcode = UCSI_PPM_OPCODE_GET_CAPABILITY;
@@ -2604,7 +2607,7 @@ static UcsiPpm* mock_make_ppm_with_mode(UcsiPpmCcOperationMode mode, bool suppor
     }
     // Simulate OPM having called SET_NOTIFICATION_ENABLE with all CSC bits
     // enabled — see note in mock_make_ppm.
-    ppm->notification_mask = 0xFFFEu;
+    ppm->notification_mask = 0xFFFFu;
     return ppm;
 }
 
@@ -4674,6 +4677,69 @@ static bool test_notify_mask_blocks_mismatched_bit(void) {
     return true;
 }
 
+static bool test_cmd_complete_alert_gated_by_mask_bit0(void) {
+    // notification_mask=0 → CCI has Command Completed but the L2 dispatcher
+    // does NOT wake OPM. State is still observable by polling CCI.
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = counting_alert;
+    ucsi_ppm_init(ppm, &cfg);
+    TEST_ASSERT(ppm->notification_mask == 0u);
+    g_alert_count = 0;
+
+    uint8_t op = UCSI_PPM_OPCODE_GET_CAPABILITY;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+
+    TEST_ASSERT(read_cci(ppm) & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(g_alert_count == 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cmd_complete_alert_fires_with_mask_bit0(void) {
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = counting_alert;
+    ucsi_ppm_init(ppm, &cfg);
+    ppm->notification_mask = UCSI_PPM_NOTIF_CMD_COMPLETED;
+    g_alert_count = 0;
+
+    uint8_t op = UCSI_PPM_OPCODE_GET_CAPABILITY;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+
+    TEST_ASSERT(g_alert_count == 1);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_ppm_reset_alert_fires_with_zero_mask(void) {
+    // PPM_RESET clears notification_mask to 0 by design. The Reset Completed
+    // alert must still fire — otherwise OPM never sees its reset acknowledged.
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = counting_alert;
+    ucsi_ppm_init(ppm, &cfg);
+    // Pre-seed mask to a non-zero value to prove PPM_RESET clears it AND still
+    // alerts.
+    ppm->notification_mask = 0xDEADu;
+    g_alert_count = 0;
+
+    uint8_t op = UCSI_PPM_OPCODE_PPM_RESET;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+
+    TEST_ASSERT(read_cci(ppm) & UCSI_PPM_CCI_RESET_COMPLETED);
+    TEST_ASSERT(ppm->notification_mask == 0u);
+    TEST_ASSERT(g_alert_count == 1);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_notify_mask_set_via_command_takes_effect(void) {
     // SET_NOTIFICATION_ENABLE writes the mask; subsequent notify_connector_change
     // honours the new value.
@@ -4934,6 +5000,9 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_notify_mask_enables_specific_bit),
     TEST_ENTRY(test_notify_mask_blocks_mismatched_bit),
     TEST_ENTRY(test_notify_mask_set_via_command_takes_effect),
+    TEST_ENTRY(test_cmd_complete_alert_gated_by_mask_bit0),
+    TEST_ENTRY(test_cmd_complete_alert_fires_with_mask_bit0),
+    TEST_ENTRY(test_ppm_reset_alert_fires_with_zero_mask),
 
     // L3 PE Hard Reset orchestration.
     TEST_ENTRY(test_pe_snk_hard_reset_sent_returns_to_wait_caps),
