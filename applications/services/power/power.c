@@ -117,7 +117,8 @@ static void power_bq25792_print_charger_irq(Power* instance) {
 static void __isr __not_in_flash_func(power_bq25792_event_isr)(void* context) {
     Power* instance = (Power*)context;
     furi_event_loop_set_custom_event(instance->event_loop, PowerEventTypeIsr);
-    power_bq25792_print_charger_irq(instance);
+    // power_bq25792_print_charger_irq(instance);
+    UNUSED(power_bq25792_print_charger_irq);
 }
 
 typedef void (*PowerFunction)(void* context, void* param, void* result);

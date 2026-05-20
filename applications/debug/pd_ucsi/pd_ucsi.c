@@ -1,0 +1,259 @@
+// Bring-up driver for lib/usb (UcsiPpm) against the real FUSB302.
+//
+// IMPORTANT: this app takes exclusive ownership of FUSB302 over the main I²C
+// bus. Disable the existing `pd_srv` in applications/applications.c while
+// running it — otherwise the two stacks race on register reads / writes and
+// nothing works.
+//
+// Strategy for first runs: sink-only (Rd-only) so we never source VBUS. The
+// app loops on ucsi_ppm_tick (every 10 ms), prints state every second, and
+// after the PD contract is up runs a few scripted probes (SET_POWER_LEVEL,
+// DR_Swap) just so you can see them on the wire / in the logs.
+
+#include <furi.h>
+#include <furi_hal_i2c.h>
+#include <furi_hal_i2c_config.h>
+
+#include <ucsi_ppm.h>
+#include <ucsi_ppm_config.h>
+
+#include "ucsi_shim.h"
+
+#define TAG "PdUcsi"
+
+#define FUSB302_I2C_ADDR 0x22u
+#define TICK_PERIOD_MS   10u
+#define STATUS_LOG_MS    1000u
+
+typedef enum {
+    ProbePending,
+    ProbeSetPowerLevel,
+    ProbeDrSwapToDfp,
+    ProbeDone,
+} ProbeStep;
+
+typedef struct {
+    UcsiPpm* ppm;
+    const FuriHalI2cBusHandle* i2c;
+    UcsiPpmConnectorState last_state;
+    uint32_t last_log_tick;
+    uint32_t contract_first_seen_tick;
+    ProbeStep probe;
+} PdUcsi;
+
+// --- HAL adapters ----------------------------------------------------------
+
+static uint32_t hal_time_ms(void* ctx) {
+    UNUSED(ctx);
+    return furi_get_tick();
+}
+
+static UcsiPpmStatus hal_i2c_write(void* ctx, uint8_t addr, const uint8_t* data, size_t len) {
+    PdUcsi* h = ctx;
+    furi_hal_i2c_acquire(h->i2c);
+    const int rc = furi_hal_i2c_master_tx_blocking(h->i2c, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
+    furi_hal_i2c_release(h->i2c);
+    return rc >= 0 ? UcsiPpmStatusOk : UcsiPpmStatusHalError;
+}
+
+static UcsiPpmStatus hal_i2c_read(void* ctx, uint8_t addr, uint8_t* data, size_t len) {
+    PdUcsi* h = ctx;
+    furi_hal_i2c_acquire(h->i2c);
+    // FUSB302 retains its internal address pointer across STOP, so reading
+    // here picks up where the prior i2c_write set the pointer. If this turns
+    // out to be unreliable in practice we'll switch lib/usb to a combined
+    // i2c_trx HAL hook (one repeated-start txn).
+    const int rc = furi_hal_i2c_master_rx_blocking(h->i2c, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
+    furi_hal_i2c_release(h->i2c);
+    return rc >= 0 ? UcsiPpmStatusOk : UcsiPpmStatusHalError;
+}
+
+static void hal_vbus_source_write(void* ctx, bool value) {
+    UNUSED(ctx);
+    // No-op in sink-only bring-up: we never source VBUS. If you later wire a
+    // 5V VBUS output GPIO, drive it from here.
+    UNUSED(value);
+}
+
+static void hal_vbus_discharge_write(void* ctx, bool value) {
+    UNUSED(ctx);
+    UNUSED(value);
+}
+
+static UcsiPpmStatus hal_psu_set(void* ctx, uint16_t voltage_mv, uint16_t current_limit_ma) {
+    UNUSED(ctx);
+    FURI_LOG_D(TAG, "psu_set: %u mV / %u mA (no-op stub)", voltage_mv, current_limit_ma);
+    return UcsiPpmStatusOk;
+}
+
+static bool hal_has_alt_power(void* ctx) {
+    UNUSED(ctx);
+    return false;
+}
+
+static void hal_alert(void* ctx) {
+    UNUSED(ctx);
+    // The CCI alert just tells OPM "something to read" — for bring-up we
+    // already poll, so this is informational.
+}
+
+static void hal_log(void* ctx, UcsiPpmLogLevel level, const char* module, const char* fmt, va_list args) {
+    UNUSED(ctx);
+    char buf[160];
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    switch(level) {
+    case UcsiPpmLogLevelError:
+        FURI_LOG_E(module, "%s", buf);
+        break;
+    case UcsiPpmLogLevelWarn:
+        FURI_LOG_W(module, "%s", buf);
+        break;
+    case UcsiPpmLogLevelInfo:
+        FURI_LOG_I(module, "%s", buf);
+        break;
+    case UcsiPpmLogLevelDebug:
+        FURI_LOG_D(module, "%s", buf);
+        break;
+    case UcsiPpmLogLevelTrace:
+        FURI_LOG_T(module, "%s", buf);
+        break;
+    }
+}
+
+// --- config & lifecycle ----------------------------------------------------
+
+static void config_fill(UcsiPpmConfig* cfg, PdUcsi* host) {
+    memset(cfg, 0, sizeof(*cfg));
+    cfg->hal_ctx = host;
+    cfg->time_ms = hal_time_ms;
+    cfg->alert = hal_alert;
+    cfg->i2c_read = hal_i2c_read;
+    cfg->i2c_write = hal_i2c_write;
+    cfg->gpio_write_vbus_source = hal_vbus_source_write;
+    cfg->gpio_write_vbus_discharge = hal_vbus_discharge_write;
+    cfg->power_supply_set = hal_psu_set;
+    cfg->has_alt_power = hal_has_alt_power;
+    cfg->log = hal_log;
+    cfg->fusb302_i2c_addr = FUSB302_I2C_ADDR;
+
+    // Sink-only first run — never source VBUS, no DRP toggle.
+    cfg->initial_cc_operation_mode = UcsiPpmCcModeRdOnly;
+    cfg->source_rp_current = UcsiPpmRpCurrentUsbDefault;
+
+    // Validator requires both source_caps and sink_caps with first PDO Fixed
+    // 5V (even in Rd-only — see ucsi_ppm.c config_is_valid). Advertise a token
+    // weak Source PDO; CC mode keeps us as Rd so we never actually source.
+    cfg->source_caps.pdos[0] = ucsi_ppm_pdo_fixed_source(5000, 500, false, false, false, false);
+    cfg->source_caps.count = 1;
+    cfg->sink_caps.pdos[0] = ucsi_ppm_pdo_fixed_sink(5000, 3000, false, false, false, true, false);
+    cfg->sink_caps.count = 1;
+
+    cfg->supports_usb_pd = true;
+    cfg->power_source_vbus = true;
+    cfg->connector_usb2_capable = true;
+}
+
+static const char* state_str(UcsiPpmConnectorState s) {
+    switch(s) {
+    case UcsiPpmStateUnattached:
+        return "Unattached";
+    case UcsiPpmStateAttachWait:
+        return "AttachWait";
+    case UcsiPpmStateAttachedSrc:
+        return "Attached.SRC";
+    case UcsiPpmStateAttachedSnk:
+        return "Attached.SNK";
+    case UcsiPpmStateErrorRecovery:
+        return "ErrorRecovery";
+    case UcsiPpmStateDisabled:
+        return "Disabled";
+    }
+    return "?";
+}
+
+static void run_scripted_probes(PdUcsi* host) {
+    UcsiPpmContractInfo c = {0};
+    if(ucsi_ppm_get_contract(host->ppm, &c) != UcsiPpmStatusOk || !c.contract_in_place) {
+        host->contract_first_seen_tick = 0;
+        host->probe = ProbePending;
+        return;
+    }
+    if(host->contract_first_seen_tick == 0) {
+        host->contract_first_seen_tick = furi_get_tick();
+    }
+    const uint32_t since = furi_get_tick() - host->contract_first_seen_tick;
+
+    if(host->probe == ProbePending && since > 3000u) {
+        FURI_LOG_I(TAG, "probe: SET_POWER_LEVEL → 500 mA");
+        ucsi_shim_set_power_level_sink(host->ppm, 500);
+        host->probe = ProbeSetPowerLevel;
+    } else if(host->probe == ProbeSetPowerLevel && since > 8000u) {
+        FURI_LOG_I(TAG, "probe: SET_UOR → initiate DR_Swap to DFP");
+        ucsi_shim_set_uor(host->ppm, 0x01u /* Initiate swap to DFP */);
+        host->probe = ProbeDrSwapToDfp;
+    } else if(host->probe == ProbeDrSwapToDfp && since > 13000u) {
+        host->probe = ProbeDone;
+    }
+}
+
+static int32_t pd_ucsi_thread(void* arg) {
+    PdUcsi* host = arg;
+
+    UcsiPpmConfig cfg;
+    config_fill(&cfg, host);
+
+    host->ppm = ucsi_ppm_alloc();
+    furi_check(host->ppm);
+    const UcsiPpmStatus s = ucsi_ppm_init(host->ppm, &cfg);
+    if(s != UcsiPpmStatusOk) {
+        FURI_LOG_E(TAG, "ucsi_ppm_init failed: %d", (int)s);
+        ucsi_ppm_free(host->ppm);
+        return -1;
+    }
+    FURI_LOG_I(TAG, "PPM up — sink-only, FUSB302 @ 0x%02X", FUSB302_I2C_ADDR);
+
+    // Enable every notification we care about (CSC bits 1..15 + Command
+    // Completed at bit 0).
+    if(!ucsi_shim_set_notification_enable(host->ppm, 0x1FFFFu)) {
+        FURI_LOG_W(TAG, "SET_NOTIFICATION_ENABLE failed");
+    }
+
+    uint8_t cap_buf[16];
+    if(ucsi_shim_get_capability(host->ppm, cap_buf)) {
+        FURI_LOG_I(TAG, "cap: bcdPD=%02X%02X bcdTC=%02X%02X", cap_buf[13], cap_buf[12], cap_buf[15], cap_buf[14]);
+    }
+
+    host->last_state = ucsi_ppm_get_connector_state(host->ppm);
+    host->last_log_tick = furi_get_tick();
+    host->contract_first_seen_tick = 0;
+    host->probe = ProbePending;
+
+    while(true) {
+        ucsi_ppm_tick(host->ppm);
+
+        const UcsiPpmConnectorState now = ucsi_ppm_get_connector_state(host->ppm);
+        if(now != host->last_state) {
+            FURI_LOG_I(TAG, "state: %s → %s", state_str(host->last_state), state_str(now));
+            host->last_state = now;
+            ucsi_shim_log_status(host->ppm);
+        }
+
+        if(furi_get_tick() - host->last_log_tick >= STATUS_LOG_MS) {
+            host->last_log_tick = furi_get_tick();
+            ucsi_shim_log_status(host->ppm);
+        }
+
+        run_scripted_probes(host);
+
+        furi_delay_ms(TICK_PERIOD_MS);
+    }
+}
+
+// --- app entrypoint --------------------------------------------------------
+
+int32_t pd_ucsi_app(void* p) {
+    UNUSED(p);
+    PdUcsi host = {0};
+    host.i2c = &furi_hal_i2c_handle_main;
+    return pd_ucsi_thread(&host);
+}

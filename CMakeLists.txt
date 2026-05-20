@@ -127,6 +127,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
     ${CMAKE_CURRENT_LIST_DIR}/lib/usb/include
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb/src
 )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/mlib)
