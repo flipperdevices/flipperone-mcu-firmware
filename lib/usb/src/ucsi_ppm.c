@@ -3,6 +3,7 @@
 #include "ucsi_ppm_phy.h"
 #include "ucsi_ppm_tc.h"
 #include "ucsi_ppm_prl.h"
+#include "ucsi_ppm_pe.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -124,6 +125,7 @@ UcsiPpmStatus ucsi_ppm_init(UcsiPpm* ppm, const UcsiPpmConfig* config) {
 
     // PRL state (MessageID counters etc) starts clean.
     (void)ucsi_ppm_prl_init(ppm);
+    (void)ucsi_ppm_pe_init(ppm);
 
     ppm->lifecycle = UcsiPpmLifecycleInitialized;
     return UcsiPpmStatusOk;
@@ -159,6 +161,7 @@ UcsiPpmStatus ucsi_ppm_reset(UcsiPpm* ppm) {
     if(s != UcsiPpmStatusOk) return UcsiPpmStatusHalError;
 
     (void)ucsi_ppm_prl_reset(ppm);
+    (void)ucsi_ppm_pe_reset(ppm);
 
     return UcsiPpmStatusOk;
 }
@@ -197,8 +200,7 @@ UcsiPpmStatus ucsi_ppm_register_write(UcsiPpm* ppm, uint16_t offset, uint16_t le
 
     // A non-zero write to CONTROL[0] (Command opcode byte) triggers L2
     // command dispatch (architecture.md §2).
-    if(offset == UCSI_PPM_OFFSET_CONTROL_COMMAND &&
-       ppm->regfile[UCSI_PPM_OFFSET_CONTROL_COMMAND] != 0) {
+    if(offset == UCSI_PPM_OFFSET_CONTROL_COMMAND && ppm->regfile[UCSI_PPM_OFFSET_CONTROL_COMMAND] != 0) {
         ucsi_ppm_cmd_dispatch(ppm);
     }
 
@@ -227,9 +229,9 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
 
     // Advance time-dependent TC state (AttachWait debounce expiry today).
     ucsi_ppm_tc_tick(ppm);
+    ucsi_ppm_pe_tick(ppm);
 
-    // TODO: power_supply_ready handling, PRL/PE advancement, PD timeout
-    // checks, CCI event delivery (api.md §5.3).
+    // TODO: power_supply_ready handling, CCI event delivery (api.md §5.3).
 
     return UcsiPpmStatusOk;
 }

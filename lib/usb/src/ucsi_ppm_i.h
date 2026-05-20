@@ -163,6 +163,22 @@ struct UcsiPpm {
     uint8_t prl_last_rx_msg_id;
     bool prl_last_rx_valid;
     uint32_t prl_messages_delivered;
+
+    // L3 PE (Policy Engine) — ucsi_ppm_pe.c.
+    //   pe_state                 — current PE state (UcsiPpmPeState).
+    //   pe_timer_start_ms        — start of the currently-armed PE timer.
+    //   pe_received_pdos[]       — most recent Source_Capabilities payload.
+    //   pe_received_pdo_count    — number of PDOs in pe_received_pdos.
+    //   pe_requested_pdo_index   — 1-based PDO position we last Request-ed.
+    //   pe_negotiated_voltage_mv — committed contract voltage after PS_RDY.
+    //   pe_negotiated_current_ma — committed contract current after PS_RDY.
+    int pe_state;
+    uint32_t pe_timer_start_ms;
+    uint32_t pe_received_pdos[UCSI_PPM_MAX_PDOS];
+    uint8_t pe_received_pdo_count;
+    uint8_t pe_requested_pdo_index;
+    uint16_t pe_negotiated_voltage_mv;
+    uint16_t pe_negotiated_current_ma;
 };
 
 // pending_flags bits.

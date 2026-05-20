@@ -1,5 +1,6 @@
 #include "ucsi_ppm_tc.h"
 
+#include "ucsi_ppm_pe.h"
 #include "ucsi_ppm_prl.h"
 
 #include "drivers/fusb302/fusb302_reg.h"
@@ -159,6 +160,12 @@ static void tc_try_commit_attached(UcsiPpm* ppm) {
 
     ppm->tc_state = ppm->tc_role_is_src ? (int)UcsiPpmTcStateAttachedSrc : (int)UcsiPpmTcStateAttachedSnk;
     (void)ucsi_ppm_phy_enable_pd(ppm, UCSI_PPM_TC_PD_RETRIES);
+
+    // Hand off to PE. Source path (pe_on_attach_src) lands in a later milestone;
+    // for now only the Sink contract flow is wired up.
+    if(!ppm->tc_role_is_src) {
+        ucsi_ppm_pe_on_attach_snk(ppm);
+    }
 }
 
 // Tears down the active session and returns to Unattached + re-armed toggle.
@@ -184,6 +191,7 @@ static void tc_enter_unattached(UcsiPpm* ppm) {
     // PD session ended — clear MessageID counters so a fresh attach starts
     // from MsgID=0 on both directions (PD R3.0 §6.8.1).
     (void)ucsi_ppm_prl_reset(ppm);
+    ucsi_ppm_pe_on_detach(ppm);
 
     UcsiPpmPhyToggleMode toggle_mode;
     if(cc_mode_to_toggle(ppm->current_cc_operation_mode, &toggle_mode)) {

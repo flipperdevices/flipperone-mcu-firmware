@@ -1,5 +1,7 @@
 #include "ucsi_ppm_prl.h"
 
+#include "ucsi_ppm_pe.h"
+
 // PD R3.0 Message Header — MessageID field, bits 11:9.
 #define MSG_HDR_MSG_ID_SHIFT 9u
 #define MSG_HDR_MSG_ID_MASK  ((uint16_t)(0x07u << MSG_HDR_MSG_ID_SHIFT))
@@ -62,8 +64,8 @@ static void prl_drain_rx_fifo(UcsiPpm* ppm) {
             ppm->prl_last_rx_valid = true;
         }
 
-        // TODO: hand off `msg` to PE once it exists. Until then, just count
-        // deliveries so callers / tests can observe progress.
+        // Deliver to PE for state-machine processing.
+        ucsi_ppm_pe_handle_message(ppm, &msg);
         ppm->prl_messages_delivered++;
     }
 }
