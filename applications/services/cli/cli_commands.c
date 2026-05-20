@@ -12,7 +12,7 @@
 
 #include "cli_command_gpio.h"
 #include "cli_commands_common.h"
-
+#include "cli_vcp.h"
 
 static void cli_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "uptime", CliCommandFlagParallelSafe, cli_command_uptime, NULL);
@@ -31,8 +31,7 @@ static void cli_commands_init(CliRegistry* registry) {
     // commands from `.fam`s
     for(size_t i = 0; i < FLIPPER_CLI_COMMANDS_COUNT; i++) {
         const FlipperInternalCommandApplication* command = &FLIPPER_CLI_COMMANDS[i];
-        cli_registry_add_command_ex(
-            registry, command->name, command->flags, command->callback, NULL, command->stack_size);
+        cli_registry_add_command_ex(registry, command->name, command->flags, command->callback, NULL, command->stack_size);
     }
 }
 
@@ -41,5 +40,8 @@ int32_t cli_on_system_start(void* p) {
     CliRegistry* registry = cli_registry_alloc();
     cli_commands_init(registry);
     furi_record_create(RECORD_CLI, registry);
+    // CliVcp* cli_vcp = furi_record_open(RECORD_CLI_VCP);
+    // cli_vcp_enable(cli_vcp);
+    // furi_record_close(RECORD_CLI_VCP);
     return 0;
 }

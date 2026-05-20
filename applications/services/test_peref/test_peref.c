@@ -14,6 +14,7 @@
 
 
 #include <furi_hal_serial.h>
+#include <cli/cli_vcp.h>
 
 #define TAG "PerefTest"
 
@@ -87,13 +88,13 @@ int32_t test_peref_srv(void* p) {
     //test_nvm();
 
     //Power* power = furi_record_open(RECORD_POWER);
-    FuriHalSerialHandle* serial_handle;
-    serial_handle = furi_hal_serial_control_acquire(FuriHalSerialIdUartPio);
-    furi_hal_serial_init(serial_handle, 230400);
-    uint8_t buffer[] = "Hello, UART PIO!";
+    furi_delay_ms(2000);
+    CliVcp* cli_vcp = furi_record_open(RECORD_CLI_VCP);
+    cli_vcp_enable(cli_vcp);
+    furi_record_close(RECORD_CLI_VCP);
+
     while(true) {
         FURI_LOG_I(TAG, "Test");
-        furi_hal_serial_tx(serial_handle, buffer, sizeof(buffer), 1000);
         furi_delay_ms(500);
     }
     furi_crash();
