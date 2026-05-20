@@ -4344,6 +4344,193 @@ static bool test_prl_soft_reset_rx_resets_state_before_dedup(void) {
     return true;
 }
 
+// --- L3 PE swap handling (DR / PR / VCONN) ---------------------------------
+
+static bool test_pe_dr_swap_received_accepted_flips_data_role(void) {
+    UcsiPpm* ppm = mock_snk_ready(); // sink → starts as UFP
+    TEST_ASSERT(!ppm->pe_data_role_is_dfp);
+    TEST_ASSERT(ppm->accept_dr_swap); // default policy
+    mock_i2c_reset();
+
+    simulate_pd_message(ppm, 0x09u /* DR_Swap */, NULL, 0);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady); // still Ready
+    TEST_ASSERT(ppm->pe_data_role_is_dfp); // flipped to DFP
+    const int idx = find_fifo_burst_by_msg_type(0x03u /* Accept */);
+    TEST_ASSERT(idx >= 0);
+    // Per PD §6.3.10 the Accept itself goes out with the OLD data role.
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const uint16_t hdr = (uint16_t)(fifo[5] | ((uint16_t)fifo[6] << 8));
+    TEST_ASSERT((hdr & (1u << 5)) == 0u); // old data role = UFP
+    TEST_ASSERT(ppm->connector_status_change & UCSI_PPM_CSC_PARTNER_CHANGED);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_received_rejected_by_policy(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    ppm->accept_dr_swap = false;
+    mock_i2c_reset();
+
+    simulate_pd_message(ppm, 0x09u /* DR_Swap */, NULL, 0);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(!ppm->pe_data_role_is_dfp); // unchanged
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x04u /* Reject */) >= 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x03u /* Accept */) < 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_received_outside_ready_ignored(void) {
+    UcsiPpm* ppm = mock_attach(false); // PE_SNK_WaitForCapabilities
+    mock_i2c_reset();
+
+    simulate_pd_message(ppm, 0x09u, NULL, 0);
+
+    // No response sent — swap must come from an established contract.
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x03u) < 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x04u) < 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_pr_swap_always_rejected_in_v1(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    ppm->accept_pr_swap = true; // even with policy enabled — v1 still rejects
+    mock_i2c_reset();
+
+    simulate_pd_message(ppm, 0x0Au /* PR_Swap */, NULL, 0);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x04u /* Reject */) >= 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x03u) < 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_vconn_swap_always_rejected_in_v1(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+    simulate_pd_message(ppm, 0x0Bu /* VCONN_Swap */, NULL, 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x04u) >= 0);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_initiated_via_set_uor(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    TEST_ASSERT(!ppm->pe_data_role_is_dfp);
+    mock_i2c_reset();
+
+    // SET_UOR Initiate-DFP (Role bit 0 = 1, bits 1/2 = 0).
+    uint8_t payload[7] = {0};
+    pack_role3(&payload[1], &payload[2], 0x01u);
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 1, 7, payload);
+    uint8_t op = UCSI_PPM_OPCODE_SET_UOR;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+
+    TEST_ASSERT(read_cci(ppm) & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(!(read_cci(ppm) & UCSI_PPM_CCI_ERROR));
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x09u /* DR_Swap */) >= 0);
+    // accept_dr_swap stays false because ROLE_ACCEPT_SWAPS (bit 2) wasn't set.
+    TEST_ASSERT(!ppm->accept_dr_swap);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_initiator_accept_flips_role(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, true) == UcsiPpmStatusOk);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(ppm->pe_data_role_is_dfp);
+    TEST_ASSERT(ppm->connector_status_change & UCSI_PPM_CSC_PARTNER_CHANGED);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_initiator_reject_keeps_role(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    ucsi_ppm_pe_request_dr_swap(ppm, true);
+    simulate_pd_message(ppm, 0x04u /* Reject */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(!ppm->pe_data_role_is_dfp);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_initiator_wait_keeps_role(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    ucsi_ppm_pe_request_dr_swap(ppm, true);
+    simulate_pd_message(ppm, 0x0Cu /* Wait */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(!ppm->pe_data_role_is_dfp);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_initiator_timeout_hard_resets(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    ucsi_ppm_pe_request_dr_swap(ppm, true);
+    g_mock_time_ms += 600; // past SenderResponseTimer
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_initiated_outside_ready_errors(void) {
+    UcsiPpm* ppm = mock_attach(false); // PE_SNK_WaitForCapabilities
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, true) == UcsiPpmStatusInvalidArg);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_initiated_same_role_is_no_op(void) {
+    UcsiPpm* ppm = mock_snk_ready(); // already UFP
+    mock_i2c_reset();
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, false) == UcsiPpmStatusOk);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x09u) < 0); // nothing transmitted
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cs_partner_type_reflects_data_role_after_dr_swap(void) {
+    UcsiPpm* ppm = mock_snk_ready(); // we're UFP → partner = DFP (Table 6-43 = 1)
+    uint8_t resp[19];
+    send_get_connector_status(ppm, resp);
+    TEST_ASSERT(read_packed_field(resp, 29u, 3u) == 1u);
+
+    // Drain the change bitmap before the swap.
+    uint8_t ack_byte =
+        UCSI_PPM_ACK_CC_CI_COMMAND_COMPLETED_ACK | UCSI_PPM_ACK_CC_CI_CONNECTOR_CHANGE_ACK;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 2, 1, &ack_byte);
+    uint8_t ack_op = UCSI_PPM_OPCODE_ACK_CC_CI;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &ack_op);
+
+    // Partner-initiated DR_Swap → we flip to DFP → partner becomes UFP (=2).
+    simulate_pd_message(ppm, 0x09u, NULL, 0);
+    TEST_ASSERT(ppm->pe_data_role_is_dfp);
+
+    send_get_connector_status(ppm, resp);
+    TEST_ASSERT(read_packed_field(resp, 29u, 3u) == 2u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_cs_failed_attach_does_not_notify(void) {
     // AttachWait → Unattached via timeout (no VBUS) must NOT raise a
     // Connect Change — we never actually attached as far as OPM is concerned.
@@ -4762,6 +4949,21 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_tx_retry_fail_in_wait_soft_reset_escalates_hard),
     TEST_ENTRY(test_pe_rx_soft_reset_accepted_and_restarts),
     TEST_ENTRY(test_prl_soft_reset_rx_resets_state_before_dedup),
+
+    // L3 PE swap handling (DR / PR / VCONN — PD §6.3.10 / §8.3.3.8 / .9).
+    TEST_ENTRY(test_pe_dr_swap_received_accepted_flips_data_role),
+    TEST_ENTRY(test_pe_dr_swap_received_rejected_by_policy),
+    TEST_ENTRY(test_pe_dr_swap_received_outside_ready_ignored),
+    TEST_ENTRY(test_pe_pr_swap_always_rejected_in_v1),
+    TEST_ENTRY(test_pe_vconn_swap_always_rejected_in_v1),
+    TEST_ENTRY(test_pe_dr_swap_initiated_via_set_uor),
+    TEST_ENTRY(test_pe_dr_swap_initiator_accept_flips_role),
+    TEST_ENTRY(test_pe_dr_swap_initiator_reject_keeps_role),
+    TEST_ENTRY(test_pe_dr_swap_initiator_wait_keeps_role),
+    TEST_ENTRY(test_pe_dr_swap_initiator_timeout_hard_resets),
+    TEST_ENTRY(test_pe_dr_swap_initiated_outside_ready_errors),
+    TEST_ENTRY(test_pe_dr_swap_initiated_same_role_is_no_op),
+    TEST_ENTRY(test_cs_partner_type_reflects_data_role_after_dr_swap),
 
     // L2 SET_POWER_LEVEL → PE renegotiate (sink-side).
     TEST_ENTRY(test_set_power_level_renegotiates_sink_contract),

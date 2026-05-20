@@ -12,6 +12,9 @@
 #define PD_MSG_TYPE_PS_RDY              0x06u
 #define PD_MSG_TYPE_WAIT                0x0Cu
 #define PD_MSG_TYPE_SOFT_RESET          0x0Du
+#define PD_MSG_TYPE_DR_SWAP             0x09u
+#define PD_MSG_TYPE_PR_SWAP             0x0Au
+#define PD_MSG_TYPE_VCONN_SWAP          0x0Bu
 #define PD_MSG_TYPE_SOURCE_CAPS_DATA    0x01u // also 0x01, but distinguished by NDO>0
 #define PD_MSG_TYPE_REQUEST_DATA        0x02u
 
@@ -154,10 +157,11 @@ static void pe_request_hard_reset(UcsiPpm* ppm) {
     // No PE timer here — completion arrives as HardResetSent from the chip.
 }
 
-// Header for a PD message we originate. Power/data roles track the current
-// TC-decided role (sink=UFP, source=DFP by default until DR_Swap lands).
+// Header for a PD message we originate. Power role tracks tc_role_is_src;
+// data role tracks pe_data_role_is_dfp (so DR_Swap can flip data role
+// without touching power role).
 static uint16_t pe_make_header(const UcsiPpm* ppm, uint8_t msg_type, uint8_t num_objects) {
-    return pe_build_header(msg_type, num_objects, ppm->tc_role_is_src, ppm->tc_role_is_src);
+    return pe_build_header(msg_type, num_objects, ppm->tc_role_is_src, ppm->pe_data_role_is_dfp);
 }
 
 // Sends a Control (NDO=0) message via PRL. Returns true on enqueue success.
@@ -310,6 +314,11 @@ static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
     // Other data messages — ignored in v1.
 }
 
+static bool pe_in_ready(const UcsiPpm* ppm) {
+    return ppm->pe_state == (int)UcsiPpmPeSnkReady ||
+           ppm->pe_state == (int)UcsiPpmPeSrcReady;
+}
+
 static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
     // Incoming Soft_Reset is processed regardless of current state — PRL has
     // already reset MessageID counters on detecting the SOFT_RESET frame
@@ -320,6 +329,32 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
             return;
         }
         pe_restart_after_hard_reset(ppm);
+        return;
+    }
+
+    // Swap requests are only processed from an established contract (*Ready).
+    // PR_Swap / VCONN_Swap aren't implemented in v1 (require VBUS-handover /
+    // VCONN HAL hooks that don't exist yet) — we Reject per PD §6.3.x so the
+    // partner can fall back. DR_Swap is fully wired: gated by accept_dr_swap
+    // policy, Accept flips data role on both ends.
+    if(type == PD_MSG_TYPE_DR_SWAP) {
+        if(!pe_in_ready(ppm)) return;
+        if(!ppm->accept_dr_swap) {
+            (void)pe_send_control(ppm, PD_MSG_TYPE_REJECT);
+            return;
+        }
+        if(!pe_send_control(ppm, PD_MSG_TYPE_ACCEPT)) {
+            pe_request_hard_reset(ppm);
+            return;
+        }
+        // PD §6.3.10: data role flips after Accept is on the wire.
+        ppm->pe_data_role_is_dfp = !ppm->pe_data_role_is_dfp;
+        ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_PARTNER_CHANGED);
+        return;
+    }
+    if(type == PD_MSG_TYPE_PR_SWAP || type == PD_MSG_TYPE_VCONN_SWAP) {
+        if(!pe_in_ready(ppm)) return;
+        (void)pe_send_control(ppm, PD_MSG_TYPE_REJECT);
         return;
     }
 
@@ -348,6 +383,19 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
             pe_request_hard_reset(ppm);
         }
         break;
+    case (int)UcsiPpmPeWaitForDrSwapResponse:
+        if(type == PD_MSG_TYPE_ACCEPT) {
+            ppm->pe_data_role_is_dfp = !ppm->pe_data_role_is_dfp;
+            ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_PARTNER_CHANGED);
+        }
+        // Accept / Reject / Wait all return to *Ready — only Accept flips
+        // the role. Partner can refuse and we simply stay as we were.
+        if(type == PD_MSG_TYPE_ACCEPT || type == PD_MSG_TYPE_REJECT ||
+           type == PD_MSG_TYPE_WAIT) {
+            ppm->pe_state =
+                ppm->tc_role_is_src ? (int)UcsiPpmPeSrcReady : (int)UcsiPpmPeSnkReady;
+        }
+        break;
     default:
         break;
     }
@@ -366,6 +414,7 @@ UcsiPpmStatus ucsi_ppm_pe_init(UcsiPpm* ppm) {
     ppm->pe_caps_counter = 0u;
     ppm->pe_current_rdo = 0u;
     ppm->pe_hard_reset_counter = 0u;
+    ppm->pe_data_role_is_dfp = false;
     return UcsiPpmStatusOk;
 }
 
@@ -375,12 +424,16 @@ UcsiPpmStatus ucsi_ppm_pe_reset(UcsiPpm* ppm) {
 
 void ucsi_ppm_pe_on_attach_snk(UcsiPpm* ppm) {
     (void)ucsi_ppm_pe_init(ppm);
+    // Type-C convention: sink is UFP, source is DFP at attach. DR_Swap can
+    // later flip this independently of the power role.
+    ppm->pe_data_role_is_dfp = false;
     ppm->pe_state = (int)UcsiPpmPeSnkWaitForCapabilities;
     pe_arm_timer(ppm);
 }
 
 void ucsi_ppm_pe_on_attach_src(UcsiPpm* ppm) {
     (void)ucsi_ppm_pe_init(ppm);
+    ppm->pe_data_role_is_dfp = true;
     ppm->pe_state = (int)UcsiPpmPeSrcSendCapabilities;
     if(!pe_src_send_caps(ppm)) {
         pe_to_error(ppm);
@@ -486,6 +539,20 @@ UcsiPpmStatus
     return UcsiPpmStatusOk;
 }
 
+UcsiPpmStatus ucsi_ppm_pe_request_dr_swap(UcsiPpm* ppm, bool to_dfp) {
+    if(!pe_in_ready(ppm)) return UcsiPpmStatusInvalidArg;
+    if(ppm->pe_data_role_is_dfp == to_dfp) {
+        // Already in requested role — nothing to do.
+        return UcsiPpmStatusOk;
+    }
+    if(!pe_send_control(ppm, PD_MSG_TYPE_DR_SWAP)) {
+        return UcsiPpmStatusHalError;
+    }
+    ppm->pe_state = (int)UcsiPpmPeWaitForDrSwapResponse;
+    pe_arm_timer(ppm);
+    return UcsiPpmStatusOk;
+}
+
 void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     switch(event->kind) {
     case UcsiPpmPhyEventHardResetSent:
@@ -514,6 +581,7 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         case (int)UcsiPpmPeSnkWaitForPsRdy:
         case (int)UcsiPpmPeSrcSendCapabilities:
         case (int)UcsiPpmPeSrcTransitionSupply:
+        case (int)UcsiPpmPeWaitForDrSwapResponse:
             pe_request_soft_reset(ppm);
             break;
         case (int)UcsiPpmPeWaitForSoftResetAccept:
@@ -541,6 +609,11 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
     case (int)UcsiPpmPeWaitForSoftResetAccept:
         // SenderResponseTimer also gates Soft_Reset Accept (PD §8.3.3.4).
         // No Accept in time → Hard Reset.
+        if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
+        break;
+    case (int)UcsiPpmPeWaitForDrSwapResponse:
+        // Same SenderResponseTimer (§6.6.2). On timeout PD §8.3.3.8 takes
+        // the initiator to PE_*_Hard_Reset.
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
         break;
     case (int)UcsiPpmPeSnkWaitForPsRdy:

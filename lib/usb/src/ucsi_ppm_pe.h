@@ -24,6 +24,7 @@ typedef enum {
     UcsiPpmPeSrcReady, // explicit PD contract held (source)
     UcsiPpmPePendingHardResetSent, // Hard Reset triggered, waiting for HARDSENT
     UcsiPpmPeWaitForSoftResetAccept, // Soft_Reset sent, armed SenderResponseTimer
+    UcsiPpmPeWaitForDrSwapResponse, // DR_Swap sent, armed SenderResponseTimer
     UcsiPpmPeStateError, // unrecoverable: HardResetCounter exhausted
 } UcsiPpmPeState;
 
@@ -47,6 +48,13 @@ void ucsi_ppm_pe_on_power_supply_ready(UcsiPpm* ppm);
 // arrived — reset and wait for new Caps/Request). Other event kinds are
 // ignored — TC/PRL handle them.
 void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event);
+
+// Initiates a DR_Swap toward the partner (PD R3.0 §6.3.10 / §8.3.3.8). Valid
+// only from SnkReady or SrcReady. If `to_dfp` already matches our current
+// data role this is a no-op (returns Ok). On success the PE moves to
+// WaitForDrSwapResponse and arms SenderResponseTimer; partner's Accept flips
+// the data role, Reject/Wait/timeout leaves the role intact.
+UcsiPpmStatus ucsi_ppm_pe_request_dr_swap(UcsiPpm* ppm, bool to_dfp);
 
 // Renegotiates the existing sink-side contract at a different operating
 // current. Builds a fresh Request RDO selecting the same PDO position as

@@ -345,12 +345,18 @@ static uint32_t handle_set_uor(UcsiPpm* ppm) {
         return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
     }
 
-    // accept-swap policy flag: always stored; takes effect once L3 is up.
+    // accept-swap policy flag is always stored regardless of contract state.
     ppm->accept_dr_swap = (role & ROLE_ACCEPT_SWAPS) != 0u;
 
-    // Initiate bits are a no-op in v1 (no PD partner). When L3 lands they'll
-    // kick off a DR_Swap; for now we just report success so callers can
-    // configure policy before a connect.
+    if((role & ROLE_INITIATE_MASK) != 0u) {
+        // Initiate a DR_Swap toward the requested role. Requires an active
+        // PD contract — otherwise there's nothing to swap.
+        const bool to_dfp = (role & ROLE_INITIATE_PRIMARY) != 0u;
+        const UcsiPpmStatus s = ucsi_ppm_pe_request_dr_swap(ppm, to_dfp);
+        if(s != UcsiPpmStatusOk) {
+            return fail_with_error(ppm, UCSI_PPM_ERR_PPM_POLICY_CONFLICT);
+        }
+    }
     return UCSI_PPM_CCI_COMMAND_COMPLETED;
 }
 
@@ -500,8 +506,9 @@ static uint32_t handle_get_connector_status(UcsiPpm* ppm) {
         write_field(msg, CONNSTAT_OFF_POWER_DIRECTION, 1u, ppm->tc_role_is_src ? 1u : 0u);
 
         // Partner Type (Table 6-43): 1 = DFP attached, 2 = UFP attached.
-        // We're DFP when source, UFP when sink — so partner is the opposite.
-        const uint8_t partner_type = ppm->tc_role_is_src ? 2u : 1u;
+        // We're DFP when pe_data_role_is_dfp (modified independently by
+        // DR_Swap from the power role) — partner is the opposite.
+        const uint8_t partner_type = ppm->pe_data_role_is_dfp ? 2u : 1u;
         write_field(msg, CONNSTAT_OFF_PARTNER_TYPE, 3u, partner_type);
         // Partner Flags bit 0 = USB capability; we assume true once attached.
         write_field(msg, CONNSTAT_OFF_PARTNER_FLAGS, 1u, 1u);

@@ -190,6 +190,11 @@ struct UcsiPpm {
     // Bounded retry count for self-initiated Hard Resets. PD R3.0 caps it at
     // nHardResetCount = 2 (Table 7.12). Reset on entry to *Ready.
     uint8_t pe_hard_reset_counter;
+    // Current data role. Initialised from tc_role_is_src at attach (sink=UFP,
+    // source=DFP) and updated independently by DR_Swap (PD R3.0 §6.3.10).
+    // Drives the Data Role bit in outgoing PD headers and Partner Type
+    // reported via GET_CONNECTOR_STATUS.
+    bool pe_data_role_is_dfp;
 
     // Accumulated Connector Status Change bitmap (commands.md §2.17 / Table
     // 6-44). PE / TC layers OR new bits in via ucsi_ppm_notify_connector_change;
