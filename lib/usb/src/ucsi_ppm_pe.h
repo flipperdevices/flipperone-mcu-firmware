@@ -23,6 +23,7 @@ typedef enum {
     UcsiPpmPeSrcTransitionSupply, // Request accepted, PSU ramping, armed PSTransitionTimer
     UcsiPpmPeSrcReady, // explicit PD contract held (source)
     UcsiPpmPePendingHardResetSent, // Hard Reset triggered, waiting for HARDSENT
+    UcsiPpmPeWaitForSoftResetAccept, // Soft_Reset sent, armed SenderResponseTimer
     UcsiPpmPeStateError, // unrecoverable: HardResetCounter exhausted
 } UcsiPpmPeState;
 

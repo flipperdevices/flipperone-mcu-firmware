@@ -6,6 +6,13 @@
 #define MSG_HDR_MSG_ID_SHIFT 9u
 #define MSG_HDR_MSG_ID_MASK  ((uint16_t)(0x07u << MSG_HDR_MSG_ID_SHIFT))
 
+// PD R3.0 Message Header — Message Type (bits 4:0) and Number of Data Objects
+// (bits 14:12). A Soft_Reset is a Control message: type=0x0D, NDO=0.
+#define MSG_HDR_MSG_TYPE_MASK   0x001Fu
+#define MSG_HDR_NUM_OBJ_SHIFT   12u
+#define MSG_HDR_NUM_OBJ_MASK    ((uint16_t)(0x07u << MSG_HDR_NUM_OBJ_SHIFT))
+#define PD_MSG_TYPE_SOFT_RESET  0x0Du
+
 // MessageIDCounter wraps after 0..7 (PD R3.0 §6.8.1 nMessageIDCount = 7).
 #define PRL_MSG_ID_WRAP 8u
 
@@ -50,6 +57,17 @@ static void prl_drain_rx_fifo(UcsiPpm* ppm) {
         const UcsiPpmStatus s = ucsi_ppm_phy_recv_message(ppm, &msg, &received);
         if(s != UcsiPpmStatusOk || !received) break;
 
+        // Soft_Reset frames reset PRL state before dedup (PD R3.0 §6.8.1.2).
+        // The partner's MessageIDCounter has just rolled back to 0, so our
+        // stored last_rx_msg_id would otherwise dedup the legitimate frame.
+        const uint8_t msg_type = (uint8_t)(msg.header & MSG_HDR_MSG_TYPE_MASK);
+        const uint8_t num_obj = (uint8_t)((msg.header & MSG_HDR_NUM_OBJ_MASK) >> MSG_HDR_NUM_OBJ_SHIFT);
+        const bool is_soft_reset = (msg_type == PD_MSG_TYPE_SOFT_RESET && num_obj == 0u);
+        if(is_soft_reset && msg.sop_type == UcsiPpmPhySopTypeSop) {
+            ppm->prl_next_tx_msg_id = 0u;
+            ppm->prl_last_rx_valid = false;
+        }
+
         // SOP duplicate detection (PD R3.0 §6.8.1.1). SOP'/SOP'' aren't in
         // scope for v1 — pass them through without dedup (the chip won't
         // ack them either since ENSOP* is 0 in init, but be safe).
@@ -85,7 +103,9 @@ void ucsi_ppm_prl_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     case UcsiPpmPhyEventTxRetryFail:
     case UcsiPpmPhyEventCollision:
         // TX outcomes are PE's concern (continue / Soft Reset / Hard Reset).
-        // TODO: notify PE.
+        // PE receives the same phy event via ucsi_ppm_pe_handle_phy_event;
+        // PRL state itself stays put — PE resets it explicitly when it
+        // initiates Soft Reset (so msg_id=0 goes out).
         break;
     default:
         // ToggleDone / VBUS / BC_LVL / Comp — not for PRL.

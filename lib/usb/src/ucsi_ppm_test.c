@@ -3920,6 +3920,15 @@ static void simulate_hard_reset_rx(UcsiPpm* ppm) {
     ucsi_ppm_tick(ppm);
 }
 
+static void simulate_tx_retry_fail(UcsiPpm* ppm) {
+    g_mock_regs[Fusb302RegInterrupt] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptARegBits inta = {.i_retry_fail = 1};
+    g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
 static bool test_pe_snk_hard_reset_sent_returns_to_wait_caps(void) {
     UcsiPpm* ppm = mock_attach(false);
     g_mock_time_ms += 600; // expire SinkWaitCapTimer
@@ -4202,6 +4211,134 @@ static bool test_pe_hard_reset_counter_resets_on_ready(void) {
     simulate_pd_message(ppm, 0x06u, NULL, 0);
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
     TEST_ASSERT(ppm->pe_hard_reset_counter == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// --- L3 PE Soft Reset on TX_RETRY_FAIL (PD R3.0 §6.3.13 / §8.3.3.4) --------
+
+// Drives sink-side PD to SnkReady so soft-reset tests start from a stable
+// contract.
+static UcsiPpm* mock_snk_ready(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+    simulate_pd_message(ppm, 0x06u /* PS_RDY */, NULL, 0);
+    return ppm;
+}
+
+static bool test_pe_tx_retry_fail_in_snk_ready_triggers_soft_reset(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    mock_i2c_reset();
+
+    simulate_tx_retry_fail(ppm);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForSoftResetAccept);
+
+    // Soft_Reset (msg_type 0x0D, NDO=0) was transmitted via PRL after a
+    // counter reset, so the header carries MessageID = 0 and msg_id_counter
+    // advanced to 1 for the next outgoing frame.
+    const int idx = find_fifo_burst_by_msg_type(0x0Du);
+    TEST_ASSERT(idx >= 0);
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const uint16_t hdr = (uint16_t)(fifo[5] | ((uint16_t)fifo[6] << 8));
+    TEST_ASSERT(((hdr >> 9) & 0x07u) == 0u); // MessageID == 0
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == 0u); // NDO == 0
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 1u);
+    TEST_ASSERT(!ppm->prl_last_rx_valid);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_soft_reset_accept_restarts_negotiation(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    const uint8_t hr_before = ppm->pe_hard_reset_counter;
+    simulate_tx_retry_fail(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForSoftResetAccept);
+
+    // Partner Accepts the Soft_Reset; its own counter is now 0 too.
+    g_test_partner_msg_id = 0;
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    // Soft reset does not consume Hard Reset budget.
+    TEST_ASSERT(ppm->pe_hard_reset_counter == hr_before);
+    // Half-formed contract state cleared, ready for fresh caps.
+    TEST_ASSERT(ppm->pe_received_pdo_count == 0u);
+    TEST_ASSERT(ppm->pe_current_rdo == 0u);
+    TEST_ASSERT(ppm->pe_negotiated_voltage_mv == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_soft_reset_timeout_escalates_to_hard_reset(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_tx_retry_fail(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForSoftResetAccept);
+
+    // SenderResponseTimer = 500 ms — no Accept within the window → Hard Reset.
+    g_mock_time_ms += 600;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_tx_retry_fail_in_wait_soft_reset_escalates_hard(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_tx_retry_fail(ppm); // -> WaitForSoftResetAccept
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForSoftResetAccept);
+
+    // Soft_Reset frame itself failed — must go straight to Hard Reset.
+    simulate_tx_retry_fail(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_rx_soft_reset_accepted_and_restarts(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+
+    // Partner just reset its counter, so its Soft_Reset goes out with id=0.
+    g_test_partner_msg_id = 0;
+    simulate_pd_message(ppm, 0x0Du /* Soft_Reset */, NULL, 0);
+
+    // PE Accepted and restarted contract negotiation.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x03u /* Accept */) >= 0);
+
+    // PRL state was rolled back so partner's next msg (id=1) isn't deduped.
+    TEST_ASSERT(ppm->prl_last_rx_valid); // SOFT_RESET frame itself recorded
+    TEST_ASSERT(ppm->prl_last_rx_msg_id == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_soft_reset_rx_resets_state_before_dedup(void) {
+    // Targeted PRL-level check: Soft_Reset must bypass dedup even when its
+    // msg_id collides with prl_last_rx_msg_id.
+    UcsiPpm* ppm = mock_snk_ready();
+    // Drive prl_last_rx_msg_id to a known non-zero value.
+    TEST_ASSERT(ppm->prl_last_rx_valid);
+    const uint8_t stale_id = ppm->prl_last_rx_msg_id;
+
+    // Force partner counter back to stale_id — without Soft_Reset bypass the
+    // PRL would discard this frame as a duplicate.
+    g_test_partner_msg_id = stale_id;
+    simulate_pd_message(ppm, 0x0Du /* Soft_Reset */, NULL, 0);
+
+    // PE saw the frame and Accept'd → state advanced.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -4617,6 +4754,14 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_hard_reset_rx_restarts_without_counter_bump),
     TEST_ENTRY(test_pe_hard_reset_counter_caps_at_max),
     TEST_ENTRY(test_pe_hard_reset_counter_resets_on_ready),
+
+    // L3 PE Soft Reset on TX_RETRY_FAIL (PD §6.3.13 / §8.3.3.4).
+    TEST_ENTRY(test_pe_tx_retry_fail_in_snk_ready_triggers_soft_reset),
+    TEST_ENTRY(test_pe_soft_reset_accept_restarts_negotiation),
+    TEST_ENTRY(test_pe_soft_reset_timeout_escalates_to_hard_reset),
+    TEST_ENTRY(test_pe_tx_retry_fail_in_wait_soft_reset_escalates_hard),
+    TEST_ENTRY(test_pe_rx_soft_reset_accepted_and_restarts),
+    TEST_ENTRY(test_prl_soft_reset_rx_resets_state_before_dedup),
 
     // L2 SET_POWER_LEVEL → PE renegotiate (sink-side).
     TEST_ENTRY(test_set_power_level_renegotiates_sink_contract),

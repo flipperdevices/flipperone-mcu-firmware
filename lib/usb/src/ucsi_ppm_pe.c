@@ -11,6 +11,7 @@
 #define PD_MSG_TYPE_REJECT              0x04u
 #define PD_MSG_TYPE_PS_RDY              0x06u
 #define PD_MSG_TYPE_WAIT                0x0Cu
+#define PD_MSG_TYPE_SOFT_RESET          0x0Du
 #define PD_MSG_TYPE_SOURCE_CAPS_DATA    0x01u // also 0x01, but distinguished by NDO>0
 #define PD_MSG_TYPE_REQUEST_DATA        0x02u
 
@@ -111,6 +112,29 @@ static void pe_to_error(UcsiPpm* ppm) {
     // HardResetCounter exhausts. Recoverable protocol errors go through
     // pe_request_hard_reset instead.
     ppm->pe_state = (int)UcsiPpmPeStateError;
+}
+
+// Forward declarations (Soft Reset can escalate to Hard Reset on failure).
+static void pe_request_hard_reset(UcsiPpm* ppm);
+static void pe_restart_after_hard_reset(UcsiPpm* ppm);
+static bool pe_send_control(UcsiPpm* ppm, uint8_t msg_type);
+
+// Triggers a self-initiated Soft_Reset per PD R3.0 §6.3.13 / §8.3.3.4. Resets
+// PRL state (so msg_id=0 goes out, partner's stale dedup state is cleared on
+// arrival), transmits Soft_Reset, arms SenderResponseTimer waiting for Accept.
+// Used when TX retries are exhausted — soft is the first escalation step
+// before falling back to Hard Reset.
+static void pe_request_soft_reset(UcsiPpm* ppm) {
+    // PRL state must be reset *before* sending so the Soft_Reset frame goes
+    // out with MessageID = 0 (§6.8.1.2).
+    (void)ucsi_ppm_prl_reset(ppm);
+    if(!pe_send_control(ppm, PD_MSG_TYPE_SOFT_RESET)) {
+        // Couldn't even enqueue — escalate immediately.
+        pe_request_hard_reset(ppm);
+        return;
+    }
+    ppm->pe_state = (int)UcsiPpmPeWaitForSoftResetAccept;
+    pe_arm_timer(ppm);
 }
 
 // Triggers a self-initiated Hard Reset: tells PHY to drive the BMC pattern
@@ -287,6 +311,18 @@ static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
 }
 
 static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
+    // Incoming Soft_Reset is processed regardless of current state — PRL has
+    // already reset MessageID counters on detecting the SOFT_RESET frame
+    // (§6.8.1.2); we Accept and restart contract negotiation.
+    if(type == PD_MSG_TYPE_SOFT_RESET) {
+        if(!pe_send_control(ppm, PD_MSG_TYPE_ACCEPT)) {
+            pe_request_hard_reset(ppm);
+            return;
+        }
+        pe_restart_after_hard_reset(ppm);
+        return;
+    }
+
     switch(ppm->pe_state) {
     case (int)UcsiPpmPeSnkWaitForAccept:
         if(type == PD_MSG_TYPE_ACCEPT) {
@@ -301,6 +337,15 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
     case (int)UcsiPpmPeSnkWaitForPsRdy:
         if(type == PD_MSG_TYPE_PS_RDY) {
             pe_commit_contract(ppm);
+        }
+        break;
+    case (int)UcsiPpmPeWaitForSoftResetAccept:
+        if(type == PD_MSG_TYPE_ACCEPT) {
+            // Soft reset acknowledged — restart contract negotiation from
+            // wait-caps / send-caps (same as post-Hard-Reset).
+            pe_restart_after_hard_reset(ppm);
+        } else if(type == PD_MSG_TYPE_REJECT || type == PD_MSG_TYPE_WAIT) {
+            pe_request_hard_reset(ppm);
         }
         break;
     default:
@@ -458,6 +503,28 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
             pe_restart_after_hard_reset(ppm);
         }
         break;
+    case UcsiPpmPhyEventTxRetryFail:
+        // PD R3.0 §6.7.1: TX retry exhausted → escalate. From an active
+        // contract or mid-negotiation, the first step is Soft Reset; if the
+        // failure happens during Soft Reset itself, go straight to Hard Reset.
+        switch(ppm->pe_state) {
+        case (int)UcsiPpmPeSnkReady:
+        case (int)UcsiPpmPeSrcReady:
+        case (int)UcsiPpmPeSnkWaitForAccept:
+        case (int)UcsiPpmPeSnkWaitForPsRdy:
+        case (int)UcsiPpmPeSrcSendCapabilities:
+        case (int)UcsiPpmPeSrcTransitionSupply:
+            pe_request_soft_reset(ppm);
+            break;
+        case (int)UcsiPpmPeWaitForSoftResetAccept:
+            pe_request_hard_reset(ppm);
+            break;
+        default:
+            // Idle / WaitForCapabilities / PendingHardResetSent / Error —
+            // either nothing was in flight, or recovery is already running.
+            break;
+        }
+        break;
     default:
         break;
     }
@@ -469,6 +536,11 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SINK_WAIT_CAP_MS)) pe_request_hard_reset(ppm);
         break;
     case (int)UcsiPpmPeSnkWaitForAccept:
+        if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
+        break;
+    case (int)UcsiPpmPeWaitForSoftResetAccept:
+        // SenderResponseTimer also gates Soft_Reset Accept (PD §8.3.3.4).
+        // No Accept in time → Hard Reset.
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
         break;
     case (int)UcsiPpmPeSnkWaitForPsRdy:
