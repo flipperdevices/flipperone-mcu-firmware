@@ -2582,6 +2582,33 @@ static void simulate_vbus_changed(UcsiPpm* ppm, bool vbus_ok) {
     ucsi_ppm_tick(ppm);
 }
 
+// Simulates a BC_LVL-changed IRQ (INTERRUPT.I_BC_LVL) with STATUS0.BC_LVL
+// set to `bc_lvl` (2-bit field). Used to drive source-side detach detection
+// via tc_handle_phy_event.
+static void simulate_bc_lvl_changed(UcsiPpm* ppm, uint8_t bc_lvl) {
+    g_mock_regs[Fusb302RegInterruptA] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptRegBits intr = {.i_bc_lvl = 1};
+    g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
+    const Fusb302Status0RegBits s0 = {.bc_lvl = bc_lvl};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+// Drives the SM all the way to Attached.{Src,Snk} for the requested role.
+// Used by detach tests so they can focus on the detach assertions.
+static UcsiPpm* mock_attach(bool as_src) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, as_src ? FUSB302_STATUS1A_TOGSS_SRCON_CC1 : FUSB302_STATUS1A_TOGSS_SNKON_CC1);
+    g_mock_time_ms = 10;
+    simulate_vbus_changed(ppm, true);
+    g_mock_time_ms = 150;
+    ucsi_ppm_tick(ppm);
+    return ppm;
+}
+
 static bool test_tc_init_drp_starts_drp_toggle(void) {
     UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
     TEST_ASSERT(ppm != NULL);
@@ -2862,8 +2889,10 @@ static bool test_tc_attach_no_vbus_stays_attach_wait(void) {
     g_mock_time_ms = 0;
     simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
 
-    // Plenty of time elapsed — but no VBUS_OK event arrived.
-    g_mock_time_ms = 500;
+    // CCDebounce elapsed but no VBUS_OK arrived — must stay AttachWait.
+    // Stay strictly below the AttachWait give-up timeout (1c handles the
+    // post-timeout path in test_tc_attach_wait_timeout_restarts_toggle).
+    g_mock_time_ms = 200;
     TEST_ASSERT(ucsi_ppm_tick(ppm) == UcsiPpmStatusOk);
     TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
 
@@ -2918,6 +2947,141 @@ static bool test_tc_deinit_drops_vbus_source(void) {
 
     TEST_ASSERT(g_mock_vbus_source_calls >= 1);
     TEST_ASSERT(g_mock_vbus_source_last == false);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// --- L3 Type-C SM 1c (Detach + ErrorRecovery) ------------------------------
+
+static bool test_tc_snk_detach_on_vbus_lost(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+    mock_i2c_reset();
+
+    // Partner drops VBUS — we should fall back to Unattached and re-arm toggle.
+    g_mock_time_ms = 200;
+    simulate_vbus_changed(ppm, false);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    // Toggle re-armed: CONTROL2.TOGGLE = 1.
+    const uint8_t c2 = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits c2_bits = *((const Fusb302Control2RegBits*)&c2);
+    TEST_ASSERT(c2_bits.toggle == 1);
+    // PD reception disabled (SWITCHES1.AUTO_CRC cleared by phy_disable_pd).
+    const uint8_t sw1 = g_mock_regs[Fusb302RegSwitches1];
+    const Fusb302Switches1RegBits sw1_bits = *((const Fusb302Switches1RegBits*)&sw1);
+    TEST_ASSERT(sw1_bits.auto_crc == 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_detach_on_bc_lvl_high(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+    TEST_ASSERT(g_mock_vbus_source_last == true);
+    mock_i2c_reset();
+    g_mock_vbus_source_calls = 0;
+    g_mock_vbus_source_last = true; // mock still believes the rail is on
+
+    // Partner pulls Rd → CC is pulled to supply by our Rp → BC_LVL = 0b11.
+    simulate_bc_lvl_changed(ppm, 0b11u);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    TEST_ASSERT(g_mock_vbus_source_calls >= 1);
+    TEST_ASSERT(g_mock_vbus_source_last == false); // dropped
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_bc_lvl_rd_present_no_detach(void) {
+    // BC_LVL 0b10 in Attached.SRC just means partner adjusted Rp current
+    // (or noise). Must not trigger detach.
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+    mock_i2c_reset();
+
+    simulate_bc_lvl_changed(ppm, 0b10u);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_snk_bc_lvl_changes_no_detach(void) {
+    // BC_LVL in sink-mode tracks partner Rp; changes here are not detach.
+    UcsiPpm* ppm = mock_attach(false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+    mock_i2c_reset();
+
+    simulate_bc_lvl_changed(ppm, 0b11u);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_attach_wait_timeout_restarts_toggle(void) {
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // No VBUS event arrives. Past the AttachWait timeout (500 ms) the tick
+    // gives up and goes back to Unattached.
+    g_mock_time_ms = 600;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    // Toggle re-armed.
+    const uint8_t c2 = g_mock_regs[Fusb302RegControl2];
+    const Fusb302Control2RegBits c2_bits = *((const Fusb302Control2RegBits*)&c2);
+    TEST_ASSERT(c2_bits.toggle == 1);
+    // VBUS source dropped (we'd raised it for SRC AttachWait).
+    TEST_ASSERT(g_mock_vbus_source_last == false);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_detach_reattach_full_cycle(void) {
+    // End-to-end: attach as SNK, detach, then re-attach via another
+    // ToggleDone + VBUS sequence.
+    UcsiPpm* ppm = mock_attach(false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+
+    g_mock_time_ms = 200;
+    simulate_vbus_changed(ppm, false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+
+    // Re-attach as SRC this time.
+    g_mock_time_ms = 300;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC2);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+    TEST_ASSERT(ppm->tc_orientation == (int)UcsiPpmPhyCc2);
+
+    g_mock_time_ms = 310;
+    simulate_vbus_changed(ppm, true);
+    g_mock_time_ms = 450;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_vbus_lost_in_attached_src_no_detach(void) {
+    // In Attached.SRC we drive VBUS ourselves; VBUS-lost events on the bus
+    // shouldn't ricochet through and detach us (detach detection on src side
+    // is via BC_LVL, not VBUS).
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+
+    simulate_vbus_changed(ppm, false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -3084,6 +3248,15 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_tc_attach_vbus_before_debounce_holds),
     TEST_ENTRY(test_tc_vbus_changed_in_unattached_ignored),
     TEST_ENTRY(test_tc_deinit_drops_vbus_source),
+
+    // L3 Type-C SM 1c (Detach + AttachWait timeout).
+    TEST_ENTRY(test_tc_snk_detach_on_vbus_lost),
+    TEST_ENTRY(test_tc_src_detach_on_bc_lvl_high),
+    TEST_ENTRY(test_tc_src_bc_lvl_rd_present_no_detach),
+    TEST_ENTRY(test_tc_snk_bc_lvl_changes_no_detach),
+    TEST_ENTRY(test_tc_attach_wait_timeout_restarts_toggle),
+    TEST_ENTRY(test_tc_detach_reattach_full_cycle),
+    TEST_ENTRY(test_tc_vbus_lost_in_attached_src_no_detach),
 };
 
 const size_t test_count = COUNT_OF(k_tests);

@@ -6,8 +6,22 @@
 // We use the nominal lower bound from plan/type-c-sm.md.
 #define UCSI_PPM_TC_CC_DEBOUNCE_MS 100u
 
+// Upper bound on time spent in AttachWait without seeing VBUS. The chip's
+// I_VBUSOK should fire within tVbusON (~275 ms source side) or shortly
+// after sink attaches; if nothing happens for 5 × CCDebounce we treat
+// the would-be attach as bogus and re-arm toggling.
+#define UCSI_PPM_TC_ATTACH_WAIT_TIMEOUT_MS 500u
+
 // PD auto-retry count (PD R3.0 nRetryCount = 2 per plan/pd-scope.md §7).
 #define UCSI_PPM_TC_PD_RETRIES 2u
+
+// STATUS0.BC_LVL interpretation when measuring on the active CC pin with Rp
+// enabled (source side, fusb302.md §5.1):
+//   0b00 — < 200 mV   (no Rd, but rare; partner not present)
+//   0b01 — Rd present, default-USB Rp current advertisement
+//   0b10 — Rd present, 1.5 A capability
+//   0b11 — > 1.23 V   (no Rd at all — partner detached, CC pulled by Rp)
+#define UCSI_PPM_TC_BC_LVL_NO_RD 0b11u
 
 // Maps the configured CC operation mode to the TOGGLE mode the chip
 // should run in. Disabled returns false → caller skips phy_start_toggle.
@@ -141,9 +155,39 @@ static void tc_try_commit_attached(UcsiPpm* ppm) {
     const uint32_t elapsed = (uint32_t)(now - ppm->tc_attach_wait_start_ms);
     if(elapsed < UCSI_PPM_TC_CC_DEBOUNCE_MS) return;
 
-    ppm->tc_state = ppm->tc_role_is_src ? (int)UcsiPpmTcStateAttachedSrc :
-                                          (int)UcsiPpmTcStateAttachedSnk;
+    ppm->tc_state = ppm->tc_role_is_src ? (int)UcsiPpmTcStateAttachedSrc : (int)UcsiPpmTcStateAttachedSnk;
     (void)ucsi_ppm_phy_enable_pd(ppm, UCSI_PPM_TC_PD_RETRIES);
+}
+
+// Tears down the active session and returns to Unattached + re-armed toggle.
+// Common detach / failed-attach path: drops AUTO_CRC, external VBUS source
+// (source side only), CC routing, then restarts the chip's auto-toggle in
+// the configured mode. If the connector is Disabled in config, falls back
+// to Disabled instead.
+static void tc_enter_unattached(UcsiPpm* ppm) {
+    const bool was_src = ppm->tc_role_is_src;
+
+    (void)ucsi_ppm_phy_disable_pd(ppm);
+    if(was_src) {
+        // Drop external VBUS source so we don't keep driving 5V into thin air.
+        ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, false);
+    }
+    // Clear CC routing — TOGGLE will pick the new orientation when it settles.
+    (void)ucsi_ppm_phy_lock_polarity(ppm, UcsiPpmPhyCcNone);
+
+    ppm->tc_orientation = (int)UcsiPpmPhyCcNone;
+    ppm->tc_role_is_src = false;
+    ppm->tc_vbus_seen = false;
+
+    UcsiPpmPhyToggleMode toggle_mode;
+    if(cc_mode_to_toggle(ppm->current_cc_operation_mode, &toggle_mode)) {
+        ppm->tc_state = (int)UcsiPpmTcStateUnattached;
+        ppm->tc_attach_wait_start_ms = ppm->config.time_ms(ppm->config.hal_ctx);
+        (void)ucsi_ppm_phy_start_toggle(ppm, toggle_mode);
+    } else {
+        // Disabled mode (or unreachable default): stay disabled.
+        ppm->tc_state = (int)UcsiPpmTcStateDisabled;
+    }
 }
 
 static void handle_vbus_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
@@ -152,9 +196,23 @@ static void handle_vbus_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
             ppm->tc_vbus_seen = true;
             tc_try_commit_attached(ppm);
         }
-        // TODO (1c): vbus_ok=1 outside AttachWait — log/ignore for now.
+        // vbus_ok=1 outside AttachWait is informational; PE/Type-C events
+        // for already-Attached states use this for power-op-mode signalling
+        // once those layers exist.
     } else {
-        // TODO (1c): vbus_ok=0 in Attached.SNK → detach path.
+        // VBUS lost while attached as Sink — partner went away.
+        if(ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk) {
+            tc_enter_unattached(ppm);
+        }
+    }
+}
+
+static void handle_bc_lvl_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
+    if(ppm->tc_state != (int)UcsiPpmTcStateAttachedSrc) return;
+    // Source-side detach detection: Rd no longer pulling CC down → BC_LVL
+    // rises to 0b11 (CC tracking our Rp pull-up alone).
+    if(event->u.bc_lvl == UCSI_PPM_TC_BC_LVL_NO_RD) {
+        tc_enter_unattached(ppm);
     }
 }
 
@@ -166,17 +224,29 @@ void ucsi_ppm_tc_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     case UcsiPpmPhyEventVbusChanged:
         handle_vbus_changed(ppm, event);
         break;
-    // TODO (1c): CompChanged, BcLvlChanged, HardResetRx, HardResetSent.
-    // PRL/PE events (MessageRx/TxSuccess/TxRetryFail/Collision) are routed
-    // elsewhere when those layers exist.
+    case UcsiPpmPhyEventBcLvlChanged:
+        handle_bc_lvl_changed(ppm, event);
+        break;
+    // TODO: CompChanged (MDAC-based source detach refinement), HardResetRx /
+    // HardResetSent (PE coordination). PRL/PE events (MessageRx / TxSuccess /
+    // TxRetryFail / Collision) are routed elsewhere when those layers exist.
     default:
         break;
     }
 }
 
 void ucsi_ppm_tc_tick(UcsiPpm* ppm) {
-    // The CCDebounce timer expires on wall-clock time, so we re-evaluate
-    // the commit condition on every tick regardless of whether new PHY
-    // events arrived.
-    tc_try_commit_attached(ppm);
+    if(ppm->tc_state == (int)UcsiPpmTcStateAttachWait) {
+        // First try the normal commit path — debounce expired + VBUS seen.
+        tc_try_commit_attached(ppm);
+        // Still in AttachWait? Check for the give-up timeout: bogus attach
+        // where partner left or never raised VBUS.
+        if(ppm->tc_state == (int)UcsiPpmTcStateAttachWait) {
+            const uint32_t now = ppm->config.time_ms(ppm->config.hal_ctx);
+            const uint32_t elapsed = (uint32_t)(now - ppm->tc_attach_wait_start_ms);
+            if(elapsed >= UCSI_PPM_TC_ATTACH_WAIT_TIMEOUT_MS) {
+                tc_enter_unattached(ppm);
+            }
+        }
+    }
 }
