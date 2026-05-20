@@ -79,6 +79,12 @@
 #define BIT_GET_PDOS_SOURCE          34u
 #define WIDTH_GET_PDOS_SOURCE        1u
 
+// SET_POWER_LEVEL parameters (commands.md §2.19).
+#define BIT_SET_POWER_LEVEL_SRC_OR_SINK    23u
+#define BIT_SET_POWER_LEVEL_OP_CURRENT     36u
+#define WIDTH_SET_POWER_LEVEL_OP_CURRENT   7u
+#define SET_POWER_LEVEL_OP_CURRENT_STEP_MA 50u
+
 // --- byte / field helpers --------------------------------------------------
 
 // Writes a little-endian uint16_t into dst[0..1].
@@ -371,13 +377,24 @@ static uint32_t handle_get_pdos(UcsiPpm* ppm) {
     // Source Capabilities Type (bits 35..36) and Range (bits 37..38) — ignored
     // in v1: we have only static config caps; partner PDOs aren't tracked yet.
 
+    // Choose the PDO list. Partner-side returns the most recently received
+    // Source_Capabilities (only the sink-side flow caches them in v1).
+    UcsiPpmPdoList partner_list = {0};
+    const UcsiPpmPdoList* list;
     if(partner_pdo) {
-        // No partner in v1 — commands.md §2.15 says "Partner PDO=1, нет
-        // партнёра вообще → CC Communication Error".
-        return fail_with_error(ppm, UCSI_PPM_ERR_CC_COMMUNICATION);
+        if(!want_source || ppm->pe_received_pdo_count == 0u) {
+            // We never request partner's Sink_Capabilities, and an empty
+            // received-PDO cache means partner is non-PD / not connected.
+            return fail_with_error(ppm, UCSI_PPM_ERR_CC_COMMUNICATION);
+        }
+        partner_list.count = ppm->pe_received_pdo_count;
+        for(uint8_t i = 0; i < ppm->pe_received_pdo_count; ++i) {
+            partner_list.pdos[i] = ppm->pe_received_pdos[i];
+        }
+        list = &partner_list;
+    } else {
+        list = want_source ? &ppm->config.source_caps : &ppm->config.sink_caps;
     }
-
-    const UcsiPpmPdoList* list = want_source ? &ppm->config.source_caps : &ppm->config.sink_caps;
     if((uint32_t)pdo_offset + (uint32_t)num_pdos > SPR_MAX_PDO_COUNT) {
         return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
     }
@@ -429,6 +446,40 @@ static void write_field(uint8_t* buf, uint32_t bit_offset, uint32_t width, uint6
 #define CONNSTAT_OFF_ORIENTATION      86u
 #define CONNSTAT_OFF_SINK_PATH_STATUS 87u
 
+static uint32_t handle_set_power_level(UcsiPpm* ppm) {
+    // commands.md §2.19. v1 supports sink-direction renegotiation only;
+    // source-direction limits and AVS/PPS fields are accepted but no-op'd
+    // beyond validation (Type-C current adjustment will land with PE-5).
+    const bool is_source = control_get_field(ppm, BIT_SET_POWER_LEVEL_SRC_OR_SINK, 1u) != 0u;
+    const uint8_t op_units = (uint8_t)control_get_field(ppm, BIT_SET_POWER_LEVEL_OP_CURRENT, WIDTH_SET_POWER_LEVEL_OP_CURRENT);
+    const uint16_t op_current_ma = (uint16_t)(op_units * SET_POWER_LEVEL_OP_CURRENT_STEP_MA);
+
+    if(is_source) {
+        // Source-side power-level adjustment lives in PE-5 alongside re-
+        // advertising Source_Capabilities. For now reject so OPM knows it
+        // didn't land — better than silently completing a no-op.
+        return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
+    }
+    if(ppm->pe_state != (int)UcsiPpmPeSnkReady) {
+        // No active sink contract to renegotiate.
+        return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
+    }
+    if(op_current_ma == 0u) {
+        // 0 = "PPM-decides" per spec — re-request the advertised max.
+        // Fixed-Supply PDO bits 9:0 = Maximum Current in 10 mA units.
+        const uint32_t pdo = ppm->pe_received_pdos[ppm->pe_requested_pdo_index - 1u];
+        const uint16_t max_ma = (uint16_t)((pdo & 0x3FFu) * 10u);
+        if(ucsi_ppm_pe_request_renegotiate(ppm, max_ma) != UcsiPpmStatusOk) {
+            return fail_with_error(ppm, UCSI_PPM_ERR_PPM_POLICY_CONFLICT);
+        }
+    } else {
+        if(ucsi_ppm_pe_request_renegotiate(ppm, op_current_ma) != UcsiPpmStatusOk) {
+            return fail_with_error(ppm, UCSI_PPM_ERR_PPM_POLICY_CONFLICT);
+        }
+    }
+    return UCSI_PPM_CCI_COMMAND_COMPLETED;
+}
+
 static uint32_t handle_get_connector_status(UcsiPpm* ppm) {
     // 19 bytes (152 bits) of packed layout per commands.md §2.17.
     uint8_t* msg = &ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN];
@@ -439,10 +490,8 @@ static uint32_t handle_get_connector_status(UcsiPpm* ppm) {
     write_field(msg, CONNSTAT_OFF_CHANGE_BITMAP, 16u, ppm->connector_status_change);
     ppm->connector_status_change = 0u;
 
-    const bool is_attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc ||
-                             ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
-    const bool is_pd = ppm->pe_state == (int)UcsiPpmPeSnkReady ||
-                       ppm->pe_state == (int)UcsiPpmPeSrcReady;
+    const bool is_attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc || ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
+    const bool is_pd = ppm->pe_state == (int)UcsiPpmPeSnkReady || ppm->pe_state == (int)UcsiPpmPeSrcReady;
 
     if(is_attached) {
         const uint8_t pom = is_pd ? CONNSTAT_POM_PD : CONNSTAT_POM_USB_DEFAULT;
@@ -483,9 +532,7 @@ void ucsi_ppm_notify_connector_change(UcsiPpm* ppm, uint16_t change_bits) {
     // Stamp our connector number (1) into CCI.Connector Change Indicator,
     // preserving all other CCI bits (e.g., Command Completed in flight).
     uint32_t cci = cci_load(ppm);
-    cci = (cci & ~UCSI_PPM_CCI_CONNECTOR_CHANGE_MASK) |
-          (((uint32_t)UCSI_PPM_NUM_CONNECTORS & 0x7Fu)
-           << UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT);
+    cci = (cci & ~UCSI_PPM_CCI_CONNECTOR_CHANGE_MASK) | (((uint32_t)UCSI_PPM_NUM_CONNECTORS & 0x7Fu) << UCSI_PPM_CCI_CONNECTOR_CHANGE_SHIFT);
     cci_store(ppm, cci);
 
     // Wake OPM. Real notification-mask gating lives in a future milestone;
@@ -577,6 +624,9 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
         break;
     case UCSI_PPM_OPCODE_GET_ERROR_STATUS:
         result_cci = handle_get_error_status(ppm);
+        break;
+    case UCSI_PPM_OPCODE_SET_POWER_LEVEL:
+        result_cci = handle_set_power_level(ppm);
         break;
     default:
         result_cci = handle_not_supported(ppm);

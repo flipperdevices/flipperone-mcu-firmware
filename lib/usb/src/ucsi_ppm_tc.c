@@ -172,10 +172,7 @@ static void tc_try_commit_attached(UcsiPpm* ppm) {
     // Tell OPM the connector just lit up. Power Operation Mode change is
     // also raised because Connect Status flipped to 1 (the partner type is
     // now meaningful — see GET_CONNECTOR_STATUS).
-    ucsi_ppm_notify_connector_change(
-        ppm,
-        UCSI_PPM_CSC_CONNECT_CHANGE | UCSI_PPM_CSC_PARTNER_CHANGED |
-            UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_CONNECT_CHANGE | UCSI_PPM_CSC_PARTNER_CHANGED | UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
 }
 
 // Tears down the active session and returns to Unattached + re-armed toggle.
@@ -185,8 +182,7 @@ static void tc_try_commit_attached(UcsiPpm* ppm) {
 // to Disabled instead.
 static void tc_enter_unattached(UcsiPpm* ppm) {
     const bool was_src = ppm->tc_role_is_src;
-    const bool was_attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc ||
-                              ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
+    const bool was_attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc || ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
 
     (void)ucsi_ppm_phy_disable_pd(ppm);
     if(was_src) {
@@ -209,10 +205,7 @@ static void tc_enter_unattached(UcsiPpm* ppm) {
     // Attached.*. A failed-attach drop (AttachWait → Unattached without
     // ever committing) doesn't change OPM-visible Connect Status.
     if(was_attached) {
-        ucsi_ppm_notify_connector_change(
-            ppm,
-            UCSI_PPM_CSC_CONNECT_CHANGE | UCSI_PPM_CSC_PARTNER_CHANGED |
-                UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
+        ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_CONNECT_CHANGE | UCSI_PPM_CSC_PARTNER_CHANGED | UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
     }
 
     UcsiPpmPhyToggleMode toggle_mode;

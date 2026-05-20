@@ -406,6 +406,41 @@ static void pe_restart_after_hard_reset(UcsiPpm* ppm) {
     ppm->pe_received_pdo_count = 0u;
 }
 
+UcsiPpmStatus
+    ucsi_ppm_pe_request_renegotiate(UcsiPpm* ppm, uint16_t operating_current_ma) {
+    // Only sink-side, only with a live explicit contract — otherwise we'd
+    // have nothing to renegotiate against.
+    if(ppm->pe_state != (int)UcsiPpmPeSnkReady) return UcsiPpmStatusInvalidArg;
+    if(ppm->pe_received_pdo_count == 0u || ppm->pe_requested_pdo_index == 0u) {
+        return UcsiPpmStatusInvalidArg;
+    }
+    const uint8_t pos = ppm->pe_requested_pdo_index;
+    if(pos > ppm->pe_received_pdo_count) return UcsiPpmStatusInvalidArg;
+
+    const uint32_t pdo = ppm->pe_received_pdos[pos - 1u];
+    if(!pdo_is_fixed(pdo)) return UcsiPpmStatusInvalidArg;
+    // Clamp to advertised max so we never request more than the source offers.
+    const uint16_t max_ma = pdo_fixed_current_ma(pdo);
+    const uint16_t req_ma = operating_current_ma > max_ma ? max_ma : operating_current_ma;
+
+    const uint32_t rdo = pe_build_rdo(pos, req_ma, true);
+    UcsiPpmPhyPdMsg msg = {
+        .sop_type = UcsiPpmPhySopTypeSop,
+        .header = pe_make_header(ppm, PD_MSG_TYPE_REQUEST_DATA, 1u),
+        .object_count = 1u,
+    };
+    msg.objects[0] = rdo;
+
+    if(ucsi_ppm_prl_send_message(ppm, &msg) != UcsiPpmStatusOk) {
+        pe_to_error(ppm);
+        return UcsiPpmStatusHalError;
+    }
+    ppm->pe_current_rdo = rdo;
+    ppm->pe_state = (int)UcsiPpmPeSnkWaitForAccept;
+    pe_arm_timer(ppm);
+    return UcsiPpmStatusOk;
+}
+
 void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     switch(event->kind) {
     case UcsiPpmPhyEventHardResetSent:

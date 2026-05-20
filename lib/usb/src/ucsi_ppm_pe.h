@@ -47,6 +47,14 @@ void ucsi_ppm_pe_on_power_supply_ready(UcsiPpm* ppm);
 // ignored — TC/PRL handle them.
 void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event);
 
+// Renegotiates the existing sink-side contract at a different operating
+// current. Builds a fresh Request RDO selecting the same PDO position as
+// the prior contract, ships it via PRL, and re-enters the Accept→PS_RDY
+// flow. Returns InvalidArg if we're not Attached.SNK in PE_SNK_Ready or
+// if we have no cached Source_Capabilities to renegotiate against.
+// Driven by L2 SET_POWER_LEVEL on the sink direction.
+UcsiPpmStatus ucsi_ppm_pe_request_renegotiate(UcsiPpm* ppm, uint16_t operating_current_ma);
+
 // PRL hands every deduplicated SOP message here. PE inspects msg_type and
 // advances the state machine. Non-SOP messages are dropped.
 void ucsi_ppm_pe_handle_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg);

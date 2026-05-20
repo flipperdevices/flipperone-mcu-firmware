@@ -945,7 +945,7 @@ static bool test_cmd_not_supported_in_scope(void) {
     make_valid_config(&cfg);
     ucsi_ppm_init(ppm, &cfg);
 
-    const uint8_t opcodes[] = {0x0Cu, 0x0Du, 0x0Eu, 0x0Fu, 0x14u, 0x15u};
+    const uint8_t opcodes[] = {0x0Cu, 0x0Du, 0x0Eu, 0x0Fu, 0x15u};
     for(size_t i = 0; i < sizeof(opcodes) / sizeof(opcodes[0]); ++i) {
         // ACK to clear prior CCI if needed.
         if(ppm->cmd_state == UcsiPpmCmdStateWaitForAck) {
@@ -3991,6 +3991,194 @@ static bool test_pe_hard_reset_counter_caps_at_max(void) {
     return true;
 }
 
+// --- L2 SET_POWER_LEVEL → PE renegotiate -----------------------------------
+
+// Packs the SET_POWER_LEVEL CONTROL payload: Operating Current at bits 36..42,
+// Source-or-Sink at bit 23. Returns the CONTROL bytes 1..7 as if written by
+// the OPM ahead of the opcode byte.
+static void build_set_power_level_payload(
+    uint8_t* payload,
+    bool is_source,
+    uint16_t op_current_ma) {
+    memset(payload, 0, 7);
+    // Bit 23 = byte 2 bit 7.
+    if(is_source) payload[1] |= (uint8_t)(1u << 7);
+    // Bits 36..42 = 7 bits starting at byte 3 bit 4.
+    const uint8_t op_units = (uint8_t)(op_current_ma / 50u);
+    payload[3] |= (uint8_t)((op_units & 0x0Fu) << 4); // bits 36..39
+    payload[4] |= (uint8_t)((op_units >> 4) & 0x07u); // bits 40..42
+}
+
+static UcsiPpmStatus send_set_power_level(UcsiPpm* ppm, bool is_source, uint16_t op_ma) {
+    uint8_t payload[7];
+    build_set_power_level_payload(payload, is_source, op_ma);
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 1, 7, payload);
+    uint8_t op = UCSI_PPM_OPCODE_SET_POWER_LEVEL;
+    return ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+}
+
+static bool test_set_power_level_renegotiates_sink_contract(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u, &pdo, 1);
+    simulate_pd_message(ppm, 0x03u, NULL, 0);
+    simulate_pd_message(ppm, 0x06u, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(ppm->pe_negotiated_current_ma == 3000u);
+    mock_i2c_reset();
+
+    // Ask for a lower operating current (1500 mA).
+    TEST_ASSERT(send_set_power_level(ppm, false /*sink*/, 1500u) == UcsiPpmStatusOk);
+
+    // PE re-armed: sent a fresh Request, awaiting Accept.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    const int idx = find_fifo_burst_by_msg_type(0x02u /* Request */);
+    TEST_ASSERT(idx >= 0);
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    // RDO at fifo[7..10], LE.
+    const uint32_t rdo = (uint32_t)fifo[7] | ((uint32_t)fifo[8] << 8) |
+                         ((uint32_t)fifo[9] << 16) | ((uint32_t)fifo[10] << 24);
+    TEST_ASSERT(((rdo >> 28) & 0x07u) == 1u); // same PDO position
+    TEST_ASSERT(((rdo >> 10) & 0x3FFu) == 150u); // 1500 / 10
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_set_power_level_zero_uses_advertised_max(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 2500, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u, &pdo, 1);
+    simulate_pd_message(ppm, 0x03u, NULL, 0);
+    simulate_pd_message(ppm, 0x06u, NULL, 0);
+    mock_i2c_reset();
+
+    // 0 → "PPM decides" → fall back to advertised max (2500 mA).
+    TEST_ASSERT(send_set_power_level(ppm, false, 0u) == UcsiPpmStatusOk);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    const int idx = find_fifo_burst_by_msg_type(0x02u);
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const uint32_t rdo = (uint32_t)fifo[7] | ((uint32_t)fifo[8] << 8) |
+                         ((uint32_t)fifo[9] << 16) | ((uint32_t)fifo[10] << 24);
+    TEST_ASSERT(((rdo >> 10) & 0x3FFu) == 250u); // 2500 / 10
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_set_power_level_clamps_to_advertised_max(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u, &pdo, 1);
+    simulate_pd_message(ppm, 0x03u, NULL, 0);
+    simulate_pd_message(ppm, 0x06u, NULL, 0);
+    mock_i2c_reset();
+
+    // Ask for 5 A — advertised is only 1.5 A. PE must clamp.
+    TEST_ASSERT(send_set_power_level(ppm, false, 5000u) == UcsiPpmStatusOk);
+    const int idx = find_fifo_burst_by_msg_type(0x02u);
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const uint32_t rdo = (uint32_t)fifo[7] | ((uint32_t)fifo[8] << 8) |
+                         ((uint32_t)fifo[9] << 16) | ((uint32_t)fifo[10] << 24);
+    TEST_ASSERT(((rdo >> 10) & 0x3FFu) == 150u); // clamped to 1500
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_set_power_level_source_rejected_in_v1(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message(ppm, 0x02u, &rdo, 1);
+    ucsi_ppm_notify_power_supply_ready(ppm);
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+
+    TEST_ASSERT(send_set_power_level(ppm, true /*source*/, 1500u) == UcsiPpmStatusOk);
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_ERROR);
+    TEST_ASSERT(ppm->error_info & UCSI_PPM_ERR_INVALID_CMD_PARAMS);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_set_power_level_without_contract_rejected(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    // Still in WaitForCapabilities — no contract yet.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+
+    TEST_ASSERT(send_set_power_level(ppm, false, 1500u) == UcsiPpmStatusOk);
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_ERROR);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// --- GET_PDOS partner-side (cached Source_Capabilities) --------------------
+
+// Sends GET_PDOS for partner-side source PDOs and reads the response.
+// Returns the resulting CCI after the command.
+static uint32_t send_get_pdos_partner(
+    UcsiPpm* ppm,
+    uint8_t pdo_offset,
+    uint8_t num_pdos,
+    uint8_t* out_payload,
+    size_t out_len) {
+    uint8_t payload[7] = {0};
+    // bit 23 = byte 2 bit 7 — Partner PDO.
+    payload[1] = (uint8_t)(1u << 7);
+    // byte 3 = PDO Offset.
+    payload[2] = pdo_offset;
+    // byte 4 bits 0..1 = num-1; bit 2 = Source PDO.
+    payload[3] = (uint8_t)(((num_pdos - 1u) & 0x03u) | (1u << 2));
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 1, 7, payload);
+    uint8_t op = UCSI_PPM_OPCODE_GET_PDOS;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+    ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, (uint16_t)out_len, out_payload);
+    return read_cci(ppm);
+}
+
+static bool test_get_pdos_partner_returns_cached_caps(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t partner_pdos[2] = {
+        ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true),
+        ucsi_ppm_pdo_fixed_source(9000, 3000, true, false, true, true),
+    };
+    simulate_pd_message(ppm, 0x01u, partner_pdos, 2);
+    TEST_ASSERT(ppm->pe_received_pdo_count == 2u);
+
+    uint8_t resp[8];
+    const uint32_t cci = send_get_pdos_partner(ppm, 0u, 2u, resp, sizeof(resp));
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_ERROR));
+    TEST_ASSERT(((cci >> UCSI_PPM_CCI_DATA_LENGTH_SHIFT) & 0xFFu) == 8u);
+
+    const uint32_t pdo0 = (uint32_t)resp[0] | ((uint32_t)resp[1] << 8) |
+                          ((uint32_t)resp[2] << 16) | ((uint32_t)resp[3] << 24);
+    const uint32_t pdo1 = (uint32_t)resp[4] | ((uint32_t)resp[5] << 8) |
+                          ((uint32_t)resp[6] << 16) | ((uint32_t)resp[7] << 24);
+    TEST_ASSERT(pdo0 == partner_pdos[0]);
+    TEST_ASSERT(pdo1 == partner_pdos[1]);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_get_pdos_partner_without_caps_errors(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    // Don't simulate any Source_Capabilities — pe_received_pdo_count is 0.
+    TEST_ASSERT(ppm->pe_received_pdo_count == 0u);
+
+    uint8_t resp[8];
+    const uint32_t cci = send_get_pdos_partner(ppm, 0u, 1u, resp, sizeof(resp));
+    TEST_ASSERT(cci & UCSI_PPM_CCI_ERROR);
+    TEST_ASSERT(ppm->error_info & UCSI_PPM_ERR_CC_COMMUNICATION);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_pe_hard_reset_counter_resets_on_ready(void) {
     // A clean contract should refill the Hard Reset budget for subsequent
     // protocol upsets — otherwise a long session burns through the counter.
@@ -4308,6 +4496,17 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_hard_reset_rx_restarts_without_counter_bump),
     TEST_ENTRY(test_pe_hard_reset_counter_caps_at_max),
     TEST_ENTRY(test_pe_hard_reset_counter_resets_on_ready),
+
+    // L2 SET_POWER_LEVEL → PE renegotiate (sink-side).
+    TEST_ENTRY(test_set_power_level_renegotiates_sink_contract),
+    TEST_ENTRY(test_set_power_level_zero_uses_advertised_max),
+    TEST_ENTRY(test_set_power_level_clamps_to_advertised_max),
+    TEST_ENTRY(test_set_power_level_source_rejected_in_v1),
+    TEST_ENTRY(test_set_power_level_without_contract_rejected),
+
+    // L2 GET_PDOS partner-side (cached Source_Capabilities).
+    TEST_ENTRY(test_get_pdos_partner_returns_cached_caps),
+    TEST_ENTRY(test_get_pdos_partner_without_caps_errors),
 };
 
 const size_t test_count = COUNT_OF(k_tests);
