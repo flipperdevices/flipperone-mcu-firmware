@@ -53,6 +53,12 @@ uint8_t ucsi_shim_get_pdos(UcsiPpm* ppm, bool partner, uint8_t pdo_offset, uint8
 // liner for bring-up monitoring loops.
 void ucsi_shim_log_status(UcsiPpm* ppm);
 
+// Same, but only logs when the Connector Status Change bitmap is non-zero
+// (PE/TC raise CSC bits on any meaningful transition; reading clears them).
+// Use in periodic poll loops to keep the log quiet when nothing happens.
+// Returns true if a line was printed.
+bool ucsi_shim_log_status_if_changed(UcsiPpm* ppm);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,6 +1,16 @@
+#include <furi.h>
 #include "ucsi_ppm_prl.h"
-
 #include "ucsi_ppm_pe.h"
+
+// #define UCSI_PRL_DEBUG_ENABLED
+
+#define TAG "UcsiPrl"
+
+#ifdef UCSI_PRL_DEBUG_ENABLED
+#define UCSI_PRL_DEBUG(...) FURI_LOG_I(TAG, __VA_ARGS__)
+#else
+#define UCSI_PRL_DEBUG(...)
+#endif
 
 // PD R3.0 Message Header — MessageID field, bits 11:9.
 #define MSG_HDR_MSG_ID_SHIFT 9u
@@ -8,10 +18,10 @@
 
 // PD R3.0 Message Header — Message Type (bits 4:0) and Number of Data Objects
 // (bits 14:12). A Soft_Reset is a Control message: type=0x0D, NDO=0.
-#define MSG_HDR_MSG_TYPE_MASK   0x001Fu
-#define MSG_HDR_NUM_OBJ_SHIFT   12u
-#define MSG_HDR_NUM_OBJ_MASK    ((uint16_t)(0x07u << MSG_HDR_NUM_OBJ_SHIFT))
-#define PD_MSG_TYPE_SOFT_RESET  0x0Du
+#define MSG_HDR_MSG_TYPE_MASK  0x001Fu
+#define MSG_HDR_NUM_OBJ_SHIFT  12u
+#define MSG_HDR_NUM_OBJ_MASK   ((uint16_t)(0x07u << MSG_HDR_NUM_OBJ_SHIFT))
+#define PD_MSG_TYPE_SOFT_RESET 0x0Du
 
 // MessageIDCounter wraps after 0..7 (PD R3.0 §6.8.1 nMessageIDCount = 7).
 #define PRL_MSG_ID_WRAP 8u
@@ -33,12 +43,15 @@ UcsiPpmStatus ucsi_ppm_prl_send_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* msg) {
 
     // Stamp the next MessageID into the header. Other header fields
     // (msg type, NDO etc) are left alone — PE owns them.
-    msg->header = (uint16_t)(
-        (msg->header & ~MSG_HDR_MSG_ID_MASK) |
-        ((uint16_t)(ppm->prl_next_tx_msg_id & 0x07u) << MSG_HDR_MSG_ID_SHIFT));
+    msg->header = (uint16_t)((msg->header & ~MSG_HDR_MSG_ID_MASK) | ((uint16_t)(ppm->prl_next_tx_msg_id & 0x07u) << MSG_HDR_MSG_ID_SHIFT));
 
+    UCSI_PRL_DEBUG(
+        "tx type=0x%02X ndo=%u id=%u", (unsigned)(msg->header & 0x1Fu), (unsigned)((msg->header >> 12) & 0x07u), (unsigned)(ppm->prl_next_tx_msg_id & 0x07u));
     const UcsiPpmStatus s = ucsi_ppm_phy_send_message(ppm, msg);
-    if(s != UcsiPpmStatusOk) return s;
+    if(s != UcsiPpmStatusOk) {
+        FURI_LOG_W(TAG, "tx phy_send failed: %d", (int)s);
+        return s;
+    }
 
     // Advance only on successful enqueue. PD R3.0 §6.8.1 says the counter
     // increments after each message sent (regardless of GoodCRC outcome —
@@ -72,8 +85,7 @@ static void prl_drain_rx_fifo(UcsiPpm* ppm) {
         // scope for v1 — pass them through without dedup (the chip won't
         // ack them either since ENSOP* is 0 in init, but be safe).
         if(msg.sop_type == UcsiPpmPhySopTypeSop) {
-            const uint8_t rx_id =
-                (uint8_t)((msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u);
+            const uint8_t rx_id = (uint8_t)((msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u);
             if(ppm->prl_last_rx_valid && ppm->prl_last_rx_msg_id == rx_id) {
                 // Hardware already sent GoodCRC; we just discard the frame.
                 continue;
@@ -83,6 +95,8 @@ static void prl_drain_rx_fifo(UcsiPpm* ppm) {
         }
 
         // Deliver to PE for state-machine processing.
+        UCSI_PRL_DEBUG(
+            "rx type=0x%02X ndo=%u id=%u sop=%u", msg_type, num_obj, (unsigned)((msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u), (unsigned)msg.sop_type);
         ucsi_ppm_pe_handle_message(ppm, &msg);
         ppm->prl_messages_delivered++;
     }

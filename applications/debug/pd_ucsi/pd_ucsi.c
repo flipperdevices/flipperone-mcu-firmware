@@ -59,11 +59,19 @@ static UcsiPpmStatus hal_i2c_write(void* ctx, uint8_t addr, const uint8_t* data,
 static UcsiPpmStatus hal_i2c_read(void* ctx, uint8_t addr, uint8_t* data, size_t len) {
     PdUcsi* h = ctx;
     furi_hal_i2c_acquire(h->i2c);
-    // FUSB302 retains its internal address pointer across STOP, so reading
-    // here picks up where the prior i2c_write set the pointer. If this turns
-    // out to be unreliable in practice we'll switch lib/usb to a combined
-    // i2c_trx HAL hook (one repeated-start txn).
+    // Standalone read fallback — only hit when i2c_write_read isn't wired.
     const int rc = furi_hal_i2c_master_rx_blocking(h->i2c, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
+    furi_hal_i2c_release(h->i2c);
+    return rc >= 0 ? UcsiPpmStatusOk : UcsiPpmStatusHalError;
+}
+
+// Combined repeated-start txn — one atomic bus operation. Pairs the register
+// pointer write with the data read so other drivers can't slip in between
+// (FUSB302 would otherwise lose its address pointer and return garbage).
+static UcsiPpmStatus hal_i2c_write_read(void* ctx, uint8_t addr, const uint8_t* tx, size_t tx_len, uint8_t* rx, size_t rx_len) {
+    PdUcsi* h = ctx;
+    furi_hal_i2c_acquire(h->i2c);
+    const int rc = furi_hal_i2c_master_trx_blocking(h->i2c, addr, tx, tx_len, rx, rx_len, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(h->i2c);
     return rc >= 0 ? UcsiPpmStatusOk : UcsiPpmStatusHalError;
 }
@@ -129,6 +137,7 @@ static void config_fill(UcsiPpmConfig* cfg, PdUcsi* host) {
     cfg->alert = hal_alert;
     cfg->i2c_read = hal_i2c_read;
     cfg->i2c_write = hal_i2c_write;
+    cfg->i2c_write_read = hal_i2c_write_read;
     cfg->gpio_write_vbus_source = hal_vbus_source_write;
     cfg->gpio_write_vbus_discharge = hal_vbus_discharge_write;
     cfg->power_supply_set = hal_psu_set;
@@ -171,15 +180,54 @@ static const char* state_str(UcsiPpmConnectorState s) {
     return "?";
 }
 
+// Direct FUSB302 register dump — bypasses lib, talks to the chip via the same
+// HAL we plumbed for the lib. Useful at attach commit to verify the chip is
+// actually in the configuration the lib thinks it is.
+static void dump_fusb302_regs(PdUcsi* host) {
+    static const struct {
+        uint8_t reg;
+        const char* name;
+    } regs[] = {
+        {0x02, "Sw0"},
+        {0x03, "Sw1"},
+        {0x06, "Ctl0"},
+        {0x08, "Ctl2"},
+        {0x09, "Ctl3"},
+        {0x0A, "Mask"},
+        {0x0E, "MaskA"},
+        {0x0F, "MaskB"},
+        {0x40, "Sts0"},
+        {0x41, "Sts1"},
+        {0x3D, "Sts1a"},
+    };
+    for(size_t i = 0; i < sizeof(regs) / sizeof(regs[0]); ++i) {
+        uint8_t v = 0;
+        if(hal_i2c_write_read(host, FUSB302_I2C_ADDR, &regs[i].reg, 1, &v, 1) == UcsiPpmStatusOk) {
+            FURI_LOG_I(TAG, "fusb302 %s[0x%02X]=0x%02X", regs[i].name, regs[i].reg, v);
+        } else {
+            FURI_LOG_W(TAG, "fusb302 read 0x%02X failed", regs[i].reg);
+        }
+    }
+}
+
 static void run_scripted_probes(PdUcsi* host) {
-    UcsiPpmContractInfo c = {0};
-    if(ucsi_ppm_get_contract(host->ppm, &c) != UcsiPpmStatusOk || !c.contract_in_place) {
+    // Anchor to TC-level attach, not contract — otherwise the brief PE bounce
+    // during a SET_POWER_LEVEL renegotiate (SnkReady → WaitForAccept → ...)
+    // would reset the timer and re-fire the probe forever.
+    if(host->last_state != UcsiPpmStateAttachedSnk &&
+       host->last_state != UcsiPpmStateAttachedSrc) {
         host->contract_first_seen_tick = 0;
         host->probe = ProbePending;
         return;
     }
+    // Arm the timer the first time the PD contract actually commits.
     if(host->contract_first_seen_tick == 0) {
-        host->contract_first_seen_tick = furi_get_tick();
+        UcsiPpmContractInfo c = {0};
+        if(ucsi_ppm_get_contract(host->ppm, &c) == UcsiPpmStatusOk && c.contract_in_place) {
+            host->contract_first_seen_tick = furi_get_tick();
+        } else {
+            return;
+        }
     }
     const uint32_t since = furi_get_tick() - host->contract_first_seen_tick;
 
@@ -229,6 +277,11 @@ static int32_t pd_ucsi_thread(void* arg) {
     host->probe = ProbePending;
 
     while(true) {
+        // No INT GPIO wired yet — poll FUSB302 every tick. phy_pump reads
+        // INTERRUPT/A/B and only emits events on real changes, so a quiet
+        // chip stays quiet. Swap for furi_bsp_expander_main_attach_fusb302_callback
+        // once we want event-driven operation.
+        ucsi_ppm_notify_fusb302_irq(host->ppm);
         ucsi_ppm_tick(host->ppm);
 
         const UcsiPpmConnectorState now = ucsi_ppm_get_connector_state(host->ppm);
@@ -236,11 +289,16 @@ static int32_t pd_ucsi_thread(void* arg) {
             FURI_LOG_I(TAG, "state: %s → %s", state_str(host->last_state), state_str(now));
             host->last_state = now;
             ucsi_shim_log_status(host->ppm);
+            if(now == UcsiPpmStateAttachedSnk || now == UcsiPpmStateAttachedSrc) {
+                dump_fusb302_regs(host);
+            }
         }
 
         if(furi_get_tick() - host->last_log_tick >= STATUS_LOG_MS) {
             host->last_log_tick = furi_get_tick();
-            ucsi_shim_log_status(host->ppm);
+            // Quiet poll: only print when PE/TC raised a CSC bit since last
+            // read. Initial / forced log already happened on state change above.
+            ucsi_shim_log_status_if_changed(host->ppm);
         }
 
         run_scripted_probes(host);

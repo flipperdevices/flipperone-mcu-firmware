@@ -282,7 +282,14 @@ UcsiPpmConnectorState ucsi_ppm_get_connector_state(const UcsiPpm* ppm) {
 UcsiPpmStatus ucsi_ppm_get_contract(const UcsiPpm* ppm, UcsiPpmContractInfo* out) {
     if(!ppm || !out) return UcsiPpmStatusInvalidArg;
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
-    // TODO: populate from PE contract state.
     memset(out, 0, sizeof(*out));
+    const bool ready = ppm->pe_state == (int)UcsiPpmPeSnkReady || ppm->pe_state == (int)UcsiPpmPeSrcReady;
+    if(ready) {
+        out->contract_in_place = true;
+        out->voltage_mv = ppm->pe_negotiated_voltage_mv;
+        out->current_ma = ppm->pe_negotiated_current_ma;
+        out->is_source = ppm->tc_role_is_src;
+        out->is_dfp = ppm->pe_data_role_is_dfp;
+    }
     return UcsiPpmStatusOk;
 }

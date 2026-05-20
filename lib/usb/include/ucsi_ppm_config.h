@@ -60,6 +60,7 @@ typedef struct {
     UcsiPpmAlertFn alert;
     UcsiPpmI2cReadFn i2c_read;
     UcsiPpmI2cWriteFn i2c_write;
+    UcsiPpmI2cWriteReadFn i2c_write_read; // optional; see ucsi_ppm_hal.h
     UcsiPpmGpioWriteFn gpio_write_vbus_source;
     UcsiPpmPowerSupplySetFn power_supply_set;
     UcsiPpmHasAltPowerFn has_alt_power;

@@ -30,6 +30,10 @@
 
 static UcsiPpmStatus phy_read_reg(UcsiPpm* ppm, uint8_t reg, uint8_t* out_value) {
     const uint8_t addr = ppm->config.fusb302_i2c_addr;
+    if(ppm->config.i2c_write_read) {
+        return ppm->config.i2c_write_read(
+            ppm->config.hal_ctx, addr, &reg, 1, out_value, 1);
+    }
     UcsiPpmStatus s = ppm->config.i2c_write(ppm->config.hal_ctx, addr, &reg, 1);
     if(s != UcsiPpmStatusOk) return s;
     return ppm->config.i2c_read(ppm->config.hal_ctx, addr, out_value, 1);
@@ -44,6 +48,9 @@ static UcsiPpmStatus phy_write_reg(UcsiPpm* ppm, uint8_t reg, uint8_t value) {
 // Used for the interrupt-pump fast path.
 static UcsiPpmStatus phy_read_regs(UcsiPpm* ppm, uint8_t reg, uint8_t* out, size_t n) {
     const uint8_t addr = ppm->config.fusb302_i2c_addr;
+    if(ppm->config.i2c_write_read) {
+        return ppm->config.i2c_write_read(ppm->config.hal_ctx, addr, &reg, 1, out, n);
+    }
     UcsiPpmStatus s = ppm->config.i2c_write(ppm->config.hal_ctx, addr, &reg, 1);
     if(s != UcsiPpmStatusOk) return s;
     return ppm->config.i2c_read(ppm->config.hal_ctx, addr, out, n);
@@ -154,6 +161,14 @@ UcsiPpmStatus ucsi_ppm_phy_deinit(UcsiPpm* ppm) {
 UcsiPpmStatus ucsi_ppm_phy_start_toggle(UcsiPpm* ppm, UcsiPpmPhyToggleMode mode) {
     // CONTROL2: TOGGLE=1, MODE, TOG_RD_ONLY=0 (settle on Rd or Ra),
     // TOG_SAVE_PWR=01b (40 ms tDIS), WAKE_EN=0.
+    //
+    // The FSM advances on the 0→1 edge of TOGGLE (FUSB302 datasheet §14.2.4),
+    // so if we're re-arming after a previous attach settled, the chip already
+    // has TOGGLE=1 latched. Drop it to 0 first so the re-write below produces
+    // the required edge — otherwise the toggle never restarts and we miss any
+    // subsequent attach.
+    UcsiPpmStatus s = phy_write_reg(ppm, Fusb302RegControl2, 0u);
+    if(s != UcsiPpmStatusOk) return s;
     const uint8_t val = (uint8_t)(1u /* TOGGLE */ | ((mode_to_field(mode) & 0x3u) << 1) | (CONTROL2_TOG_SAVE_PWR << 6));
     return phy_write_reg(ppm, Fusb302RegControl2, val);
 }
@@ -212,8 +227,19 @@ UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src
 // --- PD path ---------------------------------------------------------------
 
 UcsiPpmStatus ucsi_ppm_phy_enable_pd(UcsiPpm* ppm, uint8_t n_retries) {
+    // Stop the toggle FSM — once TOGSS has settled the chip needs TOGGLE=0
+    // to fully arm PD receive. Many FUSB302 reference drivers stop toggle
+    // post-settle for the same reason. Preserve other CONTROL2 bits.
+    UcsiPpmStatus s = phy_rmw_reg(ppm, Fusb302RegControl2, 1u /* TOGGLE */, 0u);
+    if(s != UcsiPpmStatusOk) return s;
+
+    // Reset only the PD logic block — clears any stale RX FIFO / framer
+    // state from before the role was decided. RESET.PD_RESET self-clears.
+    s = ucsi_ppm_phy_pd_reset(ppm);
+    if(s != UcsiPpmStatusOk) return s;
+
     // SWITCHES1.AUTO_CRC = 1.
-    UcsiPpmStatus s = phy_rmw_reg(ppm, Fusb302RegSwitches1, 1u << 2, 1u << 2);
+    s = phy_rmw_reg(ppm, Fusb302RegSwitches1, 1u << 2, 1u << 2);
     if(s != UcsiPpmStatusOk) return s;
 
     // CONTROL3: AUTO_RETRY=1, N_RETRIES, AUTO_SOFTRESET=0, AUTO_HARDRESET=0.

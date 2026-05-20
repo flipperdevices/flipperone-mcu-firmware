@@ -4232,6 +4232,63 @@ static UcsiPpm* mock_snk_ready(void) {
     return ppm;
 }
 
+// --- Public contract API + commit-current regressions ----------------------
+
+static bool test_get_contract_reports_none_when_no_contract(void) {
+    // Before any attach the PE is Idle — public API must report no contract.
+    // Regression: prior stub always returned contract_in_place=false but also
+    // never populated any fields, hiding real cases where state was wrong.
+    UcsiPpm* ppm = mock_make_ppm();
+    UcsiPpmContractInfo c = {.contract_in_place = true, .voltage_mv = 42u};
+    TEST_ASSERT(ucsi_ppm_get_contract(ppm, &c) == UcsiPpmStatusOk);
+    TEST_ASSERT(!c.contract_in_place);
+    TEST_ASSERT(c.voltage_mv == 0u);
+    TEST_ASSERT(c.current_ma == 0u);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_get_contract_populates_in_snk_ready(void) {
+    // After full Sink contract flow, the public API surface should report
+    // the negotiated voltage / current and sink-side roles. Regression:
+    // ucsi_ppm_get_contract used to be a stub returning contract_in_place=false
+    // unconditionally, so app probes anchored on it never fired.
+    UcsiPpm* ppm = mock_snk_ready();
+    UcsiPpmContractInfo c = {0};
+    TEST_ASSERT(ucsi_ppm_get_contract(ppm, &c) == UcsiPpmStatusOk);
+    TEST_ASSERT(c.contract_in_place);
+    TEST_ASSERT(c.voltage_mv == 5000u);
+    TEST_ASSERT(c.current_ma == 3000u);
+    TEST_ASSERT(!c.is_source);
+    TEST_ASSERT(!c.is_dfp); // sink → UFP
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_contract_current_reflects_renegotiated_op_current(void) {
+    // After SET_POWER_LEVEL renegotiates the sink contract to a lower op
+    // current, pe_negotiated_current_ma (and ucsi_ppm_get_contract) must
+    // report the requested op current — NOT the PDO max. Regression:
+    // pe_commit_contract used to read max from pe_received_pdos[idx-1].
+    UcsiPpm* ppm = mock_snk_ready();
+    TEST_ASSERT(ppm->pe_negotiated_current_ma == 3000u); // PDO max
+
+    TEST_ASSERT(send_set_power_level(ppm, false /*sink*/, 1500u) == UcsiPpmStatusOk);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+    simulate_pd_message(ppm, 0x06u /* PS_RDY */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    TEST_ASSERT(ppm->pe_negotiated_current_ma == 1500u);
+    UcsiPpmContractInfo c = {0};
+    TEST_ASSERT(ucsi_ppm_get_contract(ppm, &c) == UcsiPpmStatusOk);
+    TEST_ASSERT(c.current_ma == 1500u);
+    TEST_ASSERT(c.voltage_mv == 5000u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_pe_tx_retry_fail_in_snk_ready_triggers_soft_reset(void) {
     UcsiPpm* ppm = mock_snk_ready();
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
@@ -4477,6 +4534,18 @@ static bool test_pe_dr_swap_initiator_wait_keeps_role(void) {
     UcsiPpm* ppm = mock_snk_ready();
     ucsi_ppm_pe_request_dr_swap(ppm, true);
     simulate_pd_message(ppm, 0x0Cu /* Wait */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(!ppm->pe_data_role_is_dfp);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_dr_swap_initiator_not_supported_keeps_role(void) {
+    // Most PD chargers don't support DR_Swap and respond with Not_Supported
+    // (PD §6.5). Must be treated like Reject — back to Ready, no role flip.
+    UcsiPpm* ppm = mock_snk_ready();
+    ucsi_ppm_pe_request_dr_swap(ppm, true);
+    simulate_pd_message(ppm, 0x10u /* Not_Supported */, NULL, 0);
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
     TEST_ASSERT(!ppm->pe_data_role_is_dfp);
     ucsi_ppm_free(ppm);
@@ -5011,6 +5080,11 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_hard_reset_counter_caps_at_max),
     TEST_ENTRY(test_pe_hard_reset_counter_resets_on_ready),
 
+    // Public contract API + commit-current (regressions from bring-up).
+    TEST_ENTRY(test_get_contract_reports_none_when_no_contract),
+    TEST_ENTRY(test_get_contract_populates_in_snk_ready),
+    TEST_ENTRY(test_contract_current_reflects_renegotiated_op_current),
+
     // L3 PE Soft Reset on TX_RETRY_FAIL (PD §6.3.13 / §8.3.3.4).
     TEST_ENTRY(test_pe_tx_retry_fail_in_snk_ready_triggers_soft_reset),
     TEST_ENTRY(test_pe_soft_reset_accept_restarts_negotiation),
@@ -5029,6 +5103,7 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_dr_swap_initiator_accept_flips_role),
     TEST_ENTRY(test_pe_dr_swap_initiator_reject_keeps_role),
     TEST_ENTRY(test_pe_dr_swap_initiator_wait_keeps_role),
+    TEST_ENTRY(test_pe_dr_swap_initiator_not_supported_keeps_role),
     TEST_ENTRY(test_pe_dr_swap_initiator_timeout_hard_resets),
     TEST_ENTRY(test_pe_dr_swap_initiated_outside_ready_errors),
     TEST_ENTRY(test_pe_dr_swap_initiated_same_role_is_no_op),

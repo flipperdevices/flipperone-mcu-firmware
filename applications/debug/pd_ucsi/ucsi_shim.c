@@ -166,12 +166,7 @@ static uint64_t read_packed(const uint8_t* buf, uint32_t bit_offset, uint32_t wi
     return v;
 }
 
-void ucsi_shim_log_status(UcsiPpm* ppm) {
-    uint8_t resp[19] = {0};
-    if(!ucsi_shim_get_connector_status(ppm, resp)) {
-        FURI_LOG_W(TAG, "GET_CONNECTOR_STATUS failed");
-        return;
-    }
+static void log_status_from_resp(UcsiPpm* ppm, const uint8_t resp[19]) {
     const uint16_t csc_bitmap = (uint16_t)read_packed(resp, 0u, 16u);
     const uint8_t pom = (uint8_t)read_packed(resp, 16u, 3u);
     const uint8_t connect = (uint8_t)read_packed(resp, 19u, 1u);
@@ -181,16 +176,40 @@ void ucsi_shim_log_status(UcsiPpm* ppm) {
 
     FURI_LOG_I(
         TAG,
-        "conn=%u dir=%s pom=%u partner=%s rdo=0x%08lX csc=0x%04X",
+        "conn=%u dir=%s pom=%u partner=%s rdo=0x%08lX csc=0x%04X pe=%d rx=%lu tx_id=%u",
         connect,
         power_dir ? "src" : "snk",
         pom,
         partner_type == 1u ? "DFP" : (partner_type == 2u ? "UFP" : "?"),
         (unsigned long)rdo,
-        csc_bitmap);
+        csc_bitmap,
+        ppm->pe_state,
+        (unsigned long)ppm->prl_messages_delivered,
+        (unsigned)ppm->prl_next_tx_msg_id);
 
     UcsiPpmContractInfo c = {0};
     if(ucsi_ppm_get_contract(ppm, &c) == UcsiPpmStatusOk && c.contract_in_place) {
         FURI_LOG_I(TAG, "contract: %u mV, %u mA, src=%d dfp=%d", c.voltage_mv, c.current_ma, c.is_source, c.is_dfp);
     }
+}
+
+void ucsi_shim_log_status(UcsiPpm* ppm) {
+    uint8_t resp[19] = {0};
+    if(!ucsi_shim_get_connector_status(ppm, resp)) {
+        FURI_LOG_W(TAG, "GET_CONNECTOR_STATUS failed");
+        return;
+    }
+    log_status_from_resp(ppm, resp);
+}
+
+bool ucsi_shim_log_status_if_changed(UcsiPpm* ppm) {
+    uint8_t resp[19] = {0};
+    if(!ucsi_shim_get_connector_status(ppm, resp)) {
+        FURI_LOG_W(TAG, "GET_CONNECTOR_STATUS failed");
+        return false;
+    }
+    const uint16_t csc_bitmap = (uint16_t)(resp[0] | ((uint16_t)resp[1] << 8));
+    if(csc_bitmap == 0u) return false;
+    log_status_from_resp(ppm, resp);
+    return true;
 }

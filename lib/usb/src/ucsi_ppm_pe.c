@@ -4,6 +4,9 @@
 
 #include <string.h>
 
+#include <furi.h>
+#define TAG "UcsiPe"
+
 // --- PD message types (PD R3.0 Table 6.4 / 6.5) ----------------------------
 
 #define PD_MSG_TYPE_GOODCRC             0x01u
@@ -12,6 +15,7 @@
 #define PD_MSG_TYPE_PS_RDY              0x06u
 #define PD_MSG_TYPE_WAIT                0x0Cu
 #define PD_MSG_TYPE_SOFT_RESET          0x0Du
+#define PD_MSG_TYPE_NOT_SUPPORTED       0x10u
 #define PD_MSG_TYPE_DR_SWAP             0x09u
 #define PD_MSG_TYPE_PR_SWAP             0x0Au
 #define PD_MSG_TYPE_VCONN_SWAP          0x0Bu
@@ -128,6 +132,7 @@ static bool pe_send_control(UcsiPpm* ppm, uint8_t msg_type);
 // Used when TX retries are exhausted — soft is the first escalation step
 // before falling back to Hard Reset.
 static void pe_request_soft_reset(UcsiPpm* ppm) {
+    FURI_LOG_W(TAG, "soft reset (state=%d)", ppm->pe_state);
     // PRL state must be reset *before* sending so the Soft_Reset frame goes
     // out with MessageID = 0 (§6.8.1.2).
     (void)ucsi_ppm_prl_reset(ppm);
@@ -144,7 +149,9 @@ static void pe_request_soft_reset(UcsiPpm* ppm) {
 // and waits for the HARDSENT event. Bounded by nHardResetCount — past that
 // we give up to Error per PD R3.0 §8.3.3.6.
 static void pe_request_hard_reset(UcsiPpm* ppm) {
+    FURI_LOG_W(TAG, "hard reset (state=%d, counter=%u)", ppm->pe_state, ppm->pe_hard_reset_counter);
     if(ppm->pe_hard_reset_counter >= UCSI_PPM_PE_HARD_RESET_MAX) {
+        FURI_LOG_E(TAG, "hard reset counter exhausted → Error");
         pe_to_error(ppm);
         return;
     }
@@ -269,7 +276,10 @@ static void pe_src_handle_request(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
 }
 
 static void pe_commit_contract(UcsiPpm* ppm) {
-    // The PDO we requested has the negotiated voltage/current.
+    // Voltage comes from the selected PDO; operating current comes from the
+    // RDO we actually sent (bits 19:10, 10 mA units). These diverge after a
+    // SET_POWER_LEVEL renegotiate — the PDO advertises max while the contract
+    // is for a lower op_current.
     const uint8_t idx = ppm->pe_requested_pdo_index;
     if(idx == 0u || idx > ppm->pe_received_pdo_count) {
         pe_to_error(ppm);
@@ -277,7 +287,8 @@ static void pe_commit_contract(UcsiPpm* ppm) {
     }
     const uint32_t pdo = ppm->pe_received_pdos[idx - 1u];
     ppm->pe_negotiated_voltage_mv = pdo_fixed_voltage_mv(pdo);
-    ppm->pe_negotiated_current_ma = pdo_fixed_current_ma(pdo);
+    const uint16_t op_units = (uint16_t)((ppm->pe_current_rdo >> RDO_OP_CURRENT_SHIFT) & 0x3FFu);
+    ppm->pe_negotiated_current_ma = (uint16_t)(op_units * PDO_FIXED_CURRENT_UNIT_MA);
     ppm->pe_state = (int)UcsiPpmPeSnkReady;
     ppm->pe_hard_reset_counter = 0u; // clean contract — fresh budget
     // Let OPM observe the new PD contract via GET_CONNECTOR_STATUS.
@@ -388,10 +399,12 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
             ppm->pe_data_role_is_dfp = !ppm->pe_data_role_is_dfp;
             ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_PARTNER_CHANGED);
         }
-        // Accept / Reject / Wait all return to *Ready — only Accept flips
-        // the role. Partner can refuse and we simply stay as we were.
+        // Accept / Reject / Wait / Not_Supported all return to *Ready —
+        // only Accept flips the role. Partner can refuse via Reject or
+        // Wait (PD §8.3.3.8) or declare DR_Swap unsupported (PD §6.5);
+        // either way we just stay as we were.
         if(type == PD_MSG_TYPE_ACCEPT || type == PD_MSG_TYPE_REJECT ||
-           type == PD_MSG_TYPE_WAIT) {
+           type == PD_MSG_TYPE_WAIT || type == PD_MSG_TYPE_NOT_SUPPORTED) {
             ppm->pe_state =
                 ppm->tc_role_is_src ? (int)UcsiPpmPeSrcReady : (int)UcsiPpmPeSnkReady;
         }
