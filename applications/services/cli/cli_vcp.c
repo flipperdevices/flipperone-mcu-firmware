@@ -10,7 +10,7 @@
 
 #define TAG "CliVcp"
 
-#define USB_CDC_PKT_LEN   (CFG_TUD_CDC_RX_BUFSIZE - 1)
+#define USB_CDC_PKT_LEN   (CFG_TUD_CDC_RX_BUFSIZE - 1) //Todo: 2 txdone, when sending a full 64-byte packet
 #define VCP_BUF_SIZE      (USB_CDC_PKT_LEN * 16)
 #define VCP_IF_NUM        0
 #define VCP_MESSAGE_Q_LEN 8

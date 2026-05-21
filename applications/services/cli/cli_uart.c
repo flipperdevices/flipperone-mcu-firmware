@@ -14,7 +14,7 @@
 #define TRANSFER_BATCH_SIZE   32UL
 #define VCP_MESSAGE_Q_LEN     8
 
-//#define CLI_UART_TRACE_ENABLE
+// #define CLI_UART_TRACE_ENABLE
 
 #ifdef CLI_UART_TRACE_ENABLE
 #define CLI_UART_TRACE(...) FURI_LOG_D(__VA_ARGS__)
@@ -23,41 +23,52 @@
 #endif
 
 typedef enum {
-    CliVcpInternalEventTxDone,
-    CliVcpInternalEventTx,
-    CliVcpInternalEventRx,
-} CliVcpInternalEvent;
+    CliUartEventTxDone = (1 << 0),
+    CliUartEventTx = (1 << 1),
+    CliUartEventRx = (1 << 2),
+    CliUartEventAll = (CliUartEventTxDone | CliUartEventTx | CliUartEventRx),
+} CliUartEvent;
 
 struct CliUart {
     CliRegistry* registry;
     FuriEventLoop* event_loop;
     FuriHalSerialHandle* uart_handle;
 
-    FuriMessageQueue* internal_evt_queue;
-    FuriSemaphore* tx_ready_semaphore;
     volatile bool is_transmitting;
+    FuriEventFlag* event_flag;
 
     CliShell* cli_shell;
     PipeSide* own_pipe;
 };
 
-static void cli_uart_signal_internal_event(CliUart* cli_uart, CliVcpInternalEvent event) {
-    furi_check(furi_message_queue_put(cli_uart->internal_evt_queue, &event, 0) == FuriStatusOk);
+static void cli_uart_signal_event(CliUart* cli_uart, CliUartEvent event) {
+    uint32_t ret = furi_event_flag_set(cli_uart->event_flag, event);
+    // furi_check(!(ret & FuriFlagError));
+    if((ret & FuriFlagError)) {
+        FURI_LOG_E(TAG, "Failed to set event flag, error code: 0x%08lX", ret);
+    }
 }
 
-static void cli_uart_internal_event_happened(FuriEventLoopObject* object, void* context) {
+static void cli_uart_event(FuriEventLoopObject* object, void* context) {
     CliUart* cli_uart = context;
-    CliVcpInternalEvent event;
+    uint32_t event = furi_event_flag_get(object);
 
-    furi_check(furi_message_queue_get(object, &event, 0) == FuriStatusOk);
     furi_hal_gpio_write(&gpio_m40, true);
-    switch(event) {
-    case CliVcpInternalEventRx: {
+    if(event & CliUartEventRx) {
         CLI_UART_TRACE(TAG, "Rx");
-        break;
     }
 
-    case CliVcpInternalEventTx: {
+    if(event & CliUartEventTxDone) {
+        CLI_UART_TRACE(TAG, "TxDone");
+        
+        if(pipe_bytes_available(cli_uart->own_pipe)) {
+            event |= CliUartEventTx; // trigger next Tx if needed
+        } else {
+            cli_uart->is_transmitting = false;
+        }
+    }
+
+    if(event & CliUartEventTx) {
         //furi_hal_gpio_write(&gpio_m40, true);
         CLI_UART_TRACE(TAG, "Tx");
 
@@ -92,21 +103,76 @@ static void cli_uart_internal_event_happened(FuriEventLoopObject* object, void* 
 
         CLI_UART_TRACE(TAG, "Tx ->>");
         //furi_hal_gpio_write(&gpio_m40, false);
-        break;
-    }
-
-    case CliVcpInternalEventTxDone: {
-        
-        CLI_UART_TRACE(TAG, "TxDone");
-        cli_uart->is_transmitting = false;
-        cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventTx);
-        
-        break;
-    }
     }
 
     furi_hal_gpio_write(&gpio_m40, false);
 }
+
+// static void cli_uart_internal_event_happened(FuriEventLoopObject* object, void* context) {
+//     CliUart* cli_uart = context;
+//     CliVcpInternalEvent event;
+
+//     uint32_t count = furi_message_queue_get_count(cli_uart->internal_evt_queue);
+//     CLI_UART_TRACE(TAG, " <-- internal_event count=%lu event=%d", count, event);
+
+//     while(furi_message_queue_get(object, &event, 0) == FuriStatusOk) {
+//         furi_hal_gpio_write(&gpio_m40, true);
+//         switch(event) {
+//         case CliVcpInternalEventRx: {
+//             CLI_UART_TRACE(TAG, "Rx");
+//             break;
+//         }
+
+//         case CliVcpInternalEventTx: {
+//             //furi_hal_gpio_write(&gpio_m40, true);
+//             CLI_UART_TRACE(TAG, "Tx");
+
+//             uint8_t data;
+//             bool uart_fifo_full = false;
+//             uint8_t tx_counter = 0;
+//             while(pipe_bytes_available(cli_uart->own_pipe) && (++tx_counter < TRANSFER_BATCH_SIZE)) {
+//                 if(!furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
+//                     uart_fifo_full = true;
+//                     break;
+//                 }
+//                 furi_check(pipe_receive(cli_uart->own_pipe, &data, sizeof(data)) == sizeof(data));
+//                 furi_hal_serial_tx_non_blocking(cli_uart->uart_handle, data);
+//             }
+
+//             // while(furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
+//             //     if(pipe_bytes_available(cli_uart->own_pipe) > 0) {
+//             //         furi_check(pipe_receive(cli_uart->own_pipe, &data, sizeof(data)) == sizeof(data));
+//             //         furi_hal_serial_tx_non_blocking(cli_uart->uart_handle, data);
+//             //     } else {
+//             //         break;
+//             //     }
+//             //     if(!furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
+//             //         uart_fifo_full = true;
+//             //         break;
+//             //     }
+//             // }
+
+//             if(uart_fifo_full) {
+//                 cli_uart->is_transmitting = true;
+//             }
+
+//             CLI_UART_TRACE(TAG, "Tx ->>");
+//             //furi_hal_gpio_write(&gpio_m40, false);
+//             break;
+//         }
+
+//         case CliVcpInternalEventTxDone: {
+//             CLI_UART_TRACE(TAG, "TxDone");
+//             cli_uart->is_transmitting = false;
+//             cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventTx);
+
+//             break;
+//         }
+//         }
+
+//         furi_hal_gpio_write(&gpio_m40, false);
+//     }
+// }
 
 // ================
 // Serial callbacks
@@ -128,14 +194,14 @@ static void cli_uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEve
         }
     }
 
-    cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventRx);
+    cli_uart_signal_event(cli_uart, CliUartEventRx);
 }
 
 static void cli_uart_tx_complete_callback(FuriHalSerialHandle* handle, FuriHalSerialTxEvent event, void* context) {
     UNUSED(handle);
     CliUart* cli_uart = context;
     if(!(event & FuriHalSerialTxEventComplete)) return;
-    cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventTxDone);
+    cli_uart_signal_event(cli_uart, CliUartEventTxDone);
 }
 
 // ===================
@@ -146,7 +212,7 @@ static void cli_uart_data_from_pipe(PipeSide* pipe, void* context) {
     CLI_UART_TRACE(TAG, "data_from_pipe");
     CliUart* cli_uart = context;
     if(cli_uart->is_transmitting) return;
-    cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventTx);
+    cli_uart_signal_event(cli_uart, CliUartEventTx);
 }
 
 // ============
@@ -161,9 +227,13 @@ static CliUart* cli_uart_alloc(void) {
     cli_uart->event_loop = furi_event_loop_alloc();
     cli_uart->is_transmitting = false;
 
-    cli_uart->internal_evt_queue = furi_message_queue_alloc(VCP_MESSAGE_Q_LEN, sizeof(CliVcpInternalEvent));
-    furi_event_loop_subscribe_message_queue(
-        cli_uart->event_loop, cli_uart->internal_evt_queue, FuriEventLoopEventIn, cli_uart_internal_event_happened, cli_uart);
+    // cli_uart->internal_evt_queue = furi_message_queue_alloc(VCP_MESSAGE_Q_LEN, sizeof(CliVcpInternalEvent));
+    // furi_event_loop_subscribe_message_queue(
+    //     cli_uart->event_loop, cli_uart->internal_evt_queue, FuriEventLoopEventIn, cli_uart_internal_event_happened, cli_uart);
+
+    cli_uart->event_flag = furi_event_flag_alloc();
+    furi_event_loop_subscribe_event_flag(
+        cli_uart->event_loop, cli_uart->event_flag, FuriEventLoopEventIn | FuriEventLoopEventFlagEdge, cli_uart_event, cli_uart);
 
     cli_uart->uart_handle = furi_hal_serial_control_acquire(UART_SERIAL_ID);
     furi_check(cli_uart->uart_handle);
