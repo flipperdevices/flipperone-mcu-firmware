@@ -52,6 +52,16 @@ bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_curre
 bool power_bq25792_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t current_ma);
 bool power_bq25792_otg_enable(Power* instance, bool enable);
 
+/**
+ * @brief OTG overcurrent (IINDPM/IOTG) callback.
+ *
+ * Invoked from the BQ25792 IRQ worker thread when the IINDPM flag fires
+ * while OTG is enabled. Keep the handler short: just signal another task,
+ * do not perform heavy I/O from here.
+ */
+typedef void (*PowerBq25792OtgOvercurrentCallback)(void* context);
+void power_bq25792_set_otg_overcurrent_callback(Power* instance, PowerBq25792OtgOvercurrentCallback callback, void* context);
+
 bool power_bq28z620_get_control_status(Power* instance, Bq28z620StdCmdControlStatusRegBits* control_status);
 bool power_bq28z620_get_time_to_empty(Power* instance, uint16_t* time_to_empty);
 bool power_bq28z620_get_temperature(Power* instance, float* temperature);
