@@ -17,6 +17,17 @@ typedef enum {
     Bq25792StatusTimeout = -2,
 } Bq25792Status;
 
+typedef enum {
+    Bq25792WatchdogTimeDisabled = 0x00, /** disabled */
+    Bq25792WatchdogTime0_5s = 0x01, /** 0.5s */
+    Bq25792WatchdogTime1s = 0x02, /** 1s */
+    Bq25792WatchdogTime2s = 0x03, /** 2s */
+    Bq25792WatchdogTime20s = 0x04, /** 20s */
+    Bq25792WatchdogTime40s = 0x05, /** 40s (default) */
+    Bq25792WatchdogTime80s = 0x06, /** 80s */
+    Bq25792WatchdogTime160s = 0x07, /** 160s */
+} Bq25792WatchdogTime;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -47,6 +58,7 @@ Bq25792Status bq25792_clear_charger_fault(Bq25792* instance, Bq25792FaultStatusR
 Bq25792Status bq25792_get_charger_irq_flags(Bq25792* instance, Bq25792ChargerFlagReg* irq_flags);
 Bq25792Status bq25792_adc_enable(Bq25792* instance, bool enable);
 Bq25792Status bq25792_watchdog_reset(Bq25792* instance);
+Bq25792Status bq25792_watchdog_set_time(Bq25792* instance, Bq25792WatchdogTime time);
 #ifdef __cplusplus
 }
 #endif

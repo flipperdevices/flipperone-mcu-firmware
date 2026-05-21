@@ -163,7 +163,7 @@ Bq25792Status bq25792_load_default_config(Bq25792* instance) {
         }
         // ToDo: Implement a watchdog reset mechanism
         charger_control_1.wd_rst = 1; // Reset watchdog timer
-        charger_control_1.watchdog = 0; // Enable watchdog timer
+        charger_control_1.watchdog = Bq25792WatchdogTimeDisabled; // Disable watchdog timer
         res = bq25792_write_reg8(instance, Bq25792RegChargerControl1, *(uint8_t*)&charger_control_1);
         if(res != Bq25792StatusOk) {
             break;
@@ -595,6 +595,25 @@ Bq25792Status bq25792_watchdog_reset(Bq25792* instance) {
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to reset watchdog!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_watchdog_set_time(Bq25792* instance, Bq25792WatchdogTime time) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+
+    Bq25792ChargerControl1RegBits charger_control_1 = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl1, (uint8_t*)&charger_control_1);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_1.watchdog = time; // Set watchdog timer
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl1, *(uint8_t*)&charger_control_1);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set watchdog time!");
     }
     return res;
 }
