@@ -90,8 +90,11 @@ static void power_bq25792_print_charger_irq(Power* instance) {
 
     if(fl.flag0.iindpm_flag && instance->otg_enabled) {
         FURI_LOG_W(TAG, "OTG overcurrent (IINDPM/IOTG) detected");
+        FURI_CRITICAL_ENTER();
         PowerBq25792OtgOvercurrentCallback cb = instance->otg_overcurrent_callback;
-        if(cb) cb(instance->otg_overcurrent_context);
+        void* cb_ctx = instance->otg_overcurrent_context;
+        FURI_CRITICAL_EXIT();
+        if(cb) cb(cb_ctx);
     }
 
     furi_string_set(arena, "");
@@ -229,7 +232,6 @@ static Bq25792Status power_bq25792_otg_enable_internal(Power* instance, bool ena
             FURI_LOG_E(TAG, "Failed to set OTG watchdog time: %d", res);
             return res;
         }
-        // Pet once so the first interval has a full budget
         res = bq25792_watchdog_reset(instance->bq25792_header);
         if(res != Bq25792StatusOk) {
             FURI_LOG_E(TAG, "Failed to reset OTG watchdog: %d", res);
@@ -243,16 +245,21 @@ static Bq25792Status power_bq25792_otg_enable_internal(Power* instance, bool ena
         instance->otg_enabled = true;
         furi_event_loop_timer_start(instance->otg_watchdog_timer, BQ25792_OTG_WATCHDOG_PERIOD_MS);
     } else {
-        instance->otg_enabled = false;
-        Bq25792Status wd_res = bq25792_watchdog_set_time(instance->bq25792_header, Bq25792WatchdogTimeDisabled);
-        if(wd_res != Bq25792StatusOk) {
-            FURI_LOG_E(TAG, "Failed to disable OTG watchdog: %d", wd_res);
-            if(res == Bq25792StatusOk) res = wd_res;
-        }
-        furi_event_loop_timer_stop(instance->otg_watchdog_timer);
+        // If OTG disable fails, stop pets so the chip WD resets it for us;
+        // keep WD enabled until OTG is confirmed off.
         res = bq25792_otg_enable(instance->bq25792_header, false);
         if(res != Bq25792StatusOk) {
             FURI_LOG_E(TAG, "Failed to disable OTG: %d", res);
+            furi_event_loop_timer_stop(instance->otg_watchdog_timer);
+            return res;
+        }
+
+        instance->otg_enabled = false;
+        furi_event_loop_timer_stop(instance->otg_watchdog_timer);
+
+        res = bq25792_watchdog_set_time(instance->bq25792_header, Bq25792WatchdogTimeDisabled);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to disable OTG watchdog: %d", res);
         }
     }
     return res;
@@ -636,11 +643,10 @@ bool power_bq25792_otg_enable(Power* instance, bool enable) {
 
 void power_bq25792_set_otg_overcurrent_callback(Power* instance, PowerBq25792OtgOvercurrentCallback callback, void* context) {
     furi_check(instance);
-    // Must be called with OTG disabled — otherwise the IRQ worker could race
-    // and observe a half-updated (callback, context) pair.
-    furi_check(!instance->otg_enabled);
-    instance->otg_overcurrent_context = context;
+    FURI_CRITICAL_ENTER();
     instance->otg_overcurrent_callback = callback;
+    instance->otg_overcurrent_context = context;
+    FURI_CRITICAL_EXIT();
 }
 
 bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit) {
