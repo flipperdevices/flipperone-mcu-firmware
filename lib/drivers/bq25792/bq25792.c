@@ -580,6 +580,99 @@ Bq25792Status bq25792_adc_enable(Bq25792* instance, bool enable) {
     return res;
 }
 
+Bq25792Status bq25792_otg_enable(Bq25792* instance, bool enable) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792ChargerControl3RegBits charger_control_3 = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl3, (uint8_t*)&charger_control_3);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_3.en_otg = enable ? 1 : 0;
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl3, *(uint8_t*)&charger_control_3);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set OTG enable!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_otg_voltage_mv(Bq25792* instance, uint16_t* otg_voltage) {
+    furi_check(instance);
+    furi_check(otg_voltage);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792VOTGRegulationRegBits votg_reg = {0};
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegVOTGRegulation, (uint16_t*)&votg_reg);
+        if(res == Bq25792StatusOk) {
+            // Fixed offset 2800 mV, step 10 mV
+            *otg_voltage = (uint16_t)votg_reg.votg * 10 + 2800;
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get OTG voltage!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_set_otg_voltage_mv(Bq25792* instance, uint16_t otg_voltage) {
+    furi_check(instance);
+    if(otg_voltage < 2800 || otg_voltage > 22000) { // VOTG range 2800-22000 mV
+        FURI_LOG_E(TAG, "OTG voltage %u mV out of range [2800, 22000]", otg_voltage);
+        return Bq25792StatusError;
+    }
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792VOTGRegulationRegBits votg_reg = {0};
+    votg_reg.votg = (otg_voltage - 2800) / 10; // Fixed offset 2800 mV, step 10 mV
+    do {
+        res = bq25792_write_reg16(instance, Bq25792RegVOTGRegulation, *(uint16_t*)&votg_reg);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set OTG voltage!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_get_otg_current_ma(Bq25792* instance, uint16_t* otg_current) {
+    furi_check(instance);
+    furi_check(otg_current);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792IOTGRegulationRegBits iotg_reg = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegIOTGRegulation, (uint8_t*)&iotg_reg);
+        if(res == Bq25792StatusOk) {
+            *otg_current = (uint16_t)iotg_reg.iotg * 40; // Step 40 mA per LSB
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get OTG current!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_set_otg_current_ma(Bq25792* instance, uint16_t otg_current) {
+    furi_check(instance);
+    if(otg_current < 120 || otg_current > 3320) { // IOTG range 120-3320 mA
+        FURI_LOG_E(TAG, "OTG current %u mA out of range [120, 3320]", otg_current);
+        return Bq25792StatusError;
+    }
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792IOTGRegulationRegBits iotg_reg = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegIOTGRegulation, (uint8_t*)&iotg_reg);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        iotg_reg.iotg = otg_current / 40; // Step 40 mA per LSB, preserve prechg_tmr
+        res = bq25792_write_reg8(instance, Bq25792RegIOTGRegulation, *(uint8_t*)&iotg_reg);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set OTG current!");
+    }
+    return res;
+}
+
 Bq25792Status bq25792_watchdog_reset(Bq25792* instance) {
     furi_check(instance);
     Bq25792Status res = Bq25792StatusUnknown;

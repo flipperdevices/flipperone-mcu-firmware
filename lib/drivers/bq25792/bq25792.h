@@ -57,6 +57,11 @@ Bq25792Status bq25792_get_charger_fault(Bq25792* instance, Bq25792FaultStatusReg
 Bq25792Status bq25792_clear_charger_fault(Bq25792* instance, Bq25792FaultStatusReg* fault);
 Bq25792Status bq25792_get_charger_irq_flags(Bq25792* instance, Bq25792ChargerFlagReg* irq_flags);
 Bq25792Status bq25792_adc_enable(Bq25792* instance, bool enable);
+Bq25792Status bq25792_otg_enable(Bq25792* instance, bool enable);
+Bq25792Status bq25792_get_otg_voltage_mv(Bq25792* instance, uint16_t* otg_voltage);
+Bq25792Status bq25792_set_otg_voltage_mv(Bq25792* instance, uint16_t otg_voltage);
+Bq25792Status bq25792_get_otg_current_ma(Bq25792* instance, uint16_t* otg_current);
+Bq25792Status bq25792_set_otg_current_ma(Bq25792* instance, uint16_t otg_current);
 Bq25792Status bq25792_watchdog_reset(Bq25792* instance);
 Bq25792Status bq25792_watchdog_set_time(Bq25792* instance, Bq25792WatchdogTime time);
 #ifdef __cplusplus
