@@ -11,8 +11,8 @@
 #define TAG "UcsiPe"
 
 #ifdef UCSI_PE_DEBUG_ENABLED
-#define UCSI_PE_WARN(...) FURI_LOG_W(TAG, __VA_ARGS__)
-#defibe UCSI_PE_ERROR(...) FURI_LOG_E(TAG, __VA_ARGS__)
+#define UCSI_PE_WARN(...)  FURI_LOG_W(TAG, __VA_ARGS__)
+#define UCSI_PE_ERROR(...) FURI_LOG_E(TAG, __VA_ARGS__)
 #else
 #define UCSI_PE_WARN(...)
 #define UCSI_PE_ERROR(...)
