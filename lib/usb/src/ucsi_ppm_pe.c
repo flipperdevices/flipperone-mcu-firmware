@@ -5,22 +5,33 @@
 #include <string.h>
 
 #include <furi.h>
+
+// #define UCSI_PE_DEBUG_ENABLED
+
 #define TAG "UcsiPe"
+
+#ifdef UCSI_PE_DEBUG_ENABLED
+#define UCSI_PE_WARN(...) FURI_LOG_W(TAG, __VA_ARGS__)
+#defibe UCSI_PE_ERROR(...) FURI_LOG_E(TAG, __VA_ARGS__)
+#else
+#define UCSI_PE_WARN(...)
+#define UCSI_PE_ERROR(...)
+#endif
 
 // --- PD message types (PD R3.0 Table 6.4 / 6.5) ----------------------------
 
-#define PD_MSG_TYPE_GOODCRC             0x01u
-#define PD_MSG_TYPE_ACCEPT              0x03u
-#define PD_MSG_TYPE_REJECT              0x04u
-#define PD_MSG_TYPE_PS_RDY              0x06u
-#define PD_MSG_TYPE_WAIT                0x0Cu
-#define PD_MSG_TYPE_SOFT_RESET          0x0Du
-#define PD_MSG_TYPE_NOT_SUPPORTED       0x10u
-#define PD_MSG_TYPE_DR_SWAP             0x09u
-#define PD_MSG_TYPE_PR_SWAP             0x0Au
-#define PD_MSG_TYPE_VCONN_SWAP          0x0Bu
-#define PD_MSG_TYPE_SOURCE_CAPS_DATA    0x01u // also 0x01, but distinguished by NDO>0
-#define PD_MSG_TYPE_REQUEST_DATA        0x02u
+#define PD_MSG_TYPE_GOODCRC          0x01u
+#define PD_MSG_TYPE_ACCEPT           0x03u
+#define PD_MSG_TYPE_REJECT           0x04u
+#define PD_MSG_TYPE_PS_RDY           0x06u
+#define PD_MSG_TYPE_WAIT             0x0Cu
+#define PD_MSG_TYPE_SOFT_RESET       0x0Du
+#define PD_MSG_TYPE_NOT_SUPPORTED    0x10u
+#define PD_MSG_TYPE_DR_SWAP          0x09u
+#define PD_MSG_TYPE_PR_SWAP          0x0Au
+#define PD_MSG_TYPE_VCONN_SWAP       0x0Bu
+#define PD_MSG_TYPE_SOURCE_CAPS_DATA 0x01u // also 0x01, but distinguished by NDO>0
+#define PD_MSG_TYPE_REQUEST_DATA     0x02u
 
 // --- PD header layout (PD R3.0 §6.2.1.1) -----------------------------------
 
@@ -31,26 +42,26 @@
 #define PD_HDR_NUM_OBJ_SHIFT  12u
 #define PD_HDR_NUM_OBJ_MASK   (0x07u << PD_HDR_NUM_OBJ_SHIFT)
 
-#define PD_SPEC_REV_3_0       0b10u
+#define PD_SPEC_REV_3_0 0b10u
 
 // --- Source Fixed PDO field layout (PD R3.0 Table 6-9) ---------------------
 
-#define PDO_TYPE_SHIFT          30u
-#define PDO_TYPE_MASK           (0x3u << PDO_TYPE_SHIFT)
-#define PDO_TYPE_FIXED          0x0u
-#define PDO_FIXED_VOLTAGE_SHIFT 10u
-#define PDO_FIXED_VOLTAGE_MASK  (0x3FFu << PDO_FIXED_VOLTAGE_SHIFT)
+#define PDO_TYPE_SHIFT            30u
+#define PDO_TYPE_MASK             (0x3u << PDO_TYPE_SHIFT)
+#define PDO_TYPE_FIXED            0x0u
+#define PDO_FIXED_VOLTAGE_SHIFT   10u
+#define PDO_FIXED_VOLTAGE_MASK    (0x3FFu << PDO_FIXED_VOLTAGE_SHIFT)
 #define PDO_FIXED_VOLTAGE_UNIT_MV 50u
-#define PDO_FIXED_CURRENT_MASK  0x3FFu
+#define PDO_FIXED_CURRENT_MASK    0x3FFu
 #define PDO_FIXED_CURRENT_UNIT_MA 10u
 
 // --- Request RDO layout (PD R3.0 §6.4.2 Fixed/Variable RDO) ----------------
 
-#define RDO_OBJ_POSITION_SHIFT  28u
-#define RDO_CAP_MISMATCH_BIT    (1u << 26)
-#define RDO_USB_COMMS_BIT       (1u << 25)
-#define RDO_NO_USB_SUSPEND_BIT  (1u << 24)
-#define RDO_OP_CURRENT_SHIFT    10u
+#define RDO_OBJ_POSITION_SHIFT 28u
+#define RDO_CAP_MISMATCH_BIT   (1u << 26)
+#define RDO_USB_COMMS_BIT      (1u << 25)
+#define RDO_NO_USB_SUSPEND_BIT (1u << 24)
+#define RDO_OP_CURRENT_SHIFT   10u
 
 // --- Timers (PD R3.0 §7.9) -------------------------------------------------
 
@@ -58,16 +69,12 @@
 #define UCSI_PPM_PE_SENDER_RESPONSE_MS 500u // tSenderResponse max
 #define UCSI_PPM_PE_PS_TRANSITION_MS   500u // tPSTransition SPR nominal
 #define UCSI_PPM_PE_SOURCE_CAP_MS      150u // tTypeCSendSourceCap nominal
-#define UCSI_PPM_PE_CAPS_COUNT_MAX     50u  // nCapsCount
-#define UCSI_PPM_PE_HARD_RESET_MAX     2u   // nHardResetCount (PD R3.0 Table 7.12)
+#define UCSI_PPM_PE_CAPS_COUNT_MAX     50u // nCapsCount
+#define UCSI_PPM_PE_HARD_RESET_MAX     2u // nHardResetCount (PD R3.0 Table 7.12)
 
 // --- helpers ---------------------------------------------------------------
 
-static uint16_t pe_build_header(
-    uint8_t msg_type,
-    uint8_t num_objects,
-    bool power_role_src,
-    bool data_role_dfp) {
+static uint16_t pe_build_header(uint8_t msg_type, uint8_t num_objects, bool power_role_src, bool data_role_dfp) {
     uint16_t hdr = (uint16_t)(msg_type & PD_HDR_MSG_TYPE_MASK);
     if(data_role_dfp) hdr |= PD_HDR_DATA_ROLE_BIT;
     hdr |= (uint16_t)(PD_SPEC_REV_3_0 << PD_HDR_SPEC_REV_SHIFT);
@@ -90,10 +97,7 @@ static uint16_t pdo_fixed_current_ma(uint32_t pdo) {
     return (uint16_t)(units * PDO_FIXED_CURRENT_UNIT_MA);
 }
 
-static uint32_t pe_build_rdo(
-    uint8_t obj_position,
-    uint16_t operating_current_ma,
-    bool usb_comms) {
+static uint32_t pe_build_rdo(uint8_t obj_position, uint16_t operating_current_ma, bool usb_comms) {
     uint32_t rdo = 0u;
     rdo |= ((uint32_t)(obj_position & 0x07u) << RDO_OBJ_POSITION_SHIFT);
     if(usb_comms) rdo |= RDO_USB_COMMS_BIT;
@@ -132,7 +136,7 @@ static bool pe_send_control(UcsiPpm* ppm, uint8_t msg_type);
 // Used when TX retries are exhausted — soft is the first escalation step
 // before falling back to Hard Reset.
 static void pe_request_soft_reset(UcsiPpm* ppm) {
-    FURI_LOG_W(TAG, "soft reset (state=%d)", ppm->pe_state);
+    UCSI_PE_WARN("soft reset (state=%d)", ppm->pe_state);
     // PRL state must be reset *before* sending so the Soft_Reset frame goes
     // out with MessageID = 0 (§6.8.1.2).
     (void)ucsi_ppm_prl_reset(ppm);
@@ -149,9 +153,9 @@ static void pe_request_soft_reset(UcsiPpm* ppm) {
 // and waits for the HARDSENT event. Bounded by nHardResetCount — past that
 // we give up to Error per PD R3.0 §8.3.3.6.
 static void pe_request_hard_reset(UcsiPpm* ppm) {
-    FURI_LOG_W(TAG, "hard reset (state=%d, counter=%u)", ppm->pe_state, ppm->pe_hard_reset_counter);
+    UCSI_PE_WARN("hard reset (state=%d, counter=%u)", ppm->pe_state, ppm->pe_hard_reset_counter);
     if(ppm->pe_hard_reset_counter >= UCSI_PPM_PE_HARD_RESET_MAX) {
-        FURI_LOG_E(TAG, "hard reset counter exhausted → Error");
+        UCSI_PE_ERROR("hard reset counter exhausted → Error");
         pe_to_error(ppm);
         return;
     }
@@ -292,9 +296,7 @@ static void pe_commit_contract(UcsiPpm* ppm) {
     ppm->pe_state = (int)UcsiPpmPeSnkReady;
     ppm->pe_hard_reset_counter = 0u; // clean contract — fresh budget
     // Let OPM observe the new PD contract via GET_CONNECTOR_STATUS.
-    ucsi_ppm_notify_connector_change(
-        ppm,
-        UCSI_PPM_CSC_POWER_OP_MODE_CHANGE | UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE);
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_POWER_OP_MODE_CHANGE | UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE);
 }
 
 // --- message dispatcher ----------------------------------------------------
@@ -303,11 +305,8 @@ static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
     const uint8_t type = (uint8_t)(msg->header & PD_HDR_MSG_TYPE_MASK);
 
     // Source_Capabilities arriving at sink-side WaitForCapabilities.
-    if(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities &&
-       type == PD_MSG_TYPE_SOURCE_CAPS_DATA) {
-        ppm->pe_received_pdo_count =
-            (uint8_t)(msg->object_count <= UCSI_PPM_MAX_PDOS ? msg->object_count :
-                                                              UCSI_PPM_MAX_PDOS);
+    if(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities && type == PD_MSG_TYPE_SOURCE_CAPS_DATA) {
+        ppm->pe_received_pdo_count = (uint8_t)(msg->object_count <= UCSI_PPM_MAX_PDOS ? msg->object_count : UCSI_PPM_MAX_PDOS);
         for(uint8_t i = 0; i < ppm->pe_received_pdo_count; ++i) {
             ppm->pe_received_pdos[i] = msg->objects[i];
         }
@@ -316,8 +315,7 @@ static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
     }
 
     // Request arriving at source-side SrcSendCapabilities.
-    if(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities &&
-       type == PD_MSG_TYPE_REQUEST_DATA) {
+    if(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities && type == PD_MSG_TYPE_REQUEST_DATA) {
         pe_src_handle_request(ppm, msg);
         return;
     }
@@ -326,8 +324,7 @@ static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
 }
 
 static bool pe_in_ready(const UcsiPpm* ppm) {
-    return ppm->pe_state == (int)UcsiPpmPeSnkReady ||
-           ppm->pe_state == (int)UcsiPpmPeSrcReady;
+    return ppm->pe_state == (int)UcsiPpmPeSnkReady || ppm->pe_state == (int)UcsiPpmPeSrcReady;
 }
 
 static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
@@ -370,7 +367,7 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
     }
 
     switch(ppm->pe_state) {
-    case (int)UcsiPpmPeSnkWaitForAccept:
+    case(int)UcsiPpmPeSnkWaitForAccept:
         if(type == PD_MSG_TYPE_ACCEPT) {
             ppm->pe_state = (int)UcsiPpmPeSnkWaitForPsRdy;
             pe_arm_timer(ppm);
@@ -380,12 +377,12 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
             pe_request_hard_reset(ppm);
         }
         break;
-    case (int)UcsiPpmPeSnkWaitForPsRdy:
+    case(int)UcsiPpmPeSnkWaitForPsRdy:
         if(type == PD_MSG_TYPE_PS_RDY) {
             pe_commit_contract(ppm);
         }
         break;
-    case (int)UcsiPpmPeWaitForSoftResetAccept:
+    case(int)UcsiPpmPeWaitForSoftResetAccept:
         if(type == PD_MSG_TYPE_ACCEPT) {
             // Soft reset acknowledged — restart contract negotiation from
             // wait-caps / send-caps (same as post-Hard-Reset).
@@ -394,7 +391,7 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
             pe_request_hard_reset(ppm);
         }
         break;
-    case (int)UcsiPpmPeWaitForDrSwapResponse:
+    case(int)UcsiPpmPeWaitForDrSwapResponse:
         if(type == PD_MSG_TYPE_ACCEPT) {
             ppm->pe_data_role_is_dfp = !ppm->pe_data_role_is_dfp;
             ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_PARTNER_CHANGED);
@@ -403,10 +400,8 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
         // only Accept flips the role. Partner can refuse via Reject or
         // Wait (PD §8.3.3.8) or declare DR_Swap unsupported (PD §6.5);
         // either way we just stay as we were.
-        if(type == PD_MSG_TYPE_ACCEPT || type == PD_MSG_TYPE_REJECT ||
-           type == PD_MSG_TYPE_WAIT || type == PD_MSG_TYPE_NOT_SUPPORTED) {
-            ppm->pe_state =
-                ppm->tc_role_is_src ? (int)UcsiPpmPeSrcReady : (int)UcsiPpmPeSnkReady;
+        if(type == PD_MSG_TYPE_ACCEPT || type == PD_MSG_TYPE_REJECT || type == PD_MSG_TYPE_WAIT || type == PD_MSG_TYPE_NOT_SUPPORTED) {
+            ppm->pe_state = ppm->tc_role_is_src ? (int)UcsiPpmPeSrcReady : (int)UcsiPpmPeSnkReady;
         }
         break;
     default:
@@ -470,15 +465,12 @@ void ucsi_ppm_pe_on_power_supply_ready(UcsiPpm* ppm) {
     }
     ppm->pe_state = (int)UcsiPpmPeSrcReady;
     ppm->pe_hard_reset_counter = 0u;
-    ucsi_ppm_notify_connector_change(
-        ppm,
-        UCSI_PPM_CSC_POWER_OP_MODE_CHANGE | UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE);
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_POWER_OP_MODE_CHANGE | UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE);
 }
 
 void ucsi_ppm_pe_handle_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
     if(!msg || msg->sop_type != UcsiPpmPhySopTypeSop) return;
-    if(ppm->pe_state == (int)UcsiPpmPeStateIdle ||
-       ppm->pe_state == (int)UcsiPpmPeStateError) {
+    if(ppm->pe_state == (int)UcsiPpmPeStateIdle || ppm->pe_state == (int)UcsiPpmPeStateError) {
         return;
     }
 
@@ -517,8 +509,7 @@ static void pe_restart_after_hard_reset(UcsiPpm* ppm) {
     ppm->pe_received_pdo_count = 0u;
 }
 
-UcsiPpmStatus
-    ucsi_ppm_pe_request_renegotiate(UcsiPpm* ppm, uint16_t operating_current_ma) {
+UcsiPpmStatus ucsi_ppm_pe_request_renegotiate(UcsiPpm* ppm, uint16_t operating_current_ma) {
     // Only sink-side, only with a live explicit contract — otherwise we'd
     // have nothing to renegotiate against.
     if(ppm->pe_state != (int)UcsiPpmPeSnkReady) return UcsiPpmStatusInvalidArg;
@@ -578,8 +569,7 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     case UcsiPpmPhyEventHardResetRx:
         // Partner-initiated Hard Reset. Don't bump our counter (we didn't
         // send it); just restart the flow.
-        if(ppm->pe_state != (int)UcsiPpmPeStateIdle &&
-           ppm->pe_state != (int)UcsiPpmPeStateError) {
+        if(ppm->pe_state != (int)UcsiPpmPeStateIdle && ppm->pe_state != (int)UcsiPpmPeStateError) {
             pe_restart_after_hard_reset(ppm);
         }
         break;
@@ -588,16 +578,16 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         // contract or mid-negotiation, the first step is Soft Reset; if the
         // failure happens during Soft Reset itself, go straight to Hard Reset.
         switch(ppm->pe_state) {
-        case (int)UcsiPpmPeSnkReady:
-        case (int)UcsiPpmPeSrcReady:
-        case (int)UcsiPpmPeSnkWaitForAccept:
-        case (int)UcsiPpmPeSnkWaitForPsRdy:
-        case (int)UcsiPpmPeSrcSendCapabilities:
-        case (int)UcsiPpmPeSrcTransitionSupply:
-        case (int)UcsiPpmPeWaitForDrSwapResponse:
+        case(int)UcsiPpmPeSnkReady:
+        case(int)UcsiPpmPeSrcReady:
+        case(int)UcsiPpmPeSnkWaitForAccept:
+        case(int)UcsiPpmPeSnkWaitForPsRdy:
+        case(int)UcsiPpmPeSrcSendCapabilities:
+        case(int)UcsiPpmPeSrcTransitionSupply:
+        case(int)UcsiPpmPeWaitForDrSwapResponse:
             pe_request_soft_reset(ppm);
             break;
-        case (int)UcsiPpmPeWaitForSoftResetAccept:
+        case(int)UcsiPpmPeWaitForSoftResetAccept:
             pe_request_hard_reset(ppm);
             break;
         default:
@@ -613,27 +603,27 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
 
 void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
     switch(ppm->pe_state) {
-    case (int)UcsiPpmPeSnkWaitForCapabilities:
+    case(int)UcsiPpmPeSnkWaitForCapabilities:
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SINK_WAIT_CAP_MS)) pe_request_hard_reset(ppm);
         break;
-    case (int)UcsiPpmPeSnkWaitForAccept:
+    case(int)UcsiPpmPeSnkWaitForAccept:
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
         break;
-    case (int)UcsiPpmPeWaitForSoftResetAccept:
+    case(int)UcsiPpmPeWaitForSoftResetAccept:
         // SenderResponseTimer also gates Soft_Reset Accept (PD §8.3.3.4).
         // No Accept in time → Hard Reset.
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
         break;
-    case (int)UcsiPpmPeWaitForDrSwapResponse:
+    case(int)UcsiPpmPeWaitForDrSwapResponse:
         // Same SenderResponseTimer (§6.6.2). On timeout PD §8.3.3.8 takes
         // the initiator to PE_*_Hard_Reset.
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
         break;
-    case (int)UcsiPpmPeSnkWaitForPsRdy:
-    case (int)UcsiPpmPeSrcTransitionSupply:
+    case(int)UcsiPpmPeSnkWaitForPsRdy:
+    case(int)UcsiPpmPeSrcTransitionSupply:
         if(pe_timer_expired(ppm, UCSI_PPM_PE_PS_TRANSITION_MS)) pe_request_hard_reset(ppm);
         break;
-    case (int)UcsiPpmPeSrcSendCapabilities:
+    case(int)UcsiPpmPeSrcSendCapabilities:
         // Resend Source_Capabilities periodically until partner replies with
         // a Request, capped at nCapsCount (partner is Type-C only after that).
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SOURCE_CAP_MS)) {

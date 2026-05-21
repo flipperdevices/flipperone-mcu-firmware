@@ -5,10 +5,14 @@
 // running it — otherwise the two stacks race on register reads / writes and
 // nothing works.
 //
-// Strategy for first runs: sink-only (Rd-only) so we never source VBUS. The
-// app loops on ucsi_ppm_tick (every 10 ms), prints state every second, and
-// after the PD contract is up runs a few scripted probes (SET_POWER_LEVEL,
-// DR_Swap) just so you can see them on the wire / in the logs.
+// Currently runs in DRP mode for exercising both roles: the chip toggles
+// between Rp/Rd until a partner attaches, then settles to the matching role.
+// Source-side attach requires real VBUS on the Type-C VBUS pin so the chip
+// raises I_VBUSOK — our gpio_write_vbus_source / power_supply_set hooks are
+// log-only stubs, so a SRC attempt will reach AttachWait but never commit
+// (times out back to Unattached after ~500 ms). Sink-side works fully as
+// before. The app loops on ucsi_ppm_tick (every 10 ms) and after a PD
+// contract is up runs a few scripted probes (SET_POWER_LEVEL, DR_Swap).
 
 #include <furi.h>
 #include <furi_hal_i2c.h>
@@ -78,9 +82,11 @@ static UcsiPpmStatus hal_i2c_write_read(void* ctx, uint8_t addr, const uint8_t* 
 
 static void hal_vbus_source_write(void* ctx, bool value) {
     UNUSED(ctx);
-    // No-op in sink-only bring-up: we never source VBUS. If you later wire a
-    // 5V VBUS output GPIO, drive it from here.
-    UNUSED(value);
+    // Pretend-source mode: log when the lib wants us to enable / disable the
+    // VBUS output switch. Replace with a real GPIO drive once the VBUS source
+    // path is wired — until then the chip never sees VBUSOK and SRC attach
+    // will not commit.
+    FURI_LOG_W(TAG, "vbus_source(%s) [STUB]", value ? "on" : "off");
 }
 
 static void hal_vbus_discharge_write(void* ctx, bool value) {
@@ -90,7 +96,7 @@ static void hal_vbus_discharge_write(void* ctx, bool value) {
 
 static UcsiPpmStatus hal_psu_set(void* ctx, uint16_t voltage_mv, uint16_t current_limit_ma) {
     UNUSED(ctx);
-    FURI_LOG_D(TAG, "psu_set: %u mV / %u mA (no-op stub)", voltage_mv, current_limit_ma);
+    FURI_LOG_W(TAG, "psu_set(%u mV, %u mA) [STUB]", voltage_mv, current_limit_ma);
     return UcsiPpmStatusOk;
 }
 
@@ -145,16 +151,17 @@ static void config_fill(UcsiPpmConfig* cfg, PdUcsi* host) {
     cfg->log = hal_log;
     cfg->fusb302_i2c_addr = FUSB302_I2C_ADDR;
 
-    // Sink-only first run — never source VBUS, no DRP toggle.
-    cfg->initial_cc_operation_mode = UcsiPpmCcModeRdOnly;
-    cfg->source_rp_current = UcsiPpmRpCurrentUsbDefault;
+    // DRP — toggle between Rp/Rd until a partner attaches. Source-side
+    // commit currently won't complete (no real VBUS) but the role-detection
+    // and PE Source_Capabilities advertisement still exercise.
+    cfg->initial_cc_operation_mode = UcsiPpmCcModeDrp;
+    cfg->source_rp_current = UcsiPpmRpCurrent1A5;
 
-    // Validator requires both source_caps and sink_caps with first PDO Fixed
-    // 5V (even in Rd-only — see ucsi_ppm.c config_is_valid). Advertise a token
-    // weak Source PDO; CC mode keeps us as Rd so we never actually source.
-    cfg->source_caps.pdos[0] = ucsi_ppm_pdo_fixed_source(5000, 500, false, false, false, false);
+    // Host-port-like Source caps (5V/1500 mA) and a Sink ask for 5V/3 A.
+    cfg->source_caps.pdos[0] =
+        ucsi_ppm_pdo_fixed_source(5000, 1500, true /*DRP*/, false, true /*USBcom*/, true /*DRD*/);
     cfg->source_caps.count = 1;
-    cfg->sink_caps.pdos[0] = ucsi_ppm_pdo_fixed_sink(5000, 3000, false, false, false, true, false);
+    cfg->sink_caps.pdos[0] = ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true);
     cfg->sink_caps.count = 1;
 
     cfg->supports_usb_pd = true;

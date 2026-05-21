@@ -262,20 +262,27 @@ static void log_pdo(uint8_t idx, uint32_t pdo) {
 }
 
 void ucsi_shim_dump_partner_source_caps(UcsiPpm* ppm) {
-    uint32_t pdos[4];
-    const uint8_t n1 = ucsi_shim_get_pdos(ppm, true /*partner*/, 0u, 4u, true /*source*/, pdos);
-    if(n1 == 0u) {
+    uint32_t all[8] = {0};
+    uint32_t batch[4];
+    const uint8_t n1 = ucsi_shim_get_pdos(ppm, true /*partner*/, 0u, 4u, true /*source*/, batch);
+    for(uint8_t i = 0; i < n1; ++i) all[i] = batch[i];
+    // PD allows up to 7 PDOs; UCSI's NumPDOs field is 2 bits (1..4) so we
+    // need a second fetch at offset 4 to cover the remainder.
+    const uint8_t n2 = ucsi_shim_get_pdos(ppm, true, 4u, 3u, true, batch);
+    for(uint8_t i = 0; i < n2; ++i) all[4 + i] = batch[i];
+
+    // GET_PDOS returns whatever is in the cache (zeros for unused slots), so
+    // count the actually-populated entries by looking for non-zero raw value.
+    uint8_t count = 0;
+    for(uint8_t i = 0; i < 7; ++i) {
+        if(all[i] != 0u) count = (uint8_t)(i + 1u);
+    }
+    if(count == 0u) {
         FURI_LOG_W(TAG, "no partner Source caps cached");
         return;
     }
-    FURI_LOG_I(TAG, "partner Source caps (%u shown):", n1);
-    for(uint8_t i = 0; i < n1; ++i) log_pdo((uint8_t)(i + 1u), pdos[i]);
-
-    // PD allows up to 7 PDOs; UCSI's NumPDOs field is 2 bits (1..4) so we
-    // need a second fetch at offset 4 to cover the remainder.
-    uint32_t pdos2[4];
-    const uint8_t n2 = ucsi_shim_get_pdos(ppm, true, 4u, 3u, true, pdos2);
-    for(uint8_t i = 0; i < n2; ++i) log_pdo((uint8_t)(4u + i + 1u), pdos2[i]);
+    FURI_LOG_I(TAG, "partner Source caps (%u):", count);
+    for(uint8_t i = 0; i < count; ++i) log_pdo((uint8_t)(i + 1u), all[i]);
 }
 
 bool ucsi_shim_log_status_if_changed(UcsiPpm* ppm) {
