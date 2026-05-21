@@ -43,7 +43,6 @@ struct CliUart {
 
 static void cli_uart_signal_event(CliUart* cli_uart, CliUartEvent event) {
     uint32_t ret = furi_event_flag_set(cli_uart->event_flag, event);
-    // furi_check(!(ret & FuriFlagError));
     if((ret & FuriFlagError)) {
         FURI_LOG_E(TAG, "Failed to set event flag, error code: 0x%08lX", ret);
     }
@@ -53,14 +52,13 @@ static void cli_uart_event(FuriEventLoopObject* object, void* context) {
     CliUart* cli_uart = context;
     uint32_t event = furi_event_flag_get(object);
 
-    furi_hal_gpio_write(&gpio_m40, true);
     if(event & CliUartEventRx) {
         CLI_UART_TRACE(TAG, "Rx");
     }
 
     if(event & CliUartEventTxDone) {
         CLI_UART_TRACE(TAG, "TxDone");
-        
+
         if(pipe_bytes_available(cli_uart->own_pipe)) {
             event |= CliUartEventTx; // trigger next Tx if needed
         } else {
@@ -69,7 +67,6 @@ static void cli_uart_event(FuriEventLoopObject* object, void* context) {
     }
 
     if(event & CliUartEventTx) {
-        //furi_hal_gpio_write(&gpio_m40, true);
         CLI_UART_TRACE(TAG, "Tx");
 
         uint8_t data;
@@ -84,95 +81,13 @@ static void cli_uart_event(FuriEventLoopObject* object, void* context) {
             furi_hal_serial_tx_non_blocking(cli_uart->uart_handle, data);
         }
 
-        // while(furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
-        //     if(pipe_bytes_available(cli_uart->own_pipe) > 0) {
-        //         furi_check(pipe_receive(cli_uart->own_pipe, &data, sizeof(data)) == sizeof(data));
-        //         furi_hal_serial_tx_non_blocking(cli_uart->uart_handle, data);
-        //     } else {
-        //         break;
-        //     }
-        //     if(!furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
-        //         uart_fifo_full = true;
-        //         break;
-        //     }
-        // }
-
         if(uart_fifo_full) {
             cli_uart->is_transmitting = true;
         }
 
         CLI_UART_TRACE(TAG, "Tx ->>");
-        //furi_hal_gpio_write(&gpio_m40, false);
     }
-
-    furi_hal_gpio_write(&gpio_m40, false);
 }
-
-// static void cli_uart_internal_event_happened(FuriEventLoopObject* object, void* context) {
-//     CliUart* cli_uart = context;
-//     CliVcpInternalEvent event;
-
-//     uint32_t count = furi_message_queue_get_count(cli_uart->internal_evt_queue);
-//     CLI_UART_TRACE(TAG, " <-- internal_event count=%lu event=%d", count, event);
-
-//     while(furi_message_queue_get(object, &event, 0) == FuriStatusOk) {
-//         furi_hal_gpio_write(&gpio_m40, true);
-//         switch(event) {
-//         case CliVcpInternalEventRx: {
-//             CLI_UART_TRACE(TAG, "Rx");
-//             break;
-//         }
-
-//         case CliVcpInternalEventTx: {
-//             //furi_hal_gpio_write(&gpio_m40, true);
-//             CLI_UART_TRACE(TAG, "Tx");
-
-//             uint8_t data;
-//             bool uart_fifo_full = false;
-//             uint8_t tx_counter = 0;
-//             while(pipe_bytes_available(cli_uart->own_pipe) && (++tx_counter < TRANSFER_BATCH_SIZE)) {
-//                 if(!furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
-//                     uart_fifo_full = true;
-//                     break;
-//                 }
-//                 furi_check(pipe_receive(cli_uart->own_pipe, &data, sizeof(data)) == sizeof(data));
-//                 furi_hal_serial_tx_non_blocking(cli_uart->uart_handle, data);
-//             }
-
-//             // while(furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
-//             //     if(pipe_bytes_available(cli_uart->own_pipe) > 0) {
-//             //         furi_check(pipe_receive(cli_uart->own_pipe, &data, sizeof(data)) == sizeof(data));
-//             //         furi_hal_serial_tx_non_blocking(cli_uart->uart_handle, data);
-//             //     } else {
-//             //         break;
-//             //     }
-//             //     if(!furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
-//             //         uart_fifo_full = true;
-//             //         break;
-//             //     }
-//             // }
-
-//             if(uart_fifo_full) {
-//                 cli_uart->is_transmitting = true;
-//             }
-
-//             CLI_UART_TRACE(TAG, "Tx ->>");
-//             //furi_hal_gpio_write(&gpio_m40, false);
-//             break;
-//         }
-
-//         case CliVcpInternalEventTxDone: {
-//             CLI_UART_TRACE(TAG, "TxDone");
-//             cli_uart->is_transmitting = false;
-//             cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventTx);
-
-//             break;
-//         }
-//         }
-
-//         furi_hal_gpio_write(&gpio_m40, false);
-//     }
-// }
 
 // ================
 // Serial callbacks
@@ -226,10 +141,6 @@ static CliUart* cli_uart_alloc(void) {
 
     cli_uart->event_loop = furi_event_loop_alloc();
     cli_uart->is_transmitting = false;
-
-    // cli_uart->internal_evt_queue = furi_message_queue_alloc(VCP_MESSAGE_Q_LEN, sizeof(CliVcpInternalEvent));
-    // furi_event_loop_subscribe_message_queue(
-    //     cli_uart->event_loop, cli_uart->internal_evt_queue, FuriEventLoopEventIn, cli_uart_internal_event_happened, cli_uart);
 
     cli_uart->event_flag = furi_event_flag_alloc();
     furi_event_loop_subscribe_event_flag(

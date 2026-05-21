@@ -99,7 +99,8 @@ void furi_hal_interrupt_init() {
     // NVIC_SetPriority(TAMP_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
     // NVIC_EnableIRQ(TAMP_IRQn);
 
-     NVIC_SetPriority(PendSV_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 31, 0));
+    //Todo: Adjust to the correct priority.
+    NVIC_SetPriority(PendSV_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 31, 0));
 
     // NVIC_SetPriority(FPU_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 15, 0));
     // NVIC_EnableIRQ(FPU_IRQn);
