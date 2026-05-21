@@ -170,6 +170,22 @@ size_t furi_hal_serial_tx(
 bool furi_hal_serial_tx_wait_complete(FuriHalSerialHandle* handle, uint32_t timeout);
 
 /**
+ * Put a single byte into the UART transmit FIFO buffer without blocking.
+ *
+ * @param handle Pointer to the serial handle.
+ * @param data The byte to be transmitted.
+ */
+void furi_hal_serial_tx_non_blocking(FuriHalSerialHandle* handle, uint8_t data);
+
+/**
+ * Determine whether the UART transmit FIFO buffer is ready to accept new data.
+ *
+ * @param handle Pointer to the serial handle.
+ * @returns true if the transmit buffer is ready, false otherwise.
+ */
+bool furi_hal_serial_tx_ready(FuriHalSerialHandle* handle);
+
+/**
  * Determine whether there is received data ready for reading.
  *
  * @param handle Pointer to the serial handle.

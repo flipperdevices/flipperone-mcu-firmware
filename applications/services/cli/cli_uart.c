@@ -4,14 +4,15 @@
 #include <cli/cli_commands.h>
 #include <furi_hal_serial.h>
 #include <furi_hal_serial_control.h>
-// #include <furi_hal_dma.h>
+#include <furi_hal_resources.h>
 
 #define TAG "CliUart"
 
 #define PIPE_SZ_PER_DIRECTION 1024UL
 #define UART_BAUD_RATE        230400UL
 #define UART_SERIAL_ID        FuriHalSerialIdUart1
-#define TRANSFER_BATCH_SIZE   256UL
+#define TRANSFER_BATCH_SIZE   32UL
+#define VCP_MESSAGE_Q_LEN     8
 
 //#define CLI_UART_TRACE_ENABLE
 
@@ -21,32 +22,120 @@
 #define CLI_UART_TRACE(...)
 #endif
 
+typedef enum {
+    CliVcpInternalEventTxDone,
+    CliVcpInternalEventTx,
+    CliVcpInternalEventRx,
+} CliVcpInternalEvent;
+
 struct CliUart {
     CliRegistry* registry;
     FuriEventLoop* event_loop;
     FuriHalSerialHandle* uart_handle;
 
+    FuriMessageQueue* internal_evt_queue;
+    FuriSemaphore* tx_ready_semaphore;
+    volatile bool is_transmitting;
+
     CliShell* cli_shell;
     PipeSide* own_pipe;
 };
+
+static void cli_uart_signal_internal_event(CliUart* cli_uart, CliVcpInternalEvent event) {
+    furi_check(furi_message_queue_put(cli_uart->internal_evt_queue, &event, 0) == FuriStatusOk);
+}
+
+static void cli_uart_internal_event_happened(FuriEventLoopObject* object, void* context) {
+    CliUart* cli_uart = context;
+    CliVcpInternalEvent event;
+
+    furi_check(furi_message_queue_get(object, &event, 0) == FuriStatusOk);
+    furi_hal_gpio_write(&gpio_m40, true);
+    switch(event) {
+    case CliVcpInternalEventRx: {
+        CLI_UART_TRACE(TAG, "Rx");
+        break;
+    }
+
+    case CliVcpInternalEventTx: {
+        //furi_hal_gpio_write(&gpio_m40, true);
+        CLI_UART_TRACE(TAG, "Tx");
+
+        uint8_t data;
+        bool uart_fifo_full = false;
+        uint8_t tx_counter = 0;
+        while(pipe_bytes_available(cli_uart->own_pipe) && (++tx_counter < TRANSFER_BATCH_SIZE)) {
+            if(!furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
+                uart_fifo_full = true;
+                break;
+            }
+            furi_check(pipe_receive(cli_uart->own_pipe, &data, sizeof(data)) == sizeof(data));
+            furi_hal_serial_tx_non_blocking(cli_uart->uart_handle, data);
+        }
+
+        // while(furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
+        //     if(pipe_bytes_available(cli_uart->own_pipe) > 0) {
+        //         furi_check(pipe_receive(cli_uart->own_pipe, &data, sizeof(data)) == sizeof(data));
+        //         furi_hal_serial_tx_non_blocking(cli_uart->uart_handle, data);
+        //     } else {
+        //         break;
+        //     }
+        //     if(!furi_hal_serial_tx_ready(cli_uart->uart_handle)) {
+        //         uart_fifo_full = true;
+        //         break;
+        //     }
+        // }
+
+        if(uart_fifo_full) {
+            cli_uart->is_transmitting = true;
+        }
+
+        CLI_UART_TRACE(TAG, "Tx ->>");
+        //furi_hal_gpio_write(&gpio_m40, false);
+        break;
+    }
+
+    case CliVcpInternalEventTxDone: {
+        
+        CLI_UART_TRACE(TAG, "TxDone");
+        cli_uart->is_transmitting = false;
+        cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventTx);
+        
+        break;
+    }
+    }
+
+    furi_hal_gpio_write(&gpio_m40, false);
+}
 
 // ================
 // Serial callbacks
 // ================
 
-void cli_uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEvent event, void* context) {
+static void cli_uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEvent event, void* context) {
     UNUSED(handle);
     CliUart* cli_uart = context;
 
-    if(!(event & (FuriHalSerialRxEventData | FuriHalSerialRxEventIdle))) return;
-    if(!furi_hal_serial_rx_available(cli_uart->uart_handle)) return;
-
-    PipeSide* pipe = cli_uart->own_pipe;
-
-    while(furi_hal_serial_rx_available(cli_uart->uart_handle) && pipe_spaces_available(pipe)) {
-        uint8_t data = furi_hal_serial_rx(cli_uart->uart_handle);
-        pipe_send(pipe, &data, sizeof(data));
+    uint8_t data[TRANSFER_BATCH_SIZE];
+    size_t length = 0;
+    size_t to_transfer = 0;
+    if(event & (FuriHalSerialRxEventData | FuriHalSerialRxEventIdle)) {
+        length = pipe_spaces_available(cli_uart->own_pipe);
+        to_transfer = MIN(length, TRANSFER_BATCH_SIZE);
+        length = furi_hal_serial_rx_data_non_blocking(cli_uart->uart_handle, data, to_transfer);
+        if(length > 0) {
+            furi_check(pipe_send(cli_uart->own_pipe, data, length) == length);
+        }
     }
+
+    cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventRx);
+}
+
+static void cli_uart_tx_complete_callback(FuriHalSerialHandle* handle, FuriHalSerialTxEvent event, void* context) {
+    UNUSED(handle);
+    CliUart* cli_uart = context;
+    if(!(event & FuriHalSerialTxEventComplete)) return;
+    cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventTxDone);
 }
 
 // ===================
@@ -56,13 +145,8 @@ void cli_uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEvent even
 static void cli_uart_data_from_pipe(PipeSide* pipe, void* context) {
     CLI_UART_TRACE(TAG, "data_from_pipe");
     CliUart* cli_uart = context;
-
-    size_t bytes_in_pipe = pipe_bytes_available(pipe);
-    size_t to_transfer = MIN(bytes_in_pipe, TRANSFER_BATCH_SIZE);
-
-    uint8_t buffer[to_transfer];
-    furi_check(pipe_receive(pipe, buffer, to_transfer) == to_transfer);
-    furi_hal_serial_tx(cli_uart->uart_handle, buffer, to_transfer, FuriWaitForever);
+    if(cli_uart->is_transmitting) return;
+    cli_uart_signal_internal_event(cli_uart, CliVcpInternalEventTx);
 }
 
 // ============
@@ -75,13 +159,17 @@ static CliUart* cli_uart_alloc(void) {
     cli_uart->registry = furi_record_open(RECORD_CLI);
 
     cli_uart->event_loop = furi_event_loop_alloc();
+    cli_uart->is_transmitting = false;
+
+    cli_uart->internal_evt_queue = furi_message_queue_alloc(VCP_MESSAGE_Q_LEN, sizeof(CliVcpInternalEvent));
+    furi_event_loop_subscribe_message_queue(
+        cli_uart->event_loop, cli_uart->internal_evt_queue, FuriEventLoopEventIn, cli_uart_internal_event_happened, cli_uart);
 
     cli_uart->uart_handle = furi_hal_serial_control_acquire(UART_SERIAL_ID);
     furi_check(cli_uart->uart_handle);
     furi_hal_serial_init(cli_uart->uart_handle, UART_BAUD_RATE);
 
-    //Todo: implement tx callback tx complete 
-    furi_hal_serial_set_callback(cli_uart->uart_handle, NULL, cli_uart_rx_callback, cli_uart);
+    furi_hal_serial_set_callback(cli_uart->uart_handle, cli_uart_tx_complete_callback, cli_uart_rx_callback, cli_uart);
 
     furi_hal_serial_async_rx_start(cli_uart->uart_handle, false);
 
@@ -89,10 +177,9 @@ static CliUart* cli_uart_alloc(void) {
     cli_uart->own_pipe = pipes.alices_side;
     pipe_attach_to_event_loop(cli_uart->own_pipe, cli_uart->event_loop);
     pipe_set_callback_context(cli_uart->own_pipe, cli_uart);
-    pipe_set_data_arrived_callback(cli_uart->own_pipe, cli_uart_data_from_pipe, 0);
+    pipe_set_data_arrived_callback(cli_uart->own_pipe, cli_uart_data_from_pipe, FuriEventLoopEventFlagEdge);
 
-    cli_uart->cli_shell =
-        cli_shell_alloc(cli_main_motd, NULL, pipes.bobs_side, cli_uart->registry, NULL);
+    cli_uart->cli_shell = cli_shell_alloc(cli_main_motd, NULL, pipes.bobs_side, cli_uart->registry, NULL);
     cli_shell_free_pipe_on_exit(cli_uart->cli_shell);
     cli_shell_set_prompt(cli_uart->cli_shell, "control");
     cli_shell_start(cli_uart->cli_shell);

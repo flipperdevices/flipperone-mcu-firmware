@@ -102,9 +102,9 @@ static void cli_vcp_maybe_receive_data(CliVcp* cli_vcp) {
 // =============
 
 static void cli_vcp_signal_internal_event(CliVcp* cli_vcp, CliVcpInternalEvent event) {
-    uint32_t count = furi_message_queue_get_count(cli_vcp->internal_evt_queue);
-    CLI_VCP_DEBUG(TAG, "internal_event count=%lu event=%d", count, event);
-    furi_check(furi_message_queue_put(cli_vcp->internal_evt_queue, &event, FuriWaitForever) == FuriStatusOk);
+    // uint32_t count = furi_message_queue_get_count(cli_vcp->internal_evt_queue);
+    // CLI_VCP_DEBUG(TAG, "internal_event count=%lu event=%d", count, event);
+    furi_check(furi_message_queue_put(cli_vcp->internal_evt_queue, &event, 0) == FuriStatusOk);
 }
 
 static void cli_vcp_cdc_tx_done(void* context) {
@@ -154,7 +154,6 @@ static void cli_vcp_data_from_shell(PipeSide* pipe, void* context) {
     CliVcp* cli_vcp = context;
     CLI_VCP_DEBUG(TAG, "data_from_shell");
     // cli_vcp_maybe_send_data(cli_vcp);
-    // furi_delay_ms(1000);
     if(!cli_vcp->is_currently_transmitting) {
         cli_vcp_signal_internal_event(cli_vcp, CliVcpInternalEventTx);
     }
@@ -208,7 +207,7 @@ static void cli_vcp_internal_event_happened(FuriEventLoopObject* object, void* c
 
     // uint32_t count = furi_message_queue_get_count(cli_vcp->internal_evt_queue);
     // CLI_VCP_DEBUG(TAG, "out event count=%lu, event=%d", count, event);
-    furi_delay_us(200);
+    //furi_delay_us(200);
     switch(event) {
     case CliVcpInternalEventRx: {
         CLI_VCP_DEBUG(TAG, "Rx");
