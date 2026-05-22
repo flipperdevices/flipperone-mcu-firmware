@@ -106,32 +106,6 @@ void hardfault_handler_c(uint32_t *stack_frame, uint32_t lr_value, uint32_t *sav
         FURI_LOG_E(TAG, "FreeRTOS task (outgoing): %s", furi_thread_get_name(current));
     }
 
-    /* If crash is in PendSV restore (pc near 0x10033582), R1 = pxCurrentTCB of INCOMING task.
-     * Print its name and dump first words of TCB to identify the corrupted task. */
-    if(pc >= 0x10033530u && pc <= 0x100335C0u) {
-        FURI_LOG_E(TAG, "Crash in PendSV — r1 = incoming TCB = 0x%08lX", r1);
-        /* Try to print the incoming task name via FreeRTOS API */
-        if(r1 > 0x20000000u && r1 < 0x20082000u) {
-            const char* iname = pcTaskGetName((TaskHandle_t)r1);
-            FURI_LOG_E(TAG, "Incoming task name: %s", iname ? iname : "(null)");
-            /* Dump first 16 words of the TCB — pxTopOfStack is word[0] */
-            const uint32_t* tcb = (const uint32_t*)r1;
-            FURI_LOG_E(TAG, "TCB[0..3] = 0x%08lX 0x%08lX 0x%08lX 0x%08lX",
-                tcb[0], tcb[1], tcb[2], tcb[3]);
-            FURI_LOG_E(TAG, "TCB[4..7] = 0x%08lX 0x%08lX 0x%08lX 0x%08lX",
-                tcb[4], tcb[5], tcb[6], tcb[7]);
-        }
-        /* Also dump memory just BELOW the incoming task pxTopOfStack to see what was written */
-        uint32_t corrupt_top = r0 + 24u; /* r0 = pxTopOfStack - 24, so pxTopOfStack = r0+24 */
-        FURI_LOG_E(TAG, "Corrupted pxTopOfStack = 0x%08lX  (should be SRAM 0x20000000-0x20082000)", corrupt_top);
-        /* Dump 8 words around the incoming stack area if pxTopOfStack was in SRAM */
-        if(corrupt_top > 0x20000000u && corrupt_top < 0x20082000u) {
-            const uint32_t* sp = (const uint32_t*)corrupt_top;
-            FURI_LOG_E(TAG, "Stack@pxTopOfStack[-6..+1] = %08lX %08lX %08lX %08lX %08lX %08lX | %08lX %08lX",
-                sp[-6], sp[-5], sp[-4], sp[-3], sp[-2], sp[-1], sp[0], sp[1]);
-        }
-    }
-
     /* Dump stack watermark for ALL tasks to find the one with near-zero free stack.
      * IMPORTANT: we are in ISR — malloc is forbidden.
      * Use uxTaskGetSystemState with a static TaskStatus_t array — no allocation needed. */

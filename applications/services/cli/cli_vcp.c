@@ -10,10 +10,11 @@
 
 #define TAG "CliVcp"
 
-#define USB_CDC_PKT_LEN   (CFG_TUD_CDC_RX_BUFSIZE - 1) //Todo: 2 txdone, when sending a full 64-byte packet
-#define VCP_BUF_SIZE      (USB_CDC_PKT_LEN * 16)
-#define VCP_IF_NUM        0
-#define VCP_MESSAGE_Q_LEN 8
+#define USB_CDC_PKT_LEN      (CFG_TUD_CDC_RX_BUFSIZE - 1) //Todo: 2 txdone, when sending a full 64-byte packet
+#define VCP_BUF_SIZE         (USB_CDC_PKT_LEN * 16)
+#define VCP_IF_NUM           0
+#define VCP_MESSAGE_Q_LEN    8
+#define CLI_VCP_SHELL_PROMPT "control"
 
 //#define CLI_VCP_DEBUG_ENABLE
 
@@ -102,8 +103,6 @@ static void cli_vcp_maybe_receive_data(CliVcp* cli_vcp) {
 // =============
 
 static void cli_vcp_signal_internal_event(CliVcp* cli_vcp, CliVcpInternalEvent event) {
-    // uint32_t count = furi_message_queue_get_count(cli_vcp->internal_evt_queue);
-    // CLI_VCP_DEBUG(TAG, "internal_event count=%lu event=%d", count, event);
     furi_check(furi_message_queue_put(cli_vcp->internal_evt_queue, &event, 0) == FuriStatusOk);
 }
 
@@ -205,9 +204,6 @@ static void cli_vcp_internal_event_happened(FuriEventLoopObject* object, void* c
     CliVcpInternalEvent event;
     furi_check(furi_message_queue_get(object, &event, 0) == FuriStatusOk);
 
-    // uint32_t count = furi_message_queue_get_count(cli_vcp->internal_evt_queue);
-    // CLI_VCP_DEBUG(TAG, "out event count=%lu, event=%d", count, event);
-    //furi_delay_us(200);
     switch(event) {
     case CliVcpInternalEventRx: {
         CLI_VCP_DEBUG(TAG, "Rx");
@@ -260,7 +256,7 @@ static void cli_vcp_internal_event_happened(FuriEventLoopObject* object, void* c
         pipe_set_space_freed_callback(cli_vcp->own_pipe, cli_vcp_shell_ready, FuriEventLoopEventFlagEdge);
         furi_delay_ms(33); // we are too fast, minicom isn't ready yet
         cli_vcp->shell = cli_shell_alloc(cli_main_motd, NULL, cli_vcp->shell_pipe, cli_vcp->main_registry, NULL);
-        cli_shell_set_prompt(cli_vcp->shell, "control");
+        cli_shell_set_prompt(cli_vcp->shell, CLI_VCP_SHELL_PROMPT);
         cli_shell_start(cli_vcp->shell);
         break;
     }

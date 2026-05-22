@@ -109,8 +109,8 @@ extern "C" {
 #define configAPPLICATION_ALLOCATED_HEAP 0
 
 /* Hook function related definitions. */
-#define configCHECK_FOR_STACK_OVERFLOW     2
-//#define configCHECK_FOR_STACK_OVERFLOW     0
+//#define configCHECK_FOR_STACK_OVERFLOW     2
+#define configCHECK_FOR_STACK_OVERFLOW     0
 //#define configUSE_MALLOC_FAILED_HOOK       1
 #define configUSE_MALLOC_FAILED_HOOK       0
 #define configUSE_DAEMON_TASK_STARTUP_HOOK 0
@@ -139,6 +139,16 @@ extern "C" {
 //#define configIDLE_TASK_STACK_DEPTH  512
 #define configIDLE_TASK_STACK_DEPTH 256
 
+/* The lowest interrupt priority that can be used in a call to a "set priority"
+function. */
+#define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15
+
+/* The highest interrupt priority that can be used by any interrupt service
+routine that makes calls to interrupt safe FreeRTOS API functions.  DO NOT CALL
+INTERRUPT SAFE FREERTOS API FUNCTIONS FROM ANY INTERRUPT THAT HAS A HIGHER
+PRIORITY THAN THIS! (higher priorities are lower numeric values. */
+#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5
+
 /* Interrupt nesting behaviour configuration.
  *
  * RP2350 is Cortex-M33 with __NVIC_PRIO_BITS = 4, giving 16 hardware levels (0=highest, 15=lowest).
@@ -147,11 +157,11 @@ extern "C" {
  *
  * Encoding: encoded = library_level << (8 - __NVIC_PRIO_BITS) = library_level << 4
  *
- * PendSV / SysTick are set by the port to portMIN_INTERRUPT_PRIORITY (255 → effective 0xF0 = library 15).
+ * PendSV / SysTick are set by the port to portMIN_INTERRUPT_PRIORITY (255 -> effective 0xF0 = library 15).
  *
  * basepri in critical sections = configMAX_SYSCALL_INTERRUPT_PRIORITY = 0x50 (library 5).
- * → Interrupts at library 0-4 bypass the kernel (KamiSama zone – no FreeRTOS API allowed).
- * → Interrupts at library 5-15 are blocked inside critical sections and may use FreeRTOS ISR-safe API.
+ *      Interrupts at library 0-4 bypass the kernel (KamiSama zone – no FreeRTOS API allowed).
+ *      Interrupts at library 5-15 are blocked inside critical sections and may use FreeRTOS ISR-safe API.
  */
 #define configKERNEL_INTERRUPT_PRIORITY \
     (configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8 - __NVIC_PRIO_BITS))  /* 15<<4 = 0xF0 */
@@ -224,38 +234,6 @@ extern uint64_t time_us_64(void); // "hardware/timer.h"
 
 /* A header file that defines trace macro can be included here. */
 #define configRECORD_STACK_HIGH_ADDRESS 1
-
-/* The lowest interrupt priority that can be used in a call to a "set priority"
-function. */
-#define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15
-
-/* The highest interrupt priority that can be used by any interrupt service
-routine that makes calls to interrupt safe FreeRTOS API functions.  DO NOT CALL
-INTERRUPT SAFE FREERTOS API FUNCTIONS FROM ANY INTERRUPT THAT HAS A HIGHER
-PRIORITY THAN THIS! (higher priorities are lower numeric values. */
-#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5
-
-// /*
-// // BSB
-// /* The lowest interrupt priority that can be used in a call to a "set priority"
-// function. */
-// #define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15
-
-// /* The highest interrupt priority that can be used by any interrupt service
-// routine that makes calls to interrupt safe FreeRTOS API functions.  DO NOT CALL
-// INTERRUPT SAFE FREERTOS API FUNCTIONS FROM ANY INTERRUPT THAT HAS A HIGHER
-// PRIORITY THAN THIS! (higher priorities are lower numeric values. */
-// #define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5
-
-// /* Interrupt priorities used by the kernel port layer itself.  These are generic
-// to all Cortex-M ports, and do not rely on any particular library functions. */
-// #define configKERNEL_INTERRUPT_PRIORITY  (configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8 - __NVIC_PRIO_BITS))
-
-// /* !!!! configMAX_SYSCALL_INTERRUPT_PRIORITY must not be set to zero !!!!
-// See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
-// #define configMAX_SYSCALL_INTERRUPT_PRIORITY  (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - __NVIC_PRIO_BITS))
-
-// */
 
 /*
  * The CMSIS-RTOS V2 FreeRTOS wrapper is dependent on the heap implementation used

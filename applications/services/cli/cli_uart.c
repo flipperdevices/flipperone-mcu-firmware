@@ -4,7 +4,6 @@
 #include <cli/cli_commands.h>
 #include <furi_hal_serial.h>
 #include <furi_hal_serial_control.h>
-#include <furi_hal_resources.h>
 
 #define TAG "CliUart"
 
@@ -12,6 +11,7 @@
 #define UART_BAUD_RATE        230400UL
 #define UART_SERIAL_ID        FuriHalSerialIdUart1
 #define TRANSFER_BATCH_SIZE   32UL
+#define CLI_UART_SHELL_PROMPT "control"
 
 //#define CLI_UART_TRACE_ENABLE
 
@@ -50,7 +50,7 @@ static void cli_uart_signal_event(CliUart* cli_uart, CliUartEvent event) {
 static void cli_uart_event(FuriEventLoopObject* object, void* context) {
     CliUart* cli_uart = context;
     uint32_t event = furi_event_flag_get(object);
-    furi_hal_gpio_write(&gpio_m40, true);
+
     if(event & CliUartEventRx) {
         CLI_UART_TRACE(TAG, "Rx");
     }
@@ -58,11 +58,7 @@ static void cli_uart_event(FuriEventLoopObject* object, void* context) {
     if(event & CliUartEventTxDone) {
         CLI_UART_TRACE(TAG, "TxDone");
 
-        //if(pipe_bytes_available(cli_uart->own_pipe)) {
-            event |= CliUartEventTx; // trigger next Tx if needed
-        // } else {
-        //     cli_uart->is_transmitting = false;
-        // }
+        event |= CliUartEventTx; // trigger next Tx if needed
     }
 
     if(event & CliUartEventTx) {
@@ -88,7 +84,6 @@ static void cli_uart_event(FuriEventLoopObject* object, void* context) {
 
         CLI_UART_TRACE(TAG, "Tx ->>");
     }
-    furi_hal_gpio_write(&gpio_m40, false);
 }
 
 // ================
@@ -164,7 +159,7 @@ static CliUart* cli_uart_alloc(void) {
 
     cli_uart->cli_shell = cli_shell_alloc(cli_main_motd, NULL, pipes.bobs_side, cli_uart->registry, NULL);
     cli_shell_free_pipe_on_exit(cli_uart->cli_shell);
-    cli_shell_set_prompt(cli_uart->cli_shell, "control");
+    cli_shell_set_prompt(cli_uart->cli_shell, CLI_UART_SHELL_PROMPT);
     cli_shell_start(cli_uart->cli_shell);
 
     furi_record_create(RECORD_CLI_UART, cli_uart);
