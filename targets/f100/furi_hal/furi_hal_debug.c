@@ -1,8 +1,6 @@
 #include <furi_hal_debug.h>
 #include <furi_hal_resources.h>
 #include <furi.h>
-#include <stdint.h>
-#include <inttypes.h>
 #include <FreeRTOS.h>
 #include <task.h>
 
