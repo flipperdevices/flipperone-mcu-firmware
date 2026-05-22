@@ -295,7 +295,19 @@ void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPri
     furi_check(index < FuriHalInterruptIdMax);
     furi_check((priority >= FuriHalInterruptPriorityLowest && priority <= FuriHalInterruptPriorityHighest) || priority == FuriHalInterruptPriorityKamiSama);
 
-    uint16_t real_priority = FURI_HAL_INTERRUPT_DEFAULT_PRIORITY - priority;
+    /* irq_set_priority() takes a raw 8-bit hardware priority register value
+     * (0x00 = highest, 0xFF = lowest). Only the top __NVIC_PRIO_BITS (= 4 on RP2350)
+     * bits are significant. The "library level" (0-15) must be left-shifted by
+     * (8 - __NVIC_PRIO_BITS) = 4 to produce the raw register value.
+     *
+     * Examples (RP2350, __NVIC_PRIO_BITS=4):
+     *   Normal    = library 10 -> raw 0xA0 (blocked by basepri=0x50 in critical sections)
+     *   Highest   = library  7 -> raw 0x70 (blocked, FreeRTOS ISR API allowed)
+     *   KamiSama  = library  4 -> raw 0x40 (below threshold, passes basepri, no FreeRTOS API)
+     *   Lowest    = library 13 -> raw 0xD0 (blocked, FreeRTOS ISR API allowed)
+     */
+    uint8_t real_priority = (uint8_t)((FURI_HAL_INTERRUPT_DEFAULT_PRIORITY - priority)
+                                      << (8 - __NVIC_PRIO_BITS));
 
     if(isr) {
         // Pre ISR set

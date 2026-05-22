@@ -81,3 +81,11 @@ void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskName) {
         (unsigned)(status.usStackHighWaterMark * sizeof(StackType_t)));
     furi_crash("Stack overflow");
 }
+
+__attribute__((__noreturn__)) void vFreeRTOSAssertFailed(const char* expr, const char* file, int line) {
+    /* Called from within vTaskSwitchContext (PendSV context).
+     * uxTaskGetSystemState() is unsafe here – just log the expression and crash.
+     * The standard HardFault handler will print registers/stack. */
+    FURI_LOG_E(TAG, "FreeRTOS assert FAILED: (%s) at %s:%d", expr, file, line);
+    furi_crash("FreeRTOS Assert");
+}
