@@ -7,16 +7,19 @@
 //
 // Currently runs in DRP mode for exercising both roles: the chip toggles
 // between Rp/Rd until a partner attaches, then settles to the matching role.
-// Source-side attach requires real VBUS on the Type-C VBUS pin so the chip
-// raises I_VBUSOK — our gpio_write_vbus_source / power_supply_set hooks are
-// log-only stubs, so a SRC attempt will reach AttachWait but never commit
-// (times out back to Unattached after ~500 ms). Sink-side works fully as
-// before. The app loops on ucsi_ppm_tick (every 10 ms) and after a PD
-// contract is up runs a few scripted probes (SET_POWER_LEVEL, DR_Swap).
+// VBUS source is driven by bq25792 OTG via the power service — vbus_source
+// hook enables OTG at 5V/1.5A, psu_set retunes voltage/current on partner
+// Request, and notify_power_supply_ready is fired synchronously so PE can
+// emit PS_RDY. Note: in DRP without a partner the chip briefly settles as
+// SRC every ~500 ms (false positive on Ra / noise) and we cycle OTG on/off
+// — a Try.SRC delay in the TC layer would suppress this. The app loops on
+// ucsi_ppm_tick (every 10 ms) and after a PD contract is up runs a few
+// scripted probes (SET_POWER_LEVEL, DR_Swap).
 
 #include <furi.h>
 #include <furi_hal_i2c.h>
 #include <furi_hal_i2c_config.h>
+#include <power/power.h>
 
 #include <ucsi_ppm.h>
 #include <ucsi_ppm_config.h>
@@ -39,6 +42,7 @@ typedef enum {
 typedef struct {
     UcsiPpm* ppm;
     const FuriHalI2cBusHandle* i2c;
+    Power* power;
     UcsiPpmConnectorState last_state;
     uint32_t last_log_tick;
     uint32_t contract_first_seen_tick;
@@ -81,12 +85,21 @@ static UcsiPpmStatus hal_i2c_write_read(void* ctx, uint8_t addr, const uint8_t* 
 }
 
 static void hal_vbus_source_write(void* ctx, bool value) {
-    UNUSED(ctx);
-    // Pretend-source mode: log when the lib wants us to enable / disable the
-    // VBUS output switch. Replace with a real GPIO drive once the VBUS source
-    // path is wired — until then the chip never sees VBUSOK and SRC attach
-    // will not commit.
-    FURI_LOG_W(TAG, "vbus_source(%s) [STUB]", value ? "on" : "off");
+    PdUcsi* h = ctx;
+    FURI_LOG_I(TAG, "vbus_source(%s)", value ? "on" : "off");
+    if(value) {
+        // Default to vSafe5V at 1.5 A — matches our advertised Source PDO.
+        // PE will retune via psu_set once the partner Requests a different
+        // voltage during contract negotiation.
+        if(!power_bq25792_set_otg_params(h->power, 5000u, 1500u)) {
+            FURI_LOG_W(TAG, "bq25792_set_otg_params(5V/1.5A) failed");
+        }
+        if(!power_bq25792_otg_enable(h->power, true)) {
+            FURI_LOG_W(TAG, "bq25792_otg_enable(true) failed");
+        }
+    } else {
+        (void)power_bq25792_otg_enable(h->power, false);
+    }
 }
 
 static void hal_vbus_discharge_write(void* ctx, bool value) {
@@ -95,8 +108,17 @@ static void hal_vbus_discharge_write(void* ctx, bool value) {
 }
 
 static UcsiPpmStatus hal_psu_set(void* ctx, uint16_t voltage_mv, uint16_t current_limit_ma) {
-    UNUSED(ctx);
-    FURI_LOG_W(TAG, "psu_set(%u mV, %u mA) [STUB]", voltage_mv, current_limit_ma);
+    PdUcsi* h = ctx;
+    FURI_LOG_I(TAG, "psu_set(%u mV, %u mA)", voltage_mv, current_limit_ma);
+    if(!power_bq25792_set_otg_params(h->power, voltage_mv, current_limit_ma)) {
+        FURI_LOG_W(TAG, "bq25792_set_otg_params failed");
+        return UcsiPpmStatusHalError;
+    }
+    // PE waits for notify_power_supply_ready before emitting PS_RDY. We
+    // don't model the ramp delay — fine for bring-up, the chip-side ramp
+    // is sub-tick. Add a debounce / readback if partners reject the contract
+    // due to a fast settle.
+    ucsi_ppm_notify_power_supply_ready(h->ppm);
     return UcsiPpmStatusOk;
 }
 
@@ -158,8 +180,7 @@ static void config_fill(UcsiPpmConfig* cfg, PdUcsi* host) {
     cfg->source_rp_current = UcsiPpmRpCurrent1A5;
 
     // Host-port-like Source caps (5V/1500 mA) and a Sink ask for 5V/3 A.
-    cfg->source_caps.pdos[0] =
-        ucsi_ppm_pdo_fixed_source(5000, 1500, true /*DRP*/, false, true /*USBcom*/, true /*DRD*/);
+    cfg->source_caps.pdos[0] = ucsi_ppm_pdo_fixed_source(5000, 1500, true /*DRP*/, false, true /*USBcom*/, true /*DRD*/);
     cfg->source_caps.count = 1;
     cfg->sink_caps.pdos[0] = ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true);
     cfg->sink_caps.count = 1;
@@ -321,5 +342,8 @@ int32_t pd_ucsi_app(void* p) {
     UNUSED(p);
     PdUcsi host = {0};
     host.i2c = &furi_hal_i2c_handle_main;
-    return pd_ucsi_thread(&host);
+    host.power = furi_record_open(RECORD_POWER);
+    const int32_t rc = pd_ucsi_thread(&host);
+    furi_record_close(RECORD_POWER);
+    return rc;
 }

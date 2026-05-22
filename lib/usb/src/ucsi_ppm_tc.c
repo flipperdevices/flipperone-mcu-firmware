@@ -25,6 +25,10 @@
 //   0b10 — Rd present, 1.5 A capability
 //   0b11 — > 1.23 V   (no Rd at all — partner detached, CC pulled by Rp)
 #define UCSI_PPM_TC_BC_LVL_NO_RD 0b11u
+// vRa range — partner has Ra termination only (Type-A→C adapter, cable plug),
+// not a real Rd-presenting sink. We initially settle Attached.SRC on a brief
+// CC glitch and then see BC_LVL drop here, which is our cue to bail.
+#define UCSI_PPM_TC_BC_LVL_RA    0b00u
 
 // Maps the configured CC operation mode to the TOGGLE mode the chip
 // should run in. Disabled returns false → caller skips phy_start_toggle.
@@ -133,17 +137,23 @@ static void handle_toggle_done(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     ppm->tc_attach_wait_start_ms = ppm->config.time_ms(ppm->config.hal_ctx);
     ppm->tc_vbus_seen = false;
     (void)ucsi_ppm_phy_lock_polarity(ppm, cc);
-    // Source-side Rp current advert — once locked we drive the configured
-    // Rp value so partner's Rd sees the right termination current. (No
-    // effect on sink-side; HOST_CUR is gated by PU_EN*.)
     if(is_src) {
+        // Program Rp termination current so partner's Rd produces the right
+        // voltage divider, then explicitly assert PU_EN — the chip's toggle
+        // FSM doesn't keep PU_EN latched after I_TOGDONE, and without it CC
+        // floats and BC_LVL reads vNoRd. Do NOT enable external VBUS yet;
+        // driving 5 V into VBUS during the debounce window can bleed into
+        // CC sense. VBUS comes up at commit (see tc_try_commit_attached).
         (void)ucsi_ppm_phy_set_rp_current(ppm, ppm->config.source_rp_current);
-        // Turn on the external VBUS source switch so the partner sees 5V.
-        ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, true);
+        (void)ucsi_ppm_phy_set_source_termination(ppm, cc);
     }
     // Sink-side: nothing more — partner brings up VBUS and FUSB302's
     // I_VBUSOK will fire, taking us to Attached once the debounce expires.
 }
+
+// Forward decl — tc_try_commit_attached can bail out to Unattached on
+// invalid CC state, but tc_enter_unattached lives further down.
+static void tc_enter_unattached(UcsiPpm* ppm);
 
 // Commits AttachWait → Attached.{Src,Snk} when both conditions hold:
 //   (a) VBUS has been observed (either we drove it as SRC and the chip's
@@ -153,10 +163,65 @@ static void handle_toggle_done(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
 // accepted by the chip without per-frame software intervention.
 static void tc_try_commit_attached(UcsiPpm* ppm) {
     if(ppm->tc_state != (int)UcsiPpmTcStateAttachWait) return;
-    if(!ppm->tc_vbus_seen) return;
     const uint32_t now = ppm->config.time_ms(ppm->config.hal_ctx);
     const uint32_t elapsed = (uint32_t)(now - ppm->tc_attach_wait_start_ms);
     if(elapsed < UCSI_PPM_TC_CC_DEBOUNCE_MS) return;
+
+    if(ppm->tc_role_is_src) {
+        // Validate steady-state BC_LVL before committing — the chip can
+        // settle SRC on CC glitches (Ra-only adapters, partner with Rd on
+        // the opposite CC, noise). Require BC_LVL inside the vRd window
+        // expected for our configured Rp current:
+        //   • Default Rp (80 μA)  → Rd ≈ 0.4 V  → BC_LVL = 0b01
+        //   • 1.5A Rp   (180 μA) → Rd ≈ 0.92 V → BC_LVL = 0b10
+        //   • 3A Rp     (330 μA) → Rd ≈ 1.68 V → BC_LVL = 0b11 (colliding
+        //     with vNoRd; can't distinguish via BC_LVL alone — accept it
+        //     and rely on COMP-based detach instead).
+        uint8_t bc_lvl = 0u;
+        if(ucsi_ppm_phy_read_bc_lvl(ppm, &bc_lvl) != UcsiPpmStatusOk) {
+            tc_enter_unattached(ppm);
+            return;
+        }
+        bool bc_valid;
+        switch(ppm->config.source_rp_current) {
+        case UcsiPpmRpCurrentUsbDefault:
+            bc_valid = (bc_lvl == 0b01u);
+            break;
+        case UcsiPpmRpCurrent1A5:
+            bc_valid = (bc_lvl == 0b10u);
+            break;
+        case UcsiPpmRpCurrent3A:
+            // No safe BC_LVL discriminator — accept anything not clearly
+            // vRa. COMP-based detach catches the bad cases later.
+            bc_valid = (bc_lvl != UCSI_PPM_TC_BC_LVL_RA);
+            break;
+        default:
+            bc_valid = false;
+            break;
+        }
+        if(!bc_valid) {
+            tc_enter_unattached(ppm);
+            return;
+        }
+        // We're the source so we generate VBUS ourselves — VBUSOK from
+        // the chip's VBUS pin will fire shortly afterwards but we don't
+        // gate the commit on it. Enable the external switch now so the
+        // partner sees 5 V at the start of Attached.SRC.
+        ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, true);
+    } else {
+        // Sink-side: partner must have provided VBUS by now. The event path
+        // sets tc_vbus_seen on the I_VBUSOK edge, but if the partner was
+        // already attached before phy_init() ran the chip starts up with
+        // VBUSOK latched high and no edge ever fires. Fall back to a direct
+        // STATUS0.VBUSOK poll here so we still commit.
+        if(!ppm->tc_vbus_seen) {
+            bool vbus_ok = false;
+            if(ucsi_ppm_phy_read_vbusok(ppm, &vbus_ok) != UcsiPpmStatusOk || !vbus_ok) {
+                return;
+            }
+            ppm->tc_vbus_seen = true;
+        }
+    }
 
     ppm->tc_state = ppm->tc_role_is_src ? (int)UcsiPpmTcStateAttachedSrc : (int)UcsiPpmTcStateAttachedSnk;
     (void)ucsi_ppm_phy_enable_pd(ppm, UCSI_PPM_TC_PD_RETRIES);
@@ -184,13 +249,16 @@ static void tc_enter_unattached(UcsiPpm* ppm) {
     const bool was_src = ppm->tc_role_is_src;
     const bool was_attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc || ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
 
-    (void)ucsi_ppm_phy_disable_pd(ppm);
     if(was_src) {
         // Drop external VBUS source so we don't keep driving 5V into thin air.
         ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, false);
     }
-    // Clear CC routing — TOGGLE will pick the new orientation when it settles.
-    (void)ucsi_ppm_phy_lock_polarity(ppm, UcsiPpmPhyCcNone);
+    // Full chip re-init on detach. Cheaper to redo than to chase leftover
+    // role bits (PU_EN from a source attach poisoning the next sink try,
+    // sticky RXSOP1 in STATUS1, stale MDAC, masked-out interrupts, etc.).
+    // phy_init covers SW_RESET → Power → masks → INT_MASK clear in one shot;
+    // the subsequent start_toggle re-arms the FSM cleanly.
+    (void)ucsi_ppm_phy_init(ppm);
 
     ppm->tc_orientation = (int)UcsiPpmPhyCcNone;
     ppm->tc_role_is_src = false;
@@ -238,9 +306,27 @@ static void handle_vbus_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
 
 static void handle_bc_lvl_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     if(ppm->tc_state != (int)UcsiPpmTcStateAttachedSrc) return;
-    // Source-side detach detection: Rd no longer pulling CC down → BC_LVL
-    // rises to 0b11 (CC tracking our Rp pull-up alone).
-    if(event->u.bc_lvl == UCSI_PPM_TC_BC_LVL_NO_RD) {
+    // Source-side detach detection. Two valid "partner gone" signatures:
+    //   • BC_LVL = 0b11 — Rd removed, CC pulls up to the Rp source rail
+    //   • BC_LVL = 0b00 — CC sits in vRa range (Type-A→C adapter / cable
+    //     plug only — no real Rd-presenting sink). Common with USB-A
+    //     accessories plugged via passive adapters; the chip momentarily
+    //     settles SRC during DRP toggle on a CC glitch and then steady-
+    //     state BC_LVL exposes the missing Rd.
+    if(event->u.bc_lvl == UCSI_PPM_TC_BC_LVL_NO_RD ||
+       event->u.bc_lvl == UCSI_PPM_TC_BC_LVL_RA) {
+        tc_enter_unattached(ppm);
+    }
+}
+
+static void handle_comp_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
+    // Source-side detach via the MDAC comparator. When partner Rd is present,
+    // CC sits well below MDAC and COMP=0; once Rd is removed, CC pulls up to
+    // ~Rp pull-up rail and COMP latches above MDAC. BC_LVL also rises but is
+    // sometimes noisy in source mode — COMP is the more reliable trigger per
+    // FUSB302 datasheet §4.5.
+    if(ppm->tc_state != (int)UcsiPpmTcStateAttachedSrc) return;
+    if(event->u.comp_above) {
         tc_enter_unattached(ppm);
     }
 }
@@ -256,9 +342,11 @@ void ucsi_ppm_tc_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     case UcsiPpmPhyEventBcLvlChanged:
         handle_bc_lvl_changed(ppm, event);
         break;
-    // TODO: CompChanged (MDAC-based source detach refinement), HardResetRx /
-    // HardResetSent (PE coordination). PRL/PE events (MessageRx / TxSuccess /
-    // TxRetryFail / Collision) are routed elsewhere when those layers exist.
+    case UcsiPpmPhyEventCompChanged:
+        handle_comp_changed(ppm, event);
+        break;
+    // PRL/PE events (MessageRx / TxSuccess / TxRetryFail / Collision /
+    // HardReset*) are dispatched elsewhere.
     default:
         break;
     }

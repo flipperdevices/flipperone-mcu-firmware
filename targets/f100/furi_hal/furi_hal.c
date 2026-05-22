@@ -27,6 +27,6 @@ void furi_hal_init(void) {
 
     // Set the UART for logging output
     furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart1, 230400);
-
+    furi_log_puts("\n================================================================\n");
     furi_hal_otp_init();
 }

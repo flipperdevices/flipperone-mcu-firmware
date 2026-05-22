@@ -111,6 +111,17 @@ UcsiPpmStatus ucsi_ppm_phy_lock_polarity(UcsiPpm* ppm, UcsiPpmPhyCc cc);
 // SWITCHES0.PU_EN* is enabled.
 UcsiPpmStatus ucsi_ppm_phy_set_rp_current(UcsiPpm* ppm, UcsiPpmRpCurrent current);
 
+// Configures SWITCHES0 for source role on the given CC: clears the sink
+// PDWN bits, asserts PU_EN for the active CC, routes MEAS to the same CC.
+// Call once after TOGGLE_DONE picks SRC — the chip's toggle FSM does NOT
+// keep PU_EN latched on its own.
+UcsiPpmStatus ucsi_ppm_phy_set_source_termination(UcsiPpm* ppm, UcsiPpmPhyCc cc);
+
+// Reads the current STATUS0.VBUSOK level — non-edge polling, useful when
+// the partner's VBUS was already up before phy_init ran (no I_VBUSOK edge
+// ever fired so the event-driven path misses it).
+UcsiPpmStatus ucsi_ppm_phy_read_vbusok(UcsiPpm* ppm, bool* out_vbus_ok);
+
 // Sets the header bits FUSB302 uses to build auto-GoodCRC responses:
 // SWITCHES1.{POWER_ROLE, DATA_ROLE, SPEC_REV}. Must reflect the current
 // negotiated PD state.

@@ -216,6 +216,32 @@ UcsiPpmStatus ucsi_ppm_phy_set_rp_current(UcsiPpm* ppm, UcsiPpmRpCurrent current
     return phy_rmw_reg(ppm, Fusb302RegControl0, 0xCu /* HOST_CUR mask */, v);
 }
 
+UcsiPpmStatus ucsi_ppm_phy_read_vbusok(UcsiPpm* ppm, bool* out_vbus_ok) {
+    if(!out_vbus_ok) return UcsiPpmStatusInvalidArg;
+    uint8_t status0;
+    UcsiPpmStatus s = phy_read_reg(ppm, Fusb302RegStatus0, &status0);
+    if(s != UcsiPpmStatusOk) return s;
+    *out_vbus_ok = (status0 & (1u << 7)) != 0u; // STATUS0.VBUSOK
+    return UcsiPpmStatusOk;
+}
+
+UcsiPpmStatus ucsi_ppm_phy_set_source_termination(UcsiPpm* ppm, UcsiPpmPhyCc cc) {
+    // SWITCHES0 for source: assert Rp via PU_EN_CCx, route MEAS to the same
+    // CC, drop the sink PDWN bits the chip may have latched while toggling.
+    // We do this with a single write (RMW preserves VCONN_CC* alone) because
+    // the chip's toggle FSM does NOT keep PU_EN asserted after I_TOGDONE —
+    // without an explicit PU_EN, CC floats and BC_LVL reads vNoRd within a
+    // few ms of attach.
+    const uint8_t mask = (uint8_t)((1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 6) | (1u << 7));
+    uint8_t value = 0u;
+    if(cc == UcsiPpmPhyCc1) {
+        value |= (1u << 2) | (1u << 6); // MEAS_CC1, PU_EN1
+    } else if(cc == UcsiPpmPhyCc2) {
+        value |= (1u << 3) | (1u << 7); // MEAS_CC2, PU_EN2
+    }
+    return phy_rmw_reg(ppm, Fusb302RegSwitches0, mask, value);
+}
+
 UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp, uint8_t spec_rev) {
     // SWITCHES1: AUTO_CRC (bit 2), DATA_ROLE (bit 4), SPEC_REV (bits 6:5),
     // POWER_ROLE (bit 7). We touch the role/rev bits and leave AUTO_CRC alone.

@@ -2621,6 +2621,16 @@ static void simulate_toggle_done(UcsiPpm* ppm, uint8_t togss) {
     g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
     const Fusb302Status1ARegBits s1a = {.togss = togss};
     g_mock_regs[Fusb302RegStatus1A] = *(const uint8_t*)&s1a;
+    // Seed STATUS0.BC_LVL with vRdUSB for SRC TOGSS values — tc_try_commit_
+    // attached now validates BC_LVL before committing source-side. Other
+    // tests that want to exercise mis-settle / Ra-only scenarios can
+    // override STATUS0 explicitly after this call.
+    if(togss == FUSB302_STATUS1A_TOGSS_SRCON_CC1 || togss == FUSB302_STATUS1A_TOGSS_SRCON_CC2) {
+        Fusb302Status0RegBits s0 =
+            *((const Fusb302Status0RegBits*)&g_mock_regs[Fusb302RegStatus0]);
+        s0.bc_lvl = 0b10u;
+        g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    }
     ucsi_ppm_notify_fusb302_irq(ppm);
     ucsi_ppm_tick(ppm);
 }
@@ -2632,7 +2642,11 @@ static void simulate_vbus_changed(UcsiPpm* ppm, bool vbus_ok) {
     g_mock_regs[Fusb302RegInterruptB] = 0;
     const Fusb302InterruptRegBits intr = {.i_vbusok = 1};
     g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
-    const Fusb302Status0RegBits s0 = {.vbusok = vbus_ok ? 1u : 0u};
+    // Preserve other STATUS0 bits (BC_LVL/COMP/...) so prior simulate_* calls
+    // remain effective — tc_try_commit_attached now reads BC_LVL synchronously
+    // to validate source-side commits.
+    Fusb302Status0RegBits s0 = *((const Fusb302Status0RegBits*)&g_mock_regs[Fusb302RegStatus0]);
+    s0.vbusok = vbus_ok ? 1u : 0u;
     g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
     ucsi_ppm_notify_fusb302_irq(ppm);
     ucsi_ppm_tick(ppm);
@@ -2647,6 +2661,21 @@ static void simulate_bc_lvl_changed(UcsiPpm* ppm, uint8_t bc_lvl) {
     const Fusb302InterruptRegBits intr = {.i_bc_lvl = 1};
     g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
     const Fusb302Status0RegBits s0 = {.bc_lvl = bc_lvl};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+// Simulates a COMP-change IRQ (INTERRUPT.I_COMP_CHNG) with STATUS0.COMP set
+// to `comp_above`. Used to drive source-side detach detection via the MDAC
+// comparator (the primary mechanism in source mode — see FUSB302 datasheet
+// §4.5 and tc_handle_phy_event handle_comp_changed).
+static void simulate_comp_changed(UcsiPpm* ppm, bool comp_above) {
+    g_mock_regs[Fusb302RegInterruptA] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptRegBits intr = {.i_comp_chng = 1};
+    g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
+    const Fusb302Status0RegBits s0 = {.comp = comp_above ? 1u : 0u};
     g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
     ucsi_ppm_notify_fusb302_irq(ppm);
     ucsi_ppm_tick(ppm);
@@ -2878,14 +2907,17 @@ static bool test_tc_deinit_stops_toggle(void) {
 
 // --- L3 Type-C SM 1b (AttachWait debounce + Attached commit) ---------------
 
-static bool test_tc_attach_wait_src_raises_vbus_source(void) {
+static bool test_tc_attach_wait_src_does_not_raise_vbus_yet(void) {
+    // Source-side: VBUS is now driven only when commit succeeds, not at the
+    // moment of TOGGLE_DONE. Driving VBUS during the debounce window leaks
+    // into CC sense and corrupts BC_LVL — kept off until we know the
+    // partner is real.
     UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
     mock_i2c_reset();
     simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
 
     TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
-    TEST_ASSERT(g_mock_vbus_source_calls >= 1);
-    TEST_ASSERT(g_mock_vbus_source_last == true);
+    TEST_ASSERT(g_mock_vbus_source_calls == 0);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -2957,15 +2989,44 @@ static bool test_tc_attach_commits_snk_after_debounce(void) {
     return true;
 }
 
-static bool test_tc_attach_no_vbus_stays_attach_wait(void) {
+static bool test_tc_attach_snk_commits_with_pre_existing_vbus(void) {
+    // Regression: when the app starts up with a PD charger already plugged
+    // in, the chip's STATUS0.VBUSOK is latched high but no I_VBUSOK edge
+    // ever fires. The sink commit must poll the level directly — otherwise
+    // we time out in AttachWait every time the user boots into a charger.
     UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
     mock_i2c_reset();
     g_mock_time_ms = 0;
-    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+
+    // Pre-seed STATUS0.VBUSOK as if VBUS has been up since boot.
+    const Fusb302Status0RegBits s0 = {.vbusok = 1u};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC1);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // No simulate_vbus_changed — no edge ever fires. Past CCDebounce the
+    // commit poll picks the level up directly and we land in Attached.SNK.
+    g_mock_time_ms = 150;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_attach_no_vbus_stays_attach_wait(void) {
+    // Sink-side: AttachWait requires partner VBUS before it commits. (Source
+    // side no longer gates on VBUS — it generates VBUS itself, so this
+    // scenario only applies to sink.)
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset();
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC1);
 
     // CCDebounce elapsed but no VBUS_OK arrived — must stay AttachWait.
-    // Stay strictly below the AttachWait give-up timeout (1c handles the
-    // post-timeout path in test_tc_attach_wait_timeout_restarts_toggle).
+    // Stay strictly below the AttachWait give-up timeout (handled by
+    // test_tc_attach_wait_timeout_restarts_toggle).
     g_mock_time_ms = 200;
     TEST_ASSERT(ucsi_ppm_tick(ppm) == UcsiPpmStatusOk);
     TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
@@ -3011,9 +3072,10 @@ static bool test_tc_vbus_changed_in_unattached_ignored(void) {
 }
 
 static bool test_tc_deinit_drops_vbus_source(void) {
-    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
-    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
-    // VBUS source raised — capture and verify deinit drops it.
+    // Drive a full source-side attach so VBUS source is on, then deinit must
+    // drop it. (VBUS now turns on at commit, not at TOGGLE_DONE — drive past
+    // CCDebounce to reach Attached.SRC.)
+    UcsiPpm* ppm = mock_attach(true);
     TEST_ASSERT(g_mock_vbus_source_last == true);
 
     g_mock_vbus_source_calls = 0;
@@ -3102,7 +3164,9 @@ static bool test_tc_attach_wait_timeout_restarts_toggle(void) {
     mock_i2c_reset();
 
     g_mock_time_ms = 0;
-    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+    // Sink-side: source no longer needs partner VBUS to commit, so the
+    // "stuck in AttachWait without VBUS" path only fires for sink.
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC1);
     TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
 
     // No VBUS event arrives. Past the AttachWait timeout (500 ms) the tick
@@ -3114,7 +3178,7 @@ static bool test_tc_attach_wait_timeout_restarts_toggle(void) {
     const uint8_t c2 = g_mock_regs[Fusb302RegControl2];
     const Fusb302Control2RegBits c2_bits = *((const Fusb302Control2RegBits*)&c2);
     TEST_ASSERT(c2_bits.toggle == 1);
-    // VBUS source dropped (we'd raised it for SRC AttachWait).
+    // VBUS source is irrelevant on sink — never was raised.
     TEST_ASSERT(g_mock_vbus_source_last == false);
 
     ucsi_ppm_free(ppm);
@@ -3708,6 +3772,79 @@ static bool test_pe_src_detach_returns_to_idle(void) {
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateIdle);
     TEST_ASSERT(ppm->pe_negotiated_voltage_mv == 0u);
 
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_commit_aborts_on_invalid_bc_lvl(void) {
+    // Real-hardware regression: with a Type-C-Type-C cable to certain
+    // partners, the chip's DRP toggle briefly settles SRC but the steady-
+    // state CC is in vNoRd/vRa range (Rd on opposite CC, or only Ra). The
+    // commit should not happen — otherwise we cycle attach/detach because
+    // BC_LVL trips the detach handler ~20ms later. Bail out to Unattached
+    // so the chip re-toggles.
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    g_mock_time_ms = 0;
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+
+    // VBUS came up but CC steady-state is vRa — only a cable plug or
+    // Ra-only adapter present, no real Rd partner.
+    Fusb302Status0RegBits s0 = {.vbusok = 1u, .bc_lvl = 0b00u};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    g_mock_time_ms = 10;
+    simulate_vbus_changed(ppm, true);
+
+    g_mock_time_ms = 150; // past CCDebounce
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_detach_on_bc_lvl_vra(void) {
+    // Regression from real hardware: a USB mouse plugged through a passive
+    // Type-A→C adapter momentarily glitches CC into vRd range during DRP
+    // toggle, the chip settles Attached.SRC, and then BC_LVL drops to 0b00
+    // (vRa) because the adapter only presents Ra. We must treat that drop
+    // as detach — otherwise the SM stays Attached.SRC forever.
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+
+    simulate_bc_lvl_changed(ppm, 0b00u);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateIdle);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_detach_via_comp_changed(void) {
+    // Regression: with a non-PD partner (USB mouse etc) BC_LVL stays in the
+    // low/mid range and never trips the 0b11 detach detector — the MDAC
+    // comparator's COMP rising above threshold is what catches Rd removal
+    // (FUSB302 §4.5). Without this handler the source side would stay
+    // Attached.SRC indefinitely after the partner disconnects.
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
+
+    simulate_comp_changed(ppm, true /*comp_above*/);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateIdle);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_comp_changed_low_is_no_op(void) {
+    // COMP falling (CC dropped — partner present) must NOT trigger detach.
+    UcsiPpm* ppm = mock_attach(true);
+    simulate_comp_changed(ppm, false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSrc);
     ucsi_ppm_free(ppm);
     return true;
 }
@@ -4604,11 +4741,12 @@ static bool test_cs_partner_type_reflects_data_role_after_dr_swap(void) {
 }
 
 static bool test_cs_failed_attach_does_not_notify(void) {
-    // AttachWait → Unattached via timeout (no VBUS) must NOT raise a
-    // Connect Change — we never actually attached as far as OPM is concerned.
+    // Sink-side AttachWait → Unattached via timeout (no partner VBUS) must
+    // NOT raise a Connect Change — we never actually attached as far as OPM
+    // is concerned. (Source side doesn't gate on VBUS-seen anymore.)
     UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
     g_mock_time_ms = 0;
-    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SRCON_CC1);
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC1);
     g_mock_alert_calls = 0;
 
     g_mock_time_ms = 600; // past AttachWait timeout
@@ -4999,10 +5137,11 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_tc_deinit_stops_toggle),
 
     // L3 Type-C SM 1b (AttachWait → Attached debounce + commit).
-    TEST_ENTRY(test_tc_attach_wait_src_raises_vbus_source),
+    TEST_ENTRY(test_tc_attach_wait_src_does_not_raise_vbus_yet),
     TEST_ENTRY(test_tc_attach_wait_snk_does_not_raise_vbus),
     TEST_ENTRY(test_tc_attach_commits_src_after_debounce),
     TEST_ENTRY(test_tc_attach_commits_snk_after_debounce),
+    TEST_ENTRY(test_tc_attach_snk_commits_with_pre_existing_vbus),
     TEST_ENTRY(test_tc_attach_no_vbus_stays_attach_wait),
     TEST_ENTRY(test_tc_attach_vbus_before_debounce_holds),
     TEST_ENTRY(test_tc_vbus_changed_in_unattached_ignored),
@@ -5051,6 +5190,10 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_src_source_cap_timer_resends),
     TEST_ENTRY(test_pe_src_ps_transition_timeout_triggers_hard_reset),
     TEST_ENTRY(test_pe_src_detach_returns_to_idle),
+    TEST_ENTRY(test_tc_src_commit_aborts_on_invalid_bc_lvl),
+    TEST_ENTRY(test_pe_src_detach_on_bc_lvl_vra),
+    TEST_ENTRY(test_pe_src_detach_via_comp_changed),
+    TEST_ENTRY(test_pe_src_comp_changed_low_is_no_op),
     TEST_ENTRY(test_pe_src_psu_ready_ignored_outside_transition),
 
     // L3 → L2 event flow (Connector Status Change bitmap + alert + CCI).
