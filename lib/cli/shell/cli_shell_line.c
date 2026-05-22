@@ -199,6 +199,8 @@ static bool cli_shell_line_input_cr(CliKeyCombo combo, void* context) {
         memmove(
             &line->history[pos], &line->history[pos + 1], (len - pos - 1) * sizeof(FuriString*));
         furi_string_move(line->history[0], command);
+        // `command` was removed from history[] by memmove above — free the now-orphaned container
+        furi_string_free(command);
         line->history_entries--;
     }
 

@@ -15,6 +15,8 @@
 
 #include <furi_hal_serial.h>
 #include <cli/cli_vcp.h>
+#include <FreeRTOS.h>
+#include <task.h>
 
 #define TAG "PerefTest"
 
@@ -70,7 +72,30 @@ void test_nvm(void) {
     FURI_LOG_I(TAG, "Get bool result: %d, value_set: %d value_get: %d", res, bool_value, read_bool_value);
 }
 
-uint8_t data_buffer[258 * 144] = {0};
+void debug_task_stack_usage(void)
+{
+    UBaseType_t task_count = uxTaskGetNumberOfTasks();
+    TaskStatus_t* task_array = pvPortMalloc(task_count * sizeof(TaskStatus_t));
+    if(!task_array) {
+        FURI_LOG_E(TAG, "Failed to allocate task status array");
+        return;
+    }
+
+    uint32_t total_runtime = 0;
+    UBaseType_t filled = uxTaskGetSystemState(task_array, task_count, &total_runtime);
+
+    for(UBaseType_t i = 0; i < filled; i++) {
+        uint32_t watermark = task_array[i].usStackHighWaterMark;
+        if(watermark < 100) {
+            FURI_LOG_W(TAG, "Task %-16s has only %lu words free!", task_array[i].pcTaskName, (unsigned long)watermark);
+        } 
+        // else {
+        //     FURI_LOG_I(TAG, "Task %-16s stack free: %lu words", task_array[i].pcTaskName, (unsigned long)watermark);
+        // }
+    }
+
+    vPortFree(task_array);
+}
 
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
@@ -91,7 +116,7 @@ int32_t test_peref_srv(void* p) {
     furi_delay_ms(2000);
 
     while(true) {
-        FURI_LOG_I(TAG, "Test");
+        debug_task_stack_usage();
         furi_delay_ms(500);
     }
     furi_crash();

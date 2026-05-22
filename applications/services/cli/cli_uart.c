@@ -12,9 +12,8 @@
 #define UART_BAUD_RATE        230400UL
 #define UART_SERIAL_ID        FuriHalSerialIdUart1
 #define TRANSFER_BATCH_SIZE   32UL
-#define VCP_MESSAGE_Q_LEN     8
 
-// #define CLI_UART_TRACE_ENABLE
+//#define CLI_UART_TRACE_ENABLE
 
 #ifdef CLI_UART_TRACE_ENABLE
 #define CLI_UART_TRACE(...) FURI_LOG_D(__VA_ARGS__)
@@ -51,7 +50,7 @@ static void cli_uart_signal_event(CliUart* cli_uart, CliUartEvent event) {
 static void cli_uart_event(FuriEventLoopObject* object, void* context) {
     CliUart* cli_uart = context;
     uint32_t event = furi_event_flag_get(object);
-
+    furi_hal_gpio_write(&gpio_m40, true);
     if(event & CliUartEventRx) {
         CLI_UART_TRACE(TAG, "Rx");
     }
@@ -59,11 +58,11 @@ static void cli_uart_event(FuriEventLoopObject* object, void* context) {
     if(event & CliUartEventTxDone) {
         CLI_UART_TRACE(TAG, "TxDone");
 
-        if(pipe_bytes_available(cli_uart->own_pipe)) {
+        //if(pipe_bytes_available(cli_uart->own_pipe)) {
             event |= CliUartEventTx; // trigger next Tx if needed
-        } else {
-            cli_uart->is_transmitting = false;
-        }
+        // } else {
+        //     cli_uart->is_transmitting = false;
+        // }
     }
 
     if(event & CliUartEventTx) {
@@ -83,10 +82,13 @@ static void cli_uart_event(FuriEventLoopObject* object, void* context) {
 
         if(uart_fifo_full) {
             cli_uart->is_transmitting = true;
+        } else {
+            cli_uart->is_transmitting = false;
         }
 
         CLI_UART_TRACE(TAG, "Tx ->>");
     }
+    furi_hal_gpio_write(&gpio_m40, false);
 }
 
 // ================

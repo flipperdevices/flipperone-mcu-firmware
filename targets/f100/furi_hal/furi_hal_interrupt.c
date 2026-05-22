@@ -96,25 +96,22 @@ __attribute__((always_inline)) static inline void furi_hal_interrupt_call(FuriHa
 // }
 
 void furi_hal_interrupt_init() {
-    // NVIC_SetPriority(TAMP_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 0, 0));
-    // NVIC_EnableIRQ(TAMP_IRQn);
+    /* Set PendSV to lowest logical priority (level 7 → hardware 0xE0).
+     * With 3 NVIC bits, NVIC_EncodePriority(0, 7, 0) = 7, then
+     * NVIC_SetPriority shifts it to 0xE0. */
+    NVIC_SetPriority(PendSV_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), configLIBRARY_LOWEST_INTERRUPT_PRIORITY, 0));
 
-    //Todo: Adjust to the correct priority.
-    NVIC_SetPriority(PendSV_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 31, 0));
-
-    // NVIC_SetPriority(FPU_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), 15, 0));
-    // NVIC_EnableIRQ(FPU_IRQn);
-
-    // LL_SYSCFG_DisableIT_FPU_IOC();
-    // LL_SYSCFG_DisableIT_FPU_DZC();
-    // LL_SYSCFG_DisableIT_FPU_UFC();
-    // LL_SYSCFG_DisableIT_FPU_OFC();
-    // LL_SYSCFG_DisableIT_FPU_IDC();
-    // LL_SYSCFG_DisableIT_FPU_IXC();
-
-    // LL_HANDLER_EnableFault(LL_HANDLER_FAULT_USG);
-    // LL_HANDLER_EnableFault(LL_HANDLER_FAULT_BUS);
-    // LL_HANDLER_EnableFault(LL_HANDLER_FAULT_MEM);
+    /* Enable CP4 (RP2350 DCP / Double Coprocessor) in CPACR before the
+     * FreeRTOS scheduler starts.  The RP2350_ARM_NTZ port compiles with
+     * portUSE_DCP_SAVE_RESTORE=1 (triggered by LIB_PICO_DOUBLE_PICO) and
+     * PendSV_Handler uses "mrrc2 p4" to save/restore DCP state on every
+     * context switch.  prvSetupFPU() only enables CP10+CP11; without CP4
+     * bits [9:8] set to 0b11 in CPACR, the very first context switch raises
+     * a NOCP UsageFault that escalates to HardFault (CFSR=0x00080000,
+     * HFSR=0x40000000). */
+    SCB->CPACR |= (3UL << 8U);  /* CP4 bits [9:8] = 0b11 (full access) */
+    __DSB();
+    __ISB();
 
     FURI_LOG_I(TAG, "Init OK");
 }

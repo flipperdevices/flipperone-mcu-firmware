@@ -66,3 +66,18 @@ void vPortSuppressTicksAndSleep(TickType_t expected_idle_ticks) {
         furi_hal_clock_resume_tick();
     }
 }
+
+void vApplicationStackOverflowHook(TaskHandle_t xTask, char* pcTaskName) {
+    /* Log the task name and stack boundaries for easier debugging */
+    TaskStatus_t status;
+    vTaskGetInfo(xTask, &status, pdTRUE, eRunning);
+    FURI_LOG_E(
+        TAG,
+        "stack overflow in task '%s' (handle=0x%08x) "
+        "stack_base=0x%08x stack_min_free=%u",
+        pcTaskName,
+        (unsigned)xTask,
+        (unsigned)status.pxStackBase,
+        (unsigned)(status.usStackHighWaterMark * sizeof(StackType_t)));
+    furi_crash("Stack overflow");
+}
