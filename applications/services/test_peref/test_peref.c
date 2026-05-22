@@ -116,7 +116,7 @@ int32_t test_peref_srv(void* p) {
     furi_delay_ms(2000);
 
     while(true) {
-        debug_task_stack_usage();
+       // debug_task_stack_usage();
         furi_delay_ms(500);
     }
     furi_crash();
