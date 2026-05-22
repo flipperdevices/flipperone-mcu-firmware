@@ -2,6 +2,7 @@
 
 #include <args.h>
 #include <power/power.h>
+#include <cli/cli_ansi.h>
 
 static char* power_cli_get_charger_status1_vbus_str(uint8_t stat) {
     switch(stat) {
@@ -70,16 +71,18 @@ static void power_cli_print_ina219(Power* power) {
     float power_w = power_ina219_get_power_w(power);
     float shunt_mv = power_ina219_get_shunt_voltage_mv(power);
 
+    // clang-format off
     printf(
-        "INA219:\r\n"
-        "  VSYS:  %.3fV\r\n"
-        "  ISYS:  %.2fmA\r\n"
-        "  Shunt: %.4fmV\r\n"
-        "  Power: %.2fW\r\n\r\n",
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "INA219:\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VSYS:  %.3fV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ISYS:  %.2fmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Shunt: %.4fmV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Power: %.2fW\r\n\r\n",
         bus_v,
         current_a * 1000.0f,
         shunt_mv,
         power_w);
+    // clang-format on
 }
 
 static void power_cli_print_bq25792(Power* power) {
@@ -107,19 +110,20 @@ static void power_cli_print_bq25792(Power* power) {
     power_bq25792_get_charge_current_limit_ma(power, &charge_current_limit_ma);
     power_bq25792_get_ico_current_limit_ma(power, &ico_current_limit_ma);
 
+    // clang-format off
     printf(
-        "BQ25792:\r\n"
-        "  VSYS:    %.3fV\r\n"
-        "  VBUS:    %.3fV\r\n"
-        "  IBUS:    %dmA\r\n"
-        "  VBAT:    %.3fV\r\n"
-        "  IBAT:    %dmA\r\n"
-        "  ChgTemp: %.2fC\r\n"
-        "  BatTemp: %.2fC\r\n"
-        "  IINDPM:  %dmA\r\n"
-        "  VREG:    %dmV\r\n"
-        "  ICHG:    %dmV\r\n"
-        "  ICO:     %dmA\r\n\r\n",
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "BQ25792:\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VSYS:    %.3fV\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VBUS:    %.3fV\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IBUS:    %dmA\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VBAT:    %.3fV\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IBAT:    %dmA\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ChgTemp: %.2fC\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  BatTemp: %.2fC\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IINDPM:  %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VREG:    %dmV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICHG:    %dmV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICO:     %dmA\r\n\r\n",
         (float_t)vsys_mv / 1000.0f,
         (float_t)vbus_mv / 1000.0f,
         ibus_ma,
@@ -131,6 +135,7 @@ static void power_cli_print_bq25792(Power* power) {
         charge_voltage_limit_mv,
         charge_current_limit_ma,
         ico_current_limit_ma);
+    // clang-format on
 }
 
 static void power_cli_print_bq28z620(Power* power) {
@@ -178,29 +183,30 @@ static void power_cli_print_bq28z620(Power* power) {
     power_bq28z620_get_charging_current(power, &charging_current_ma);
     power_bq28z620_get_design_capacity(power, &design_capacity_mah);
 
+    // clang-format off
     printf(
-        "BQ28Z620:\r\n"
-        "  Voltage:            %.3fV\r\n"
-        "  Current:            %dmA\r\n"
-        "  Temp:               %.2fC\r\n"
-        "  IntTemp:            %.2fC\r\n"
-        "  RemCap:             %dmAh\r\n"
-        "  FullCap:            %dmAh\r\n"
-        "  AvgCurr:            %dmA\r\n"
-        "  AvgPwr:             %dmW\r\n"
-        "  CycleCt:            %d\r\n"
-        "  SoC:                %d%%\r\n"
-        "  SoH:                %d%%\r\n"
-        "  ChgVolt:            %.3fV\r\n"
-        "  ChgCurr:            %dmA\r\n"
-        "  DesignCap:          %dmAh\r\n"
-        "  TimeToEmpty:        %d min\r\n"
-        "  AvgTimeToEmpty:     %d min\r\n"
-        "  TimeToFull:         %d min\r\n"
-        "  StandbyCurr:        %dmA\r\n"
-        "  StandbyTimeToEmpty: %d min\r\n"
-        "  MaxLoadCurr:        %dmA\r\n"
-        "  MaxLoadTimeToEmpty: %d min\r\n",
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "BQ28Z620:\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Voltage:            %.3fV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Current:            %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Temp:               %.2fC\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IntTemp:            %.2fC\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  RemCap:             %dmAh\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  FullCap:            %dmAh\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgCurr:            %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgPwr:             %dmW\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  CycleCt:            %d\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  SoC:                %d%%\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  SoH:                %d%%\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ChgVolt:            %.3fV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ChgCurr:            %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  DesignCap:          %dmAh\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  TimeToEmpty:        %d min\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  AvgTimeToEmpty:     %d min\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  TimeToFull:         %d min\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  StandbyCurr:        %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  StandbyTimeToEmpty: %d min\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  MaxLoadCurr:        %dmA\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  MaxLoadTimeToEmpty: %d min\r\n",
         voltage_v,
         current_ma,
         temperature_c,
@@ -222,6 +228,7 @@ static void power_cli_print_bq28z620(Power* power) {
         average_time_to_empty_min,
         max_load_current_ma,
         max_load_time_to_empty_min);
+    // clang-format on
 }
 
 static void power_cli_print_charger_status(Power* power, FuriString* arena) {
@@ -229,7 +236,7 @@ static void power_cli_print_charger_status(Power* power, FuriString* arena) {
     power_bq25792_get_charger_status(power, &s);
     furi_string_set(arena, "");
 
-    printf("  Status0: 0x%02X", s.data[0]);
+    printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Status0: 0x%02X", s.data[0]);
     if(s.stat0.vbus_present_stat) furi_string_cat_printf(arena, " VBUS_PRESENT");
     if(s.stat0.ac1_present_stat) furi_string_cat_printf(arena, " AC1_PRESENT");
     if(s.stat0.ac2_present_stat) furi_string_cat_printf(arena, " AC2_PRESENT");
@@ -243,7 +250,7 @@ static void power_cli_print_charger_status(Power* power, FuriString* arena) {
 
     // VBUS_STAT and CHG_STAT are enums — always show
     printf(
-        "  Status1: 0x%02X VBUS: \"%s\" CHG: \"%s\"",
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Status1: 0x%02X VBUS: \"%s\" CHG: \"%s\"",
         s.data[1],
         power_cli_get_charger_status1_vbus_str(s.stat1.vbus_stat),
         power_cli_get_status1_charger_str(s.stat1.chg_stat));
@@ -251,13 +258,13 @@ static void power_cli_print_charger_status(Power* power, FuriString* arena) {
     printf("\r\n");
 
     // ICO_STAT is an enum — always show
-    printf("  Status2: 0x%02X ICO: \"%s\"", s.data[2], power_cli_get_status2_ico_str(s.stat2.ico_stat));
+    printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Status2: 0x%02X ICO: \"%s\"", s.data[2], power_cli_get_status2_ico_str(s.stat2.ico_stat));
     if(s.stat2.vbat_present_stat) printf(" VBAT_PRESENT");
     if(s.stat2.dpdm_stat) printf(" DPDM");
     if(s.stat2.treg_stat) printf(" TREG");
     printf("\r\n");
 
-    printf("  Status3: 0x%02X", s.data[3]);
+    printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Status3: 0x%02X", s.data[3]);
     furi_string_set(arena, "");
     if(s.stat3.prechg_tmr_stat) furi_string_cat_printf(arena, " PRECHG_TMR");
     if(s.stat3.trichg_tmr_stat) furi_string_cat_printf(arena, " TRICHG_TMR");
@@ -269,7 +276,7 @@ static void power_cli_print_charger_status(Power* power, FuriString* arena) {
     if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
     printf("%s\r\n", furi_string_get_cstr(arena));
 
-    printf("  Status4: 0x%02X", s.data[4]);
+    printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Status4: 0x%02X", s.data[4]);
     furi_string_set(arena, "");
     if(s.stat4.ts_hot_stat) furi_string_cat_printf(arena, " TS_HOT");
     if(s.stat4.ts_warm_stat) furi_string_cat_printf(arena, " TS_WARM");
@@ -284,7 +291,7 @@ static void power_cli_print_charger_faults(Power* power, FuriString* arena) {
     Bq25792FaultStatusReg f = {0};
     power_bq25792_get_charger_fault(power, &f);
 
-    printf("  Fault0:  0x%02X", f.data[0]);
+    printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Fault0:  0x%02X", f.data[0]);
     furi_string_set(arena, "");
     if(f.fault0.vac1_ovp_stat) furi_string_cat_printf(arena, " VAC1_OVP");
     if(f.fault0.vac2_ovp_stat) furi_string_cat_printf(arena, " VAC2_OVP");
@@ -297,7 +304,7 @@ static void power_cli_print_charger_faults(Power* power, FuriString* arena) {
     if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
     printf("%s\r\n", furi_string_get_cstr(arena));
 
-    printf("  Fault1:  0x%02X", f.data[1]);
+    printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Fault1:  0x%02X", f.data[1]);
     furi_string_set(arena, "");
     if(f.fault1.tshut_stat) furi_string_cat_printf(arena, " TSHUT");
     if(f.fault1.otg_uvp_stat) furi_string_cat_printf(arena, " OTG_UVP");
@@ -312,7 +319,7 @@ static void power_cli_print_bq28z620_control_status(Power* power, FuriString* ar
     Bq28z620StdCmdControlStatusRegBits s = {0};
     power_bq28z620_get_control_status(power, &s);
 
-    printf("\r\n  Control Status: 0x%04X", *(uint16_t*)&s);
+    printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Control Status: 0x%04X", *(uint16_t*)&s);
 
     furi_string_set(arena, "");
     if(s.qmax) furi_string_cat_printf(arena, " QMAX");
@@ -340,7 +347,7 @@ static void power_cli_print_bq28z620_battery_status(Power* power, FuriString* ar
     Bq28z620StdCmdBatteryStatusRegBits s = {0};
     power_bq28z620_get_battery_status(power, &s);
 
-    printf("  Battery Status: 0x%04X", *(uint16_t*)&s);
+    printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Battery Status: 0x%04X", *(uint16_t*)&s);
 
     furi_string_set(arena, "");
     if(s.error_code == 0x00) {
@@ -382,9 +389,9 @@ void power_cli(Cli* cli, FuriString* args, void* context) {
     UNUSED(context);
     Power* power = furi_record_open(RECORD_POWER);
     FuriString* arena = furi_string_alloc();
-
+    printf(ANSI_ERASE_DISPLAY(ANSI_ERASE_ENTIRE)); // Clear display
     while(!cli_cmd_interrupt_received(cli)) {
-        printf("\e[2J\e[0;0f"); // Clear display and return to 0
+        printf(ANSI_CURSOR_POS("0", "0")); // Return to 0, but don't clear (faster and less flickery)
         power_cli_print_ina219(power);
         power_cli_print_bq25792(power);
         power_cli_print_charger_status(power, arena);
