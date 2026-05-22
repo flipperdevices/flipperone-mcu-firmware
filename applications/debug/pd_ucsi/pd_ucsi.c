@@ -13,8 +13,8 @@
 // emit PS_RDY. Note: in DRP without a partner the chip briefly settles as
 // SRC every ~500 ms (false positive on Ra / noise) and we cycle OTG on/off
 // — a Try.SRC delay in the TC layer would suppress this. The app loops on
-// ucsi_ppm_tick (every 10 ms) and after a PD contract is up runs a few
-// scripted probes (SET_POWER_LEVEL, DR_Swap).
+// ucsi_ppm_tick (every 10 ms), prints state changes, and dumps the
+// partner's Source PDOs once the PD contract is up.
 
 #include <furi.h>
 #include <furi_hal_i2c.h>
@@ -32,21 +32,13 @@
 #define TICK_PERIOD_MS   10u
 #define STATUS_LOG_MS    1000u
 
-typedef enum {
-    ProbePending,
-    ProbeSetPowerLevel,
-    ProbeDrSwapToDfp,
-    ProbeDone,
-} ProbeStep;
-
 typedef struct {
     UcsiPpm* ppm;
     const FuriHalI2cBusHandle* i2c;
     Power* power;
     UcsiPpmConnectorState last_state;
     uint32_t last_log_tick;
-    uint32_t contract_first_seen_tick;
-    ProbeStep probe;
+    bool partner_caps_dumped;
 } PdUcsi;
 
 // --- HAL adapters ----------------------------------------------------------
@@ -173,9 +165,7 @@ static void config_fill(UcsiPpmConfig* cfg, PdUcsi* host) {
     cfg->log = hal_log;
     cfg->fusb302_i2c_addr = FUSB302_I2C_ADDR;
 
-    // DRP — toggle between Rp/Rd until a partner attaches. Source-side
-    // commit currently won't complete (no real VBUS) but the role-detection
-    // and PE Source_Capabilities advertisement still exercise.
+    // DRP — toggle between Rp/Rd until a partner attaches
     cfg->initial_cc_operation_mode = UcsiPpmCcModeDrp;
     cfg->source_rp_current = UcsiPpmRpCurrent1A5;
 
@@ -238,38 +228,22 @@ static void dump_fusb302_regs(PdUcsi* host) {
     }
 }
 
-static void run_scripted_probes(PdUcsi* host) {
-    // Anchor to TC-level attach, not contract — otherwise the brief PE bounce
-    // during a SET_POWER_LEVEL renegotiate (SnkReady → WaitForAccept → ...)
-    // would reset the timer and re-fire the probe forever.
-    if(host->last_state != UcsiPpmStateAttachedSnk && host->last_state != UcsiPpmStateAttachedSrc) {
-        host->contract_first_seen_tick = 0;
-        host->probe = ProbePending;
+// Dumps partner Source caps the first time we see a live PD contract during
+// an attach session, then clears the flag on detach so the next attach gets
+// a fresh dump.
+static void maybe_dump_partner_caps(PdUcsi* host) {
+    const bool attached = host->last_state == UcsiPpmStateAttachedSnk || host->last_state == UcsiPpmStateAttachedSrc;
+    if(!attached) {
+        host->partner_caps_dumped = false;
         return;
     }
-    // Arm the timer the first time the PD contract actually commits.
-    if(host->contract_first_seen_tick == 0) {
-        UcsiPpmContractInfo c = {0};
-        if(ucsi_ppm_get_contract(host->ppm, &c) == UcsiPpmStatusOk && c.contract_in_place) {
-            host->contract_first_seen_tick = furi_get_tick();
-            ucsi_shim_dump_partner_source_caps(host->ppm);
-        } else {
-            return;
-        }
-    }
-    const uint32_t since = furi_get_tick() - host->contract_first_seen_tick;
+    if(host->partner_caps_dumped) return;
 
-    if(host->probe == ProbePending && since > 3000u) {
-        FURI_LOG_I(TAG, "probe: SET_POWER_LEVEL → 500 mA");
-        ucsi_shim_set_power_level_sink(host->ppm, 500);
-        host->probe = ProbeSetPowerLevel;
-    } else if(host->probe == ProbeSetPowerLevel && since > 8000u) {
-        FURI_LOG_I(TAG, "probe: SET_UOR → initiate DR_Swap to DFP");
-        ucsi_shim_set_uor(host->ppm, 0x01u /* Initiate swap to DFP */);
-        host->probe = ProbeDrSwapToDfp;
-    } else if(host->probe == ProbeDrSwapToDfp && since > 13000u) {
-        host->probe = ProbeDone;
-    }
+    UcsiPpmContractInfo c = {0};
+    if(ucsi_ppm_get_contract(host->ppm, &c) != UcsiPpmStatusOk || !c.contract_in_place) return;
+
+    ucsi_shim_dump_partner_source_caps(host->ppm);
+    host->partner_caps_dumped = true;
 }
 
 static int32_t pd_ucsi_thread(void* arg) {
@@ -301,8 +275,7 @@ static int32_t pd_ucsi_thread(void* arg) {
 
     host->last_state = ucsi_ppm_get_connector_state(host->ppm);
     host->last_log_tick = furi_get_tick();
-    host->contract_first_seen_tick = 0;
-    host->probe = ProbePending;
+    host->partner_caps_dumped = false;
 
     while(true) {
         // No INT GPIO wired yet — poll FUSB302 every tick. phy_pump reads
@@ -330,7 +303,7 @@ static int32_t pd_ucsi_thread(void* arg) {
             ucsi_shim_log_status_if_changed(host->ppm);
         }
 
-        run_scripted_probes(host);
+        maybe_dump_partner_caps(host);
 
         furi_delay_ms(TICK_PERIOD_MS);
     }
