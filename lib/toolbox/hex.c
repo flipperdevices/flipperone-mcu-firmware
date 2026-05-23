@@ -88,6 +88,7 @@ bool hex_string_to_bytes(
     furi_check(bytes);
 
     size_t str_size = furi_string_size(string);
+    if(str_size % 2 != 0) return false;
     size_t max_bytes = str_size / 2;
     if(bytes_written) *bytes_written = 0;
     bool parse_success = false;
