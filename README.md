@@ -23,9 +23,51 @@ Builds run automatically on every push to the `dev` branch, on tag pushes, and o
 ### [`📥 Download latest dev firmware →`](https://update.flipperzero.one/builds/flipper-one-mcu/dev/)
 **⚠️ TODO:** make a proper build server address and folder structure instead of using `flipperzero.one`
 
-## Manual build 
+## Manual build
 
-**⚠️ TODO:** how to build manually? 
+### Prerequisites
+
+- [CMake](https://cmake.org/) >= 3.13
+- ARM GCC toolchain (arm-none-eabi), version 14.2 recommended  
+  Download: [Arm GNU Toolchain Downloads](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+- [Pico SDK](https://github.com/raspberrypi/pico-sdk) 2.2.0
+- [picotool](https://github.com/raspberrypi/picotool) 2.2.0 (required for flashing)
+
+The quickest setup is the [Raspberry Pi Pico VS Code Extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico), which installs the SDK and toolchain under `~/.pico-sdk/` and is picked up automatically by CMake. For a manual SDK install, set the `PICO_SDK_PATH` environment variable to the SDK root before building.
+
+### Build steps
+
+```bash
+git clone https://github.com/flipperdevices/flipperone-mcu-firmware
+cd flipperone-mcu-firmware
+git submodule update --init --recursive
+
+mkdir build && cd build
+cmake .. -DFIRMWARE_TARGET=100
+cmake --build . --parallel
+```
+
+The build produces `flipperone-mcu-firmware.uf2` in the `build/` directory.
+
+## Flashing
+
+### Option 1: UF2 drag-and-drop
+
+1. Hold the BOOTSEL button on the MCU board and connect it via USB.
+2. It mounts as a USB mass storage device (`RPI-RP2`).
+3. Copy `flipperone-mcu-firmware.uf2` to the drive.
+4. The device reboots automatically when the copy finishes.
+
+### Option 2: picotool
+
+```bash
+picotool load build/flipperone-mcu-firmware.uf2 --force
+picotool reboot
+```
+
+### Option 3: Pre-built firmware
+
+Download the latest firmware from [Automated builds](#automated-builds) and flash using either method above.
 
 ## Join development
 
