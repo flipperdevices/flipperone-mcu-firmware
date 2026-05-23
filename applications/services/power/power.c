@@ -12,6 +12,8 @@
 
 #define TAG "Power"
 
+#define BQ25792_IRQ_DEBUG_ENABLE
+
 #define POWER_MAX_MESSAGES            (8)
 #define POWER_INA_SHUNT_RESISTOR_OHMS (0.004f)
 #define POWER_INA_BUS_CURRENT_MAX     (9.0f)
@@ -71,10 +73,8 @@ static Bq25792Status power_bq25792_reset_and_load_config(Power* instance) {
     return res;
 }
 
-static void power_bq25792_print_charger_irq(Power* instance) {
-    Bq25792ChargerFlagReg fl = {0};
-    bq25792_get_charger_irq_flags(instance->bq25792_header, &fl);
-
+#ifdef BQ25792_IRQ_DEBUG_ENABLE
+static void power_bq25792_print_charger_irq(Power* instance, Bq25792ChargerFlagReg fl) {
     FuriString* arena = furi_string_alloc();
     furi_string_set(arena, "");
     if(fl.flag0.vbus_present_flag) furi_string_cat_printf(arena, " VBUS_PRESENT");
@@ -86,11 +86,6 @@ static void power_bq25792_print_charger_irq(Power* instance) {
     if(fl.flag0.vindpm_flag) furi_string_cat_printf(arena, " VINDPM");
     if(fl.flag0.iindpm_flag) furi_string_cat_printf(arena, " IINDPM");
     if(furi_string_size(arena) != 0) FURI_LOG_I(TAG, "  IRQ0:    0x%02X %s", fl.data[0], furi_string_get_cstr(arena));
-
-    if(fl.flag0.iindpm_flag && instance->otg_enabled) {
-        FURI_LOG_W(TAG, "OTG overcurrent (IINDPM/IOTG) detected");
-        if(instance->otg_overcurrent.callback) instance->otg_overcurrent.callback(instance->otg_overcurrent.context);
-    }
 
     furi_string_set(arena, "");
     if(fl.flag1.bc12_done_flag) furi_string_cat_printf(arena, " BC1.2_DONE");
@@ -120,11 +115,22 @@ static void power_bq25792_print_charger_irq(Power* instance) {
     if(furi_string_size(arena) != 0) FURI_LOG_I(TAG, "  IRQ3:    0x%02X %s", fl.data[3], furi_string_get_cstr(arena));
     furi_string_free(arena);
 }
+#endif
 
 static void __isr __not_in_flash_func(power_bq25792_event_isr)(void* context) {
     Power* instance = (Power*)context;
     furi_event_loop_set_custom_event(instance->event_loop, PowerEventTypeIsr);
-    power_bq25792_print_charger_irq(instance);
+
+    Bq25792ChargerFlagReg fl = {0};
+    bq25792_get_charger_irq_flags(instance->bq25792_header, &fl);
+
+    if(fl.flag0.iindpm_flag && instance->otg_enabled) {
+        if(instance->otg_overcurrent.callback) instance->otg_overcurrent.callback(instance->otg_overcurrent.context);
+    }
+
+#ifdef BQ25792_IRQ_DEBUG_ENABLE
+    power_bq25792_print_charger_irq(instance, fl);
+#endif
 }
 
 typedef void (*PowerFunction)(void* context, void* param, void* result);
