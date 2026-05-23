@@ -36,6 +36,24 @@ typedef enum {
     Fusb302TypeCcOrientationReverse, //!< Cable is plugged in upside-down (CC2 active)
 } Fusb302TypeCcOrientation;
 
+typedef enum {
+    Fusb302PortStateToggling,     // TOGSS=000: DRP toggle still running, no role yet
+    Fusb302PortStateSourceCC1,    // TOGSS=001: Flipper is source, CC1
+    Fusb302PortStateSourceCC2,    // TOGSS=010: Flipper is source, CC2
+    Fusb302PortStateSinkCC1,      // TOGSS=101: Flipper is sink (charging), cable on CC1
+    Fusb302PortStateSinkCC2,      // TOGSS=110: Flipper is sink (charging), cable on CC2
+    Fusb302PortStateAudioAccessory, // TOGSS=111: audio adapter detected, not a power role
+    Fusb302PortStateOvercurrent,    // I_OCP_TEMP: VCONN switch over-current or over-temperature
+    Fusb302PortStateUndefined,    // TOGSS=other: datasheet says do not interpret
+} Fusb302PortState;
+
+typedef enum {
+    Fusb302ReadRoleResultNothing,
+    Fusb302ReadRoleResultToggleDone,
+    Fusb302ReadRoleResultOvercurrent,
+} Fusb302ReadRoleResult;
+
+
 /**
  * USB Power Delivery message structure.
  *
@@ -60,12 +78,13 @@ extern "C" {
 Fusb302* fusb302_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, const GpioPin* pin_interrupt);
 void fusb302_read_cc_status(Fusb302* instance, uint8_t cc);
 void fusb302_deinit(Fusb302* instance);
-bool fusb302_read_role(Fusb302* instance);
+Fusb302ReadRoleResult fusb302_read_role(Fusb302* instance);
 void fusb302_set_input_callback(Fusb302* instance, Fusb302Callback callback, void* context);
 Fusb302Status fusb302_start_drp_logic(Fusb302* instance);
 Fusb302Status fusb302_sw_reset(Fusb302* instance);
 
 Fusb302Status fusb302_cc_orientation_set(Fusb302* instance, Fusb302TypeCcOrientation orientation);
+Fusb302Status fusb302_get_port_state(Fusb302* instance, Fusb302PortState* state);
 // pd
 Fusb302Status fusb302_pd_reset_logic(Fusb302* instance);
 Fusb302Status fusb302_pd_reset_hard(Fusb302* instance);

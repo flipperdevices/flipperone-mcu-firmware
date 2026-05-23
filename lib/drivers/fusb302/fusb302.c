@@ -170,7 +170,7 @@ Fusb302Status fusb302_start_drp_logic(Fusb302* instance) {
         mask_a.m_retryfail = 1; // Mask retry fail interrupts
         mask_a.m_softfail = 1; // Mask soft reset fail interrupts
         mask_a.m_togdone = 0; // Mask toggle done interrupts
-        mask_a.m_ocp_temp = 1; // Mask over-current/temperature interrupts
+        mask_a.m_ocp_temp = 0; // Mask over-current/temperature interrupts
         res = fusb302_write_reg(instance, Fusb302RegMaskA, *(uint8_t*)&mask_a);
         if(res != Fusb302StatusOk) {
             break;
@@ -282,11 +282,11 @@ Fusb302Status fusb302_pd_reset(Fusb302* instance) {
     return res;
 }
 
-bool fusb302_read_role(Fusb302* instance) {
+Fusb302ReadRoleResult fusb302_read_role(Fusb302* instance) {
     // Read interrupts to determine what happened
     Fusb302InterruptRegBits irq_bits = {0};
     Fusb302InterruptARegBits irq_a_bits = {0};
-    bool ret = false;
+    Fusb302ReadRoleResult ret = Fusb302ReadRoleResultNothing;
     fusb302_read_reg(instance, Fusb302RegInterruptA, (uint8_t*)&irq_a_bits);
     fusb302_read_reg(instance, Fusb302RegInterrupt, (uint8_t*)&irq_bits);
     FUSB302_DEBUG(TAG, "Interrupt A: %02X", *(uint8_t*)&irq_a_bits);
@@ -326,7 +326,7 @@ bool fusb302_read_role(Fusb302* instance) {
             FUSB302_DEBUG(TAG, "Toggling still in progress or unknown...\n");
             break;
         }
-        ret = true;
+        ret = Fusb302ReadRoleResultToggleDone;
 
     } else if(irq_bits.i_comp_chng) { // Checking I_COMP_CHNG bit (bit 5)
         FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_COMP_CHNG\n");
@@ -336,6 +336,9 @@ bool fusb302_read_role(Fusb302* instance) {
         FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_VBUSOK\n");
         fusb302_start_drp_logic(instance);
 
+    } else if (irq_a_bits.i_ocp_temp) { // Checking I_OCP_TEMP bit (bit 7)
+        FUSB302_DEBUG(TAG, "FUSB302_INTERRUPT_MASK_OCP_TEMP\n");
+        return Fusb302ReadRoleResultOvercurrent;
     } else {
         // FUSB302_DEBUG(TAG, "Toggle not completed yet...\n");
     }
@@ -410,6 +413,49 @@ Fusb302Status fusb302_cc_orientation_set(Fusb302* instance, Fusb302TypeCcOrienta
         FURI_LOG_E(TAG, "Failed to set CC orientation!");
     }
     return res;
+}
+
+Fusb302Status fusb302_get_port_state(Fusb302* instance, Fusb302PortState* state) {
+    furi_check(instance);
+    furi_check(state);
+
+    Fusb302Status1ARegBits status1a = {0};
+    Fusb302Status res = fusb302_read_reg(instance, Fusb302RegStatus1A, (uint8_t*)&status1a);
+    if (res != Fusb302StatusOk) {
+        return res;
+    }
+
+    switch(status1a.togss) {
+    case FUSB302_STATUS1A_TOGSS_TOGGLE_LOGIC_RUNNING: // 000 - Toggle logic running
+        *state = Fusb302PortStateToggling;
+        FUSB302_DEBUG(TAG, "Toggling\n");
+        break;
+    case FUSB302_STATUS1A_TOGSS_SRCON_CC1: // 001 - Source on CC1
+        *state = Fusb302PortStateSourceCC1;
+        FUSB302_DEBUG(TAG, "Source CC1\n");
+        break;
+    case FUSB302_STATUS1A_TOGSS_SRCON_CC2: // 010 - Source on CC2
+        *state = Fusb302PortStateSourceCC2;
+        FUSB302_DEBUG(TAG, "Source CC2\n");
+        break;
+    case FUSB302_STATUS1A_TOGSS_SNKON_CC1: // 101 - Sink on CC1
+        *state = Fusb302PortStateSinkCC1;
+        FUSB302_DEBUG(TAG, "Sink CC1\n");
+        break;
+    case FUSB302_STATUS1A_TOGSS_SNKON_CC2: // 110 - Sink on CC2
+        *state = Fusb302PortStateSinkCC2;
+        FUSB302_DEBUG(TAG, "Sink CC2\n");
+        break;
+    case FUSB302_STATUS1A_TOGSS_AUDIO_ACCESSORY: // 111 - Audio Accessory
+        *state = Fusb302PortStateAudioAccessory;
+        FUSB302_DEBUG(TAG, "Audio Accessory\n");
+        break;
+    default:
+        *state = Fusb302PortStateUndefined;
+        FUSB302_DEBUG(TAG, "Undefined\n");
+        break;
+    }
+    return Fusb302StatusOk;
 }
 
 //////////////////////PD//////////////////////
