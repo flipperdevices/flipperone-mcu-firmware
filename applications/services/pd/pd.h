@@ -9,6 +9,20 @@ typedef enum {
    PdDeviceFusb302 = (1 << 0),
 } PdDevice;
 
+typedef enum {
+    PdPortStateToggling,       // DRP toggle in progress, no role determined yet
+    PdPortStateSourceCC1,      // Flipper is power source, cable on CC1
+    PdPortStateSourceCC2,      // Flipper is power source, cable on CC2
+    PdPortStateSinkCC1,        // Flipper is charging (sink), cable on CC1
+    PdPortStateSinkCC2,        // Flipper is charging (sink), cable on CC2
+    PdPortStateAudioAccessory, // Audio adapter detected
+    PdPortStateOvercurrent,    // VCONN over-current or over-temperature event
+    PdPortStateUndefined,      // Unknown or undetected state
+} PdPortState;
+
+typedef struct {
+    PdPortState port_state;
+} PdEvent;
 
 typedef enum {
     PdModeOff,

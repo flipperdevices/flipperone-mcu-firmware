@@ -85,31 +85,39 @@ static void pd_custom_event_callback(uint32_t events, void* context) {
     Pd* instance = (Pd*)context;
 
     if(events & PdEventTypeIsr) {
-        // fusb302_read_role(instance->fusb302_header);
+        if(instance->mode == PdModeOff) {
+            return;
+        }
 
-        // fusb302_pd_reset_hard(instance->fusb302_header);
+        Fusb302ReadRoleResult role_result = fusb302_read_role(instance->fusb302_header);
 
-        // fusb302_cc_orientation_set(instance->fusb302_header, PdTypeCcOrientationNormal);
-        // fusb302_pd_reset_logic(instance->fusb302_header);
-        // fusb302_pd_autogoodcrc_set(instance->fusb302_header, true);
-        // fusb302_pd_autoretry_set(instance->fusb302_header, 3);
-        // fusb302_pd_rx_flush(instance->fusb302_header);
+        if(role_result == Fusb302ReadRoleResultToggleDone) {
+            Fusb302PortState fusb302_port_state = Fusb302PortStateUndefined;
+            Fusb302Status res = fusb302_get_port_state(instance->fusb302_header, &fusb302_port_state);
+            if(res != Fusb302StatusOk) {
+                FURI_LOG_E(TAG, "Failed to get port state");
+                return;
+            }
 
-        // for(uint8_t i = 0;i<10; i++) {
-        //     PdPdMsg msg;
-        //     PdStatus res = fusb302_pd_message_receive(instance->fusb302_header, &msg);
-
-        //     if(res == PdStatusOk) {
-        //         FURI_LOG_W(TAG, "Received PD message: SOP=%d, Header=0x%04X, Objects=%d", msg.sop_type, msg.header, msg.object_count);
-        //     } else if(res == PdStatusRxEmpty) {
-        //         FURI_LOG_W(TAG, "No PD message received (Rx FIFO empty)");
-        //         break;
-        //     } else {
-        //         FURI_LOG_W(TAG, "Error receiving PD message");
-        //         break;
-        //     }
-        //     furi_delay_ms(50);
-        // }
+            PdPortState pd_state = PdPortStateUndefined;
+            switch(fusb302_port_state) {
+            case Fusb302PortStateToggling: pd_state = PdPortStateToggling; break;
+            case Fusb302PortStateSourceCC1: pd_state = PdPortStateSourceCC1; break;
+            case Fusb302PortStateSourceCC2: pd_state = PdPortStateSourceCC2; break;
+            case Fusb302PortStateSinkCC1: pd_state = PdPortStateSinkCC1; break;
+            case Fusb302PortStateSinkCC2: pd_state = PdPortStateSinkCC2; break;
+            case Fusb302PortStateAudioAccessory: pd_state = PdPortStateAudioAccessory; break;
+            case Fusb302PortStateOvercurrent: pd_state = PdPortStateUndefined; break; // not a TOGSS value, can never be returned by fusb302_get_port_state
+            case Fusb302PortStateUndefined: pd_state = PdPortStateUndefined; break;
+            }
+            PdEvent event = {.port_state = pd_state};
+            furi_pubsub_publish(instance->event_pubsub, &event);
+        }
+        else if (role_result == Fusb302ReadRoleResultOvercurrent) {
+            PdPortState pd_state = PdPortStateOvercurrent;
+            PdEvent event = {.port_state = pd_state};
+            furi_pubsub_publish(instance->event_pubsub, &event);
+        }
     }
 }
 
