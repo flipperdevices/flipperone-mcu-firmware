@@ -242,8 +242,8 @@ extern uint64_t time_us_64(void); // "hardware/timer.h"
 #define USE_FreeRTOS_HEAP_4
 
 /* Normal assert() semantics without relying on the provision of an assert.h
-header file. */
-#ifdef DEBUG
+header file. header file. Already defined unconditionally above as vFreeRTOSAssertFailed(). */
+#if 0
 #define configASSERT(x)                \
     if((x) == 0) {                     \
         furi_crash("FreeRTOS Assert"); \

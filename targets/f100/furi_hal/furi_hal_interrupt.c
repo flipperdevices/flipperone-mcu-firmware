@@ -96,9 +96,9 @@ __attribute__((always_inline)) static inline void furi_hal_interrupt_call(FuriHa
 // }
 
 void furi_hal_interrupt_init() {
-    /* Set PendSV to lowest logical priority (level 7 -> hardware 0xE0).
-     * With 3 NVIC bits, NVIC_EncodePriority(0, 7, 0) = 7, then
-     * NVIC_SetPriority shifts it to 0xE0. */
+/* Set PendSV to lowest logical priority (level 15 -> hardware 0xF0).
+     * With 4 NVIC bits, NVIC_EncodePriority(0, 15, 0) = 15, then
+     * NVIC_SetPriority shifts it to 0xF0. */
     NVIC_SetPriority(PendSV_IRQn, NVIC_EncodePriority(NVIC_GetPriorityGrouping(), configLIBRARY_LOWEST_INTERRUPT_PRIORITY, 0));
 
     /* Enable CP4 (RP2350 DCP / Double Coprocessor) in CPACR before the

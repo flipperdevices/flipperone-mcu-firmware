@@ -215,16 +215,17 @@ void furi_hal_serial_deinit(FuriHalSerialHandle* handle) {
     furi_check(handle);
 
     FuriHalSerialId serial_id = handle->id;
-
-    if(serial_id == FuriHalSerialIdUartPio) {
-        uart_pio_deinit();
-        return;
-    }
-
     FuriHalSerial* serial = furi_hal_serial[serial_id];
     uart_inst_t* periph = serial->periph_ptr;
     // TODO: deinit() should NOT be called before init()
     if(serial == NULL) return;
+
+    if(serial_id == FuriHalSerialIdUartPio) {
+        free(serial);
+        furi_hal_serial[serial_id] = NULL;
+        uart_pio_deinit();
+        return;
+    }
 
     furi_hal_serial_dma_rx_deinit(handle);
     furi_hal_serial_dma_tx_deinit(handle);
@@ -248,7 +249,7 @@ inline void furi_hal_serial_suspend(FuriHalSerialHandle* handle) {
     furi_hal_serial_check(handle);
 
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return;
     }
 
@@ -261,7 +262,7 @@ inline void furi_hal_serial_resume(FuriHalSerialHandle* handle) {
     furi_hal_serial_check(handle);
 
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return;
     }
 
@@ -308,7 +309,7 @@ void furi_hal_serial_set_hw_flow_control(FuriHalSerialHandle* handle, FuriHalSer
     furi_check(handle);
 
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return;
     }
 
@@ -367,7 +368,7 @@ void furi_hal_serial_set_callback(FuriHalSerialHandle* handle, FuriHalSerialTxCa
     furi_check(handle);
 
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return;
     }
 
@@ -399,7 +400,7 @@ size_t furi_hal_serial_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, si
 bool furi_hal_serial_tx_wait_complete(FuriHalSerialHandle* handle, uint32_t timeout) {
     furi_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return true;
     }
     //Todo: implement timeout
@@ -411,8 +412,8 @@ bool furi_hal_serial_tx_wait_complete(FuriHalSerialHandle* handle, uint32_t time
 
 void furi_hal_serial_tx_non_blocking(FuriHalSerialHandle* handle, uint8_t data) {
     furi_check(handle);
-        if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported
         return;
     }
     uart_get_hw(furi_hal_serial_resources[handle->id].periph)->dr = data;
@@ -421,7 +422,7 @@ void furi_hal_serial_tx_non_blocking(FuriHalSerialHandle* handle, uint8_t data) 
 bool furi_hal_serial_tx_ready(FuriHalSerialHandle* handle) {
     furi_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return true;
     }
     return uart_is_writable(furi_hal_serial_resources[handle->id].periph);
@@ -430,7 +431,7 @@ bool furi_hal_serial_tx_ready(FuriHalSerialHandle* handle) {
 bool furi_hal_serial_rx_available(FuriHalSerialHandle* handle) {
     furi_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return false;
     }
     return uart_is_readable(furi_hal_serial_resources[handle->id].periph);
@@ -439,7 +440,7 @@ bool furi_hal_serial_rx_available(FuriHalSerialHandle* handle) {
 uint8_t furi_hal_serial_rx(FuriHalSerialHandle* handle) {
     furi_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         furi_crash();
     }
     uint8_t data = (uint8_t)uart_get_hw(furi_hal_serial_resources[handle->id].periph)->dr;
@@ -449,7 +450,7 @@ uint8_t furi_hal_serial_rx(FuriHalSerialHandle* handle) {
 FURI_ALWAYS_INLINE size_t furi_hal_serial_rx_data_non_blocking(FuriHalSerialHandle* handle, uint8_t* data, size_t data_size) {
     furi_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return 0;
     }
     size_t received = 0;
@@ -462,7 +463,7 @@ FURI_ALWAYS_INLINE size_t furi_hal_serial_rx_data_non_blocking(FuriHalSerialHand
 void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_errors) {
     furi_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return;
     }
     const FuriHalSerialResources* resources = &furi_hal_serial_resources[handle->id];
@@ -494,7 +495,7 @@ void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_err
 void furi_hal_serial_async_rx_stop(FuriHalSerialHandle* handle) {
     furi_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return;
     }
     const FuriHalSerialResources* resources = &furi_hal_serial_resources[handle->id];
@@ -531,7 +532,7 @@ void furi_hal_serial_dma_rx_stop(FuriHalSerialHandle* handle) {
 void furi_hal_serial_clear(FuriHalSerialHandle* handle) {
     furi_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return;
     }
     uart_inst_t* periph = furi_hal_serial_resources[handle->id].periph;
@@ -558,7 +559,7 @@ void furi_hal_serial_set_config(
     furi_hal_serial_check(handle);
 
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return;
     }
 
@@ -626,7 +627,7 @@ void furi_hal_serial_set_config(
 inline bool furi_hal_serial_is_enabled(FuriHalSerialHandle* handle) {
     furi_hal_serial_check(handle);
     if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
+        // Not supported
         return true;
     }
     return uart_is_enabled(furi_hal_serial[handle->id]->periph_ptr);
