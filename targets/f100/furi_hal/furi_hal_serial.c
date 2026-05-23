@@ -63,7 +63,7 @@ static const FuriHalSerialResources furi_hal_serial_resources[FuriHalSerialIdMax
         },
     [FuriHalSerialIdUartPio] =
         {
-            .periph = uart1,
+            .periph = NULL,
             .alt_fn = GpioAltFn7Pio1,
             .gpio =
                 {
@@ -164,11 +164,6 @@ void furi_hal_serial_init(FuriHalSerialHandle* handle, uint32_t baud_rate) {
     const FuriHalSerialId serial_id = handle->id;
     furi_check(furi_hal_serial[serial_id] == NULL);
 
-    if(serial_id == FuriHalSerialIdUartPio) {
-        uart_pio_init(baud_rate, furi_hal_serial_resources[serial_id].gpio[FuriHalSerialPinTx]);
-        return;
-    }
-
     furi_hal_serial[serial_id] = malloc(sizeof(FuriHalSerial));
 
     FuriHalSerial* serial = furi_hal_serial[serial_id];
@@ -176,6 +171,11 @@ void furi_hal_serial_init(FuriHalSerialHandle* handle, uint32_t baud_rate) {
 
     serial->handle = handle;
     serial->periph_ptr = periph;
+
+    if(serial_id == FuriHalSerialIdUartPio) {
+        uart_pio_init(baud_rate, furi_hal_serial_resources[serial_id].gpio[FuriHalSerialPinTx]);
+        return;
+    }
 
     // TODO: This should not be called by default
     furi_hal_serial_dma_tx_init(handle);
@@ -411,21 +411,37 @@ bool furi_hal_serial_tx_wait_complete(FuriHalSerialHandle* handle, uint32_t time
 
 void furi_hal_serial_tx_non_blocking(FuriHalSerialHandle* handle, uint8_t data) {
     furi_check(handle);
+        if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return;
+    }
     uart_get_hw(furi_hal_serial_resources[handle->id].periph)->dr = data;
 }
 
 bool furi_hal_serial_tx_ready(FuriHalSerialHandle* handle) {
     furi_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return true;
+    }
     return uart_is_writable(furi_hal_serial_resources[handle->id].periph);
 }
 
 bool furi_hal_serial_rx_available(FuriHalSerialHandle* handle) {
     furi_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        return false;
+    }
     return uart_is_readable(furi_hal_serial_resources[handle->id].periph);
 }
 
 uint8_t furi_hal_serial_rx(FuriHalSerialHandle* handle) {
     furi_check(handle);
+    if(handle->id == FuriHalSerialIdUartPio) {
+        // Not supported 
+        furi_crash();
+    }
     uint8_t data = (uint8_t)uart_get_hw(furi_hal_serial_resources[handle->id].periph)->dr;
     return data;
 }
@@ -531,10 +547,6 @@ void furi_hal_serial_clear(FuriHalSerialHandle* handle) {
 
 const GpioPin* furi_hal_serial_gpio_get_pin(FuriHalSerialHandle* handle, FuriHalSerialPin pin) {
     furi_hal_serial_check(handle);
-    if(handle->id == FuriHalSerialIdUartPio) {
-        // Not supported 
-        return NULL;
-    }
     return furi_hal_serial_resources[handle->id].gpio[pin];
 }
 

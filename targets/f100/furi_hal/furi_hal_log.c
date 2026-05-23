@@ -52,8 +52,8 @@ void furi_hal_log_init(FuriLogLevel level, FuriHalLogOutput output) {
 
 // call after hardware is ready to output logs
 void furi_hal_log_hardware_init(void) {
+    furi_hal_serial_control_init();
     if(furi_hal_log_config.output == FuriHalLogOutputSerial || furi_hal_log_config.output == FuriHalLogOutputAll) {
-        furi_hal_serial_control_init();
         furi_hal_serial_control_set_logging_config(FuriHalSerialIdUartPio, 230400);
     }
     const char* level_str = "unknown";

@@ -1,3 +1,4 @@
+#include <furi.h>
 #include "uart_pio.h"
 #include "hardware/pio.h"
 #include "uart_tx.pio.h"
@@ -32,9 +33,9 @@ void uart_pio_deinit(void) {
 
 void uart_pio_set_baud_rate(uint32_t baud_rate) {
     furi_check(uart_pio_instance != NULL);
+    const GpioPin* gpio_tx = uart_pio_instance->gpio_tx;
     uart_pio_deinit();
-    uart_pio_init(baud_rate, uart_pio_instance->gpio_tx);
-    uart_pio_instance->baud_rate = baud_rate;
+    uart_pio_init(baud_rate, gpio_tx);
 }
 
 uint32_t uart_pio_get_baud_rate(void) {
