@@ -8,7 +8,8 @@ extern "C" {
 
 typedef struct CliUart CliUart;
 
-// This service has no public API.
+void cli_uart_enable(CliUart* cli_uart);
+void cli_uart_disable(CliUart* cli_uart);
 
 #ifdef __cplusplus
 }

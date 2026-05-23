@@ -16,6 +16,8 @@ struct CliAnsiParser {
 
 CliAnsiParser* cli_ansi_parser_alloc(void) {
     CliAnsiParser* parser = malloc(sizeof(CliAnsiParser));
+    parser->state = CliAnsiParserStateInitial;
+    parser->modifiers = CliModKeyNo;
     return parser;
 }
 

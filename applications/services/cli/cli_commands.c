@@ -7,6 +7,7 @@
 #include "cli_command_gpio.h"
 #include "cli_commands_common.h"
 #include "cli_vcp.h"
+#include "cli_uart.h"
 
 static void cli_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "uptime", CliCommandFlagParallelSafe, cli_command_uptime, NULL);
@@ -36,6 +37,8 @@ int32_t cli_on_system_start(void* p) {
     furi_record_create(RECORD_CLI, registry);
     CliVcp* cli_vcp = furi_record_open(RECORD_CLI_VCP);
     cli_vcp_enable(cli_vcp);
+    CliUart* cli_uart = furi_record_open(RECORD_CLI_UART);
+    cli_uart_enable(cli_uart);
     furi_record_close(RECORD_CLI_VCP);
     return 0;
 }

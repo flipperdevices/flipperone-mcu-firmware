@@ -237,7 +237,12 @@ static void cli_vcp_internal_event_happened(FuriEventLoopObject* object, void* c
         // wait for shell to stop
         cli_shell_join(cli_vcp->shell);
         cli_shell_free(cli_vcp->shell);
+
+        furi_record_close(RECORD_CLI);
+        cli_vcp->main_registry = NULL;
+
         pipe_free(cli_vcp->shell_pipe);
+
         break;
     }
 
@@ -245,7 +250,7 @@ static void cli_vcp_internal_event_happened(FuriEventLoopObject* object, void* c
         if(cli_vcp->is_connected) return;
         FURI_LOG_D(TAG, "Connected");
         cli_vcp->is_connected = true;
-
+        cli_vcp->main_registry = furi_record_open(RECORD_CLI);
         // start shell thread
         PipeSideBundle bundle = pipe_alloc(VCP_BUF_SIZE, 1);
         cli_vcp->own_pipe = bundle.alices_side;
@@ -278,7 +283,11 @@ static CliVcp* cli_vcp_alloc(void) {
     cli_vcp->internal_evt_queue = furi_message_queue_alloc(VCP_MESSAGE_Q_LEN, sizeof(CliVcpInternalEvent));
     furi_event_loop_subscribe_message_queue(cli_vcp->event_loop, cli_vcp->internal_evt_queue, FuriEventLoopEventIn, cli_vcp_internal_event_happened, cli_vcp);
 
-    cli_vcp->main_registry = furi_record_open(RECORD_CLI);
+    cli_vcp->is_enabled = false;
+    cli_vcp->is_connected = false;
+    cli_vcp->own_pipe = NULL;
+    cli_vcp->shell_pipe = NULL;
+    cli_vcp->is_currently_transmitting = false;
 
     return cli_vcp;
 }

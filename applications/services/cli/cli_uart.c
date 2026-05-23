@@ -4,6 +4,7 @@
 #include <cli/cli_commands.h>
 #include <furi_hal_serial.h>
 #include <furi_hal_serial_control.h>
+#include <api_lock.h>
 
 #define TAG "CliUart"
 
@@ -12,6 +13,7 @@
 #define UART_SERIAL_ID        FuriHalSerialIdUart1
 #define TRANSFER_BATCH_SIZE   32UL
 #define CLI_UART_SHELL_PROMPT "control"
+#define UART_MESSAGE_Q_LEN    5
 
 //#define CLI_UART_TRACE_ENABLE
 
@@ -20,6 +22,15 @@
 #else
 #define CLI_UART_TRACE(...)
 #endif
+
+typedef struct {
+    enum {
+        CliUartMessageTypeEnable,
+        CliUartMessageTypeDisable,
+    } type;
+    FuriApiLock api_lock;
+    union {};
+} CliUartMessage;
 
 typedef enum {
     CliUartEventTxDone = (1 << 0),
@@ -32,6 +43,8 @@ struct CliUart {
     CliRegistry* registry;
     FuriEventLoop* event_loop;
     FuriHalSerialHandle* uart_handle;
+    FuriMessageQueue* message_queue;
+    bool is_enabled;
 
     volatile bool is_transmitting;
     FuriEventFlag* event_flag;
@@ -127,6 +140,57 @@ static void cli_uart_data_from_pipe(PipeSide* pipe, void* context) {
     cli_uart_signal_event(cli_uart, CliUartEventTx);
 }
 
+/**
+ * Processes messages arriving from other threads
+ */
+static void cli_uart_message_received(FuriEventLoopObject* object, void* context) {
+    CliUart* cli_uart = context;
+    CliUartMessage message;
+    furi_check(furi_message_queue_get(object, &message, 0) == FuriStatusOk);
+
+    switch(message.type) {
+    case CliUartMessageTypeEnable:
+        if(cli_uart->is_enabled) break;
+        FURI_LOG_D(TAG, "Enabling");
+        cli_uart->is_enabled = true;
+
+        PipeSideBundle pipes = pipe_alloc(PIPE_SZ_PER_DIRECTION, 1);
+        cli_uart->own_pipe = pipes.alices_side;
+        pipe_attach_to_event_loop(cli_uart->own_pipe, cli_uart->event_loop);
+        pipe_set_callback_context(cli_uart->own_pipe, cli_uart);
+        pipe_set_data_arrived_callback(cli_uart->own_pipe, cli_uart_data_from_pipe, FuriEventLoopEventFlagEdge);
+
+        cli_uart->cli_shell = cli_shell_alloc(cli_main_motd, NULL, pipes.bobs_side, cli_uart->registry, NULL);
+        cli_shell_free_pipe_on_exit(cli_uart->cli_shell);
+        cli_shell_set_prompt(cli_uart->cli_shell, CLI_UART_SHELL_PROMPT);
+        cli_shell_start(cli_uart->cli_shell);
+        break;
+
+    case CliUartMessageTypeDisable:
+        if(!cli_uart->is_enabled) break;
+        FURI_LOG_D(TAG, "Disabling");
+        cli_uart->is_enabled = false;
+
+        // disconnect our side of the pipe
+        pipe_detach_from_event_loop(cli_uart->own_pipe);
+        pipe_free(cli_uart->own_pipe);
+        cli_uart->own_pipe = NULL;
+
+        // wait for shell to stop
+        cli_shell_join(cli_uart->cli_shell);
+        cli_shell_free(cli_uart->cli_shell);
+
+        furi_record_close(RECORD_CLI);
+        cli_uart->registry = NULL;
+
+        pipe_free(cli_uart->own_pipe);
+
+        break;
+    }
+
+    api_lock_unlock(message.api_lock);
+}
+
 // ============
 // Thread setup
 // ============
@@ -138,10 +202,14 @@ static CliUart* cli_uart_alloc(void) {
 
     cli_uart->event_loop = furi_event_loop_alloc();
     cli_uart->is_transmitting = false;
+    cli_uart->is_enabled = false;
 
     cli_uart->event_flag = furi_event_flag_alloc();
     furi_event_loop_subscribe_event_flag(
         cli_uart->event_loop, cli_uart->event_flag, FuriEventLoopEventIn | FuriEventLoopEventFlagEdge, cli_uart_event, cli_uart);
+
+    cli_uart->message_queue = furi_message_queue_alloc(UART_MESSAGE_Q_LEN, sizeof(CliUartMessage));
+    furi_event_loop_subscribe_message_queue(cli_uart->event_loop, cli_uart->message_queue, FuriEventLoopEventIn, cli_uart_message_received, cli_uart);
 
     cli_uart->uart_handle = furi_hal_serial_control_acquire(UART_SERIAL_ID);
     furi_check(cli_uart->uart_handle);
@@ -151,19 +219,6 @@ static CliUart* cli_uart_alloc(void) {
 
     furi_hal_serial_async_rx_start(cli_uart->uart_handle, false);
 
-    PipeSideBundle pipes = pipe_alloc(PIPE_SZ_PER_DIRECTION, 1);
-    cli_uart->own_pipe = pipes.alices_side;
-    pipe_attach_to_event_loop(cli_uart->own_pipe, cli_uart->event_loop);
-    pipe_set_callback_context(cli_uart->own_pipe, cli_uart);
-    pipe_set_data_arrived_callback(cli_uart->own_pipe, cli_uart_data_from_pipe, FuriEventLoopEventFlagEdge);
-
-    cli_uart->cli_shell = cli_shell_alloc(cli_main_motd, NULL, pipes.bobs_side, cli_uart->registry, NULL);
-    cli_shell_free_pipe_on_exit(cli_uart->cli_shell);
-    cli_shell_set_prompt(cli_uart->cli_shell, CLI_UART_SHELL_PROMPT);
-    cli_shell_start(cli_uart->cli_shell);
-
-    furi_record_create(RECORD_CLI_UART, cli_uart);
-
     return cli_uart;
 }
 
@@ -171,7 +226,34 @@ int32_t cli_uart_srv(void* context) {
     UNUSED(context);
 
     CliUart* cli_uart = cli_uart_alloc();
+    furi_record_create(RECORD_CLI_UART, cli_uart);
     furi_event_loop_run(cli_uart->event_loop);
 
     return 0;
+}
+
+// ==========
+// Public API
+// ==========
+
+static void cli_uart_synchronous_request(CliUart* cli_uart, CliUartMessage* message) {
+    message->api_lock = api_lock_alloc_locked();
+    furi_message_queue_put(cli_uart->message_queue, message, FuriWaitForever);
+    api_lock_wait_unlock_and_free(message->api_lock);
+}
+
+void cli_uart_enable(CliUart* cli_uart) {
+    furi_check(cli_uart);
+    CliUartMessage message = {
+        .type = CliUartMessageTypeEnable,
+    };
+    cli_uart_synchronous_request(cli_uart, &message);
+}
+
+void cli_uart_disable(CliUart* cli_uart) {
+    furi_check(cli_uart);
+    CliUartMessage message = {
+        .type = CliUartMessageTypeDisable,
+    };
+    cli_uart_synchronous_request(cli_uart, &message);
 }

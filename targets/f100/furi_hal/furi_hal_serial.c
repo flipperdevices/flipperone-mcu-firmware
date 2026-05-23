@@ -385,7 +385,7 @@ size_t furi_hal_serial_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, si
     furi_check(buffer_size);
 
     if(handle->id == FuriHalSerialIdUartPio) {
-        return uart_pio_bloking_tx(buffer, buffer_size);
+        return uart_pio_blocking_tx(buffer, buffer_size);
     }
 
     //Todo: implement timeout

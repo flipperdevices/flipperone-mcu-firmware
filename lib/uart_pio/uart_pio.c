@@ -43,7 +43,7 @@ uint32_t uart_pio_get_baud_rate(void) {
     return uart_pio_instance->baud_rate;
 }
 
-size_t uart_pio_bloking_tx(const uint8_t* data, size_t size) {
+size_t uart_pio_blocking_tx(const uint8_t* data, size_t size) {
     furi_check(uart_pio_instance != NULL);
     for(size_t i = 0; i < size; i++) {
         uart_tx_program_putc(uart_pio_instance->pio, uart_pio_instance->sm, data[i]);
