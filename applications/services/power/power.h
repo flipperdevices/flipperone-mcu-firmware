@@ -3,6 +3,7 @@
 #include <drivers/bq25792/bq25792_reg.h>
 #include <drivers/bq25792/bq25792_helper.h>
 #include <drivers/bq28z620/bq28z620_reg.h>
+#include <toolbox/furi_callback.h>
 
 #define RECORD_POWER "power"
 
@@ -53,8 +54,7 @@ bool power_bq25792_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t
 bool power_bq25792_otg_enable(Power* instance, bool enable);
 
 /** OTG overcurrent (IINDPM/IOTG) callback. Runs in the BQ25792 IRQ worker thread — keep it short. */
-typedef void (*PowerBq25792OtgOvercurrentCallback)(void* context);
-void power_bq25792_set_otg_overcurrent_callback(Power* instance, PowerBq25792OtgOvercurrentCallback callback, void* context);
+void power_bq25792_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context);
 
 bool power_bq28z620_get_control_status(Power* instance, Bq28z620StdCmdControlStatusRegBits* control_status);
 bool power_bq28z620_get_time_to_empty(Power* instance, uint16_t* time_to_empty);

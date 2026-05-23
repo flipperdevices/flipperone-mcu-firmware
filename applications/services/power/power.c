@@ -38,8 +38,7 @@ struct Power {
     PowerDevice devices;
     FuriEventLoopTimer* otg_watchdog_timer;
     volatile bool otg_enabled;
-    PowerBq25792OtgOvercurrentCallback otg_overcurrent_callback;
-    void* otg_overcurrent_context;
+    FuriCallbackWithContext otg_overcurrent;
 };
 
 static Bq25792Status power_bq25792_reset_and_load_config(Power* instance) {
@@ -90,11 +89,7 @@ static void power_bq25792_print_charger_irq(Power* instance) {
 
     if(fl.flag0.iindpm_flag && instance->otg_enabled) {
         FURI_LOG_W(TAG, "OTG overcurrent (IINDPM/IOTG) detected");
-        FURI_CRITICAL_ENTER();
-        PowerBq25792OtgOvercurrentCallback cb = instance->otg_overcurrent_callback;
-        void* cb_ctx = instance->otg_overcurrent_context;
-        FURI_CRITICAL_EXIT();
-        if(cb) cb(cb_ctx);
+        if(instance->otg_overcurrent.callback) instance->otg_overcurrent.callback(instance->otg_overcurrent.context);
     }
 
     furi_string_set(arena, "");
@@ -248,14 +243,14 @@ static Bq25792Status power_bq25792_otg_enable_internal(Power* instance, bool ena
         // If OTG disable fails, stop pets so the chip WD resets it for us;
         // keep WD enabled until OTG is confirmed off.
         res = bq25792_otg_enable(instance->bq25792_header, false);
+        furi_event_loop_timer_stop(instance->otg_watchdog_timer);
+
         if(res != Bq25792StatusOk) {
             FURI_LOG_E(TAG, "Failed to disable OTG: %d", res);
-            furi_event_loop_timer_stop(instance->otg_watchdog_timer);
             return res;
         }
 
         instance->otg_enabled = false;
-        furi_event_loop_timer_stop(instance->otg_watchdog_timer);
 
         res = bq25792_watchdog_set_time(instance->bq25792_header, Bq25792WatchdogTimeDisabled);
         if(res != Bq25792StatusOk) {
@@ -336,8 +331,7 @@ static Power* power_alloc(void) {
     instance->message_queue = furi_message_queue_alloc(POWER_MAX_MESSAGES, sizeof(PowerMessage));
     instance->devices = 0;
     instance->otg_enabled = false;
-    instance->otg_overcurrent_callback = NULL;
-    instance->otg_overcurrent_context = NULL;
+    instance->otg_overcurrent = (FuriCallbackWithContext){0};
     instance->otg_watchdog_timer =
         furi_event_loop_timer_alloc(instance->event_loop, power_bq25792_otg_watchdog_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
 
@@ -641,11 +635,11 @@ bool power_bq25792_otg_enable(Power* instance, bool enable) {
     return result == Bq25792StatusOk;
 }
 
-void power_bq25792_set_otg_overcurrent_callback(Power* instance, PowerBq25792OtgOvercurrentCallback callback, void* context) {
+void power_bq25792_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context) {
     furi_check(instance);
     FURI_CRITICAL_ENTER();
-    instance->otg_overcurrent_callback = callback;
-    instance->otg_overcurrent_context = context;
+    instance->otg_overcurrent.callback = callback;
+    instance->otg_overcurrent.context = context;
     FURI_CRITICAL_EXIT();
 }
 
