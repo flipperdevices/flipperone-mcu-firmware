@@ -129,15 +129,15 @@ bool pcal6416_write_mode(Pcal6416* instance, uint16_t port_mask) {
     furi_check(instance);
     Pcal6416Status ret = Pcal6416StatusUnknown;
     do {
+        ret = pcal6416_write_reg(instance, Pcal6416RegConfigurationPort0, port_mask);
+        if(ret != Pcal6416StatusOk) {
+            break;
+        }
         ret = pcal6416_write_reg(instance, Pcal6416RegInterruptMaskPort0, ~port_mask);
         if(ret != Pcal6416StatusOk) {
-            break;
+           break;
         }
         ret = pcal6416_write_reg(instance, Pcal6416RegInputLatchPort0, port_mask);
-        if(ret != Pcal6416StatusOk) {
-            break;
-        }
-        ret = pcal6416_write_reg(instance, Pcal6416RegConfigurationPort0, port_mask);
         if(ret != Pcal6416StatusOk) {
             break;
         }
