@@ -30,8 +30,8 @@ struct I2CIntercom {
     const FuriHalI2cBusHandle* bus_handle;
     alarm_id_t timeout_alarm;
 
-    I2CIntercomState state;
-    size_t mem_address;
+    volatile I2CIntercomState state;
+    volatile size_t mem_address;
 };
 
 static int64_t __isr __not_in_flash_func(i2c_intercom_timeout_callback)(alarm_id_t id, __unused void* user_data) {
@@ -102,7 +102,7 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     case FuriHalI2cBusSlaveEventWrite:
         // Master is writing data to slave
         if(instance->state == I2CIntercomStateStart) {
-            instance->state = i2c_intercom_receive_address(handle, &instance->mem_address);
+            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
         }
         if(instance->state == I2CIntercomStateAddressSet) {
             i2c_intercom_data_receive(handle, instance);
@@ -115,7 +115,7 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
         if(instance->state == I2CIntercomStateStart || instance->state == I2CIntercomStateDataTransmitted) {
-            instance->state = i2c_intercom_receive_address(handle, &instance->mem_address);
+            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
         }
         if(instance->state == I2CIntercomStateAddressNoSet || instance->state == I2CIntercomStateIdle) {
             instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
@@ -124,7 +124,7 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     case FuriHalI2cBusSlaveEventStop:
         // Master has sent a Stop signal, finalize any ongoing operations
         if(instance->state == I2CIntercomStateStart) {
-            instance->state = i2c_intercom_receive_address(handle, &instance->mem_address);
+            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
         }
         if(instance->state == I2CIntercomStateAddressSet) {
             i2c_intercom_data_receive(handle, instance);
