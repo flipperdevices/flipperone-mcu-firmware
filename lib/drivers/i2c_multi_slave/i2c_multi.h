@@ -25,11 +25,12 @@ typedef void (*i2c_multi_stop_handler_t)(uint8_t length);
 typedef struct i2c_multi_t {
     PIO pio;
     uint offset_read, offset_write, sm_read, sm_write, offset_start, offset_stop, sm_start, sm_stop, pin;
-    i2c_multi_status_t status;
-    uint8_t *buffer, *buffer_start;
-    uint8_t bytes_count;
-    int16_t length;
-    uint address[I2C_MULTI_COUNT_ADDRESS];
+    volatile i2c_multi_status_t status;
+    uint8_t* volatile buffer;
+    uint8_t* volatile buffer_start;
+    volatile uint8_t bytes_count;
+    volatile int16_t length;
+    volatile uint address[I2C_MULTI_COUNT_ADDRESS];
 } i2c_multi_t;
 
 void i2c_multi_init(PIO pio, uint pin);

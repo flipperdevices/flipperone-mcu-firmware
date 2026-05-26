@@ -1,6 +1,7 @@
 #include "i2c_multi.h"
 
 #include "hardware/irq.h"
+#include "hardware/sync.h"
 
 #define CLK_DIV 16
 
@@ -53,8 +54,10 @@ void i2c_multi_init(PIO pio, uint pin) {
 }
 
 void i2c_multi_set_write_buffer(uint8_t* buffer) {
+    uint32_t __save = save_and_disable_interrupts();
     i2c_multi->buffer = buffer;
     i2c_multi->buffer_start = buffer;
+    restore_interrupts(__save);
 }
 
 void i2c_multi_set_receive_handler(i2c_multi_receive_handler_t handler) {
@@ -70,23 +73,31 @@ void i2c_multi_set_stop_handler(i2c_multi_stop_handler_t handler) {
 }
 
 void i2c_multi_enable_address(uint8_t address) {
+    uint32_t __save = save_and_disable_interrupts();
     i2c_multi->address[address / 32] |= 1 << (address % 32);
+    restore_interrupts(__save);
 }
 
 void i2c_multi_disable_address(uint8_t address) {
+    uint32_t __save = save_and_disable_interrupts();
     i2c_multi->address[address / 32] &= ~(1 << (address % 32));
+    restore_interrupts(__save);
 }
 
 void i2c_multi_enable_all_addresses() {
+    uint32_t __save = save_and_disable_interrupts();
     for(size_t i = 0; i < I2C_MULTI_COUNT_ADDRESS; i++) {
         i2c_multi->address[i] = 0xFFFFFFFF;
     }
+    restore_interrupts(__save);
 }
 
 void i2c_multi_disable_all_addresses() {
+    uint32_t __save = save_and_disable_interrupts();
     for(size_t i = 0; i < I2C_MULTI_COUNT_ADDRESS; i++) {
         i2c_multi->address[i] = 0;
     }
+    restore_interrupts(__save);
 }
 
 bool i2c_multi_is_address_enabled(uint8_t address) {
@@ -94,6 +105,7 @@ bool i2c_multi_is_address_enabled(uint8_t address) {
 }
 
 void i2c_multi_disable(void) {
+    uint32_t __save = save_and_disable_interrupts();
     pio_sm_set_enabled(i2c_multi->pio, i2c_multi->sm_read, false);
     pio_sm_set_enabled(i2c_multi->pio, i2c_multi->sm_write, false);
     pio_sm_set_enabled(i2c_multi->pio, i2c_multi->sm_start, false);
@@ -105,9 +117,11 @@ void i2c_multi_disable(void) {
     i2c_multi->bytes_count = 0;
     i2c_multi->status = I2C_IDLE;
     i2c_multi->buffer = i2c_multi->buffer_start;
+    restore_interrupts(__save);
 }
 
 void i2c_multi_restart(void) {
+    uint32_t __save = save_and_disable_interrupts();
     i2c_multi_disable();
     pio_sm_restart(i2c_multi->pio, i2c_multi->sm_start);
     pio_sm_restart(i2c_multi->pio, i2c_multi->sm_stop);
@@ -119,6 +133,7 @@ void i2c_multi_restart(void) {
     pio_sm_set_enabled(i2c_multi->pio, i2c_multi->sm_write, true);
     pio_sm_set_enabled(i2c_multi->pio, i2c_multi->sm_start, true);
     pio_sm_set_enabled(i2c_multi->pio, i2c_multi->sm_stop, true);
+    restore_interrupts(__save);
 }
 
 void i2c_multi_remove(void) {
@@ -132,17 +147,23 @@ void i2c_multi_remove(void) {
     pio_sm_unclaim(i2c_multi->pio, i2c_multi->sm_stop);
     pio_sm_unclaim(i2c_multi->pio, i2c_multi->sm_read);
     pio_sm_unclaim(i2c_multi->pio, i2c_multi->sm_write);
-    i2c_multi->buffer = NULL;
-    i2c_multi->buffer_start = NULL;
-    i2c_multi->bytes_count = 0;
-    i2c_multi->status = I2C_IDLE;
+    {
+        uint32_t __save = save_and_disable_interrupts();
+        i2c_multi->buffer = NULL;
+        i2c_multi->buffer_start = NULL;
+        i2c_multi->bytes_count = 0;
+        i2c_multi->status = I2C_IDLE;
+        restore_interrupts(__save);
+    }
     gpio_set_input_enabled(i2c_multi->pin, true);
     gpio_set_input_enabled(i2c_multi->pin + 1, true);
     free(i2c_multi);
 }
 
 void i2c_multi_fixed_length(int16_t length) {
+    uint32_t __save = save_and_disable_interrupts();
     i2c_multi->length = length;
+    restore_interrupts(__save);
 }
 
 static inline void start_condition_program_init(PIO pio, uint sm, uint offset, uint pin) {
