@@ -295,12 +295,6 @@ static CliVcp* cli_vcp_alloc(void) {
 int32_t cli_vcp_srv(void* p) {
     UNUSED(p);
 
-    // if(furi_hal_rtc_get_boot_mode() != FuriHalRtcBootModeNormal) {
-    //     FURI_LOG_W(TAG, "Skipping start in special boot mode");
-    //     furi_thread_suspend(furi_thread_get_current_id());
-    //     return 0;
-    // }
-
     CliVcp* cli_vcp = cli_vcp_alloc();
     furi_record_create(RECORD_CLI_VCP, cli_vcp);
     furi_event_loop_run(cli_vcp->event_loop);

@@ -36,7 +36,7 @@ DICT_DEF2(
     FURI_STRING_OPLIST,
     CliRegistryCommand,
     CLI_REGISTRY_COMMAND_OPTLIST);
-#define M_OPL_CliCommandDict_t() DICT_OPLIST(CliCommandDict, FURI_STRING_OPLIST, M_POD_OPLIST)
+#define M_OPL_CliCommandDict_t() DICT_OPLIST(CliCommandDict, FURI_STRING_OPLIST, CLI_REGISTRY_COMMAND_OPTLIST)
 
 bool cli_registry_get_command(
     CliRegistry* registry,

@@ -23,7 +23,6 @@ static void cli_commands_init(CliRegistry* registry) {
         cli_registry_add_command(registry, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
     }
 
-    // commands from `.fam`s
     for(size_t i = 0; i < FLIPPER_CLI_COMMANDS_COUNT; i++) {
         const FlipperInternalCommandApplication* command = &FLIPPER_CLI_COMMANDS[i];
         cli_registry_add_command_ex(registry, command->name, command->flags, command->callback, NULL, command->stack_size);
