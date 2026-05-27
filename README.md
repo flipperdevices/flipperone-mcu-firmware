@@ -25,22 +25,27 @@ Builds run automatically on every push to the `dev` branch, on tag pushes, and o
 
 ## Manual build
 
-### Prerequisites
+### Quick setup (recommended)
+
+Install the [Raspberry Pi Pico VS Code Extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). It installs CMake, the ARM GCC toolchain, the Pico SDK, and picotool under `~/.pico-sdk/` and is picked up automatically by CMake. No further setup required.
+
+### Manual setup
+
+If you prefer not to use VS Code, install the following manually:
 
 - [CMake](https://cmake.org/) >= 3.13
 - ARM GCC toolchain (arm-none-eabi), version 14.2 recommended  
   Download: [Arm GNU Toolchain Downloads](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
-- [Pico SDK](https://github.com/raspberrypi/pico-sdk) 2.2.0
-- [picotool](https://github.com/raspberrypi/picotool) 2.2.0 (required for flashing)
-
-The quickest setup is the [Raspberry Pi Pico VS Code Extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico), which installs the SDK and toolchain under `~/.pico-sdk/` and is picked up automatically by CMake. For a manual SDK install, set the `PICO_SDK_PATH` environment variable to the SDK root before building.
+- [Pico SDK](https://github.com/raspberrypi/pico-sdk) 2.2.0  
+  Set the `PICO_SDK_PATH` environment variable to the SDK root before building.
+- [picotool](https://github.com/raspberrypi/picotool) 2.2.0 (required for flashing)  
+  See the [picotool README](https://github.com/raspberrypi/picotool#building-picotool) for build and install instructions.
 
 ### Build steps
 
 ```bash
-git clone https://github.com/flipperdevices/flipperone-mcu-firmware
+git clone --recursive https://github.com/flipperdevices/flipperone-mcu-firmware
 cd flipperone-mcu-firmware
-git submodule update --init --recursive
 
 mkdir build && cd build
 cmake .. -DFIRMWARE_TARGET=100
@@ -54,7 +59,7 @@ The build produces `flipperone-mcu-firmware.uf2` in the `build/` directory.
 ### Option 1: UF2 drag-and-drop
 
 1. Hold the BOOTSEL button on the MCU board and connect it via USB.
-2. It mounts as a USB mass storage device (`RPI-RP2`).
+2. It mounts as a USB mass storage device (`RP2350`).
 3. Copy `flipperone-mcu-firmware.uf2` to the drive.
 4. The device reboots automatically when the copy finishes.
 
