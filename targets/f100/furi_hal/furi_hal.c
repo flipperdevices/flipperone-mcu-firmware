@@ -3,10 +3,12 @@
 #include <furi_hal_nvm.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_adc.h>
+#include <furi_hal_cortex.h>
 
 #define TAG "FuriHal"
 
 void furi_hal_init_early(void) {
+    furi_hal_cortex_init_early();
     furi_hal_nvm_init();
     furi_hal_os_init();
     furi_hal_i2c_init_control();

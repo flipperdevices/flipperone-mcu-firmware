@@ -8,6 +8,8 @@
 #include <furi_hal_debug.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
+#include <pico/time.h>
+#include <applications.h>
 
 #define TAG "FuriHalOs"
 
@@ -93,4 +95,27 @@ __attribute__((__noreturn__)) void vFreeRTOSAssertFailed(const char* expr, const
     snprintf(buf, sizeof(buf), "\r\n[E][" TAG "] FreeRTOS assert FAILED: (%s) at %s:%d\r\n", expr, file, line);
     furi_log_puts(buf);
     furi_crash("FreeRTOS Assert");
+}
+
+void flipper_init_services(void) {
+    
+    for(size_t i = 0; i < FLIPPER_SERVICES_COUNT; i++) {
+        const FlipperInternalApplication* app = &FLIPPER_SERVICES[i];
+        FURI_LOG_D(TAG, "Starting service %s", app->name);
+
+        FuriThread* thread = furi_thread_alloc_service(app->name, app->stack_size, app->app, NULL);
+        furi_thread_set_appid(thread, app->appid);
+
+        furi_thread_start(thread);
+    }
+
+    for(size_t i = 0; i < FLIPPER_AUTORUN_APPS_COUNT; i++) {
+        const FlipperInternalApplication* app = &FLIPPER_AUTORUN_APPS[i];
+        FURI_LOG_D(TAG, "Starting autorun app %s", app->name);
+
+        FuriThread* thread = furi_thread_alloc_ex(app->name, app->stack_size, app->app, "autorun");
+        furi_thread_set_appid(thread, app->appid);
+
+        furi_thread_start(thread);
+    }
 }
