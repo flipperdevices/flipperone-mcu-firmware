@@ -56,12 +56,11 @@ The build produces `flipperone-mcu-firmware.uf2` in the `build/` directory.
 
 ## Flashing
 
+For the procedure to put the device into firmware update mode and flash the MCU, see the [official firmware update documentation](https://docs.flipper.net/one/mcu-firmware/firmware-update). The exact steps depend on the hardware revision and are expected to change as the bootloader entry process is hardened. The mass storage label also depends on the target: on the standalone development board the disk mounts as `RP2350` (stock Raspberry Pi bootloader), and on the real Flipper One it is renamed to `FlipOneMCU` via [OTP white labeling](https://github.com/flipperdevices/flipperone-mcu-firmware/blob/dev/targets/f100/furi_hal/furi_hal_otp.c#L37).
+
 ### Option 1: UF2 drag-and-drop
 
-1. Hold the BOOTSEL button on the MCU board and connect it via USB.
-2. It mounts as a USB mass storage device (`RP2350`).
-3. Copy `flipperone-mcu-firmware.uf2` to the drive.
-4. The device reboots automatically when the copy finishes.
+Once the device is in firmware update mode and mounted as a mass storage device, copy `flipperone-mcu-firmware.uf2` to the drive. The device reboots automatically when the copy finishes.
 
 ### Option 2: picotool
 
