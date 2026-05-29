@@ -53,8 +53,6 @@ struct CliVcp {
     PipeSide* shell_pipe;
     volatile bool is_currently_transmitting;
 
-    size_t previous_tx_length;
-
     CliRegistry* main_registry;
     CliShell* shell;
 };
@@ -107,7 +105,6 @@ static void cli_vcp_maybe_receive_data(CliVcp* cli_vcp) {
 // =============
 
 static void cli_vcp_signal_event(CliVcp* cli_vcp, CliVcpEvent event) {
-    CLI_VCP_DEBUG(TAG, "Signaling event: 0x%02X", event);
     uint32_t ret = furi_event_flag_set(cli_vcp->event_flag, event);
     if((ret & FuriFlagError)) {
         FURI_LOG_E(TAG, "Failed to set event flag, error code: 0x%08lX", ret);
@@ -208,8 +205,12 @@ static void cli_vcp_message_received(FuriEventLoopObject* object, void* context)
 static void cli_vcp_event_happened(FuriEventLoopObject* object, void* context) {
     CliVcp* cli_vcp = context;
 
-    uint32_t event = furi_event_flag_wait(cli_vcp->event_flag, CliVcpEventAll, FuriFlagWaitAny, 0);
-    CLI_VCP_DEBUG(TAG, "Event happened: %08lb", event);
+    uint32_t event = furi_event_flag_clear(object, CliVcpEventAll);
+
+    if(event & FuriFlagError) {
+        FURI_LOG_E(TAG, "Error while waiting for event flag, error code: 0x%08lX", event);
+        return;
+    }
 
     if(event & CliVcpEventRx) {
         CLI_VCP_DEBUG(TAG, "Rx");
