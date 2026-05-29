@@ -62,7 +62,7 @@ static void cli_uart_signal_event(CliUart* cli_uart, CliUartEvent event) {
 
 static void cli_uart_event(FuriEventLoopObject* object, void* context) {
     CliUart* cli_uart = context;
-    uint32_t event = furi_event_flag_get(object);
+    uint32_t event = furi_event_flag_wait(cli_uart->event_flag, CliUartEventAll, FuriFlagWaitAny, 0);
 
     if(event & CliUartEventRx) {
         CLI_UART_TRACE(TAG, "Rx");
