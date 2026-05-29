@@ -141,6 +141,8 @@ extern const GpioPin gpio_main_expander_int;
 extern const GpioPin gpio_uart0_tx;
 extern const GpioPin gpio_uart0_rx;
 
+extern const GpioPin gpio_debug_tx;
+
 extern const GpioPinRecord gpio_pins[];
 extern const size_t gpio_pins_count;
 

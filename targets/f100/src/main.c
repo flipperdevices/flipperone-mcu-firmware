@@ -12,11 +12,11 @@
 int32_t init_task(void* context) {
     UNUSED(context);
 
-    // Flipper FURI HAL
-    furi_hal_init();
-
     // Set the UART for logging output
     furi_hal_log_hardware_init();
+    
+    // Flipper FURI HAL
+    furi_hal_init();
 
     FURI_LOG_I(TAG, "Initializing BSP");
     // Flipper BSP init
@@ -33,6 +33,10 @@ int32_t init_task(void* context) {
 }
 
 int main(void) {
+
+    //Todo: FIX .LD file
+    furi_hal_memory_init();
+    
     // Initialize FURI layer
     furi_init();
 

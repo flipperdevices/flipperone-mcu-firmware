@@ -11,3 +11,6 @@
 [submodule "lib/rtt/segger_rtt"]
 	path = lib/rtt/segger_rtt
 	url = https://github.com/SEGGERMicro/RTT.git
+[submodule "lib/corelibs"]
+	path = lib/corelibs
+	url = https://github.com/flipperdevices/fbtng-corelibs.git

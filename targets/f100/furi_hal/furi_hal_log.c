@@ -46,15 +46,18 @@ void furi_hal_log_init(FuriLogLevel level, FuriHalLogOutput output) {
 
     const char* level_str = "unknown";
     furi_log_level_to_string(furi_hal_log_config.level, &level_str);
+    FURI_LOG_RAW_I("\r\n");
     FURI_LOG_I(TAG, "Logs initialized [level \"%s\", output \"%s\"]", level_str, log_output_to_string(furi_hal_log_config.output));
 }
 
 // call after hardware is ready to output logs
 void furi_hal_log_hardware_init(void) {
+    furi_hal_serial_control_init();
     if(furi_hal_log_config.output == FuriHalLogOutputSerial || furi_hal_log_config.output == FuriHalLogOutputAll) {
-        furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart1, 230400);
+        furi_hal_serial_control_set_logging_config(FuriHalSerialIdUartPio, 230400);
     }
     const char* level_str = "unknown";
     furi_log_level_to_string(furi_hal_log_config.level, &level_str);
+    FURI_LOG_RAW_I("\r\n");
     FURI_LOG_I(TAG, "Hardware log output initialized [level \"%s\", output \"%s\"]", level_str, log_output_to_string(furi_hal_log_config.output));
 }
