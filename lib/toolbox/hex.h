@@ -1,6 +1,7 @@
 #pragma once
-#include "stdint.h"
-#include "stdbool.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <core/string.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -46,6 +47,27 @@ bool hex_chars_to_uint64(const char* value_str, uint64_t* value);
  * 
  */
 void uint8_to_hex_chars(const uint8_t* src, uint8_t* target, int length);
+
+/** Convert bytes to hex string
+ * @param bytes         source bytes
+ * @param bytes_length  length of source bytes
+ * @param string        output string
+ */
+void hex_bytes_to_string(const uint8_t* bytes, size_t bytes_length, FuriString* string);
+
+/** Convert hex string to bytes
+ * @param string        source string
+ * @param bytes         output bytes
+ * @param bytes_count   max bytes to write
+ * @param bytes_written actual bytes written
+ *
+ * @return              bool conversion status
+ */
+bool hex_string_to_bytes(
+    const FuriString* string,
+    uint8_t* bytes,
+    size_t bytes_count,
+    size_t* bytes_written);
 
 #ifdef __cplusplus
 }

@@ -1,12 +1,14 @@
 #include "power_cli.h"
 
-#include <args.h>
+#include <cli/args.h>
+#include <cli/cli_ansi.h>
+#include <cli/cli_command.h>
 #include <furi_hal_i2c.h>
 #include <furi_hal_i2c_config.h>
 #include <drivers/ina4230/ina4230.h>
 
-void power_consumption_cli(Cli* cli, FuriString* args, void* context) {
-    UNUSED(cli);
+void power_consumption_cli(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
     UNUSED(args);
     UNUSED(context);
 
@@ -51,9 +53,9 @@ void power_consumption_cli(Cli* cli, FuriString* args, void* context) {
         ina4230_set_config_channel(ina4230_add[4], 2, "VDDA0V75_HDMI_S0   ", 0.020f, 0.5f);
         ina4230_set_config_channel(ina4230_add[4], 3, "VDDA0V85_DDR_PLL_S0", 0.050f, 0.3f);
     }
-
-    while(!cli_cmd_interrupt_received(cli)) {
-        printf("\e[2J\e[0;0f"); // Clear display and return to 0
+    printf(ANSI_ERASE_DISPLAY(ANSI_ERASE_ENTIRE)); // Clear display
+    while(!cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
+        printf(ANSI_CURSOR_POS("1", "1"));
         for(uint32_t ina = 0; ina < 5; ina++) {
             printf("INA4230 %ld\r\n", ina);
             if(ina4230_add[ina] == NULL) {

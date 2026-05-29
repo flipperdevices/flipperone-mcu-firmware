@@ -1,0 +1,72 @@
+version = 1
+
+# Default: everything in the repo is MIT, copyright Flipper FZCO.
+# `precedence = "closest"` means an in-file SPDX header (if any) wins over this TOML entry.
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2024-2026 Flipper FZCO"
+SPDX-License-Identifier = "MIT"
+
+# GPL-3.0-or-later: files ported from the Flipper Zero firmware
+# (https://github.com/flipperdevices/flipperzero-firmware)
+# plus the top-level application entry points.
+[[annotations]]
+path = [
+    "applications/main/**",
+    "applications/services/cli/cli_command_gpio.c",
+    "applications/services/cli/cli_command_gpio.h",
+    "applications/services/cli/cli_commands_common.c",
+    "applications/services/cli/cli_commands_common.h",
+    "applications/services/cli/cli_main_shell.c",
+    "applications/services/input/input.c",
+    "applications/services/input/input.h",
+    "lib/toolbox/hex.c",
+    "lib/toolbox/hex.h",
+    "lib/toolbox/m_cstr_dup.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2024-2026 Flipper FZCO"
+SPDX-License-Identifier = "GPL-3.0-or-later"
+
+# Assets (artwork, icons, fonts, etc.) and documentation.
+[[annotations]]
+path = [
+    "assets/**",
+    "docs/**",
+    "**.md",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2024-2026 Flipper FZCO"
+SPDX-License-Identifier = "CC-BY-SA-4.0"
+
+# Third-party: Clay immediate-mode UI library by Nic Barker
+# (https://github.com/nicbarker/clay).
+[[annotations]]
+path = [
+    "applications/services/gui/clay.c",
+    "applications/services/gui/clay.h",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2024 Nic Barker"
+SPDX-License-Identifier = "Zlib"
+
+# Third-party: Raspberry Pi pico-examples (PIO programs and SDK import helper).
+# The three .pio files already carry their own SPDX header — kept here for clarity.
+[[annotations]]
+path = [
+    "lib/drivers/i2c_master_pio/i2c.pio",
+    "lib/drivers/ws2812/ws2812.pio",
+    "lib/uart_pio/uart_tx.pio",
+    "lib/sdk/pico_sdk_import.cmake",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2020 Raspberry Pi (Trading) Ltd."
+SPDX-License-Identifier = "BSD-3-Clause"
+
+# Third-party: TinyUSB descriptors
+[[annotations]]
+path = "lib/tusb/usb_descriptors.c"
+precedence = "closest"
+SPDX-FileCopyrightText = "2019 Ha Thach (tinyusb.org)"
+SPDX-License-Identifier = "MIT"

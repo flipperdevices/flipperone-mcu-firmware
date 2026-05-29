@@ -1,4 +1,4 @@
-# Generated Cmake Pico project file
+# Generated Cmake Pico project filecorelibs
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -53,8 +53,9 @@ add_compile_options(-Wno-unknown-pragmas)
 
 # Add executable. Default name is the project name, version 0.1
 file(GLOB_RECURSE SOURCES
-    "lib/furi/*.c*" 
-    "lib/furi/core/*.c*"
+    "lib/corelibs/lib/furi/*.c*"
+    "lib/corelibs/lib/furi/core/*.c*"
+    "lib/corelibs/lib/version/*.c*"
     "lib/toolbox/*.c*"
     "app/*.c"
     "app/theme/*.c"
@@ -103,7 +104,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     #PICO_USE_SW_SPIN_LOCKS=0
 )
 
-include(lib/furi/version/CMakeLists.txt)
+include(lib/corelibs/lib/version/CMakeLists.txt)
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 pico_set_program_version(${PROJECT_NAME} "0.1")
@@ -117,18 +118,21 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/applications
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
-    ${CMAKE_CURRENT_LIST_DIR}/lib/furi
+    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/furi
+    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/version
     ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/src
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_hal
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_bsp
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/config
-    ${CMAKE_CURRENT_LIST_DIR}/lib
+    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
-    ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
+    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/mlib
+    ${CMAKE_CURRENT_LIST_DIR}/lib
 )
 
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/mlib)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/uart_pio)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/ws2812)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_multi_slave)
@@ -136,6 +140,8 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/rtt)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/cli)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/containers)
 
 # Add the standard library to the build
 target_link_libraries(${PROJECT_NAME}
@@ -150,7 +156,10 @@ target_link_libraries(${PROJECT_NAME}
     hardware_watchdog
     hardware_clocks
     pico_unique_id
+    uart_pio
     tinyusb_device
+    cli
+    containers
     ws2812
     pio_i2c
     i2c_multi

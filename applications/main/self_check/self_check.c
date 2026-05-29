@@ -103,7 +103,7 @@ static bool self_check_process(FuriString* status_str) {
     bool all_ok = true;
 
     // check expander
-    FuriBspDevice expander_device;
+    FuriBspDevice expander_device = 0;
     check_ok = furi_bsp_expander_is_initialized(&expander_device);
     if(all_ok) {
         all_ok = check_ok;
@@ -111,7 +111,7 @@ static bool self_check_process(FuriString* status_str) {
 
     // check haptic
     Haptic* haptic = furi_record_open(RECORD_HAPTIC);
-    HapticDevice haptic_device;
+    HapticDevice haptic_device = 0;
     check_ok = haptic_is_device_initialized(haptic, &haptic_device);
     furi_record_close(RECORD_HAPTIC);
     if(all_ok) {
@@ -120,7 +120,7 @@ static bool self_check_process(FuriString* status_str) {
 
     // check power
     Power* power = furi_record_open(RECORD_POWER);
-    PowerDevice power_device;
+    PowerDevice power_device = 0;
     check_ok = power_is_device_initialized(power, &power_device);
     furi_record_close(RECORD_POWER);
     if(all_ok) {
@@ -132,7 +132,7 @@ static bool self_check_process(FuriString* status_str) {
 
     // check input touch
     InputTouch* input_touch = furi_record_open(RECORD_INPUT_TOUCH);
-    InputTouchDevice input_touch_device;
+    InputTouchDevice input_touch_device = 0;
     check_ok = input_touch_is_device_initialized(input_touch, &input_touch_device);
     furi_record_close(RECORD_INPUT_TOUCH);
     if(all_ok) {
@@ -141,7 +141,7 @@ static bool self_check_process(FuriString* status_str) {
 
     // check pd
     Pd* pd = furi_record_open(RECORD_PD);
-    PdDevice pd_device;
+    PdDevice pd_device = 0;
     check_ok = pd_is_device_initialized(pd, &pd_device);
     furi_record_close(RECORD_PD);
     if(all_ok) {
@@ -150,7 +150,7 @@ static bool self_check_process(FuriString* status_str) {
 
     // check usb mux
     UsbMux* usb_mux = furi_record_open(RECORD_USBMUX);
-    UsbMuxDevice usb_mux_device;
+    UsbMuxDevice usb_mux_device = 0;
     check_ok = usb_mux_is_device_initialized(usb_mux, &usb_mux_device);
     furi_record_close(RECORD_USBMUX);
     if(all_ok) {

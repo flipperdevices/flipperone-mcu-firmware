@@ -76,8 +76,10 @@ uint8_t const* tud_descriptor_device_cb(void) {
 enum {
     ITF_NUM_CDC_0 = 0,
     ITF_NUM_CDC_0_DATA,
+#if (CFG_TUD_CDC >= 2)
     ITF_NUM_CDC_1,
     ITF_NUM_CDC_1_DATA,
+#endif
     ITF_NUM_TOTAL
 };
 
@@ -121,9 +123,11 @@ enum {
 #define EPNUM_CDC_0_OUT   0x02
 #define EPNUM_CDC_0_IN    0x82
 
+#if (CFG_TUD_CDC >= 2)
 #define EPNUM_CDC_1_NOTIF 0x83
 #define EPNUM_CDC_1_OUT   0x04
 #define EPNUM_CDC_1_IN    0x84
+#endif
 #endif
 
 uint8_t const desc_fs_configuration[] = {
@@ -132,9 +136,10 @@ uint8_t const desc_fs_configuration[] = {
 
     // 1st CDC: Interface number, string index, EP notification address and size, EP data address (out, in) and size.
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_0, 4, EPNUM_CDC_0_NOTIF, 8, EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 64),
-
+#if (CFG_TUD_CDC >= 2)
     // 2nd CDC: Interface number, string index, EP notification address and size, EP data address (out, in) and size.
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_1, 4, EPNUM_CDC_1_NOTIF, 8, EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 64),
+#endif
 };
 
 #if TUD_OPT_HIGH_SPEED
@@ -146,9 +151,10 @@ uint8_t const desc_hs_configuration[] = {
 
     // 1st CDC: Interface number, string index, EP notification address and size, EP data address (out, in) and size.
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_0, 4, EPNUM_CDC_0_NOTIF, 8, EPNUM_CDC_0_OUT, EPNUM_CDC_0_IN, 512),
-
+#if (CFG_TUD_CDC >= 2)
     // 2nd CDC: Interface number, string index, EP notification address and size, EP data address (out, in) and size.
     TUD_CDC_DESCRIPTOR(ITF_NUM_CDC_1, 4, EPNUM_CDC_1_NOTIF, 8, EPNUM_CDC_1_OUT, EPNUM_CDC_1_IN, 512),
+#endif
 };
 
 // device qualifier is mostly similar to device descriptor since we don't change configuration based on speed
