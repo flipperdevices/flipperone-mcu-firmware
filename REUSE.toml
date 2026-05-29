@@ -9,9 +9,11 @@ SPDX-FileCopyrightText = "2024-2026 Flipper FZCO"
 SPDX-License-Identifier = "MIT"
 
 # GPL-3.0-or-later: files ported from the Flipper Zero firmware
-# (https://github.com/flipperdevices/flipperzero-firmware).
+# (https://github.com/flipperdevices/flipperzero-firmware)
+# plus the top-level application entry points.
 [[annotations]]
 path = [
+    "applications/main/**",
     "applications/services/cli/cli_command_gpio.c",
     "applications/services/cli/cli_command_gpio.h",
     "applications/services/cli/cli_commands_common.c",
