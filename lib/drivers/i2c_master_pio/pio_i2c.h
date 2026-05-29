@@ -2,6 +2,7 @@
 
 #include "i2c.pio.h"
 #include <furi_hal_gpio.h>
+#include "hardware/timer.h"
 
 typedef struct I2cMasterPio I2cMasterPio;
 
@@ -12,15 +13,15 @@ void pio_i2c_deinit(I2cMasterPio* instance);
 // ----------------------------------------------------------------------------
 // Low-level functions
 
-void pio_i2c_start(I2cMasterPio* instance);
-void pio_i2c_stop(I2cMasterPio* instance);
-void pio_i2c_repstart(I2cMasterPio* instance);
+void pio_i2c_start(I2cMasterPio* instance, absolute_time_t until);
+void pio_i2c_stop(I2cMasterPio* instance, absolute_time_t until);
+void pio_i2c_repstart(I2cMasterPio* instance, absolute_time_t until);
 
 bool pio_i2c_check_error(I2cMasterPio* instance);
 void pio_i2c_resume_after_error(I2cMasterPio* instance);
 
 // If I2C is ok, block and push data. Otherwise fall straight through.
-void pio_i2c_put_or_err(I2cMasterPio* instance, uint16_t data);
+bool pio_i2c_put_or_err(I2cMasterPio* instance, uint16_t data, absolute_time_t until);
 uint8_t pio_i2c_get(I2cMasterPio* instance);
 // ----------------------------------------------------------------------------
 // Transaction-level functions
