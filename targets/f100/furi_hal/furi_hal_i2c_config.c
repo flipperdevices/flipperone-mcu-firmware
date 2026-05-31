@@ -7,7 +7,7 @@
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_100   100000
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_400   400000
 #define FURI_HAL_I2C_CONFIG_I2C_TIMINGS_1000  1000000
-#define FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS 0x70
+#define FURI_HAL_I2C_CONFIG_I2C_SLAVE_ADDRESS 0x69
 
 extern FuriHalI2cBus furi_hal_i2c_bus_control;
 extern FuriHalI2cBus furi_hal_i2c_bus_main;
@@ -182,6 +182,12 @@ static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle, ui
     return len;
 }
 
+static void furi_hal_i2c_bus_slave_reset(const FuriHalI2cBusHandle* handle) {
+    furi_assert(handle);
+    i2c_inst_t* i2c = handle->bus->data;
+    i2c_slave_reset(i2c);
+}
+
 static void __isr __not_in_flash_func(furi_hal_i2c_bus_cpu_slave_callback)(i2c_inst_t* i2c, I2cSlaveEvent event) {
     switch(event) {
     case I2cSlaveEventStart: // master has sent a Start signal
@@ -191,12 +197,12 @@ static void __isr __not_in_flash_func(furi_hal_i2c_bus_cpu_slave_callback)(i2c_i
         break;
     case I2cSlaveEventReceive: // master has written some data
         if(furi_hal_i2c_bus_cpu.api.slave.callback) {
-            furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventReceive, furi_hal_i2c_bus_cpu.api.slave.context);
+            furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventWrite, furi_hal_i2c_bus_cpu.api.slave.context);
         }
         break;
     case I2cSlaveEventRequest: // master is reading data
         if(furi_hal_i2c_bus_cpu.api.slave.callback) {
-            furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventRequest, furi_hal_i2c_bus_cpu.api.slave.context);
+            furi_hal_i2c_bus_cpu.api.slave.callback(&furi_hal_i2c_handle_cpu, FuriHalI2cBusSlaveEventRead, furi_hal_i2c_bus_cpu.api.slave.context);
         }
         break;
     case I2cSlaveEventRepeatedStart: // master has signalled Repeated Start
@@ -221,14 +227,17 @@ FuriHalI2cBus furi_hal_i2c_bus_cpu = {
     .scl = &gpio_cpu_i3c0_scl,
     .mode = FuriHalI2cModeSlave,
     .api =
-        {.event = furi_hal_i2c_bus_i2c_event,
-         .slave =
-             {
-                 .read_blocking = furi_hal_i2c_bus_slave_read,
-                 .write_blocking = furi_hal_i2c_bus_slave_write,
-                 .callback = NULL,
-                 .context = NULL,
-             }},
+        {
+            .event = furi_hal_i2c_bus_i2c_event,
+            .slave =
+                {
+                    .read_blocking = furi_hal_i2c_bus_slave_read,
+                    .write_blocking = furi_hal_i2c_bus_slave_write,
+                    .bus_reset = furi_hal_i2c_bus_slave_reset,
+                    .callback = NULL,
+                    .context = NULL,
+                },
+        },
 };
 
 void furi_hal_i2c_bus_handle_cpu_event(const FuriHalI2cBusHandle* handle, FuriHalI2cBusHandleEvent event) {

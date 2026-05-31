@@ -96,9 +96,9 @@ static uint16_t ina219_calculate_calibration(Ina219* instance, float shunt_resis
 
     instance->current_lsb = (uint16_t)(minimum_lbs * 100000000);
     instance->current_lsb /= 100000000;
-    instance->current_lsb /= 0.0001;
+    instance->current_lsb /= 0.000001;
     instance->current_lsb = ceilf(instance->current_lsb);
-    instance->current_lsb *= 0.0001;
+    instance->current_lsb *= 0.000001;
 
     instance->power_lsb = instance->current_lsb * 20;
 

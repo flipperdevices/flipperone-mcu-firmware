@@ -9,14 +9,14 @@ bool clay_helper_scroll_to_child(Clay_ElementId scrollContainerId, Clay_ElementI
     // get scroll container data
     Clay_ScrollContainerData scrollData = Clay_GetScrollContainerData(scrollContainerId);
     if(!scrollData.found) {
-        FURI_LOG_E(TAG, "Couldn't find scroll state. Does it have a scroll config?\n");
+        FURI_LOG_E(TAG, "Couldn't find scroll state. Does it have a scroll config?");
         return false;
     }
 
     // get scroll container bounding box
     Clay_ElementData scrollContainerData = Clay_GetElementData(scrollContainerId);
     if(scrollContainerData.found == false) {
-        FURI_LOG_E(TAG, "Couldn't find layout element for scroll container\n");
+        FURI_LOG_E(TAG, "Couldn't find layout element for scroll container");
         return false;
     }
     Clay_BoundingBox scrollContainerBounds = scrollContainerData.boundingBox;
@@ -24,7 +24,7 @@ bool clay_helper_scroll_to_child(Clay_ElementId scrollContainerId, Clay_ElementI
     // get child bounding box
     Clay_ElementData childData = Clay_GetElementData(childId);
     if(childData.found == false) {
-        FURI_LOG_E(TAG, "Couldn't find layout element for child\n");
+        FURI_LOG_E(TAG, "Couldn't find layout element for child");
         return false;
     }
     Clay_BoundingBox childBounds = childData.boundingBox;
@@ -95,4 +95,15 @@ Clay_String clay_helper_string_from_chars(const char* chars) {
     clay_string.length = strlen(chars);
     clay_string.chars = chars;
     return clay_string;
+}
+
+void clay_fixed_image(const Image* image) {
+    CLAY_AUTO_ID({
+        .layout =
+            {
+                .sizing = {.height = CLAY_SIZING_FIXED(image->height), .width = CLAY_SIZING_FIXED(image->width)},
+            },
+        .image = {.imageData = (void*)image},
+    }) {
+    }
 }

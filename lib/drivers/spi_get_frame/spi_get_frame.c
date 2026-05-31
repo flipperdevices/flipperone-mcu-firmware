@@ -31,27 +31,19 @@ static SpiGetFrame* spi_get_frame_instance = NULL;
 static void __isr __not_in_flash_func(spi_get_frame_rx_callback)(void) {
     if(spi_get_frame_instance->callback_rx) {
         spi_get_frame_instance->callback_rx(
-            spi_get_frame_instance->frame_buffers[spi_get_frame_instance->current_frame].data,
-            SPI_GET_FRAME_SIZE,
-            spi_get_frame_instance->callback_context);
+            spi_get_frame_instance->frame_buffers[spi_get_frame_instance->current_frame].data, SPI_GET_FRAME_SIZE, spi_get_frame_instance->callback_context);
     }
-
-    // spi_get_frame_instance->current_frame = (spi_get_frame_instance->current_frame + 1) % SPI_GET_FRAME_COUNT;
-    // dma_channel_set_write_addr(spi_get_frame_instance->dma_rx_channel, spi_get_frame_instance->frame_buffers[spi_get_frame_instance->current_frame].data, false);
-    // //dma_channel_abort(spi_get_frame_instance->dma_rx_channel);
-    // dma_channel_start(spi_get_frame_instance->dma_rx_channel);
 
     dma_hw->ints2 = 1u << spi_get_frame_instance->dma_rx_channel;
 }
 
 static void __isr __not_in_flash_func(spi_get_frame_callback)(void* ctx) {
     SpiGetFrame* instance = (SpiGetFrame*)ctx;
-    // if(spi_get_frame_instance->callback_rx) {
-    //     spi_get_frame_instance->callback_rx(
-    //         spi_get_frame_instance->frame_buffers[spi_get_frame_instance->current_frame].data,
-    //         SPI_GET_FRAME_SIZE,
-    //         spi_get_frame_instance->callback_context);
-    // }
+
+    // Clear SPI FiFO
+    while(spi_is_readable(instance->spi_periph)) {
+        spi_get_hw(instance->spi_periph)->dr; // Read and discard data to clear the FIFO
+    }
     // Prepare next DMA transfer
     instance->current_frame = (instance->current_frame + 1) % SPI_GET_FRAME_COUNT;
     dma_channel_set_write_addr(instance->dma_rx_channel, instance->frame_buffers[instance->current_frame].data, false);
@@ -71,16 +63,6 @@ SpiGetFrame* spi_get_frame_init(void) {
     int baundrate = spi_init(instance->spi_periph, SPI_GET_FRAME_BAUDRATE);
     spi_set_slave(instance->spi_periph, true);
 
-
-    // // Disable the SPI
-    // uint32_t enable_mask = spi_get_hw(SPI_GET_FRAME_SPI1_HANDLE)->cr1 & SPI_SSPCR1_SSE_BITS;
-    // hw_clear_bits(&spi_get_hw(SPI_GET_FRAME_SPI1_HANDLE)->cr1, SPI_SSPCR1_SSE_BITS);
-    // spi_get_hw (SPI_GET_FRAME_SPI1_HANDLE)->cpsr = 12;
-    // hw_write_masked (&spi_get_hw (SPI_GET_FRAME_SPI1_HANDLE)->cr0, 0, SPI_SSPCR0_SCR_BITS);
-    // // Re-enable the SPI
-    // hw_set_bits(&spi_get_hw(SPI_GET_FRAME_SPI1_HANDLE)->cr1, enable_mask);
-
-    
     spi_set_format(instance->spi_periph, 16, SPI_CPOL_1, SPI_CPHA_1, SPI_MSB_FIRST);
 
     FURI_LOG_I(TAG, "SPI initialized with baudrate: %d", baundrate);
@@ -100,6 +82,7 @@ SpiGetFrame* spi_get_frame_init(void) {
     channel_config_set_dreq(&c, spi_get_dreq(instance->spi_periph, false));
     channel_config_set_read_increment(&c, false);
     channel_config_set_write_increment(&c, true);
+    channel_config_set_bswap(&c, true); // Byte swap for little-endian data
     dma_channel_set_read_addr(instance->dma_rx_channel, &spi_get_hw(instance->spi_periph)->dr, false);
     dma_channel_set_config(instance->dma_rx_channel, &c, false);
 
@@ -110,7 +93,7 @@ SpiGetFrame* spi_get_frame_init(void) {
 
     // Start first DMA transfer
     dma_channel_set_write_addr(instance->dma_rx_channel, instance->frame_buffers[instance->current_frame].data, false);
-    dma_channel_set_transfer_count(instance->dma_rx_channel, SPI_GET_FRAME_SIZE/2, false);
+    dma_channel_set_transfer_count(instance->dma_rx_channel, SPI_GET_FRAME_SIZE / 2, false);
 
     dma_channel_start(instance->dma_rx_channel);
 

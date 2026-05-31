@@ -1,6 +1,7 @@
 #include <furi.h>
 #include <furi_hal.h>
 #include <furi_hal_nvm.h>
+#include <furi_hal_log.h>
 #include <furi_bsp.h>
 #include <flipper.h>
 
@@ -11,14 +12,13 @@
 int32_t init_task(void* context) {
     UNUSED(context);
 
+    // Set the UART for logging output
+    furi_hal_log_hardware_init();
+    
     // Flipper FURI HAL
     furi_hal_init();
 
-    // Set the UART for logging output
-    furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart1, 230400);
-    // ToDo: set debug mode
-    furi_log_set_level(FuriLogLevelInfo);
-
+    FURI_LOG_I(TAG, "Initializing BSP");
     // Flipper BSP init
     furi_bsp_init();
 
@@ -33,8 +33,15 @@ int32_t init_task(void* context) {
 }
 
 int main(void) {
-    //Initialize FURI layer
+
+    //Todo: FIX .LD file
+    furi_hal_memory_init();
+    
+    // Initialize FURI layer
     furi_init();
+
+    // TODO: read log level and output from nvm
+    furi_hal_log_init(FuriLogLevelInfo, FuriHalLogOutputSerial);
 
     // Critical FURI HAL
     furi_hal_init_early();

@@ -1,4 +1,4 @@
-# Generated Cmake Pico project file
+# Generated Cmake Pico project filecorelibs
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -6,7 +6,9 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(TARGET_HARDWARE "f100" CACHE STRING "Target hardware")
+set(FIRMWARE_TARGET 100 CACHE STRING "Firmware target number")
+set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
+set(TARGET_HARDWARE "f${FIRMWARE_TARGET}")
 
 # Initialise pico_sdk from installed location
 # (note this can come from environment, CMake cache etc)
@@ -51,9 +53,9 @@ add_compile_options(-Wno-unknown-pragmas)
 
 # Add executable. Default name is the project name, version 0.1
 file(GLOB_RECURSE SOURCES
-    "lib/furi/*.c*" 
-    "lib/furi/version/*.c*" 
-    "lib/furi/core/*.c*"
+    "lib/corelibs/lib/furi/*.c*"
+    "lib/corelibs/lib/furi/core/*.c*"
+    "lib/corelibs/lib/version/*.c*"
     "lib/toolbox/*.c*"
     "app/*.c"
     "app/theme/*.c"
@@ -63,14 +65,19 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/display/*.c*"  
     "lib/drivers/tps62868x/*.c*"
     "lib/drivers/tca6416a/*.c*"
+    "lib/drivers/pcal6416/*.c*"
     "lib/drivers/drv2605l/*.c*"
     "lib/drivers/iqs7211e/*.c*"
     "lib/drivers/spi_get_frame/*.c*"
     "lib/drivers/ina219/*.c*"
+    "lib/drivers/ina4230/*.c*"
     "lib/drivers/bq25792/*.c*"
+    "lib/drivers/bq28z620/*.c*"
     "lib/drivers/fusb302/*.c*"
+    "lib/drivers/hd3ss3220/*.c*"
     "lib/drivers/i2c_multi_slave/*.c*"
     "lib/drivers/i2c_slave/*.c*"
+    "lib/drivers/headphones/*.c*"
     "lib/tusb/*.c*"
     "applications/*.c"
     "applications/services/*.c"
@@ -97,6 +104,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     #PICO_USE_SW_SPIN_LOCKS=0
 )
 
+include(lib/corelibs/lib/version/CMakeLists.txt)
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 pico_set_program_version(${PROJECT_NAME} "0.1")
@@ -110,24 +118,30 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/applications
     ${CMAKE_CURRENT_LIST_DIR}/applications/services
     ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
-    ${CMAKE_CURRENT_LIST_DIR}/lib/furi
+    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/furi
+    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/version
     ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/src
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_hal
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_bsp
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/config
-    ${CMAKE_CURRENT_LIST_DIR}/lib
+    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
-    ${CMAKE_CURRENT_LIST_DIR}/lib/mlib
+    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/mlib
+    ${CMAKE_CURRENT_LIST_DIR}/lib
 )
 
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/mlib)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/uart_pio)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/ws2812)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_multi_slave)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/rtt)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/assets)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/cli)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/containers)
 
 # Add the standard library to the build
 target_link_libraries(${PROJECT_NAME}
@@ -142,7 +156,10 @@ target_link_libraries(${PROJECT_NAME}
     hardware_watchdog
     hardware_clocks
     pico_unique_id
+    uart_pio
     tinyusb_device
+    cli
+    containers
     ws2812
     pio_i2c
     i2c_multi
@@ -151,6 +168,7 @@ target_link_libraries(${PROJECT_NAME}
     mlib
     kvstore
     kvstore_default
+    rtt
 )
 
 pico_add_extra_outputs(${PROJECT_NAME})

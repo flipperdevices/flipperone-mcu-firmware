@@ -1,7 +1,7 @@
 #pragma once
 
 #include <furi.h>
-#include <cli/cli.h>
+#include <cli/cli_command_min.h>
 
 typedef enum {
     FlipperInternalApplicationFlagDefault = 0,
@@ -24,8 +24,9 @@ typedef struct {
 typedef void (*FlipperInternalOnStartHook)(void);
 
 typedef struct {
-    const CliCallback callback;
+    const CliCommandExecuteCallback callback;
     const char* name;
+    const size_t stack_size;
     const CliCommandFlag flags;
 } FlipperInternalCommandApplication;
 
@@ -42,6 +43,12 @@ extern const size_t FLIPPER_SERVICES_COUNT;
  */
 extern const FlipperInternalApplication FLIPPER_APPS[];
 extern const size_t FLIPPER_APPS_COUNT;
+
+/* Autorun apps list
+ * Apps that are automatically started on startup. These applications will receive the "autorun" argument.
+ */
+extern const FlipperInternalApplication FLIPPER_AUTORUN_APPS[];
+extern const size_t FLIPPER_AUTORUN_APPS_COUNT;
 
 /* Internal CLI commands
  * Added to main CLI registry by CLI startup hook

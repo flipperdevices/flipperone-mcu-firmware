@@ -9,12 +9,12 @@ typedef struct Fusb302 Fusb302;
 typedef void (*Fusb302Callback)(void* context);
 
 typedef enum {
-    Fusb302StatusOk = 0,
+    Fusb302StatusUnknown = 0,
+    Fusb302StatusOk = 1,
     Fusb302StatusRxEmpty,
     Fusb302StatusTxEmpty,
     Fusb302StatusError = -1,
     Fusb302StatusTimeout = -2,
-    Fusb302StatusUnknown = -3,
 } Fusb302Status;
 
 /**
@@ -62,6 +62,8 @@ void fusb302_read_cc_status(Fusb302* instance, uint8_t cc);
 void fusb302_deinit(Fusb302* instance);
 bool fusb302_read_role(Fusb302* instance);
 void fusb302_set_input_callback(Fusb302* instance, Fusb302Callback callback, void* context);
+Fusb302Status fusb302_start_drp_logic(Fusb302* instance);
+Fusb302Status fusb302_sw_reset(Fusb302* instance);
 
 Fusb302Status fusb302_cc_orientation_set(Fusb302* instance, Fusb302TypeCcOrientation orientation);
 // pd

@@ -8,52 +8,59 @@ extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
 extern int32_t uart_echo_app(void* p);
 extern int32_t input_touch_srv(void* p);
-extern int32_t i2c_slave_cpu_srv(void* p);
+extern int32_t i2c_intercom_srv(void* p);
+extern int32_t i2c_negotiator_srv(void* p);
 extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
 extern int32_t led_srv(void* p);
 extern int32_t usb_srv(void* p);
 extern int32_t power_srv(void* p);
-extern int32_t cli_srv(void* p);
-extern int32_t fusb302_srv(void* p);
+extern int32_t pd_srv(void* p);
 extern int32_t power_menu_srv(void* p);
+extern int32_t headphones_srv(void* p);
+extern int32_t usb_mux_srv(void* p);
+extern int32_t cli_uart_srv(void* p);
+extern int32_t cli_vcp_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
 extern int32_t cpu_app(void* p);
 extern int32_t haptic_test_app(void* p);
+extern int32_t self_check_app(void* p);
+extern int32_t cli_on_system_start(void* p);
 
 // CLI commands
-extern void power_cli(Cli* cli, FuriString* args, void* context);
-extern void led_cli(Cli* cli, FuriString* args, void* context);
+extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void power_consumption_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void led_cli(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
         .app = haptic_srv,
         .name = "HapticSrv",
         .appid = "haptic_srv",
-        .stack_size = 768,
+        .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
         .app = input_srv,
         .name = "InputSrv",
         .appid = "input_srv",
-        .stack_size = 1024,
+        .stack_size = 1152,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
         .app = power_srv,
         .name = "PowerSrv",
         .appid = "power",
-        .stack_size = 1024,
+        .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = fusb302_srv,
-        .name = "Fusb302Srv",
-        .appid = "fusb302_srv",
+        .app = pd_srv,
+        .name = "PdSrv",
+        .appid = "pd_srv",
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
@@ -68,14 +75,21 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = input_touch_srv,
         .name = "InputTouchSrv",
         .appid = "input_touch_srv",
-        .stack_size = 768,
+        .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = i2c_slave_cpu_srv,
-        .name = "I2cSlaveCpuSrv",
-        .appid = "i2c_slave_cpu_srv",
+        .app = i2c_intercom_srv,
+        .name = "I2CIntercomSrv",
+        .appid = "i2c_intercom_srv",
         .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = i2c_negotiator_srv,
+        .name = "I2CNegotiatorSrv",
+        .appid = "i2c_negotiator_srv",
+        .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     // {
@@ -114,9 +128,16 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = cli_srv,
-        .name = "CliSrv",
-        .appid = "cli_srv",
+        .app = cli_uart_srv,
+        .name = "CliUartSrv",
+        .appid = "cli_uart_srv",
+        .stack_size = 1024 * 2,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = cli_vcp_srv,
+        .name = "CliVcpSrv",
+        .appid = "cli_vcp_srv",
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
@@ -124,7 +145,21 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = power_menu_srv,
         .name = "PowerMenuSrv",
         .appid = "power_menu_srv",
-        .stack_size = 1024 * 4,
+        .stack_size = 1024 * 2,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = headphones_srv,
+        .name = "HeadphonesSrv",
+        .appid = "headphones_srv",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = usb_mux_srv,
+        .name = "UsbMuxSrv",
+        .appid = "usb_mux_srv",
+        .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
 };
@@ -136,6 +171,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .name = "CPU",
         .appid = "cpu",
         .stack_size = 4096,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = self_check_app,
+        .name = "Self Check",
+        .appid = "self_check",
+        .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
@@ -152,18 +194,51 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+    {
+        .app = haptic_test_app,
+        .name = "Haptic Test",
+        .appid = "haptic_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
+
+const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
+    {
+        .app = self_check_app,
+        .name = "Self Check",
+        .appid = "self_check",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = cli_on_system_start,
+        .name = "CliOnSystemStart",
+        .appid = "cli_on_system_start",
+        .stack_size = 1024 * 2,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+};
+const size_t FLIPPER_AUTORUN_APPS_COUNT = COUNT_OF(FLIPPER_AUTORUN_APPS);
 
 const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = power_cli,
         .name = "power",
+        .stack_size = 1024 * 4,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = power_consumption_cli,
+        .name = "power_consumption",
+        .stack_size = 1024,
         .flags = CliCommandFlagParallelSafe,
     },
     {
         .callback = led_cli,
         .name = "led",
+        .stack_size = 1024,
         .flags = CliCommandFlagParallelSafe,
     },
 };

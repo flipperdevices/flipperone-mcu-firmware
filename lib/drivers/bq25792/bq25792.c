@@ -5,8 +5,9 @@
 
 #define TAG "Bq25792"
 
-#define BQ25792_DEVICE_PART_NUMBER 0b001 //BQ25792
-#define BQ25792_DEVICE_REVISION    0b000 //Revision
+#define BQ25792_DEVICE_PART_NUMBER        0b001 //BQ25792
+#define BQ25792_DEVICE_REVISION           0b000 //Revision
+#define BQ25792_MAX_INPUT_DEFAULT_CURRENT 500 // mA
 
 #ifdef BQ25792_DEBUG_ENABLE
 #define BQ25792_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
@@ -142,7 +143,7 @@ static Bq25792Status bq25792_read_mem(Bq25792* instance, Bq25792Reg reg, uint8_t
     return bq25792_check_status(ret);
 }
 
-static Bq25792Status bq25792_load_config(Bq25792* instance) {
+Bq25792Status bq25792_load_default_config(Bq25792* instance) {
     furi_check(instance);
     Bq25792Status res = Bq25792StatusUnknown;
     do {
@@ -178,13 +179,44 @@ static Bq25792Status bq25792_load_config(Bq25792* instance) {
         if(res != Bq25792StatusOk) {
             break;
         }
-        Bq25792ChargerControl5RegBits charger_control_5 = {0};
-        bq25792_read_reg8(instance, Bq25792RegChargerControl5, (uint8_t*)&charger_control_5);
+
+        // Disable Dp/Dm detection
+        Bq25792ChargerControl2RegBits charger_control_2 = {0};
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl2, *(uint8_t*)&charger_control_2);
         if(res != Bq25792StatusOk) {
             break;
         }
+
+        Bq25792ChargerControl5RegBits charger_control_5 = {0};
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl5, (uint8_t*)&charger_control_5);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_5.en_extilim = 0; // Disable external ILIM pin control
         charger_control_5.sfet_present = 1; // Enable Sfet presence detection
+        charger_control_5.en_ibat = 1; // Enable IBAT measurement
         res = bq25792_write_reg8(instance, Bq25792RegChargerControl5, *(uint8_t*)&charger_control_5);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+
+        res = bq25792_set_input_current_limit_ma(instance, BQ25792_MAX_INPUT_DEFAULT_CURRENT);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+
+        Bq25792ChargerControl0RegBits charger_control_0 = {0};
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl0, (uint8_t*)&charger_control_0);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        // Enabling automatic adjustment of input current
+        charger_control_0.en_ico = 1; // Enable ICO current limit
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl0, *(uint8_t*)&charger_control_0);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to load config!");
@@ -214,8 +246,8 @@ Bq25792* bq25792_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
             furi_crash("BQ25792 device ID mismatch!");
         }
 
-        if(bq25792_load_config(instance) != Bq25792StatusOk) {
-            furi_crash("BQ25792 failed to load config");
+        if(bq25792_load_default_config(instance) != Bq25792StatusOk) {
+            furi_crash("BQ25792 failed to load default config");
         }
 
     } else {
@@ -405,9 +437,10 @@ Bq25792Status bq25792_set_charge_voltage_limit_ma(Bq25792* instance, uint16_t ch
     furi_check(instance);
     furi_check(charge_voltage_limit >= 8000 && charge_voltage_limit <= 8800); // Max charge voltage limit is 8800 mV
     Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792ChargeVoltageLimitRegBits charge_voltage_limit_reg = {0};
+    charge_voltage_limit_reg.vreg = charge_voltage_limit / 10; // Convert to register value (10 mV per LSB)
     do {
-        charge_voltage_limit = charge_voltage_limit / 10; // Convert to register value (10 mV per LSB)
-        res = bq25792_write_reg16(instance, Bq25792RegChargeVoltageLimit, charge_voltage_limit);
+        res = bq25792_write_reg16(instance, Bq25792RegChargeVoltageLimit, *(uint16_t*)&charge_voltage_limit_reg);
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to set charge voltage limit!");
@@ -445,13 +478,29 @@ Bq25792Status bq25792_set_charge_current_limit_ma(Bq25792* instance, uint16_t ch
     return res;
 }
 
+Bq25792Status bq25792_get_ico_current_limit_ma(Bq25792* instance, uint16_t* ico_current_limit) {
+    furi_check(instance);
+    furi_check(ico_current_limit);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792ICOCurrentLimitRegBits ico_current_limit_reg = {0};
+    do {
+        res = bq25792_read_reg16(instance, Bq25792RegICOCurrentLimit, (uint16_t*)&ico_current_limit_reg);
+        if(res == Bq25792StatusOk) {
+            *ico_current_limit = ico_current_limit_reg.ico_ilim * 10; // Convert to ICO current limit (10 mA per LSB)
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get ICO current limit!");
+    }
+    return res;
+}
+
 Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable) {
     furi_check(instance);
     Bq25792Status res = Bq25792StatusUnknown;
     Bq25792ChargerControl0RegBits charger_control_0 = {0};
     do {
         res = bq25792_read_reg8(instance, Bq25792RegChargerControl0, (uint8_t*)&charger_control_0);
-        FURI_LOG_E(TAG, "Read ChargerControl0: %08b", *(uint8_t*)&charger_control_0);
         if(res != Bq25792StatusOk) {
             break;
         }
@@ -480,10 +529,22 @@ Bq25792Status bq25792_get_charger_fault(Bq25792* instance, Bq25792FaultStatusReg
     furi_check(instance);
     Bq25792Status res = Bq25792StatusUnknown;
     do {
-        res = bq25792_read_mem(instance, Bq25792RegChargerStatus0, fault->data, sizeof(fault->data));
+        res = bq25792_read_mem(instance, Bq25792RegFaultStatus0, fault->data, sizeof(fault->data));
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to get charger fault!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_clear_charger_fault(Bq25792* instance, Bq25792FaultStatusReg* fault) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    do {
+        res = bq25792_write_reg16(instance, Bq25792RegFaultStatus0, *(uint16_t*)fault->data);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to clear charger fault!");
     }
     return res;
 }

@@ -139,14 +139,35 @@ extern "C" {
 //#define configIDLE_TASK_STACK_DEPTH  512
 #define configIDLE_TASK_STACK_DEPTH 256
 
-/* Interrupt nesting behaviour configuration. */
-/*  The Cortex-M0+ implements the two most significant bits of an 8-bit priority field, 
-    so four priority levels are available, 
-    and the numerically-lowest level (level 0) is the highest priority.
-*/
-#define configKERNEL_INTERRUPT_PRIORITY (3 << (8 - __NVIC_PRIO_BITS))
+/* The lowest interrupt priority that can be used in a call to a "set priority"
+function. */
+#define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15
 
-#define configMAX_SYSCALL_INTERRUPT_PRIORITY  (2 << (8 - __NVIC_PRIO_BITS))
+/* The highest interrupt priority that can be used by any interrupt service
+routine that makes calls to interrupt safe FreeRTOS API functions.  DO NOT CALL
+INTERRUPT SAFE FREERTOS API FUNCTIONS FROM ANY INTERRUPT THAT HAS A HIGHER
+PRIORITY THAN THIS! (higher priorities are lower numeric values. */
+#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5
+
+/* Interrupt nesting behaviour configuration.
+ *
+ * RP2350 is Cortex-M33 with __NVIC_PRIO_BITS = 4, giving 16 hardware levels (0=highest, 15=lowest).
+ * The "library" values are the raw 0-15 numbers; the "config" values are left-shifted to fill
+ * the 8-bit NVIC priority register field.
+ *
+ * Encoding: encoded = library_level << (8 - __NVIC_PRIO_BITS) = library_level << 4
+ *
+ * PendSV / SysTick are set by the port to portMIN_INTERRUPT_PRIORITY (255 -> effective 0xF0 = library 15).
+ *
+ * basepri in critical sections = configMAX_SYSCALL_INTERRUPT_PRIORITY = 0x50 (library 5).
+ *      Interrupts at library 0-4 bypass the kernel (KamiSama zone – no FreeRTOS API allowed).
+ *      Interrupts at library 5-15 are blocked inside critical sections and may use FreeRTOS ISR-safe API.
+ */
+#define configKERNEL_INTERRUPT_PRIORITY \
+    (configLIBRARY_LOWEST_INTERRUPT_PRIORITY << (8 - __NVIC_PRIO_BITS))  /* 15<<4 = 0xF0 */
+
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY \
+    (configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - __NVIC_PRIO_BITS))  /* 5<<4 = 0x50 */
 /* configMAX_API_CALL_INTERRUPT_PRIORITY is a new name for configMAX_SYSCALL_INTERRUPT_PRIORITY
  that is used by newer ports only. The two are equivalent. */
 #define configMAX_API_CALL_INTERRUPT_PRIORITY configMAX_SYSCALL_INTERRUPT_PRIORITY
@@ -175,11 +196,11 @@ extern "C" {
 
 /* Define to trap errors during development. */
 //#define configASSERT( x )  assert( x )
-#ifdef NDEBUG /* required by ANSI standard */
-#define configASSERT(__e) ((void)0)
-#else
-#define configASSERT(__e) ((__e) ? (void)0 : assert(#__e))
-#endif
+/* Always-on FreeRTOS assertion: calls vFreeRTOSAssertFailed() declared below */
+extern void __attribute__((__noreturn__)) vFreeRTOSAssertFailed(const char *expr, const char *file, int line);
+#undef configASSERT
+#define configASSERT(__e) \
+    do { if(__builtin_expect(!(__e), 0)) { vFreeRTOSAssertFailed(#__e, __FILE__, __LINE__); } } while(0)
 
 /* Set the following definitions to 1 to include the API function, or zero
 to exclude the API function. */
@@ -214,16 +235,6 @@ extern uint64_t time_us_64(void); // "hardware/timer.h"
 /* A header file that defines trace macro can be included here. */
 #define configRECORD_STACK_HIGH_ADDRESS 1
 
-/* The lowest interrupt priority that can be used in a call to a "set priority"
-function. */
-#define configLIBRARY_LOWEST_INTERRUPT_PRIORITY 15
-
-/* The highest interrupt priority that can be used by any interrupt service
-routine that makes calls to interrupt safe FreeRTOS API functions.  DO NOT CALL
-INTERRUPT SAFE FREERTOS API FUNCTIONS FROM ANY INTERRUPT THAT HAS A HIGHER
-PRIORITY THAN THIS! (higher priorities are lower numeric values. */
-#define configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY 5
-
 /*
  * The CMSIS-RTOS V2 FreeRTOS wrapper is dependent on the heap implementation used
  * by the application thus the correct define need to be enabled below
@@ -231,13 +242,16 @@ PRIORITY THAN THIS! (higher priorities are lower numeric values. */
 #define USE_FreeRTOS_HEAP_4
 
 /* Normal assert() semantics without relying on the provision of an assert.h
-header file. */
-#ifdef DEBUG
+header file. header file. Already defined unconditionally above as vFreeRTOSAssertFailed(). */
+#if 0
 #define configASSERT(x)                \
     if((x) == 0) {                     \
         furi_crash("FreeRTOS Assert"); \
     }
 #endif
+
+extern __attribute__((__noreturn__)) void furi_thread_catch(void);
+#define configTASK_RETURN_ADDRESS (furi_thread_catch + 2)
 
 // // Must be last line of config because of recursion
 // #include <core/check.h>

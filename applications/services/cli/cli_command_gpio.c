@@ -1,7 +1,7 @@
 #include "cli_command_gpio.h"
 
 #include <furi_hal_resources.h>
-#include <args.h>
+#include <cli/args.h>
 
 typedef struct {
     const char* name;
@@ -64,8 +64,8 @@ static bool cli_command_gpio_parse_pin(FuriString* args, const CliGpioPinNamePai
     return result;
 }
 
-void cli_command_gpio(Cli* cli, FuriString* args, void* context) {
-    UNUSED(cli);
+void cli_command_gpio(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
     UNUSED(context);
 
     do {

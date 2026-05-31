@@ -19,8 +19,8 @@ typedef enum {
 
 typedef enum {
     FuriHalI2cBusSlaveEventStart, /**< Slave start event, called when master sends a start signal. */
-    FuriHalI2cBusSlaveEventReceive, /**< Slave write event, called when master wants to write data from slave. */
-    FuriHalI2cBusSlaveEventRequest, /**< Slave read event, called when master wants to read data from slave. */
+    FuriHalI2cBusSlaveEventWrite, /**< Slave write event, called when master wants to write data to slave. */
+    FuriHalI2cBusSlaveEventRead, /**< Slave read event, called when master wants to read data from slave. */
     FuriHalI2cBusSlaveEventRepeatedStart, /**< Slave repeated start event, called when master sends a repeated start signal. */
     FuriHalI2cBusSlaveEventStop, /**< Slave stop event, called when master finishes transaction with slave. */
 } FuriHalI2cBusSlaveEvent;
@@ -52,6 +52,9 @@ typedef uint8_t (*FuriHalI2cBusSlaveWriteCallback)(const FuriHalI2cBusHandle* ha
 /** FuriHal i2c bus slave read callback */
 typedef uint8_t (*FuriHalI2cBusSlaveReadCallback)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
 
+//** FuriHal reset i2c bus slave callback */
+typedef void (*FuriHalI2cBusSlaveResetCallback)(const FuriHalI2cBusHandle* handle);
+
 /** FuriHal i2c handle */
 struct FuriHalI2cBusHandle {
     FuriHalI2cBus* bus;
@@ -69,8 +72,10 @@ typedef struct {
         struct {
             FuriHalI2cBusSlaveWriteCallback write_blocking;
             FuriHalI2cBusSlaveReadCallback read_blocking;
+            FuriHalI2cBusSlaveResetCallback bus_reset;
             FuriHalI2cBusSlaveCallback callback;
             void* context;
+            uint8_t address;
         } slave;
     };
 
