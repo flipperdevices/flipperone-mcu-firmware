@@ -77,7 +77,6 @@ typedef struct {
     const char* led_text;
     size_t power_menu_items_count;
     PowerMenuStruct* menu_items;
-    size_t menu_items_count;
 } PowerMenuModel;
 
 typedef struct {
@@ -151,6 +150,10 @@ static const char* power_menu_item_get_text(PowerMenuModel* model, size_t index)
     return item ? furi_string_get_cstr(item->name) : NULL;
 }
 
+static size_t power_menu_item_get_count(PowerMenuModel* model) {
+    return PowerMenuArray_size(model->menu_items->data);
+}
+
 static bool power_menu_layout(void* _model) {
     furi_assert(_model);
     PowerMenuModel* model = (PowerMenuModel*)_model;
@@ -221,10 +224,10 @@ static bool power_menu_layout(void* _model) {
                     }) {
                     CLAY_TEXT(
                         clay_helper_string_from_chars(
-                            i < COUNT_OF(power_menu_items) ? power_menu_items[i] : power_menu_item_get_text(model, i - COUNT_OF(power_menu_items))),
+                            i < power_menu_item_get_count(model) ? power_menu_item_get_text(model, i) : (power_menu_items[i-power_menu_item_get_count(model)])),
                         CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
 
-                    switch(i) {
+                    switch(i-power_menu_item_get_count(model)) {
                     case PowerMenuActionBacklight:
                         CLAY_TEXT(
                             clay_helper_string_from(model->backlight_text),
@@ -298,7 +301,6 @@ static void power_menu_add_item(PowerMenuModel* model, const char* text, FuriCal
     furi_string_printf(item->name, "%s", text);
     item->on_click = on_click;
     model->power_menu_items_count++;
-    model->menu_items_count++;
 }
 
 static void power_menu_remove_item(PowerMenuModel* model, const char* text) {
@@ -316,12 +318,8 @@ static void power_menu_remove_item(PowerMenuModel* model, const char* text) {
             index++;
         }
     if(found) {
-    PowerMenuArray_erase(model->menu_items->data, index);
-    model->power_menu_items_count--;
-    if(model->menu_items_count >0){
-        model->menu_items_count--;
-    }
-     
+        PowerMenuArray_erase(model->menu_items->data, index);
+        model->power_menu_items_count--;
     }
 }
 
@@ -367,8 +365,16 @@ static bool power_menu_model_menu_prev(PowerMenuModel* model, void* context) {
 
 static bool power_menu_input_menu_get_selected_index(PowerMenuModel* model, void* context) {
     furi_check(context);
-    size_t* selected_index = context;
-    *selected_index = model->selected_index;
+    int* selected_index = context;
+
+    if(model->selected_index < power_menu_item_get_count(model)){
+        *selected_index = model->selected_index * -1 - 1;
+    } else {
+       *selected_index = model->selected_index - power_menu_item_get_count(model); 
+    }
+
+
+    
     return false;
 }
 
@@ -403,7 +409,7 @@ static void power_menu_apply_backlight(PowerMenu* instance) {
 
 #define POWER_MENU_PREV(var, min) (var = (var - 1 + min) % min)
 
-static void power_menu_input_left(PowerMenu* instance, size_t selected_index) {
+static void power_menu_input_left(PowerMenu* instance, int selected_index) {
     switch(selected_index) {
     case PowerMenuActionLinkLedBrightness:
         POWER_MENU_PREV(instance->selected_link_led_brightness_index, led_brightness_levels_count);
@@ -436,7 +442,7 @@ static void power_menu_input_left(PowerMenu* instance, size_t selected_index) {
 
 #define POWER_MENU_NEXT(var, max) (var = (var + 1) % max)
 
-static void power_menu_input_right(PowerMenu* instance, size_t selected_index) {
+static void power_menu_input_right(PowerMenu* instance, int selected_index) {
     switch(selected_index) {
     case PowerMenuActionLinkLedBrightness:
         POWER_MENU_NEXT(instance->selected_link_led_brightness_index, led_brightness_levels_count);
@@ -467,26 +473,38 @@ static void power_menu_input_right(PowerMenu* instance, size_t selected_index) {
     }
 }
 
-static void power_menu_input_menu(PowerMenu* instance, size_t selected_index) {
+static void power_menu_input_menu(PowerMenu* instance, int selected_index) {
     // OK on menu does the same thing as right
-    power_menu_input_right(instance, selected_index);
+    if(selected_index >= 0) {
+        power_menu_input_right(instance, selected_index);
 
-    switch(selected_index) {
-    case PowerMenuActionPowerOff:
-        Power* power_off = furi_record_open(RECORD_POWER);
-        power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
-        furi_record_close(RECORD_POWER);
-        break;
-    case PowerMenuActionReboot:
-        Power* power_reset = furi_record_open(RECORD_POWER);
-        power_bq25792_set_power_switch(power_reset, Bq25792PowerReset);
-        furi_record_close(RECORD_POWER);
-        break;
-    case PowerMenuActionCancel:
-        power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
-        break;
-    default:
-        break;
+        switch(selected_index) {
+        case PowerMenuActionPowerOff:
+            Power* power_off = furi_record_open(RECORD_POWER);
+            power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
+            furi_record_close(RECORD_POWER);
+            break;
+        case PowerMenuActionReboot:
+            Power* power_reset = furi_record_open(RECORD_POWER);
+            power_bq25792_set_power_switch(power_reset, Bq25792PowerReset);
+            furi_record_close(RECORD_POWER);
+            break;
+        case PowerMenuActionCancel:
+            power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
+            break;
+        default:
+            break;
+        }
+    } else {
+        size_t custom_index = selected_index * -1 - 1;
+        
+        with_view_model(instance->view, PowerMenuModel * model, { 
+            PowerMenuCallbacks* item = PowerMenuArray_get(model->menu_items->data, custom_index);
+            if(item && item->on_click.callback) {
+                item->on_click.callback(item->on_click.context);
+            }
+            FURI_LOG_I(TAG, "Clicked custom menu item: %s", furi_string_get_cstr(item->name));
+        }, true);
     }
 }
 
@@ -504,15 +522,15 @@ static bool power_menu_input(InputEvent* event, void* context) {
             } else if(event->key == InputKeyDown) {
                 power_menu_model_apply(instance, power_menu_model_menu_next, NULL);
             } else if(event->key == InputKeyLeft) {
-                size_t selected_index;
+                int selected_index;
                 power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
                 power_menu_input_left(instance, selected_index);
             } else if(event->key == InputKeyRight) {
-                size_t selected_index;
+                int selected_index;
                 power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
                 power_menu_input_right(instance, selected_index);
             } else if(event->key == InputKeyOk) {
-                size_t selected_index;
+                int selected_index;
                 power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
                 power_menu_input_menu(instance, selected_index);
             } else if(event->key == InputKeyBack) {
