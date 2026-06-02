@@ -7,6 +7,7 @@
 #include <assets.h>
 #include <pd/pd.h>
 #include <power/power.h>
+#include <power_menu/power_menu.h>
 
 #define TAG "CpuApp"
 
@@ -213,7 +214,7 @@ static void cpu_app_input_menu(CpuApp* instance, size_t selected_index) {
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     model->frame = flipper_one_256x144_test_screen_v002;
-    model->menu_visible = true;
+    model->menu_visible = false;
     return false;
 }
 
@@ -282,11 +283,17 @@ static bool cpu_app_input(InputEvent* event, void* context) {
             }
         }
 
-        if(event->key == InputKey3) {
-            cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
-            consumed = true;
-        }
+        // if(event->key == InputKey3) {
+        //     cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
+        //     consumed = true;
+        // }
     }
+
+    if(event->key == InputKeyBack && event->type == InputTypeLong) {
+        cpu_app_send_message(instance, CpuAppMessageTypeClose);
+        consumed = true;
+    }
+
     return consumed;
 }
 
@@ -366,10 +373,17 @@ static CpuApp* cpu_app_alloc(void) {
     view_set_layout_callback(instance->view, cpu_app_layout);
     view_set_input_callback(instance->view, cpu_app_input, instance);
     gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
+
+    //add some test menu items
+    power_menu_add_menu_item("Test 1", (FuriCallbackWithContext){.callback = NULL, .context = NULL});
+    power_menu_add_menu_item("Test 2", (FuriCallbackWithContext){.callback = NULL, .context = NULL});
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
+    power_menu_remove_menu_item("Test 1");
+    power_menu_remove_menu_item("Test 2");
+
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
     view_free(instance->view);

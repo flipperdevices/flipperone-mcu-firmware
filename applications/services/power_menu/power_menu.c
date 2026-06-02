@@ -639,10 +639,6 @@ static PowerMenu* power_menu_alloc(void) {
 
     furi_record_create(RECORD_POWER_MENU, instance);
 
-    //test add some items
-    power_menu_add_menu_item("Test 1", (FuriCallbackWithContext){.callback = NULL, .context = NULL});
-    power_menu_add_menu_item("Test 2", (FuriCallbackWithContext){.callback = NULL, .context = NULL});
-
     return instance;
 }
 
@@ -665,7 +661,6 @@ static void power_menu_send_message(PowerMenu* instance, const PowerMenuMessage*
 bool power_menu_add_menu_item(const char* text, FuriCallbackWithContext on_click) {
     furi_assert(text);
     bool result;
-    // FuriApiLock lock = api_lock_alloc_locked();
     PowerMenuMessage msg = {
         .type = PowerMenuMessageTypeAddItem,
         .as.add_item =
@@ -674,7 +669,7 @@ bool power_menu_add_menu_item(const char* text, FuriCallbackWithContext on_click
                 .on_click = on_click,
             },
         .result = &result,
-        //.lock = lock,
+        .lock = api_lock_alloc_locked(),
     };
 
     PowerMenu* instance = furi_record_open(RECORD_POWER_MENU);
@@ -690,7 +685,6 @@ bool power_menu_add_menu_item(const char* text, FuriCallbackWithContext on_click
 bool power_menu_remove_menu_item(const char* text) {
     furi_assert(text);
     bool result;
-    FuriApiLock lock = api_lock_alloc_locked();
     PowerMenuMessage msg = {
         .type = PowerMenuMessageTypeRemoveItem,
         .as.remove_item =
@@ -698,7 +692,7 @@ bool power_menu_remove_menu_item(const char* text) {
                 .text = text,
             },
         .result = &result,
-        .lock = lock,
+        .lock = api_lock_alloc_locked(),
     };
 
     PowerMenu* instance = furi_record_open(RECORD_POWER_MENU);
