@@ -35,8 +35,7 @@ static const char* power_menu_items[] = {
 };
 
 typedef struct {
-    //const char* text;
-    FuriString* name;
+    const char* text;
     FuriCallbackWithContext on_click;
 } PowerMenuCallbacks;
 
@@ -147,7 +146,7 @@ static size_t led_brightness_get_nearest_index(uint8_t value) {
 
 static const char* power_menu_item_get_text(PowerMenuModel* model, size_t index) {
     PowerMenuCallbacks* item = PowerMenuArray_get(model->menu_items->data, index);
-    return item ? furi_string_get_cstr(item->name) : NULL;
+    return item ? item->text : NULL;
 }
 
 static size_t power_menu_item_get_count(PowerMenuModel* model) {
@@ -224,10 +223,11 @@ static bool power_menu_layout(void* _model) {
                     }) {
                     CLAY_TEXT(
                         clay_helper_string_from_chars(
-                            i < power_menu_item_get_count(model) ? power_menu_item_get_text(model, i) : (power_menu_items[i-power_menu_item_get_count(model)])),
+                            i < power_menu_item_get_count(model) ? power_menu_item_get_text(model, i) :
+                                                                   (power_menu_items[i - power_menu_item_get_count(model)])),
                         CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
 
-                    switch(i-power_menu_item_get_count(model)) {
+                    switch(i - power_menu_item_get_count(model)) {
                     case PowerMenuActionBacklight:
                         CLAY_TEXT(
                             clay_helper_string_from(model->backlight_text),
@@ -297,8 +297,7 @@ static bool power_menu_model_init(PowerMenuModel* model, void* context) {
 
 static void power_menu_add_item(PowerMenuModel* model, const char* text, FuriCallbackWithContext on_click) {
     PowerMenuCallbacks* item = PowerMenuArray_push_raw(model->menu_items->data);
-    item->name = furi_string_alloc();
-    furi_string_printf(item->name, "%s", text);
+    item->text = text;
     item->on_click = on_click;
     model->power_menu_items_count++;
 }
@@ -308,9 +307,8 @@ static void power_menu_remove_item(PowerMenuModel* model, const char* text) {
     bool found = false;
     for
         M_EACH(item, model->menu_items->data, PowerMenuArray_t) {
-            if(strcmp(furi_string_get_cstr(item->name), text) == 0) {
-                furi_string_free(item->name);
-                item->name = NULL;
+            if(strcmp(item->text, text) == 0) {
+                item->text = NULL;
                 item->on_click.callback = NULL;
                 found = true;
                 break;
@@ -367,14 +365,12 @@ static bool power_menu_input_menu_get_selected_index(PowerMenuModel* model, void
     furi_check(context);
     int* selected_index = context;
 
-    if(model->selected_index < power_menu_item_get_count(model)){
+    if(model->selected_index < power_menu_item_get_count(model)) {
         *selected_index = model->selected_index * -1 - 1;
     } else {
-       *selected_index = model->selected_index - power_menu_item_get_count(model); 
+        *selected_index = model->selected_index - power_menu_item_get_count(model);
     }
 
-
-    
     return false;
 }
 
@@ -497,14 +493,18 @@ static void power_menu_input_menu(PowerMenu* instance, int selected_index) {
         }
     } else {
         size_t custom_index = selected_index * -1 - 1;
-        
-        with_view_model(instance->view, PowerMenuModel * model, { 
-            PowerMenuCallbacks* item = PowerMenuArray_get(model->menu_items->data, custom_index);
-            if(item && item->on_click.callback) {
-                item->on_click.callback(item->on_click.context);
-            }
-            FURI_LOG_I(TAG, "Clicked custom menu item: %s", furi_string_get_cstr(item->name));
-        }, true);
+
+        with_view_model(
+            instance->view,
+            PowerMenuModel * model,
+            {
+                PowerMenuCallbacks* item = PowerMenuArray_get(model->menu_items->data, custom_index);
+                if(item && item->on_click.callback) {
+                    item->on_click.callback(item->on_click.context);
+                }
+                FURI_LOG_I(TAG, "Clicked custom menu item: %s", item ? item->text : "NULL");
+            },
+            true);
     }
 }
 
