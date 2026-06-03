@@ -506,6 +506,7 @@ static void power_menu_input_menu(PowerMenu* instance, int selected_index) {
                 FURI_LOG_I(TAG, "Clicked custom menu item: %s", item ? item->text : "NULL");
             },
             true);
+        power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
     }
 }
 
@@ -547,7 +548,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
         }
     } else {
         if(event->key == InputKey3) {
-            if(event->type == InputTypeShort) {
+            if((event->type == InputTypeShort) || (event->type == InputTypeLong)) {
                 power_menu_model_apply(instance, power_menu_input_menu_show, NULL);
                 consumed = true;
             }

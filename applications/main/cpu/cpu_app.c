@@ -17,31 +17,24 @@
 
 typedef enum {
     CpuAppMenuItemStart,
-    CpuAppMenuItemStop,
     CpuAppMenuItemReset,
     CpuAppMenuItemMaskrom,
     CpuAppMenuItemClose,
 } CpuAppMenuItem;
 
 static const char* cpu_app_menu_items[] = {
-    [CpuAppMenuItemStart] = "Start",
-    [CpuAppMenuItemStop] = "Stop",
-    [CpuAppMenuItemReset] = "Reset",
-    [CpuAppMenuItemMaskrom] = "Maskrom",
-    [CpuAppMenuItemClose] = "Close",
+    [CpuAppMenuItemStart] = "CPU Start",
+    [CpuAppMenuItemReset] = "CPU Reset",
+    [CpuAppMenuItemMaskrom] = "CPU Maskrom",
+    [CpuAppMenuItemClose] = "CPU Close",
 };
 
-static size_t cpu_app_menu_items_count = COUNT_OF(cpu_app_menu_items);
-
 typedef struct {
-    size_t selected_index;
     Image frame;
-    bool menu_visible;
 } CpuAppModel;
 
 typedef enum {
     CpuAppMessageTypeStart,
-    CpuAppMessageTypeStop,
     CpuAppMessageTypeReset,
     CpuAppMessageTypeMaskrom,
     CpuAppMessageTypeClose,
@@ -90,14 +83,6 @@ static void furi_hal_bsp_linux_start(void) {
     furi_bsp_expander_main_write_output(status);
 }
 
-static void furi_hal_bsp_linux_stop(void) {
-    uint32_t status = furi_bsp_expander_main_read_output();
-    FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status &= ~(OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En);
-    FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
-    furi_bsp_expander_main_write_output(status);
-}
-
 static void furi_hal_bsp_linux_maskrom(void) {
     uint32_t status = furi_bsp_expander_main_read_output();
     FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
@@ -141,47 +126,6 @@ static bool cpu_app_layout(void* _model) {
                 }
             }
         }
-        if(model->menu_visible) {
-            CLAY(
-                CLAY_APP_ID("MainContent"),
-                {
-                    .backgroundColor = COLOR_WHITE,
-                    .layout =
-                        {
-                            .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                            .childGap = 8,
-                            .padding = {4, 4, 4, 4},
-                            .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0)},
-                            .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_CENTER},
-                        },
-                    .floating =
-                        {
-                            .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
-                            .attachTo = CLAY_ATTACH_TO_PARENT,
-                        },
-                    .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
-                    .cornerRadius = CLAY_CORNER_RADIUS(4),
-                }) {
-                for(uint32_t i = 0; i < cpu_app_menu_items_count; i++) {
-                    bool selected = (i == model->selected_index);
-                    CLAY(
-                        CPU_APP_MENU_ID(i),
-                        {
-                            .layout =
-                                {
-                                    .sizing = {.width = CLAY_SIZING_FIXED(80), .height = CLAY_SIZING_FIXED(13)},
-                                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                                },
-                            .backgroundColor = selected ? COLOR_BLACK : COLOR_WHITE,
-                            .cornerRadius = CLAY_CORNER_RADIUS(2),
-                        }) {
-                        CLAY_TEXT(
-                            clay_helper_string_from_chars(cpu_app_menu_items[i]),
-                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
-                    }
-                }
-            }
-        }
     }
 
     return false;
@@ -192,29 +136,8 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
     furi_check(furi_message_queue_put(instance->app_queue, &message, 2) == FuriStatusOk);
 }
 
-static void cpu_app_input_menu(CpuApp* instance, size_t selected_index) {
-    switch(selected_index) {
-    case CpuAppMenuItemStart:
-        cpu_app_send_message(instance, CpuAppMessageTypeStart);
-        break;
-    case CpuAppMenuItemStop:
-        cpu_app_send_message(instance, CpuAppMessageTypeStop);
-        break;
-    case CpuAppMenuItemReset:
-        cpu_app_send_message(instance, CpuAppMessageTypeReset);
-        break;
-    case CpuAppMenuItemClose:
-        cpu_app_send_message(instance, CpuAppMessageTypeClose);
-        break;
-    case CpuAppMenuItemMaskrom:
-        cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
-        break;
-    }
-}
-
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     model->frame = flipper_one_256x144_test_screen_v002;
-    model->menu_visible = false;
     return false;
 }
 
@@ -225,76 +148,9 @@ static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
     return true;
 }
 
-static bool cpu_app_model_menu_next(CpuAppModel* model, void* context) {
-    model->selected_index = (model->selected_index + 1) % cpu_app_menu_items_count;
-    return true;
-}
-
-static bool cpu_app_model_menu_prev(CpuAppModel* model, void* context) {
-    model->selected_index = (model->selected_index - 1 + cpu_app_menu_items_count) % cpu_app_menu_items_count;
-    return true;
-}
-
-static bool cpu_app_model_menu_toggle(CpuAppModel* model, void* context) {
-    model->menu_visible = !model->menu_visible;
-    return true;
-}
-
-static bool cpu_app_input_menu_get_selected_index(CpuAppModel* model, void* context) {
-    furi_check(context);
-    size_t* selected_index = context;
-    *selected_index = model->selected_index;
-    return false;
-}
-
-static bool cpu_app_input_menu_get_visible(CpuAppModel* model, void* context) {
-    furi_check(context);
-    bool* visible = context;
-    *visible = model->menu_visible;
-    return false;
-}
-
 static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* model, void* context), void* context) {
     bool update;
     with_view_model(instance->view, CpuAppModel * model, { update = callback(model, context); }, update);
-}
-
-static bool cpu_app_input(InputEvent* event, void* context) {
-    furi_check(context);
-    CpuApp* instance = context;
-    bool consumed = false;
-
-    if(event->type == InputTypePress) {
-        bool menu_visible = false;
-        cpu_app_model_apply(instance, cpu_app_input_menu_get_visible, &menu_visible);
-
-        if(menu_visible) {
-            if(event->key == InputKeyUp) {
-                cpu_app_model_apply(instance, cpu_app_model_menu_prev, NULL);
-                consumed = true;
-            } else if(event->key == InputKeyDown) {
-                cpu_app_model_apply(instance, cpu_app_model_menu_next, NULL);
-                consumed = true;
-            } else if(event->key == InputKeyOk) {
-                size_t selected_index;
-                cpu_app_model_apply(instance, cpu_app_input_menu_get_selected_index, &selected_index);
-                cpu_app_input_menu(instance, selected_index);
-                consumed = true;
-            }
-        }
-
-        // if(event->key == InputKey3) {
-        //     cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
-        //     consumed = true;
-        // }
-    }
-
-    if(event->key == InputKeyBack && event->type == InputTypeLong) {
-        cpu_app_send_message(instance, CpuAppMessageTypeClose);
-        consumed = true;
-    }
-
-    return consumed;
 }
 
 static void __isr __not_in_flash_func(cpu_app_spi_get_frame_isr)(uint8_t* data, size_t size, void* context) {
@@ -326,12 +182,6 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_hal_bsp_linux_reset();
             furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             furi_hal_bsp_linux_start();
-            cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
-            break;
-        case CpuAppMessageTypeStop:
-            furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
-            furi_hal_bsp_linux_stop();
             break;
         case CpuAppMessageTypeClose:
             furi_hal_reset_pd_and_charger();
@@ -343,7 +193,6 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_hal_bsp_linux_reset();
             furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             furi_hal_bsp_linux_maskrom();
-            cpu_app_model_apply(instance, cpu_app_model_menu_toggle, NULL);
             break;
         case CpuAppMessageTypeNewFrame:
             cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
@@ -353,6 +202,20 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             break;
         }
     }
+}
+
+void cpu_app_menu_close_click_callback(void* context) {
+    furi_check(context);
+    CpuApp* instance = context;
+    size_t selected_index = (size_t)context;
+    cpu_app_send_message(instance, CpuAppMessageTypeClose);
+}
+
+void cpu_app_menu_restart_click_callback(void* context) {
+    furi_check(context);
+    CpuApp* instance = context;
+    size_t selected_index = (size_t)context;
+    cpu_app_send_message(instance, CpuAppMessageTypeReset);
 }
 
 static CpuApp* cpu_app_alloc(void) {
@@ -371,18 +234,17 @@ static CpuApp* cpu_app_alloc(void) {
     cpu_app_model_apply(instance, cpu_app_model_init, NULL);
 
     view_set_layout_callback(instance->view, cpu_app_layout);
-    view_set_input_callback(instance->view, cpu_app_input, instance);
     gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
 
     //add some test menu items
-    power_menu_add_menu_item("Test 1", (FuriCallbackWithContext){.callback = NULL, .context = NULL});
-    power_menu_add_menu_item("Test 2", (FuriCallbackWithContext){.callback = NULL, .context = NULL});
+    power_menu_add_menu_item(cpu_app_menu_items[CpuAppMenuItemClose], (FuriCallbackWithContext){.callback = cpu_app_menu_close_click_callback, .context = instance});
+    power_menu_add_menu_item(cpu_app_menu_items[CpuAppMenuItemReset], (FuriCallbackWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
-    power_menu_remove_menu_item("Test 1");
-    power_menu_remove_menu_item("Test 2");
+    power_menu_remove_menu_item(cpu_app_menu_items[CpuAppMenuItemClose]);
+    power_menu_remove_menu_item(cpu_app_menu_items[CpuAppMenuItemReset]);
 
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
@@ -395,8 +257,20 @@ static void cpu_app_free(CpuApp* instance) {
 }
 
 int32_t cpu_app(void* p) {
-    FURI_LOG_I(TAG, "CPU app started with arg: %s", (char*)p);
     CpuApp* instance = cpu_app_alloc();
+
+    if(p) {
+        char* arg = (char*)p;
+        FURI_LOG_I(TAG, "CPU app started with arg: %s", arg);
+        if(strcmp(arg, cpu_app_menu_items[CpuAppMenuItemStart]) == 0) {
+            cpu_app_send_message(instance, CpuAppMessageTypeStart);
+        } else if(strcmp(arg, cpu_app_menu_items[CpuAppMenuItemMaskrom]) == 0) {
+            cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
+        } else {
+            FURI_LOG_W(TAG, "Unknown argument: %s", arg);
+        }
+    }
+
     furi_event_loop_run(instance->event_loop);
     cpu_app_free(instance);
     return 0;

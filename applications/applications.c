@@ -172,7 +172,7 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .appid = "cpu",
         .stack_size = 4096,
         .flags = FlipperInternalApplicationFlagDefault,
-        .args = "CPU_Start",
+        .args = "CPU Start",
     },
         {
         .app = cpu_app,
@@ -180,7 +180,7 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .appid = "cpu",
         .stack_size = 4096,
         .flags = FlipperInternalApplicationFlagDefault,
-        .args = "CPU_Maskrom",
+        .args = "CPU Maskrom",
     },
     {
         .app = self_check_app,
