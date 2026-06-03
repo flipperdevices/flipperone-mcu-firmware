@@ -11,6 +11,28 @@
 #include <furi_hal_i2c_types.h>
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_otp.h>
+#include <toolbox/hex.h>
+#include <toolbox/strint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define CLI_I2C_MAX_TRANSFER_SIZE 1024U
+
+typedef struct {
+    const char* name;
+    const FuriHalI2cBusHandle* handle;
+} CliI2cBusDescription;
+
+static const CliI2cBusDescription cli_i2c_buses[] = {
+    {
+        .name = "control",
+        .handle = &furi_hal_i2c_handle_control,
+    },
+    {
+        .name = "main",
+        .handle = &furi_hal_i2c_handle_main,
+    },
+};
 
 void cli_command_uptime(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
@@ -204,13 +226,335 @@ static void cli_scan_i2c_bus(const FuriHalI2cBusHandle* handle, const char* bus_
     furi_hal_i2c_release(handle);
 }
 
-void cli_command_i2c(PipeSide* pipe, FuriString* args, void* context) {
+static void cli_command_i2c_help(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(args);
     UNUSED(context);
-    cli_scan_i2c_bus(&furi_hal_i2c_handle_control, "control");
+
+    printf(
+        "Usage:\r\n"
+        "i2c\r\n"
+        "i2c list\r\n"
+        "i2c search <0|control|1|main>\r\n"
+        "i2c write <0|control|1|main> <device_hex> <prefix_hex> <data_hex>\r\n"
+        "i2c read <0|control|1|main> <device_hex> <prefix_hex> <length>\r\n"
+        "Examples:\r\n"
+        "i2c list\r\n"
+        "i2c search control\r\n"
+        "i2c write control 01 01 02030404\r\n"
+        "i2c read control 01 01 16\r\n");
+}
+
+static void cli_command_i2c_list_buses(void) {
+    for(size_t i = 0; i < COUNT_OF(cli_i2c_buses); i++) {
+        printf("%u - %s\r\n", i, cli_i2c_buses[i].name);
+    }
+}
+
+static void cli_command_i2c_scan_all_buses(void) {
+    cli_scan_i2c_bus(cli_i2c_buses[0].handle, cli_i2c_buses[0].name);
     printf("\r\n");
-    cli_scan_i2c_bus(&furi_hal_i2c_handle_main, "main");
+    cli_scan_i2c_bus(cli_i2c_buses[1].handle, cli_i2c_buses[1].name);
+}
+
+static bool cli_command_i2c_parse_uint32(const char* word, uint8_t base, uint32_t* value) {
+    char* end = NULL;
+    if(strint_to_uint32(word, &end, value, base) != StrintParseNoError) {
+        return false;
+    }
+
+    return end != NULL && *end == '\0';
+}
+
+static bool cli_command_i2c_parse_hex_uint32(const char* word, uint32_t* value) {
+    const bool has_prefix =
+        (word[0] == '0') && ((word[1] == 'x') || (word[1] == 'X') || (word[1] == 'b') || (word[1] == 'B'));
+
+    return cli_command_i2c_parse_uint32(word, has_prefix ? 0 : 16, value);
+}
+
+static bool cli_command_i2c_resolve_bus(
+    FuriString* args,
+    const CliI2cBusDescription** bus_description) {
+    bool success = false;
+    FuriString* word = furi_string_alloc();
+
+    do {
+        if(!args_read_string_and_trim(args, word)) {
+            break;
+        }
+
+        uint32_t bus_index = 0;
+        if(cli_command_i2c_parse_uint32(furi_string_get_cstr(word), 10, &bus_index) &&
+           bus_index < COUNT_OF(cli_i2c_buses)) {
+            *bus_description = &cli_i2c_buses[bus_index];
+            success = true;
+            break;
+        }
+
+        for(size_t i = 0; i < COUNT_OF(cli_i2c_buses); i++) {
+            if(furi_string_equal_str(word, cli_i2c_buses[i].name)) {
+                *bus_description = &cli_i2c_buses[i];
+                success = true;
+                break;
+            }
+        }
+    } while(false);
+
+    furi_string_free(word);
+    return success;
+}
+
+static bool cli_command_i2c_parse_device_address(FuriString* args, uint8_t* device_address) {
+    bool success = false;
+    FuriString* word = furi_string_alloc();
+
+    do {
+        if(!args_read_string_and_trim(args, word)) {
+            break;
+        }
+
+        uint32_t value = 0;
+        if(!cli_command_i2c_parse_hex_uint32(furi_string_get_cstr(word), &value) ||
+           value > UINT8_MAX) {
+            break;
+        }
+
+        *device_address = value;
+        success = true;
+    } while(false);
+
+    furi_string_free(word);
+    return success;
+}
+
+static bool cli_command_i2c_parse_hex_buffer(
+    FuriString* args,
+    uint8_t** buffer,
+    size_t* buffer_size) {
+    bool success = false;
+    FuriString* word = furi_string_alloc();
+    uint8_t* data = NULL;
+
+    *buffer = NULL;
+    *buffer_size = 0;
+
+    do {
+        if(!args_read_string_and_trim(args, word)) {
+            break;
+        }
+
+        size_t word_size = furi_string_size(word);
+        if((word_size == 0) || ((word_size % 2) != 0)) {
+            break;
+        }
+
+        size_t byte_count = word_size / 2;
+        if(byte_count > CLI_I2C_MAX_TRANSFER_SIZE) {
+            break;
+        }
+
+        data = malloc(byte_count);
+        if(data == NULL) {
+            break;
+        }
+
+        size_t bytes_written = 0;
+        if(!hex_string_to_bytes(word, data, byte_count, &bytes_written) ||
+           bytes_written != byte_count) {
+            break;
+        }
+
+        *buffer = data;
+        *buffer_size = byte_count;
+        data = NULL;
+        success = true;
+    } while(false);
+
+    free(data);
+    furi_string_free(word);
+    return success;
+}
+
+static bool cli_command_i2c_parse_read_length(FuriString* args, size_t* read_length) {
+    bool success = false;
+    FuriString* word = furi_string_alloc();
+
+    do {
+        if(!args_read_string_and_trim(args, word)) {
+            break;
+        }
+
+        uint32_t value = 0;
+        if(!cli_command_i2c_parse_uint32(furi_string_get_cstr(word), 0, &value) ||
+           (value == 0) || (value > CLI_I2C_MAX_TRANSFER_SIZE)) {
+            break;
+        }
+
+        *read_length = value;
+        success = true;
+    } while(false);
+
+    furi_string_free(word);
+    return success;
+}
+
+static void cli_command_i2c_print_hex_buffer(const uint8_t* buffer, size_t buffer_size) {
+    for(size_t i = 0; i < buffer_size; i++) {
+        printf("%02x", buffer[i]);
+    }
+    printf("\r\n");
+}
+
+static void cli_command_i2c_write(FuriString* args) {
+    const CliI2cBusDescription* bus_description = NULL;
+    uint8_t device_address = 0;
+    uint8_t* prefix = NULL;
+    size_t prefix_size = 0;
+    uint8_t* data = NULL;
+    size_t data_size = 0;
+    uint8_t* tx_buffer = NULL;
+    size_t tx_size = 0;
+
+    do {
+        if(!cli_command_i2c_resolve_bus(args, &bus_description) ||
+           !cli_command_i2c_parse_device_address(args, &device_address) ||
+           !cli_command_i2c_parse_hex_buffer(args, &prefix, &prefix_size) ||
+           !cli_command_i2c_parse_hex_buffer(args, &data, &data_size) ||
+           (args_length(args) != 0)) {
+            printf("Invalid arguments. Use 'i2c' to see help.\r\n");
+            break;
+        }
+
+        tx_size = prefix_size + data_size;
+        tx_buffer = malloc(tx_size);
+        if(tx_buffer == NULL) {
+            printf("Not enough memory.\r\n");
+            break;
+        }
+
+        memcpy(tx_buffer, prefix, prefix_size);
+        memcpy(tx_buffer + prefix_size, data, data_size);
+
+        furi_hal_i2c_acquire(bus_description->handle);
+        int status = furi_hal_i2c_master_tx_blocking(
+            bus_description->handle,
+            device_address,
+            tx_buffer,
+            tx_size,
+            FURI_HAL_I2C_TIMEOUT_US);
+        furi_hal_i2c_release(bus_description->handle);
+
+        if(status < 0 || (size_t)status != tx_size) {
+            printf(
+                "I2C write failed on %s bus for device 0x%02x (status %d).\r\n",
+                bus_description->name,
+                device_address,
+                status);
+            break;
+        }
+
+        printf(
+            "Wrote %u byte(s) to 0x%02x on %s bus.\r\n",
+            (unsigned)data_size,
+            device_address,
+            bus_description->name);
+    } while(false);
+
+    free(tx_buffer);
+    free(data);
+    free(prefix);
+}
+
+static void cli_command_i2c_read(FuriString* args) {
+    const CliI2cBusDescription* bus_description = NULL;
+    uint8_t device_address = 0;
+    uint8_t* prefix = NULL;
+    size_t prefix_size = 0;
+    size_t read_length = 0;
+    uint8_t* rx_buffer = NULL;
+
+    do {
+        if(!cli_command_i2c_resolve_bus(args, &bus_description) ||
+           !cli_command_i2c_parse_device_address(args, &device_address) ||
+           !cli_command_i2c_parse_hex_buffer(args, &prefix, &prefix_size) ||
+           !cli_command_i2c_parse_read_length(args, &read_length) ||
+           (args_length(args) != 0)) {
+            printf("Invalid arguments. Use 'i2c' to see help.\r\n");
+            break;
+        }
+
+        rx_buffer = malloc(read_length);
+        if(rx_buffer == NULL) {
+            printf("Not enough memory.\r\n");
+            break;
+        }
+
+        furi_hal_i2c_acquire(bus_description->handle);
+        int status = furi_hal_i2c_master_trx_blocking(
+            bus_description->handle,
+            device_address,
+            prefix,
+            prefix_size,
+            rx_buffer,
+            read_length,
+            FURI_HAL_I2C_TIMEOUT_US);
+        furi_hal_i2c_release(bus_description->handle);
+
+        if(status < 0 || (size_t)status != read_length) {
+            printf(
+                "I2C read failed on %s bus for device 0x%02x (status %d).\r\n",
+                bus_description->name,
+                device_address,
+                status);
+            break;
+        }
+
+        cli_command_i2c_print_hex_buffer(rx_buffer, read_length);
+    } while(false);
+
+    free(rx_buffer);
+    free(prefix);
+}
+
+void cli_command_i2c(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
+    UNUSED(context);
+
+    if(args_length(args) == 0) {
+        cli_command_i2c_scan_all_buses();
+        return;
+    }
+
+    FuriString* command = furi_string_alloc();
+    if(!args_read_string_and_trim(args, command)) {
+        furi_string_free(command);
+        cli_command_i2c_help(pipe, args, context);
+        return;
+    }
+
+    if(furi_string_equal_str(command, "list")) {
+        if(args_length(args) == 0) {
+            cli_command_i2c_list_buses();
+        } else {
+            cli_command_i2c_help(pipe, args, context);
+        }
+    } else if(furi_string_equal_str(command, "search")) {
+        const CliI2cBusDescription* bus_description = NULL;
+        if(cli_command_i2c_resolve_bus(args, &bus_description) && (args_length(args) == 0)) {
+            cli_scan_i2c_bus(bus_description->handle, bus_description->name);
+        } else {
+            cli_command_i2c_help(pipe, args, context);
+        }
+    } else if(furi_string_equal_str(command, "write")) {
+        cli_command_i2c_write(args);
+    } else if(furi_string_equal_str(command, "read")) {
+        cli_command_i2c_read(args);
+    } else {
+        cli_command_i2c_help(pipe, args, context);
+    }
+
+    furi_string_free(command);
 }
 
 static void cli_command_expander_ext_help(PipeSide* pipe, FuriString* args, void* context) {
