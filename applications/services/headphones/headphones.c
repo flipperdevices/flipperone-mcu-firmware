@@ -70,7 +70,6 @@ static void headphones_custom_event_callback(uint32_t events, void* context) {
     if(events & HeadphonesEventTypeIsrTimer) {
         if(instance->debounce_counter < HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER) {
             instance->debounce_counter++;
-            furi_event_loop_timer_start(instance->timer, HEADPHONES_TIMEOUT_UPDATE_MS);
         } else {
             if(headphones_update(&hp_status)) {
                 HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
