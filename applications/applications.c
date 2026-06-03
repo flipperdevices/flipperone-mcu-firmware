@@ -34,6 +34,7 @@ extern int32_t cli_on_system_start(void* p);
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void power_consumption_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void led_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void cli_command_i2c(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -247,6 +248,12 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = led_cli,
         .name = "led",
+        .stack_size = 1024,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = cli_command_i2c,
+        .name = "i2c",
         .stack_size = 1024,
         .flags = CliCommandFlagParallelSafe,
     },

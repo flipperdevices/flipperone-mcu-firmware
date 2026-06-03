@@ -80,6 +80,7 @@ file(GLOB_RECURSE SOURCES
     "lib/tusb/*.c*"
     "applications/*.c"
     "applications/services/*.c"
+    "applications/services/cli/*.c"
     "applications/main/*.c"
     "targets/${TARGET_HARDWARE}/src/*.c*" 
 )

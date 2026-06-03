@@ -15,7 +15,6 @@ static void cli_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "top", CliCommandFlagParallelSafe, cli_command_top, NULL);
     cli_registry_add_command(registry, "free", CliCommandFlagParallelSafe, cli_command_free, NULL);
     cli_registry_add_command(registry, "free_blocks", CliCommandFlagParallelSafe, cli_command_free_blocks, NULL);
-    cli_registry_add_command(registry, "i2c", CliCommandFlagParallelSafe, cli_command_i2c, NULL);
     cli_registry_add_command(registry, "expander_ext", CliCommandFlagParallelSafe, cli_command_expander_ext, NULL);
     cli_registry_add_command(registry, "clock_out", CliCommandFlagParallelSafe, cli_command_clock_out, NULL);
     cli_registry_add_command(registry, "gpio", CliCommandFlagParallelSafe, cli_command_gpio, NULL);
