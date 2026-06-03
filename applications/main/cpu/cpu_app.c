@@ -207,14 +207,12 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
 void cpu_app_menu_close_click_callback(void* context) {
     furi_check(context);
     CpuApp* instance = context;
-    size_t selected_index = (size_t)context;
     cpu_app_send_message(instance, CpuAppMessageTypeClose);
 }
 
 void cpu_app_menu_restart_click_callback(void* context) {
     furi_check(context);
     CpuApp* instance = context;
-    size_t selected_index = (size_t)context;
     cpu_app_send_message(instance, CpuAppMessageTypeReset);
 }
 
@@ -267,7 +265,7 @@ int32_t cpu_app(void* p) {
         } else if(strcmp(arg, cpu_app_menu_items[CpuAppMenuItemMaskrom]) == 0) {
             cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
         } else {
-            FURI_LOG_W(TAG, "Unknown argument: %s", arg);
+            FURI_LOG_E(TAG, "Unknown argument: %s", arg);
         }
     }
 
