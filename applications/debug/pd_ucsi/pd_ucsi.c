@@ -13,12 +13,15 @@
 // emit PS_RDY. Note: in DRP without a partner the chip briefly settles as
 // SRC every ~500 ms (false positive on Ra / noise) and we cycle OTG on/off
 // — a Try.SRC delay in the TC layer would suppress this. The app loops on
-// ucsi_ppm_tick (every 10 ms), prints state changes, and dumps the
-// partner's Source PDOs once the PD contract is up.
+// ucsi_ppm_tick (every 10 ms), prints state changes, dumps the partner's
+// Source PDOs once the PD contract is up, and (if we're the sink) fires a
+// one-shot PR_Swap so we become the source and charge the partner.
 
 #include <furi.h>
 #include <furi_hal_i2c.h>
 #include <furi_hal_i2c_config.h>
+#include <furi_hal_gpio.h>
+#include <furi_hal_resources.h>
 #include <power/power.h>
 
 #include <ucsi_ppm.h>
@@ -39,6 +42,7 @@ typedef struct {
     UcsiPpmConnectorState last_state;
     uint32_t last_log_tick;
     bool partner_caps_dumped;
+    bool pr_swap_attempted;
 } PdUcsi;
 
 // --- HAL adapters ----------------------------------------------------------
@@ -48,41 +52,103 @@ static uint32_t hal_time_ms(void* ctx) {
     return furi_get_tick();
 }
 
+// Read a few diagnostic registers right after an I²C failure to figure out
+// whether the chip lost its config (it was reset by a VDD glitch), is in a
+// busy/standby state, or is completely unresponsive.
+static void post_fail_snapshot(PdUcsi* h, uint8_t addr) {
+    if(addr != FUSB302_I2C_ADDR) return;
+    // INTERRUPT registers are read-clear — putting them last so the chip
+    // state we sample doesn't bias the rest of the snapshot.
+    static const uint8_t regs[] = {
+        0x01, // DEVICE_ID
+        0x0B, // POWER
+        0x02, // SWITCHES0
+        0x03, // SWITCHES1
+        0x06, // CONTROL0  (TX_FLUSH bit, INT_MASK, HOST_CUR)
+        0x07, // CONTROL1  (ENSOPx, RX_FLUSH, AUTO_HARDRESET)
+        0x08, // CONTROL2
+        0x09, // CONTROL3
+        0x3D, // STATUS1A  (TOGSS + RXSOPxDB)
+        0x40, // STATUS0   (BC_LVL/COMP/VBUSOK/CRC_CHK)
+        0x41, // STATUS1   (RX_FULL/EMPTY, RXSOP)
+        0x3E, // INTERRUPTA — read clears
+        0x3F, // INTERRUPTB — read clears
+        0x42, // INTERRUPT  — read clears
+    };
+    static const char* names[] = {
+        "DevId",
+        "Pwr",
+        "Sw0",
+        "Sw1",
+        "Ctl0",
+        "Ctl1",
+        "Ctl2",
+        "Ctl3",
+        "S1a",
+        "Sts0",
+        "Sts1",
+        "InA",
+        "InB",
+        "Int",
+    };
+    for(size_t i = 0; i < sizeof(regs); ++i) {
+        uint8_t v = 0xFF;
+        furi_hal_i2c_acquire(h->i2c);
+        const int rc = furi_hal_i2c_master_trx_blocking(h->i2c, FUSB302_I2C_ADDR, &regs[i], 1, &v, 1, FURI_HAL_I2C_TIMEOUT_US);
+        furi_hal_i2c_release(h->i2c);
+        FURI_LOG_W(TAG, "  post-fail %s[0x%02X]=0x%02X rc=%d", names[i], regs[i], v, rc);
+    }
+}
+
 static UcsiPpmStatus hal_i2c_write(void* ctx, uint8_t addr, const uint8_t* data, size_t len) {
     PdUcsi* h = ctx;
+
     furi_hal_i2c_acquire(h->i2c);
     const int rc = furi_hal_i2c_master_tx_blocking(h->i2c, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
+    if(rc < 0) {
+        FURI_LOG_W(TAG, "i2c_write FAIL: addr=0x%02X len=%u reg0=0x%02X rc=%d", addr, (unsigned)len, len > 0 ? data[0] : 0, rc);
+        // dump transaction bytes
+        for(size_t i = 0; i < len; ++i) {
+            FURI_LOG_W(TAG, "  data[%u]=0x%02X", (unsigned)i, data[i]);
+        }
+    }
     furi_hal_i2c_release(h->i2c);
-    return rc >= 0 ? UcsiPpmStatusOk : UcsiPpmStatusHalError;
+
+    if(rc < 0) {
+        post_fail_snapshot(h, addr);
+        return UcsiPpmStatusHalError;
+    }
+    return UcsiPpmStatusOk;
 }
 
 static UcsiPpmStatus hal_i2c_read(void* ctx, uint8_t addr, uint8_t* data, size_t len) {
     PdUcsi* h = ctx;
     furi_hal_i2c_acquire(h->i2c);
-    // Standalone read fallback — only hit when i2c_write_read isn't wired.
     const int rc = furi_hal_i2c_master_rx_blocking(h->i2c, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(h->i2c);
-    return rc >= 0 ? UcsiPpmStatusOk : UcsiPpmStatusHalError;
+    if(rc < 0) {
+        FURI_LOG_W(TAG, "i2c_read FAIL: addr=0x%02X len=%u rc=%d", addr, (unsigned)len, rc);
+        return UcsiPpmStatusHalError;
+    }
+    return UcsiPpmStatusOk;
 }
 
-// Combined repeated-start txn — one atomic bus operation. Pairs the register
-// pointer write with the data read so other drivers can't slip in between
-// (FUSB302 would otherwise lose its address pointer and return garbage).
 static UcsiPpmStatus hal_i2c_write_read(void* ctx, uint8_t addr, const uint8_t* tx, size_t tx_len, uint8_t* rx, size_t rx_len) {
     PdUcsi* h = ctx;
     furi_hal_i2c_acquire(h->i2c);
     const int rc = furi_hal_i2c_master_trx_blocking(h->i2c, addr, tx, tx_len, rx, rx_len, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(h->i2c);
-    return rc >= 0 ? UcsiPpmStatusOk : UcsiPpmStatusHalError;
+    if(rc < 0) {
+        FURI_LOG_W(TAG, "i2c_trx FAIL: addr=0x%02X tx=%u rx=%u reg=0x%02X rc=%d", addr, (unsigned)tx_len, (unsigned)rx_len, tx_len > 0 ? tx[0] : 0, rc);
+        return UcsiPpmStatusHalError;
+    }
+    return UcsiPpmStatusOk;
 }
 
 static void hal_vbus_source_write(void* ctx, bool value) {
     PdUcsi* h = ctx;
     FURI_LOG_I(TAG, "vbus_source(%s)", value ? "on" : "off");
     if(value) {
-        // Default to vSafe5V at 1.5 A — matches our advertised Source PDO.
-        // PE will retune via psu_set once the partner Requests a different
-        // voltage during contract negotiation.
         if(!power_bq25792_set_otg_params(h->power, 5000u, 1500u)) {
             FURI_LOG_W(TAG, "bq25792_set_otg_params(5V/1.5A) failed");
         }
@@ -169,11 +235,19 @@ static void config_fill(UcsiPpmConfig* cfg, PdUcsi* host) {
     cfg->initial_cc_operation_mode = UcsiPpmCcModeDrp;
     cfg->source_rp_current = UcsiPpmRpCurrent1A5;
 
-    // Host-port-like Source caps (5V/1500 mA) and a Sink ask for 5V/3 A.
-    cfg->source_caps.pdos[0] = ucsi_ppm_pdo_fixed_source(5000, 1500, true /*DRP*/, false, true /*USBcom*/, true /*DRD*/);
-    cfg->source_caps.count = 1;
+    // Source caps: vSafe5V mandatory at PDO #1, then 12V as an upgrade
+    // option. Partner picks whichever PDO matches its sink range — Macbook
+    // will likely Request the higher-voltage one if it accepts 12V.
+    cfg->source_caps.pdos[0] = ucsi_ppm_pdo_fixed_source(5000, 3000, true /*DRP*/, false, true /*USBcom*/, true /*DRD*/);
+    cfg->source_caps.pdos[1] = ucsi_ppm_pdo_fixed_source(9000, 3000, true, false, true, true);
+    cfg->source_caps.pdos[2] = ucsi_ppm_pdo_fixed_source(12000, 3000, true, false, true, true);
+    cfg->source_caps.pdos[3] = ucsi_ppm_pdo_fixed_source(15000, 3000, true, false, true, true);
+    cfg->source_caps.count = 4;
     cfg->sink_caps.pdos[0] = ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true);
-    cfg->sink_caps.count = 1;
+    cfg->sink_caps.pdos[1] = ucsi_ppm_pdo_fixed_sink(9000, 3000, true, false, false, true, true);
+    cfg->sink_caps.pdos[2] = ucsi_ppm_pdo_fixed_sink(12000, 3000, true, false, false, true, true);
+    cfg->sink_caps.pdos[3] = ucsi_ppm_pdo_fixed_sink(15000, 3000, true, false, false, true, true);
+    cfg->sink_caps.count = 4;
 
     cfg->supports_usb_pd = true;
     cfg->power_source_vbus = true;
@@ -228,22 +302,32 @@ static void dump_fusb302_regs(PdUcsi* host) {
     }
 }
 
-// Dumps partner Source caps the first time we see a live PD contract during
-// an attach session, then clears the flag on detach so the next attach gets
-// a fresh dump.
-static void maybe_dump_partner_caps(PdUcsi* host) {
+// Once per attach session, after the PD contract commits: dump partner's
+// Source caps and (if we're currently the sink) request a PR_Swap so we
+// become the source and start charging the partner. Flags reset on detach.
+static void maybe_run_attach_actions(PdUcsi* host) {
     const bool attached = host->last_state == UcsiPpmStateAttachedSnk || host->last_state == UcsiPpmStateAttachedSrc;
     if(!attached) {
         host->partner_caps_dumped = false;
+        host->pr_swap_attempted = false;
         return;
     }
-    if(host->partner_caps_dumped) return;
 
     UcsiPpmContractInfo c = {0};
     if(ucsi_ppm_get_contract(host->ppm, &c) != UcsiPpmStatusOk || !c.contract_in_place) return;
 
-    ucsi_shim_dump_partner_source_caps(host->ppm);
-    host->partner_caps_dumped = true;
+    if(!host->partner_caps_dumped) {
+        ucsi_shim_dump_partner_source_caps(host->ppm);
+        host->partner_caps_dumped = true;
+    }
+
+    if(!host->pr_swap_attempted && !c.is_source) {
+        FURI_LOG_I(TAG, "auto: initiate PR_Swap snk→src");
+        if(!ucsi_shim_set_pdr(host->ppm, 0x01u /* Initiate-Source */)) {
+            FURI_LOG_W(TAG, "SET_PDR initiate failed");
+        }
+        host->pr_swap_attempted = true;
+    }
 }
 
 static int32_t pd_ucsi_thread(void* arg) {
@@ -276,6 +360,7 @@ static int32_t pd_ucsi_thread(void* arg) {
     host->last_state = ucsi_ppm_get_connector_state(host->ppm);
     host->last_log_tick = furi_get_tick();
     host->partner_caps_dumped = false;
+    host->pr_swap_attempted = false;
 
     while(true) {
         // No INT GPIO wired yet — poll FUSB302 every tick. phy_pump reads
@@ -303,7 +388,7 @@ static int32_t pd_ucsi_thread(void* arg) {
             ucsi_shim_log_status_if_changed(host->ppm);
         }
 
-        maybe_dump_partner_caps(host);
+        maybe_run_attach_actions(host);
 
         furi_delay_ms(TICK_PERIOD_MS);
     }

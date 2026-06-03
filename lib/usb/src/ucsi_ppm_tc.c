@@ -297,8 +297,11 @@ static void handle_vbus_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         // for already-Attached states use this for power-op-mode signalling
         // once those layers exist.
     } else {
-        // VBUS lost while attached as Sink — partner went away.
-        if(ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk) {
+        // VBUS lost while attached as Sink — partner went away, unless
+        // we're in the middle of a PR_Swap where the partner's VBUS drop is
+        // an expected protocol step (PD R3.0 §6.6.x).
+        if(ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk &&
+           !ucsi_ppm_pe_pr_swap_in_progress(ppm)) {
             tc_enter_unattached(ppm);
         }
     }

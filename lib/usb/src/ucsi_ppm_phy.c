@@ -31,8 +31,7 @@
 static UcsiPpmStatus phy_read_reg(UcsiPpm* ppm, uint8_t reg, uint8_t* out_value) {
     const uint8_t addr = ppm->config.fusb302_i2c_addr;
     if(ppm->config.i2c_write_read) {
-        return ppm->config.i2c_write_read(
-            ppm->config.hal_ctx, addr, &reg, 1, out_value, 1);
+        return ppm->config.i2c_write_read(ppm->config.hal_ctx, addr, &reg, 1, out_value, 1);
     }
     UcsiPpmStatus s = ppm->config.i2c_write(ppm->config.hal_ctx, addr, &reg, 1);
     if(s != UcsiPpmStatusOk) return s;
@@ -232,14 +231,25 @@ UcsiPpmStatus ucsi_ppm_phy_set_source_termination(UcsiPpm* ppm, UcsiPpmPhyCc cc)
     // the chip's toggle FSM does NOT keep PU_EN asserted after I_TOGDONE —
     // without an explicit PU_EN, CC floats and BC_LVL reads vNoRd within a
     // few ms of attach.
-    const uint8_t mask = (uint8_t)((1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 6) | (1u << 7));
-    uint8_t value = 0u;
+    const uint8_t sw0_mask = (uint8_t)((1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 6) | (1u << 7));
+    uint8_t sw0_value = 0u;
     if(cc == UcsiPpmPhyCc1) {
-        value |= (1u << 2) | (1u << 6); // MEAS_CC1, PU_EN1
+        sw0_value |= (1u << 2) | (1u << 6); // MEAS_CC1, PU_EN1
     } else if(cc == UcsiPpmPhyCc2) {
-        value |= (1u << 3) | (1u << 7); // MEAS_CC2, PU_EN2
+        sw0_value |= (1u << 3) | (1u << 7); // MEAS_CC2, PU_EN2
     }
-    return phy_rmw_reg(ppm, Fusb302RegSwitches0, mask, value);
+    UcsiPpmStatus s = phy_rmw_reg(ppm, Fusb302RegSwitches0, sw0_mask, sw0_value);
+    if(s != UcsiPpmStatusOk) return s;
+
+    // SWITCHES1.TX_CCx routes the BMC TX driver. Without it the chip can't
+    // transmit PD frames and NACKs any write to FIFOS — easy to miss when
+    // re-arming the chip post-SW_RESET (e.g. across a PR_Swap), so handle it
+    // alongside the source termination.
+    const uint8_t sw1_mask = (uint8_t)((1u << 0) | (1u << 1));
+    uint8_t sw1_value = 0u;
+    if(cc == UcsiPpmPhyCc1) sw1_value |= (1u << 0); // TX_CC1
+    if(cc == UcsiPpmPhyCc2) sw1_value |= (1u << 1); // TX_CC2
+    return phy_rmw_reg(ppm, Fusb302RegSwitches1, sw1_mask, sw1_value);
 }
 
 UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp, uint8_t spec_rev) {

@@ -31,6 +31,8 @@ bool ucsi_shim_set_ccom(UcsiPpm* ppm, uint8_t cc_mode_bits);
 bool ucsi_shim_set_uor(UcsiPpm* ppm, uint8_t role_bits);
 
 // SET_PDR: bit 0 = initiate swap to Source, bit 1 = Sink, bit 2 = accept.
+// Fire `ucsi_shim_set_pdr(ppm, 0x01)` from PE_SNK_Ready to kick off the
+// sink→source PR_Swap protocol (turn us into the host port).
 bool ucsi_shim_set_pdr(UcsiPpm* ppm, uint8_t role_bits);
 
 // SET_POWER_LEVEL on the sink side. op_current_ma is rounded to 50 mA units

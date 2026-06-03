@@ -1185,9 +1185,12 @@ static bool test_cmd_set_pdr_stores_accept(void) {
     ucsi_ppm_init(ppm, &cfg);
     TEST_ASSERT(ppm->accept_pr_swap == true);
 
-    // bit 0 = initiate swap to Source, bit 2 = 0 (reject swaps).
+    // bit 1 = initiate swap to Sink (not implemented in v1 — silently
+    // ignored), bit 2 = 0 (reject swaps). Avoid bit 0 / Initiate-Source
+    // because that path actually fires PE_PRS_SNK_SRC and would error here
+    // without an active PD contract.
     uint8_t payload[7] = {0};
-    pack_role3(&payload[1], &payload[2], 0x01u);
+    pack_role3(&payload[1], &payload[2], 0x02u);
     ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 1, 7, payload);
     uint8_t op = UCSI_PPM_OPCODE_SET_PDR;
     ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
@@ -4595,6 +4598,116 @@ static bool test_pe_dr_swap_received_outside_ready_ignored(void) {
     return true;
 }
 
+static bool test_pe_pr_swap_initiated_sends_swap(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+
+    TEST_ASSERT(ucsi_ppm_pe_request_pr_swap_to_source(ppm) == UcsiPpmStatusOk);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePrSwapSnkSendSwap);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x0Au /* PR_Swap */) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_pr_swap_full_snk_to_src_flow(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+    g_mock_vbus_source_calls = 0;
+
+    // 1) Initiate PR_Swap.
+    TEST_ASSERT(ucsi_ppm_pe_request_pr_swap_to_source(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePrSwapSnkSendSwap);
+
+    // 2) Partner Accepts → wait for source-off.
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePrSwapSnkWaitForSourceOff);
+
+    // 3) Partner's PS_RDY (VBUS dropped) → we flip CC, enable OTG, wait
+    // for our VBUSOK.
+    simulate_pd_message(ppm, 0x06u /* PS_RDY */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePrSwapSnkSourceOn);
+    TEST_ASSERT(ppm->tc_role_is_src);
+    TEST_ASSERT(g_mock_vbus_source_calls >= 1);
+    TEST_ASSERT(g_mock_vbus_source_last == true);
+
+    // 4) Chip reports VBUSOK=1; once past the 50 ms settle window the next
+    // tick sends our PS_RDY and enters SrcSendCapabilities. Source_Capabilities
+    // itself is deferred to the SrcSendCapabilities timer (~150 ms) so the
+    // chip's BMC modulator has finished serialising PS_RDY before the next
+    // FIFOS push lands.
+    Fusb302Status0RegBits s0 = *((const Fusb302Status0RegBits*)&g_mock_regs[Fusb302RegStatus0]);
+    s0.vbusok = 1u;
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    g_mock_time_ms += 60;
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x06u /* PS_RDY */) >= 0);
+
+    // 5) After the SourceCapTimer expires, the next tick fires the first
+    // Source_Capabilities burst.
+    g_mock_time_ms += 160;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x01u /* Source_Capabilities */) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_pr_swap_reject_keeps_sink(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    ucsi_ppm_pe_request_pr_swap_to_source(ppm);
+
+    simulate_pd_message(ppm, 0x04u /* Reject */, NULL, 0);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(!ppm->tc_role_is_src);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_pr_swap_source_off_timeout_hard_resets(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    ucsi_ppm_pe_request_pr_swap_to_source(ppm);
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePrSwapSnkWaitForSourceOff);
+
+    g_mock_time_ms += 800; // past PSSourceOff (750 ms)
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_pr_swap_initiated_outside_snk_ready_errors(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    TEST_ASSERT(ucsi_ppm_pe_request_pr_swap_to_source(ppm) == UcsiPpmStatusInvalidArg);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_pr_swap_in_progress_blocks_sink_detach(void) {
+    // Once PR_Swap has been accepted, the partner will drop VBUS as part
+    // of the protocol — TC must not interpret that as a detach.
+    UcsiPpm* ppm = mock_snk_ready();
+    ucsi_ppm_pe_request_pr_swap_to_source(ppm);
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePrSwapSnkWaitForSourceOff);
+
+    // VBUS drops while in WaitForSourceOff — must NOT trigger detach.
+    simulate_vbus_changed(ppm, false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) != UcsiPpmStateUnattached);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePrSwapSnkWaitForSourceOff);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_pe_pr_swap_always_rejected_in_v1(void) {
     UcsiPpm* ppm = mock_snk_ready();
     ppm->accept_pr_swap = true; // even with policy enabled — v1 still rejects
@@ -5240,6 +5353,12 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_dr_swap_received_accepted_flips_data_role),
     TEST_ENTRY(test_pe_dr_swap_received_rejected_by_policy),
     TEST_ENTRY(test_pe_dr_swap_received_outside_ready_ignored),
+    TEST_ENTRY(test_pe_pr_swap_initiated_sends_swap),
+    TEST_ENTRY(test_pe_pr_swap_full_snk_to_src_flow),
+    TEST_ENTRY(test_pe_pr_swap_reject_keeps_sink),
+    TEST_ENTRY(test_pe_pr_swap_source_off_timeout_hard_resets),
+    TEST_ENTRY(test_pe_pr_swap_initiated_outside_snk_ready_errors),
+    TEST_ENTRY(test_pe_pr_swap_in_progress_blocks_sink_detach),
     TEST_ENTRY(test_pe_pr_swap_always_rejected_in_v1),
     TEST_ENTRY(test_pe_vconn_swap_always_rejected_in_v1),
     TEST_ENTRY(test_pe_dr_swap_initiated_via_set_uor),

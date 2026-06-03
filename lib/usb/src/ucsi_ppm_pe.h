@@ -25,6 +25,10 @@ typedef enum {
     UcsiPpmPePendingHardResetSent, // Hard Reset triggered, waiting for HARDSENT
     UcsiPpmPeWaitForSoftResetAccept, // Soft_Reset sent, armed SenderResponseTimer
     UcsiPpmPeWaitForDrSwapResponse, // DR_Swap sent, armed SenderResponseTimer
+    // PR_Swap initiator path, sink→source direction (PD R3.0 §8.3.3.7).
+    UcsiPpmPePrSwapSnkSendSwap, // PR_Swap sent, armed SenderResponseTimer
+    UcsiPpmPePrSwapSnkWaitForSourceOff, // Accept received, armed PSSourceOffTimer
+    UcsiPpmPePrSwapSnkSourceOn, // partner PS_RDY, OTG ramping, armed PSSourceOnTimer
     UcsiPpmPeStateError, // unrecoverable: HardResetCounter exhausted
 } UcsiPpmPeState;
 
@@ -55,6 +59,20 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event);
 // WaitForDrSwapResponse and arms SenderResponseTimer; partner's Accept flips
 // the data role, Reject/Wait/timeout leaves the role intact.
 UcsiPpmStatus ucsi_ppm_pe_request_dr_swap(UcsiPpm* ppm, bool to_dfp);
+
+// Initiates a sink-to-source PR_Swap toward the partner (PD R3.0 §8.3.3.7).
+// Only valid from PE_SNK_Ready. Drives the full protocol: send PR_Swap,
+// wait for partner's Accept and PS_RDY (partner turned off VBUS), flip CC
+// termination to Rp, enable external VBUS source via config.gpio_write_vbus_source,
+// wait for VBUSOK, emit our PS_RDY, and start Source_Capabilities. Any
+// failure (Reject/Wait/Not_Supported/timeout) leaves the contract intact
+// in SnkReady. Source→sink direction is not implemented in v1.
+UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_source(UcsiPpm* ppm);
+
+// True while a PR_Swap is mid-flight. TC uses this to skip the AttachedSnk
+// "VBUS dropped → detach" handler, since the partner deliberately drops
+// VBUS as part of the protocol.
+bool ucsi_ppm_pe_pr_swap_in_progress(const UcsiPpm* ppm);
 
 // Renegotiates the existing sink-side contract at a different operating
 // current. Builds a fresh Request RDO selecting the same PDO position as

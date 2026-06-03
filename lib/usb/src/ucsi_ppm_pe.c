@@ -1,6 +1,7 @@
 #include "ucsi_ppm_pe.h"
 
 #include "ucsi_ppm_prl.h"
+#include "ucsi_ppm_tc.h"
 
 #include <string.h>
 
@@ -71,6 +72,14 @@
 #define UCSI_PPM_PE_SOURCE_CAP_MS      150u // tTypeCSendSourceCap nominal
 #define UCSI_PPM_PE_CAPS_COUNT_MAX     50u // nCapsCount
 #define UCSI_PPM_PE_HARD_RESET_MAX     2u // nHardResetCount (PD R3.0 Table 7.12)
+#define UCSI_PPM_PE_PS_SOURCE_OFF_MS   750u // tPSSourceOff (PR_Swap §6.6.x)
+#define UCSI_PPM_PE_PS_SOURCE_ON_MS    480u // tPSSourceOn
+// Empirical settle delay after the sink→source SWITCHES0 flip + OTG enable
+// before the chip's FUSB302 BMC modulator reliably accepts the first source-
+// role TX. Spec doesn't quote a value — picked low enough that VBUSOK
+// debounce dominates, high enough that the post-flip NACK we observed in
+// bring-up doesn't recur.
+#define UCSI_PPM_PE_PR_SWAP_SRC_SETTLE_MS 50u
 
 // --- helpers ---------------------------------------------------------------
 
@@ -404,6 +413,43 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
             ppm->pe_state = ppm->tc_role_is_src ? (int)UcsiPpmPeSrcReady : (int)UcsiPpmPeSnkReady;
         }
         break;
+    case(int)UcsiPpmPePrSwapSnkSendSwap:
+        if(type == PD_MSG_TYPE_ACCEPT) {
+            // Partner committed to the swap. Now wait for partner's PS_RDY
+            // signalling its VBUS has dropped to vSafe0V.
+            ppm->pe_state = (int)UcsiPpmPePrSwapSnkWaitForSourceOff;
+            pe_arm_timer(ppm);
+        } else if(
+            type == PD_MSG_TYPE_REJECT || type == PD_MSG_TYPE_WAIT ||
+            type == PD_MSG_TYPE_NOT_SUPPORTED) {
+            // Partner refused — contract stays intact, we go back to SnkReady.
+            ppm->pe_state = (int)UcsiPpmPeSnkReady;
+        }
+        break;
+    case(int)UcsiPpmPePrSwapSnkWaitForSourceOff:
+        if(type == PD_MSG_TYPE_PS_RDY) {
+            // Partner's VBUS is now off. Commit the role flip and bring our
+            // VBUS up. tc_role_is_src must flip BEFORE handle_vbus_changed
+            // sees the partner's VBUS=0 (which it will any moment now via
+            // I_VBUSOK), otherwise the AttachedSnk detach handler would
+            // tear us down. We also flip tc_state so the CC handlers and
+            // GET_CONNECTOR_STATUS reflect the new role.
+            ppm->tc_role_is_src = true;
+            ppm->tc_state = (int)UcsiPpmTcStateAttachedSrc;
+            (void)ucsi_ppm_phy_set_rp_current(ppm, ppm->config.source_rp_current);
+            (void)ucsi_ppm_phy_set_source_termination(
+                ppm, (UcsiPpmPhyCc)ppm->tc_orientation);
+            ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, true);
+            // Drop the old sink contract — we'll start fresh as source.
+            ppm->pe_received_pdo_count = 0u;
+            ppm->pe_requested_pdo_index = 0u;
+            ppm->pe_current_rdo = 0u;
+            ppm->pe_negotiated_voltage_mv = 0u;
+            ppm->pe_negotiated_current_ma = 0u;
+            ppm->pe_state = (int)UcsiPpmPePrSwapSnkSourceOn;
+            pe_arm_timer(ppm);
+        }
+        break;
     default:
         break;
     }
@@ -557,6 +603,28 @@ UcsiPpmStatus ucsi_ppm_pe_request_dr_swap(UcsiPpm* ppm, bool to_dfp) {
     return UcsiPpmStatusOk;
 }
 
+UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_source(UcsiPpm* ppm) {
+    // Only sink-to-source is wired in v1. Source-to-sink would mirror the
+    // protocol but with us turning VBUS off first — needs more careful PSU
+    // teardown ordering.
+    if(ppm->pe_state != (int)UcsiPpmPeSnkReady) return UcsiPpmStatusInvalidArg;
+    if(!pe_send_control(ppm, PD_MSG_TYPE_PR_SWAP)) {
+        return UcsiPpmStatusHalError;
+    }
+    ppm->pe_state = (int)UcsiPpmPePrSwapSnkSendSwap;
+    pe_arm_timer(ppm);
+    return UcsiPpmStatusOk;
+}
+
+// True while a PR_Swap is mid-flight — used by TC to suppress the AttachedSnk
+// "VBUS dropped → detach" path, since during PR_Swap the partner deliberately
+// drops VBUS as part of the protocol.
+bool ucsi_ppm_pe_pr_swap_in_progress(const UcsiPpm* ppm) {
+    return ppm->pe_state == (int)UcsiPpmPePrSwapSnkSendSwap ||
+           ppm->pe_state == (int)UcsiPpmPePrSwapSnkWaitForSourceOff ||
+           ppm->pe_state == (int)UcsiPpmPePrSwapSnkSourceOn;
+}
+
 void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     switch(event->kind) {
     case UcsiPpmPhyEventHardResetSent:
@@ -619,6 +687,58 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
         // the initiator to PE_*_Hard_Reset.
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
         break;
+    case(int)UcsiPpmPePrSwapSnkSendSwap:
+        if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
+        break;
+    case(int)UcsiPpmPePrSwapSnkWaitForSourceOff:
+        // Partner has tPSSourceOff (~750 ms) to drop its VBUS and send
+        // PS_RDY. Missing PS_RDY → Hard Reset per PD §6.6.x.
+        if(pe_timer_expired(ppm, UCSI_PPM_PE_PS_SOURCE_OFF_MS)) pe_request_hard_reset(ppm);
+        break;
+    case(int)UcsiPpmPePrSwapSnkSourceOn: {
+        // Wait for VBUSOK AND a settle window. The FUSB302 ends up in a
+        // half-broken state after the sink→source SWITCHES0 flip — it
+        // ACKs the address but NACKs FIFOS data writes. A full PD_RESET
+        // alone wasn't enough; we need to wait for OTG ramp + chip to
+        // re-acquire BMC framer state.
+        bool vbus_ok = false;
+        const uint32_t elapsed_ms =
+            (uint32_t)(ppm->config.time_ms(ppm->config.hal_ctx) - ppm->pe_timer_start_ms);
+        const bool ready = elapsed_ms >= UCSI_PPM_PE_PR_SWAP_SRC_SETTLE_MS &&
+                           ucsi_ppm_phy_read_vbusok(ppm, &vbus_ok) == UcsiPpmStatusOk &&
+                           vbus_ok;
+        if(ready) {
+            // Minimal post-PR_Swap re-arm: chip was in sink mode with AUTO_CRC
+            // working, we only need to flip SWITCHES1.POWER_ROLE so any
+            // auto-CRC the chip emits matches our new source role. The
+            // termination flip already happened on PS_RDY (set_source_termination
+            // covers SWITCHES0 + TX_CC in SWITCHES1). Avoid SW_RESET — it
+            // tears down the working TX path and the chip NACKs the next
+            // FIFOS push for reasons we don't fully understand (datasheet
+            // doesn't spell out the post-reset TX prerequisites).
+            (void)ucsi_ppm_phy_set_msg_header_bits(
+                ppm, true /*src*/, ppm->pe_data_role_is_dfp, 0b10u /*PD R3.0*/);
+            if(!pe_send_control(ppm, PD_MSG_TYPE_PS_RDY)) {
+                pe_request_hard_reset(ppm);
+                break;
+            }
+            // Do NOT push Source_Capabilities right after PS_RDY — the
+            // FUSB302 BMC modulator is still serialising PS_RDY (~330 µs)
+            // and NACKs the very next FIFOS push. Move to SrcSendCapabilities
+            // with caps_counter=0 and let its 150 ms tick fire the first
+            // caps transmission, by which point I_TXSENT for PS_RDY has long
+            // since landed.
+            ppm->pe_caps_counter = 0u;
+            ppm->pe_state = (int)UcsiPpmPeSrcSendCapabilities;
+            pe_arm_timer(ppm);
+            ucsi_ppm_notify_connector_change(
+                ppm, UCSI_PPM_CSC_POWER_DIRECTION_CHANGED | UCSI_PPM_CSC_PARTNER_CHANGED);
+        } else if(pe_timer_expired(ppm, UCSI_PPM_PE_PS_SOURCE_ON_MS)) {
+            // Our OTG didn't bring VBUS up in time — escalate.
+            pe_request_hard_reset(ppm);
+        }
+        break;
+    }
     case(int)UcsiPpmPeSnkWaitForPsRdy:
     case(int)UcsiPpmPeSrcTransitionSupply:
         if(pe_timer_expired(ppm, UCSI_PPM_PE_PS_TRANSITION_MS)) pe_request_hard_reset(ppm);

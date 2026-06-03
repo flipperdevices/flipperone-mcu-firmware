@@ -370,6 +370,16 @@ static uint32_t handle_set_pdr(UcsiPpm* ppm) {
     }
 
     ppm->accept_pr_swap = (role & ROLE_ACCEPT_SWAPS) != 0u;
+
+    // ROLE_INITIATE_PRIMARY = "swap to Source" — kick off PR_Swap snk→src
+    // via PE. Only the snk→src direction is wired in v1; src→snk would
+    // require us to drop our own VBUS first (more careful PSU teardown).
+    if((role & ROLE_INITIATE_PRIMARY) != 0u) {
+        const UcsiPpmStatus s = ucsi_ppm_pe_request_pr_swap_to_source(ppm);
+        if(s != UcsiPpmStatusOk) {
+            return fail_with_error(ppm, UCSI_PPM_ERR_PPM_POLICY_CONFLICT);
+        }
+    }
     return UCSI_PPM_CCI_COMMAND_COMPLETED;
 }
 
@@ -652,8 +662,7 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
     // this carve-out OPM would never see the reset acknowledged.
     if(result_cci != 0u && ppm->config.alert) {
         const bool reset_completed = (result_cci & UCSI_PPM_CCI_RESET_COMPLETED) != 0u;
-        const bool cmd_alert_enabled =
-            (ppm->notification_mask & UCSI_PPM_NOTIF_CMD_COMPLETED) != 0u;
+        const bool cmd_alert_enabled = (ppm->notification_mask & UCSI_PPM_NOTIF_CMD_COMPLETED) != 0u;
         if(reset_completed || cmd_alert_enabled) {
             ppm->config.alert(ppm->config.hal_ctx);
         }
