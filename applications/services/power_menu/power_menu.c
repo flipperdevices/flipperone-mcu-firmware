@@ -5,7 +5,7 @@
 #include <gui/clay_helper.h>
 #include <led/led_batch.h>
 #include <power/power.h>
-#include <mlib/m-array.h>
+#include <m-array.h>
 #include <api_lock.h>
 
 #define TAG                     "PowerMenu"
@@ -302,7 +302,7 @@ static void power_menu_add_item(PowerMenuModel* model, const char* text, FuriCal
     model->power_menu_items_count++;
 }
 
-static void power_menu_remove_item(PowerMenuModel* model, const char* text) {
+static bool power_menu_remove_item(PowerMenuModel* model, const char* text) {
     size_t index = 0;
     bool found = false;
     for
@@ -319,6 +319,7 @@ static void power_menu_remove_item(PowerMenuModel* model, const char* text) {
         PowerMenuArray_erase(model->menu_items->data, index);
         model->power_menu_items_count--;
     }
+    return found;
 }
 
 static bool power_menu_model_set_backlight_text(PowerMenuModel* model, void* context) {
@@ -366,9 +367,9 @@ static bool power_menu_input_menu_get_selected_index(PowerMenuModel* model, void
     int* selected_index = context;
 
     if(model->selected_index < power_menu_item_get_count(model)) {
-        *selected_index = model->selected_index * -1 - 1;
+        *selected_index = -((int)model->selected_index) - 1;
     } else {
-        *selected_index = model->selected_index - power_menu_item_get_count(model);
+        *selected_index = (int)(model->selected_index - power_menu_item_get_count(model));
     }
 
     return false;
@@ -596,8 +597,7 @@ static void power_menu_message_queue_callback(FuriEventLoopObject* object, void*
         result = true;
         break;
     case PowerMenuMessageTypeRemoveItem:
-        with_view_model(instance->view, PowerMenuModel * model, { power_menu_remove_item(model, msg.as.remove_item.text); }, true);
-        result = true;
+        with_view_model(instance->view, PowerMenuModel * model, { result = power_menu_remove_item(model, msg.as.remove_item.text); }, true);
         break;
 
     default:
