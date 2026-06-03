@@ -15,19 +15,10 @@
 
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
 
-typedef enum {
-    CpuAppMenuItemStart,
-    CpuAppMenuItemReset,
-    CpuAppMenuItemMaskrom,
-    CpuAppMenuItemClose,
-} CpuAppMenuItem;
-
-static const char* cpu_app_menu_items[] = {
-    [CpuAppMenuItemStart] = "CPU Start",
-    [CpuAppMenuItemReset] = "CPU Reset",
-    [CpuAppMenuItemMaskrom] = "CPU Maskrom",
-    [CpuAppMenuItemClose] = "CPU Close",
-};
+#define CPU_APP_MENU_START   "CPU Start"
+#define CPU_APP_MENU_RESET   "CPU Reset"
+#define CPU_APP_MENU_MASKROM "CPU Maskrom"
+#define CPU_APP_MENU_CLOSE   "CPU Shutdown"
 
 typedef struct {
     Image frame;
@@ -235,14 +226,14 @@ static CpuApp* cpu_app_alloc(void) {
     gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
 
     //add some test menu items
-    power_menu_add_menu_item(cpu_app_menu_items[CpuAppMenuItemClose], (FuriCallbackWithContext){.callback = cpu_app_menu_close_click_callback, .context = instance});
-    power_menu_add_menu_item(cpu_app_menu_items[CpuAppMenuItemReset], (FuriCallbackWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
+    power_menu_add_menu_item(CPU_APP_MENU_CLOSE, (FuriCallbackWithContext){.callback = cpu_app_menu_close_click_callback, .context = instance});
+    power_menu_add_menu_item(CPU_APP_MENU_RESET, (FuriCallbackWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
-    power_menu_remove_menu_item(cpu_app_menu_items[CpuAppMenuItemClose]);
-    power_menu_remove_menu_item(cpu_app_menu_items[CpuAppMenuItemReset]);
+    power_menu_remove_menu_item(CPU_APP_MENU_CLOSE);
+    power_menu_remove_menu_item(CPU_APP_MENU_RESET);
 
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
@@ -260,9 +251,9 @@ int32_t cpu_app(void* p) {
     if(p) {
         char* arg = (char*)p;
         FURI_LOG_I(TAG, "CPU app started with arg: %s", arg);
-        if(strcmp(arg, cpu_app_menu_items[CpuAppMenuItemStart]) == 0) {
+        if(strcmp(arg, CPU_APP_MENU_START) == 0) {
             cpu_app_send_message(instance, CpuAppMessageTypeStart);
-        } else if(strcmp(arg, cpu_app_menu_items[CpuAppMenuItemMaskrom]) == 0) {
+        } else if(strcmp(arg, CPU_APP_MENU_MASKROM) == 0) {
             cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
         } else {
             FURI_LOG_E(TAG, "Unknown argument: %s", arg);

@@ -210,6 +210,19 @@ static bool power_menu_layout(void* _model) {
             // Menu items
             for(uint32_t i = 0; i < model->power_menu_items_count; i++) {
                 bool selected = (i == model->selected_index);
+
+                // add a divider between built-in menu items and custom menu items
+                if(power_menu_item_get_count(model) > 0 && i == power_menu_item_get_count(model)) {
+                    CLAY_AUTO_ID({
+                        .layout =
+                            {
+                                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT(0)},
+                            },
+                        .border = {.color = COLOR_BLACK, .width = {.bottom = 1}},
+                    }) {
+                    }
+                }
+
                 CLAY(
                     POWER_MENU_ID(i),
                     {
@@ -228,11 +241,6 @@ static bool power_menu_layout(void* _model) {
                         CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
 
                     switch(i - power_menu_item_get_count(model)) {
-                    case PowerMenuActionBacklight:
-                        CLAY_TEXT(
-                            clay_helper_string_from(model->backlight_text),
-                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
-                        break;
                     case PowerMenuActionLeds:
                         CLAY_TEXT(
                             clay_helper_string_from_chars(model->led_text),
@@ -251,6 +259,11 @@ static bool power_menu_layout(void* _model) {
                     case PowerMenuActionWattmeterLedBrightness:
                         CLAY_TEXT(
                             clay_helper_string_from(model->wattmeter_led_brightness_text),
+                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
+                        break;
+                    case PowerMenuActionBacklight:
+                        CLAY_TEXT(
+                            clay_helper_string_from(model->backlight_text),
                             CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
                         break;
                     default:
@@ -503,7 +516,6 @@ static void power_menu_input_menu(PowerMenu* instance, int selected_index) {
                 if(item && item->on_click.callback) {
                     item->on_click.callback(item->on_click.context);
                 }
-                FURI_LOG_I(TAG, "Clicked custom menu item: %s", item ? item->text : "NULL");
             },
             true);
         power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
@@ -547,8 +559,8 @@ static bool power_menu_input(InputEvent* event, void* context) {
             consumed = true;
         }
     } else {
-        if(event->key == InputKey3) {
-            if((event->type == InputTypeShort) || (event->type == InputTypeLong)) {
+        if(event->type == InputTypePress) {
+            if(event->key == InputKey3) {
                 power_menu_model_apply(instance, power_menu_input_menu_show, NULL);
                 consumed = true;
             }
