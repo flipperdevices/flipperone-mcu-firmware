@@ -395,7 +395,7 @@ static void cpu_app_free(CpuApp* instance) {
 }
 
 int32_t cpu_app(void* p) {
-    UNUSED(p);
+    FURI_LOG_I(TAG, "CPU app started with arg: %s", (char*)p);
     CpuApp* instance = cpu_app_alloc();
     furi_event_loop_run(instance->event_loop);
     cpu_app_free(instance);
