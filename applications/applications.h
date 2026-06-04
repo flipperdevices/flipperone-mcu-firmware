@@ -31,6 +31,8 @@ typedef struct {
     const CliCommandFlag flags;
 } FlipperInternalCommandApplication;
 
+extern int32_t battery_bank_app(void* p);
+
 extern const char* FLIPPER_AUTORUN_APP_NAME;
 
 /* Services list

@@ -27,6 +27,7 @@ extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
 extern int32_t cpu_app(void* p);
 extern int32_t haptic_test_app(void* p);
+extern int32_t battery_bank_app(void* p);
 extern int32_t self_check_app(void* p);
 extern int32_t cli_on_system_start(void* p);
 
@@ -209,6 +210,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .appid = "haptic_test",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app        = battery_bank_app,
+        .name       = "Battery",
+        .appid      = "battery_bank",
+        .stack_size = 2048,
+        .flags      = FlipperInternalApplicationFlagDefault,
     },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
