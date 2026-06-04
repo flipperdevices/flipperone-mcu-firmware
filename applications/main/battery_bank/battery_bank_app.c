@@ -12,6 +12,10 @@ typedef struct {
     uint16_t vbus_mv;
     uint16_t time_to_empty_min;
     bool     data_valid;
+    char     soc_buf[8];
+    char     vbus_buf[12];
+    char     ibus_buf[12];
+    char     tte_buf[12];
 } BatteryBankModel;
 
 typedef struct {
@@ -73,13 +77,11 @@ static bool battery_bank_layout(void* _model) {
                     CLAY_STRING("Reading..."),
                     CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             } else {
-                char soc_buf[8];
-                snprintf(soc_buf, sizeof(soc_buf), "%u%%", model->soc_pct);
                 CLAY(
                     CLAY_APP_ID("SocLabel"),
                     {.layout = {.childAlignment = {.x = CLAY_ALIGN_X_CENTER}}}) {
                     CLAY_TEXT(
-                        clay_helper_string_from_chars(soc_buf),
+                        clay_helper_string_from_chars(model->soc_buf),
                         CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
                 }
 
@@ -118,16 +120,9 @@ static bool battery_bank_layout(void* _model) {
              }}) {
 
             if(model->data_valid) {
-                char vbus_buf[12], ibus_buf[12], tte_buf[12];
-                snprintf(
-                    vbus_buf, sizeof(vbus_buf), "%u.%02uV",
-                    model->vbus_mv / 1000u, (model->vbus_mv % 1000u) / 10u);
-                snprintf(ibus_buf, sizeof(ibus_buf), "%dmA", model->ibus_ma);
-                battery_bank_format_time(tte_buf, sizeof(tte_buf), model->time_to_empty_min);
-
-                CLAY_TEXT(clay_helper_string_from_chars(vbus_buf), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_WHITE}));
-                CLAY_TEXT(clay_helper_string_from_chars(ibus_buf), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_WHITE}));
-                CLAY_TEXT(clay_helper_string_from_chars(tte_buf),  CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_WHITE}));
+                CLAY_TEXT(clay_helper_string_from_chars(model->vbus_buf), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_WHITE}));
+                CLAY_TEXT(clay_helper_string_from_chars(model->ibus_buf), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_WHITE}));
+                CLAY_TEXT(clay_helper_string_from_chars(model->tte_buf),  CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_WHITE}));
             }
         }
     }
@@ -136,7 +131,7 @@ static bool battery_bank_layout(void* _model) {
 }
 
 static void battery_bank_poll(void* context) {
-    furi_assert(context);
+    furi_check(context);
     BatteryBankApp* app = context;
 
     uint8_t  soc  = 0;
@@ -160,13 +155,18 @@ static void battery_bank_poll(void* context) {
                 model->vbus_mv           = vbus;
                 model->time_to_empty_min = tte;
                 model->data_valid        = true;
+                snprintf(model->soc_buf, sizeof(model->soc_buf), "%u%%", soc);
+                snprintf(model->vbus_buf, sizeof(model->vbus_buf), "%u.%02uV",
+                    vbus / 1000u, (vbus % 1000u) / 10u);
+                snprintf(model->ibus_buf, sizeof(model->ibus_buf), "%dmA", ibus);
+                battery_bank_format_time(model->tte_buf, sizeof(model->tte_buf), tte);
             }
         },
         true);
 }
 
 static bool battery_bank_input(InputEvent* event, void* context) {
-    furi_assert(context);
+    furi_check(context);
     BatteryBankApp* app = context;
 
     if(event->type == InputTypePress && event->key == InputKeyBack) {
@@ -177,6 +177,7 @@ static bool battery_bank_input(InputEvent* event, void* context) {
 }
 
 static bool battery_bank_input_touch(InputTouchEvent* event, void* context) {
+    furi_check(context);
     UNUSED(event);
     UNUSED(context);
     return false;
