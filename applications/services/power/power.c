@@ -33,6 +33,7 @@ struct Power {
     Bq28z620* bq28z620_header;
     FuriMessageQueue* message_queue;
     PowerDevice devices;
+    bool otg_active;
 };
 
 static Bq25792Status power_bq25792_reset_and_load_config(Power* instance) {
@@ -233,6 +234,19 @@ static void power_custom_event_callback(uint32_t events, void* context) {
     Power* instance = (Power*)context;
 
     if(events & PowerEventTypeIsr) {
+        if(!instance->bq25792_header) return;
+
+        Bq25792ChargerStatusReg status = {0};
+        if(bq25792_get_charger_status(instance->bq25792_header, &status) != Bq25792StatusOk) return;
+
+        bool otg_now = (status.stat1.vbus_stat == Bq25792ChargerStatus1VbusOtg);
+        if(otg_now == instance->otg_active) return;
+
+        instance->otg_active = otg_now;
+        PowerPubSubEvent event = {
+            .type = otg_now ? PowerPubSubEventOtgEnabled : PowerPubSubEventOtgDisabled,
+        };
+        furi_pubsub_publish(instance->event_pubsub, &event);
     }
 }
 
