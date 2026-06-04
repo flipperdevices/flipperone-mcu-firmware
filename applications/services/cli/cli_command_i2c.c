@@ -25,7 +25,6 @@ static void cli_command_i2c_print_bus_list(void) {
 
 static void cli_command_i2c_help(void) {
     printf("Usage:\r\n");
-    printf("i2c\r\n");
     printf("i2c list\r\n");
     printf("i2c search <0|control|1|main>\r\n");
     printf("i2c write <0|control|1|main> <device_hex> <prefix_hex> <data_hex>\r\n");
@@ -104,6 +103,8 @@ static bool cli_command_i2c_parse_write_payload(FuriString* args, uint8_t** data
         return false;
     }
 
+    furi_string_right(args, hex_size);
+    furi_string_trim(args);
     return true;
 }
 
@@ -112,9 +113,7 @@ void cli_command_i2c(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(context);
 
     if(args_length(args) == 0) {
-        cli_command_i2c_scan_bus(&furi_hal_i2c_handle_control, "control");
-        printf("\r\n");
-        cli_command_i2c_scan_bus(&furi_hal_i2c_handle_main, "main");
+        cli_command_i2c_help();
         return;
     }
 
