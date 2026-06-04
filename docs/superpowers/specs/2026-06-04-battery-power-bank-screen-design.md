@@ -46,7 +46,7 @@ typedef struct {
 Extend `power.c`:
 
 - Add `bool otg_active` field to the `Power` struct to track previous state.
-- In `power_custom_event_callback` (which fires on every BQ25792 ISR): read `Bq25792ChargerStatusReg` synchronously (already on the power service's event loop — no locking needed), extract the `vbus_status` field, compare against `Bq25792ChargerStatus1VbusOtg`.
+- In `power_custom_event_callback` (which fires on every BQ25792 ISR): call `bq25792_get_charger_status(instance->bq25792_header, &status)` directly on the driver (not the public `power_bq25792_get_charger_status` wrapper, which would deadlock by re-enqueuing a message onto the same event loop). Extract the `vbus_status` field, compare against `Bq25792ChargerStatus1VbusOtg`.
 - On transition `false → true`: publish `PowerPubSubEventOtgEnabled`.
 - On transition `true → false`: publish `PowerPubSubEventOtgDisabled`.
 
