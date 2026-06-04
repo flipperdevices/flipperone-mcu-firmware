@@ -18,6 +18,16 @@ typedef enum {
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef enum {
+    PowerPubSubEventOtgEnabled,
+    PowerPubSubEventOtgDisabled,
+} PowerPubSubEventType;
+
+typedef struct {
+    PowerPubSubEventType type;
+} PowerPubSubEvent;
+
 FuriPubSub* power_get_pubsub(Power* power);
 
 bool power_is_device_initialized(Power* instance, PowerDevice* device);
