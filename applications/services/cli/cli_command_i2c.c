@@ -78,7 +78,14 @@ static bool cli_command_i2c_parse_bus(FuriString* args, const FuriHalI2cBusHandl
 }
 
 static bool cli_command_i2c_parse_hex_u8(FuriString* args, uint8_t* value) {
-    return args_read_hex_bytes(args, value, 1);
+    const size_t word_length = args_get_first_word_length(args);
+    if(!args_read_hex_bytes(args, value, 1)) {
+        return false;
+    }
+
+    furi_string_right(args, word_length);
+    furi_string_trim(args);
+    return true;
 }
 
 static bool cli_command_i2c_parse_write_payload(FuriString* args, uint8_t** data_buffer, size_t* data_size) {
