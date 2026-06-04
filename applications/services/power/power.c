@@ -263,6 +263,7 @@ static Power* power_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(POWER_MAX_MESSAGES, sizeof(PowerMessage));
     instance->devices = 0;
+    instance->otg_active = false;
 
     // init bq25792
     instance->bq25792_header = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);

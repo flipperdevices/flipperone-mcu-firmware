@@ -208,6 +208,7 @@ static BatteryBankApp* battery_bank_app_alloc(void) {
 }
 
 static void battery_bank_app_free(BatteryBankApp* app) {
+    furi_event_loop_timer_stop(app->timer);
     furi_event_loop_timer_free(app->timer);
     gui_remove_view(app->gui, app->view);
     view_free(app->view);
