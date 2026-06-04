@@ -1,6 +1,8 @@
 #include <applications.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
+#include <power/power.h>
+#include <string.h>
 
 #define DESKTOP_INPUT_QUEUE_SIZE       16
 #define DESKTOP_INPUT_TOUCH_QUEUE_SIZE 16
@@ -13,6 +15,8 @@
 typedef enum {
     DesktopMessageTypeAppStart,
     DesktopMessageTypeAppClosed,
+    DesktopMessageTypeOtgEnabled,
+    DesktopMessageTypeOtgDisabled,
 } DesktopMessageType;
 
 typedef struct {
@@ -200,6 +204,13 @@ static void desktop_do_app_closed(Desktop* desktop) {
     FURI_LOG_I(TAG, "Application stopped. Free heap: %zu", memmgr_get_free_heap());
 }
 
+static const FlipperInternalApplication* desktop_find_app(const char* appid) {
+    for(size_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
+        if(strcmp(FLIPPER_APPS[i].appid, appid) == 0) return &FLIPPER_APPS[i];
+    }
+    return NULL;
+}
+
 static void desktop_app_message_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     Desktop* desktop = context;
@@ -222,10 +233,39 @@ static void desktop_app_message_logic(FuriEventLoopObject* object, void* context
         desktop_do_app_closed(desktop);
         desktop->app.running = false;
         break;
+    case DesktopMessageTypeOtgEnabled: {
+        const FlipperInternalApplication* app = desktop_find_app("battery_bank");
+        if(app && !desktop->app.running) {
+            desktop->app.running = true;
+            desktop_start_internal_app(desktop, app, NULL);
+        }
+        break;
+    }
+    case DesktopMessageTypeOtgDisabled:
+        if(desktop->app.running && desktop->app.thread) {
+            furi_thread_signal(desktop->app.thread, FuriSignalExit, NULL);
+        }
+        break;
     default:
         furi_assert(false);
         break;
     }
+}
+
+static void desktop_power_pubsub_glue(const void* message, void* context) {
+    furi_assert(context);
+    Desktop* desktop = context;
+    const PowerPubSubEvent* event = message;
+
+    DesktopMessage msg = {0};
+    if(event->type == PowerPubSubEventOtgEnabled) {
+        msg.type = DesktopMessageTypeOtgEnabled;
+    } else if(event->type == PowerPubSubEventOtgDisabled) {
+        msg.type = DesktopMessageTypeOtgDisabled;
+    } else {
+        return;
+    }
+    furi_message_queue_put(desktop->app_message_queue, &msg, 0);
 }
 
 static Desktop* desktop_alloc(void) {
@@ -242,6 +282,10 @@ static Desktop* desktop_alloc(void) {
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
 
     gui_add_view(desktop->gui, desktop->view, GuiViewPriorityDesktop);
+
+    Power* power = furi_record_open(RECORD_POWER);
+    furi_pubsub_subscribe(power_get_pubsub(power), desktop_power_pubsub_glue, desktop);
+    furi_record_close(RECORD_POWER);
 
     return desktop;
 }
