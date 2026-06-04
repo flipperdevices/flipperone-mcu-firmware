@@ -5,8 +5,8 @@
 
 #define TAG "HeadphonesSrv"
 
-#define HEADPHONES_TIMEOUT_UPDATE_MS             (100)
-#define HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER 10 // Timeout = HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER * HEADPHONES_TIMEOUT_UPDATE_MS
+#define HEADPHONES_TIMEOUT_UPDATE_MS             (100U)
+#define HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER (10U) // Timeout = HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER * HEADPHONES_TIMEOUT_UPDATE_MS
 
 #define HEADPHONES_SRV_DEBUG_ENABLE
 
@@ -91,6 +91,7 @@ static void headphones_custom_event_callback(uint32_t events, void* context) {
 static Headphones* headphones_alloc(void) {
     Headphones* instance = (Headphones*)malloc(sizeof(Headphones));
     instance->event_loop = furi_event_loop_alloc();
+    instance->debounce_counter = 0;
 
     furi_event_loop_set_custom_event_callback(instance->event_loop, headphones_custom_event_callback, instance);
     instance->timer = furi_event_loop_timer_alloc(instance->event_loop, headphones_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
