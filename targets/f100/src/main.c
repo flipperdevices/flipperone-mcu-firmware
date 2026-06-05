@@ -41,7 +41,7 @@ int main(void) {
     furi_init();
 
     // TODO: read log level and output from nvm
-    furi_hal_log_init(FuriLogLevelInfo, FuriHalLogOutputSerial);
+    furi_hal_log_init(FuriLogLevelInfo, FuriHalLogOutputAll);
 
     // Critical FURI HAL
     furi_hal_init_early();
