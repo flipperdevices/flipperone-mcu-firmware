@@ -19,8 +19,8 @@ typedef struct {
 } I2cCmd;
 
 static void cli_command_i2c_scan_bus(const FuriHalI2cBusHandle* handle, const char* bus_name) {
-    furi_hal_i2c_acquire(handle);
     furi_check(handle);
+    furi_hal_i2c_acquire(handle);
 
     printf("Scanning %s bus (%s):\r\n", bus_name, furi_hal_i2c_bus_name(handle));
     printf("     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\r\n");
@@ -202,15 +202,15 @@ static bool cli_command_i2c_read(PipeSide* pipe, FuriString* args) {
 static const I2cCmd i2c_cmds[] = {
     {"list", "", "List available I2C buses", cli_command_i2c_list},
     {"search", "<bus_name>", "Search for devices on the specified I2C bus", cli_command_i2c_search},
-    {"write", "<bus_name> <device_hex> <prefix_hex> <data_hex>", "Write data to the specified I2C device", cli_command_i2c_write},
-    {"read", "<bus_name> <device_hex> <prefix_hex> <length>", "Read data from the specified I2C device", cli_command_i2c_read},
+    {"write", "<bus_name> <device_hex> <reg_hex> <data_hex>", "Write data to the specified I2C device", cli_command_i2c_write},
+    {"read", "<bus_name> <device_hex> <reg_hex> <length>", "Read data from the specified I2C device", cli_command_i2c_read},
 };
 
 static void cli_command_i2c_print_usage(void) {
     printf("Usage:\r\ni2c <cmd>\r\nCmd list:\r\n");
     for(size_t i = 0; i < COUNT_OF(i2c_cmds); i++) {
         const I2cCmd* c = &i2c_cmds[i];
-        printf("\t%s - %s\r\n", c->name, c->description);
+        printf("\t%s %s - %s\r\n", c->name, c->arg_spec, c->description);
     }
 }
 
