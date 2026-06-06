@@ -69,7 +69,6 @@ static bool cli_command_i2c_search(PipeSide* pipe, FuriString* args) {
 
 static bool cli_command_i2c_write(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
-    //i2c write control 01 01 02030404
     const FuriHalI2cBusHandle* handle;
     uint8_t device_address;
     uint8_t device_register;
