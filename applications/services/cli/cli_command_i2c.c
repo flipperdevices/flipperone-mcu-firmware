@@ -164,7 +164,7 @@ static bool cli_command_i2c_read(PipeSide* pipe, FuriString* args) {
         StrintParseError parse_err = StrintParseNoError;
         parse_err |= strint_to_uint8(args_cstr, &args_cstr, &device_address, 16);
         parse_err |= strint_to_uint8(args_cstr, &args_cstr, &device_register, 16);
-        parse_err |= strint_to_uint8(args_cstr, &args_cstr, &length, 16);
+        parse_err |= strint_to_uint8(args_cstr, &args_cstr, &length, 10);
         if(parse_err || (device_address > 0x7F) || ((device_address & 0x78) == 0) || ((device_address & 0x78) == 0x78)) {
             furi_string_free(bus_name);
             return false;
@@ -226,7 +226,7 @@ void cli_command_i2c(PipeSide* pipe, FuriString* args, void* context) {
             const I2cCmd* c = &i2c_cmds[i];
             if(strcmp(cmd_str, c->name) == 0) {
                 if(!c->execute(pipe, args)) {
-                    cli_print_usage(c->name, c->arg_spec, furi_string_get_cstr(args));
+                    printf("usage: i2c %s %s\r\n", c->name, c->arg_spec);
                 }
                 handled = true;
                 break;
