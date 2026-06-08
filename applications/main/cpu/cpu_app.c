@@ -67,8 +67,9 @@ static void furi_hal_bsp_linux_reset(void) {
 }
 
 static bool furi_hal_bsp_linux_is_load(void) {
+    const uint32_t mask = OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En;
     uint32_t status = furi_bsp_expander_main_read_output();
-    return (status & (OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En)) != 0;
+    return (status & mask) == mask;
 }
 
 static void furi_hal_bsp_linux_start(void) {
