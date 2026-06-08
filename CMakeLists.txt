@@ -103,6 +103,14 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     #PICO_USE_SW_SPIN_LOCKS=0
 )
 
+# Reserve the flash carved out by the NVM/KV store at runtime. The fragment uses
+# INSERT and must precede the SDK's linker script on the ld line, so pass it via
+# "LINKER:-T," (-Wl,-T,): a bare "-T" gets reordered by the gcc driver past the
+# SDK's "-Wl,--script=", breaking INSERT (".flash_end not found").
+set(FLASH_NVM_RESERVE_LD ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/flash_nvm_reserve.ld)
+target_link_options(${PROJECT_NAME} PRIVATE "LINKER:-T,${FLASH_NVM_RESERVE_LD}")
+set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS ${FLASH_NVM_RESERVE_LD})
+
 include(lib/corelibs/lib/version/CMakeLists.txt)
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")

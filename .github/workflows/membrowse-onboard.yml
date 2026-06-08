@@ -1,0 +1,70 @@
+name: Onboard to MemBrowse
+
+# Backfills historical memory data by rebuilding the last N commits and
+# uploading a MemBrowse report for each. Run manually from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      num_commits:
+        description: 'Number of commits to process'
+        required: true
+        default: '50'
+        type: string
+
+env:
+  BUILD_TYPE: Release
+  ARM_NONE_EABI_GCC_VERSION: 14.2.1-1.1
+  PICO_SDK_VERSION: 2.2.0
+
+jobs:
+  onboard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install cmake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Install ARM GCC ${{ env.ARM_NONE_EABI_GCC_VERSION }}
+        run: |
+          wget -q https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${{ env.ARM_NONE_EABI_GCC_VERSION }}/xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
+          tar -xzf xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
+          mv xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }} "$HOME/arm-none-eabi-gcc"
+          echo "$HOME/arm-none-eabi-gcc/bin" >> $GITHUB_PATH
+
+      # Checked out at the workspace root so the onboard action can walk history.
+      - name: Checkout firmware
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      # Kept outside the repo so per-commit checkouts don't disturb it.
+      - name: Checkout pico-sdk/${{ env.PICO_SDK_VERSION }}
+        uses: actions/checkout@v6
+        with:
+          repository: raspberrypi/pico-sdk
+          ref: ${{ env.PICO_SDK_VERSION }}
+          path: pico-sdk
+
+      - name: Checkout pico-sdk submodules
+        working-directory: ${{ github.workspace }}/pico-sdk
+        run: git submodule update --init
+
+      - name: Run MemBrowse Onboard Action
+        uses: membrowse/membrowse-action/onboard-action@v1
+        with:
+          target_name: rp2350-flipperone
+          num_commits: ${{ github.event.inputs.num_commits }}
+          build_script: >
+            cmake -E make_directory build &&
+            cd build &&
+            PICO_SDK_PATH=${{ github.workspace }}/pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
+            cmake --build . --config $BUILD_TYPE --parallel $(nproc) &&
+            mkdir -p ldscripts &&
+            cp ${{ github.workspace }}/pico-sdk/src/rp2_common/pico_crt0/rp2350/memmap_default.ld ldscripts/ &&
+            cp "$(find . -name pico_flash_region.ld -print -quit)" ldscripts/
+          elf: build/flipperone-mcu-firmware.elf
+          ld: build/ldscripts/memmap_default.ld
+          map_file: build/flipperone-mcu-firmware.elf.map
+          binary_search: 'true'
+          api_key: ${{ secrets.MEMBROWSE_API_KEY }}
+          api_url: ${{ vars.MEMBROWSE_API_URL }}
