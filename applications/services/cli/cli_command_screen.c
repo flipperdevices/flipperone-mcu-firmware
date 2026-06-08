@@ -1,6 +1,8 @@
 #include "cli_command_screen.h"
 
-#include "cli_command.h"
+
+#include "cli_ansi.h"
+#include "furi_hal_resources.h"
 #include "gui/gui_i.h"
 #include "gui/gui.h"
 
@@ -22,21 +24,45 @@ static void cli_screen_framebuffer_callback(const uint8_t* data, size_t width, s
     }
 }
 
+static void cli_screen_emulate_click(FuriPubSub* input_pubsub, InputKey key) {
+    InputEvent press_event = {
+        .sequence_source = INPUT_SEQUENCE_SOURCE_SOFTWARE,
+        .sequence_counter = 0,
+        .key = key,
+        .type = InputTypePress
+    };
+    furi_pubsub_publish(input_pubsub, &press_event);
+    
+    furi_delay_ms(40);
+
+    InputEvent release_event = {
+        .sequence_source = INPUT_SEQUENCE_SOURCE_SOFTWARE,
+        .sequence_counter = 0,
+        .key = key,
+        .type = InputTypeRelease
+    };
+    furi_pubsub_publish(input_pubsub, &release_event);
+}
+
 void cli_command_screen(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(args);
     UNUSED(context);
 
     Gui* gui = furi_record_open(RECORD_GUI);
-    if (!gui) {
-        printf("Error: GUI service not found\r\n");
+    FuriPubSub* input_pubsub = furi_record_open(RECORD_INPUT_EVENTS);
+    
+    if (!gui || !input_pubsub) {
+        printf("Error: Required subsystems not found\r\n");
+        if (gui) furi_record_close(RECORD_GUI);
+        if (input_pubsub) furi_record_close(RECORD_INPUT_EVENTS);
         return;
     }
 
-    const ssize_t width = gui_get_width(gui);
-    const ssize_t height = gui_get_height(gui);
+    const size_t width = gui_get_width(gui);
+    const size_t height = gui_get_height(gui);
 
     uint8_t* framebuffer = malloc(height * width);
-    size_t line_buffer_size = (width / 2) * 3 + 10;
+    const size_t line_buffer_size = (width / 2) * 3 + 10;
     char* line_buffer = malloc(line_buffer_size);
     
     if (!framebuffer || !line_buffer) {
@@ -44,6 +70,7 @@ void cli_command_screen(PipeSide* pipe, FuriString* args, void* context) {
         if (framebuffer) free(framebuffer);
         if (line_buffer) free(line_buffer);
         furi_record_close(RECORD_GUI);
+        furi_record_close(RECORD_INPUT_EVENTS);
         return;
     }
 
@@ -53,16 +80,56 @@ void cli_command_screen(PipeSide* pipe, FuriString* args, void* context) {
         .has_new_frame = false
     };
 
+    CliAnsiParser* ansi_parser = cli_ansi_parser_alloc();
+
+    printf("Controls: Arrows = Navigate, Enter = Ok, Backspace = Back\r\n");
     printf("Press CTRL+C to stop... \r\n");
     furi_delay_ms(500);
 
     gui_add_framebuffer_callback(gui, cli_screen_framebuffer_callback, &screen_ctx);
     gui_update(gui);
-    // screen_ctx.has_new_frame = true;
 
     printf("\033[2J\033[H\033[?25l");
 
-    while(!cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
+    while(pipe_state(pipe) != PipeStateBroken) {
+        bool exit_requested = false;
+        
+        while(pipe_bytes_available(pipe) > 0) {
+            char ch = getchar();
+
+            if (ch == 0x03) { 
+                exit_requested = true;
+                break;
+            }
+            
+            InputKey emulated_key = InputKeyMask;
+
+            if (ch == '\r' || ch == '\n' || ch == ' ' || ch == 'o') emulated_key = InputKeyOk;
+            else if (ch == 0x7F || ch == 0x08 || ch == 'b') emulated_key = InputKeyBack;
+            else if (ch == 'w' || ch == 'W') emulated_key = InputKeyUp;
+            else if (ch == 's' || ch == 'S') emulated_key = InputKeyDown;
+            else if (ch == 'a' || ch == 'A') emulated_key = InputKeyLeft;
+            else if (ch == 'd' || ch == 'D') emulated_key = InputKeyRight;
+
+            else {
+                CliAnsiParserResult ansi_res = cli_ansi_parser_feed(ansi_parser, ch);
+                if (ansi_res.is_done) {
+                    if (ansi_res.result.key == CliKeyUp)         emulated_key = InputKeyUp;
+                    else if (ansi_res.result.key == CliKeyDown)   emulated_key = InputKeyDown;
+                    else if (ansi_res.result.key == CliKeyLeft)   emulated_key = InputKeyLeft;
+                    else if (ansi_res.result.key == CliKeyRight)  emulated_key = InputKeyRight;
+                    else if (ansi_res.result.key == CliKeyEsc)    emulated_key = InputKeyBack;
+                }
+            }
+            
+            if(emulated_key != InputKeyMask) {
+                cli_screen_emulate_click(input_pubsub, emulated_key);
+            }
+        }
+
+        if (exit_requested) {
+            break;
+        }
 
         if (furi_mutex_acquire(screen_ctx.mutex, FuriWaitForever) == FuriStatusOk) {
             if (screen_ctx.has_new_frame) {
@@ -109,15 +176,18 @@ void cli_command_screen(PipeSide* pipe, FuriString* args, void* context) {
             furi_mutex_release(screen_ctx.mutex);
         }
         
-        furi_delay_ms(50);
+        furi_delay_ms(40);
     }
 
     printf("\033[2J\033[H\033[?25h");
+    
     gui_remove_framebuffer_callback(gui, cli_screen_framebuffer_callback, &screen_ctx);
+    cli_ansi_parser_free(ansi_parser);
     furi_mutex_free(screen_ctx.mutex);
 
     free(framebuffer);
     free(line_buffer);
 
     furi_record_close(RECORD_GUI);
+    furi_record_close(RECORD_INPUT_EVENTS);
 }
