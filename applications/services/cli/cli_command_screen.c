@@ -1,6 +1,5 @@
 #include "cli_command_screen.h"
 
-
 #include "cli_ansi.h"
 #include "furi_hal_resources.h"
 #include "gui/gui_i.h"
@@ -42,6 +41,78 @@ static void cli_screen_emulate_click(FuriPubSub* input_pubsub, InputKey key) {
         .type = InputTypeRelease
     };
     furi_pubsub_publish(input_pubsub, &release_event);
+}
+
+static bool cli_command_screen_process_input(PipeSide* pipe, CliAnsiParser* ansi_parser, FuriPubSub* input_pubsub) {
+    while(pipe_bytes_available(pipe) > 0) {
+        char ch = getchar();
+        if (ch == 0x03) return true;
+
+        InputKey emulated_key = InputKeyMask;
+        if (ch == '\r' || ch == '\n' || ch == ' ' || ch == 'o') emulated_key = InputKeyOk;
+        else if (ch == 0x7F || ch == 0x08 || ch == 'b') emulated_key = InputKeyBack;
+        else if (ch == 'w' || ch == 'W') emulated_key = InputKeyUp;
+        else if (ch == 's' || ch == 'S') emulated_key = InputKeyDown;
+        else if (ch == 'a' || ch == 'A') emulated_key = InputKeyLeft;
+        else if (ch == 'd' || ch == 'D') emulated_key = InputKeyRight;
+
+        else {
+            CliAnsiParserResult ansi_res = cli_ansi_parser_feed(ansi_parser, ch);
+            if (ansi_res.is_done) {
+                if (ansi_res.result.key == CliKeyUp)         emulated_key = InputKeyUp;
+                else if (ansi_res.result.key == CliKeyDown)   emulated_key = InputKeyDown;
+                else if (ansi_res.result.key == CliKeyLeft)   emulated_key = InputKeyLeft;
+                else if (ansi_res.result.key == CliKeyRight)  emulated_key = InputKeyRight;
+                else if (ansi_res.result.key == CliKeyEsc)    emulated_key = InputKeyBack;
+            }
+        }
+        
+        if(emulated_key != InputKeyMask) {
+            cli_screen_emulate_click(input_pubsub, emulated_key);
+        }
+    }
+    return false;
+}
+
+static void cli_command_screen_render_braille(PipeSide* pipe, const uint8_t* fb, 
+    char* line_buffer, size_t width, size_t height) {
+    printf("\033[H");
+
+    for(size_t y = 0; y < height; y += 4) {
+        size_t line_pos = 0;
+        line_buffer[line_pos++] = '|';
+
+        const uint8_t* r0 = &fb[(y + 0) * width];
+        const uint8_t* r1 = &fb[(y + 1) * width];
+        const uint8_t* r2 = &fb[(y + 2) * width];
+        const uint8_t* r3 = &fb[(y + 3) * width];
+
+        for (size_t x = 0; x < width; x+=2) {
+            bool p1 = r0[x + 0] > 127;
+            bool p2 = r1[x + 0] > 127;
+            bool p3 = r2[x + 0] > 127;
+            bool p4 = r0[x + 1] > 127;
+            bool p5 = r1[x + 1] > 127;
+            bool p6 = r2[x + 1] > 127;
+            bool p7 = r3[x + 0] > 127;
+            bool p8 = r3[x + 1] > 127;
+            
+            uint8_t braille_byte = (p1 << 0) | (p2 << 1) | (p3 << 2) |
+                                   (p4 << 3) | (p5 << 4) | (p6 << 5) |
+                                   (p7 << 6) | (p8 << 7);
+
+            line_buffer[line_pos++] = 0xE2;
+            line_buffer[line_pos++] = 0xA0 + (braille_byte >> 6);
+            line_buffer[line_pos++] = 0x80 + (braille_byte & 0x3F);
+        }
+
+        line_buffer[line_pos++] = '|';
+        line_buffer[line_pos++] = '\r';
+        line_buffer[line_pos++] = '\n';
+        line_buffer[line_pos]   = '\0';
+
+        pipe_send(pipe, (uint8_t*)line_buffer, line_pos);
+    }
 }
 
 void cli_command_screen(PipeSide* pipe, FuriString* args, void* context) {
@@ -92,86 +163,14 @@ void cli_command_screen(PipeSide* pipe, FuriString* args, void* context) {
     printf("\033[2J\033[H\033[?25l");
 
     while(pipe_state(pipe) != PipeStateBroken) {
-        bool exit_requested = false;
-        
-        while(pipe_bytes_available(pipe) > 0) {
-            char ch = getchar();
-
-            if (ch == 0x03) { 
-                exit_requested = true;
-                break;
-            }
-            
-            InputKey emulated_key = InputKeyMask;
-
-            if (ch == '\r' || ch == '\n' || ch == ' ' || ch == 'o') emulated_key = InputKeyOk;
-            else if (ch == 0x7F || ch == 0x08 || ch == 'b') emulated_key = InputKeyBack;
-            else if (ch == 'w' || ch == 'W') emulated_key = InputKeyUp;
-            else if (ch == 's' || ch == 'S') emulated_key = InputKeyDown;
-            else if (ch == 'a' || ch == 'A') emulated_key = InputKeyLeft;
-            else if (ch == 'd' || ch == 'D') emulated_key = InputKeyRight;
-
-            else {
-                CliAnsiParserResult ansi_res = cli_ansi_parser_feed(ansi_parser, ch);
-                if (ansi_res.is_done) {
-                    if (ansi_res.result.key == CliKeyUp)         emulated_key = InputKeyUp;
-                    else if (ansi_res.result.key == CliKeyDown)   emulated_key = InputKeyDown;
-                    else if (ansi_res.result.key == CliKeyLeft)   emulated_key = InputKeyLeft;
-                    else if (ansi_res.result.key == CliKeyRight)  emulated_key = InputKeyRight;
-                    else if (ansi_res.result.key == CliKeyEsc)    emulated_key = InputKeyBack;
-                }
-            }
-            
-            if(emulated_key != InputKeyMask) {
-                cli_screen_emulate_click(input_pubsub, emulated_key);
-            }
-        }
-
-        if (exit_requested) {
+        if (cli_command_screen_process_input(pipe, ansi_parser, input_pubsub)) {
             break;
         }
 
         if (furi_mutex_acquire(screen_ctx.mutex, FuriWaitForever) == FuriStatusOk) {
             if (screen_ctx.has_new_frame) {
-                screen_ctx.has_new_frame = false;
-
-                printf("\033[H");
-
-                for (size_t y = 0; y < height; y+=4) {
-                    size_t line_pos = 0;
-                    line_buffer[line_pos++] = '|';
-    
-                    const uint8_t* r0 = &screen_ctx.local_framebuffer[(y + 0) * width];
-                    const uint8_t* r1 = &screen_ctx.local_framebuffer[(y + 1) * width];
-                    const uint8_t* r2 = &screen_ctx.local_framebuffer[(y + 2) * width];
-                    const uint8_t* r3 = &screen_ctx.local_framebuffer[(y + 3) * width];
-    
-                    for (size_t x = 0; x < width; x+=2) {
-                        bool p1 = r0[x + 0] > 127;
-                        bool p2 = r1[x + 0] > 127;
-                        bool p3 = r2[x + 0] > 127;
-                        bool p4 = r0[x + 1] > 127;
-                        bool p5 = r1[x + 1] > 127;
-                        bool p6 = r2[x + 1] > 127;
-                        bool p7 = r3[x + 0] > 127;
-                        bool p8 = r3[x + 1] > 127;
-                        
-                        uint8_t braille_byte = (p1 << 0) | (p2 << 1) | (p3 << 2) |
-                                               (p4 << 3) | (p5 << 4) | (p6 << 5) |
-                                               (p7 << 6) | (p8 << 7);
-    
-                        line_buffer[line_pos++] = 0xE2;
-                        line_buffer[line_pos++] = 0xA0 + (braille_byte >> 6);
-                        line_buffer[line_pos++] = 0x80 + (braille_byte & 0x3F);
-                    }
-    
-                    line_buffer[line_pos++] = '|';
-                    line_buffer[line_pos++] = '\r';
-                    line_buffer[line_pos++] = '\n';
-                    line_buffer[line_pos]   = '\0';
-    
-                    pipe_send(pipe, (uint8_t*)line_buffer, line_pos);
-                }
+                screen_ctx.has_new_frame = false;    
+                cli_command_screen_render_braille(pipe, screen_ctx.local_framebuffer, line_buffer, width, height);
             }
             furi_mutex_release(screen_ctx.mutex);
         }
