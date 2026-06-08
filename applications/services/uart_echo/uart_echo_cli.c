@@ -3,7 +3,7 @@
 
 #include <cli/args.h>
 
-UartEchoApp* uart_echo_app_helper = NULL;
+static UartEchoApp* uart_echo_app_helper = NULL;
 
 static void uart_echo_cli_command_print_usage() {
     printf(
@@ -27,13 +27,21 @@ void uart_echo_cli(PipeSide* pipe, FuriString* args, void* context) {
         }
 
         if(furi_string_cmp_str(cmd, "start") == 0) {
-            uart_echo_app_helper = uart_echo_app_start();
+            if(!uart_echo_app_helper) {
+                uart_echo_app_helper = uart_echo_app_start();
+            } else {
+                printf("UART echo application is already running\r\n");
+            }
             break;
         }
 
         if(furi_string_cmp_str(cmd, "stop") == 0) {
-            uart_echo_app_stop(uart_echo_app_helper);
-            uart_echo_app_helper = NULL;
+            if(uart_echo_app_helper) {
+                uart_echo_app_stop(uart_echo_app_helper);
+                uart_echo_app_helper = NULL;
+            } else {
+                printf("UART echo application is not running\r\n");
+            }
             break;
         }
     
