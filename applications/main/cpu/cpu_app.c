@@ -16,7 +16,7 @@
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
 
 #define CPU_APP_MENU_START   "CPU Start"
-#define CPU_APP_MENU_RESET   "CPU Reset"
+#define CPU_APP_MENU_REBOOT  "CPU Reboot"
 #define CPU_APP_MENU_MASKROM "CPU Maskrom"
 #define CPU_APP_MENU_CLOSE   "CPU Shutdown"
 
@@ -238,13 +238,13 @@ static CpuApp* cpu_app_alloc(void) {
 
     //add some test menu items
     power_menu_add_menu_item(CPU_APP_MENU_CLOSE, (FuriCallbackWithContext){.callback = cpu_app_menu_close_click_callback, .context = instance});
-    power_menu_add_menu_item(CPU_APP_MENU_RESET, (FuriCallbackWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
+    power_menu_add_menu_item(CPU_APP_MENU_REBOOT, (FuriCallbackWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
     power_menu_remove_menu_item(CPU_APP_MENU_CLOSE);
-    power_menu_remove_menu_item(CPU_APP_MENU_RESET);
+    power_menu_remove_menu_item(CPU_APP_MENU_REBOOT);
 
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
