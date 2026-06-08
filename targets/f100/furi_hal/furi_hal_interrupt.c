@@ -317,7 +317,7 @@ void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPri
 
         //Todo: check the implementation
         irq_set_enabled(furi_hal_interrupt_irqn[index], false);
-        irq_set_exclusive_handler(furi_hal_interrupt_irqn[index], NULL);
+        irq_remove_handler(furi_hal_interrupt_irqn[index], furi_hal_interrupt_isr_handler[index]);
         // furi_hal_interrupt_disable(index);
         // furi_hal_interrupt_clear_pending(index);
     }
