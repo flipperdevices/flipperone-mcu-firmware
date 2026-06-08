@@ -48,27 +48,37 @@ static bool cli_command_screen_process_input(PipeSide* pipe, CliAnsiParser* ansi
         char ch = getchar();
         if (ch == 0x03) return true;
 
-        InputKey emulated_key = InputKeyMask;
-        if (ch == '\r' || ch == '\n' || ch == ' ' || ch == 'o') emulated_key = InputKeyOk;
-        else if (ch == 0x7F || ch == 0x08 || ch == 'b') emulated_key = InputKeyBack;
-        else if (ch == 'w' || ch == 'W') emulated_key = InputKeyUp;
-        else if (ch == 's' || ch == 'S') emulated_key = InputKeyDown;
-        else if (ch == 'a' || ch == 'A') emulated_key = InputKeyLeft;
-        else if (ch == 'd' || ch == 'D') emulated_key = InputKeyRight;
+        CliAnsiParserResult ansi_res = cli_ansi_parser_feed(ansi_parser, ch);
+        if (ansi_res.is_done) {
+            InputKey emulated_key = InputKeyMask;
+            CliKey key_code = ansi_res.result.key;
+            
+            if (key_code == CliKeyUp)          emulated_key = InputKeyUp;
+            else if (key_code == CliKeyDown)   emulated_key = InputKeyDown;
+            else if (key_code == CliKeyLeft)   emulated_key = InputKeyLeft;
+            else if (key_code == CliKeyRight)  emulated_key = InputKeyRight;
+            else if (key_code == CliKeyEsc)    emulated_key = InputKeyBack;
 
-        else {
-            CliAnsiParserResult ansi_res = cli_ansi_parser_feed(ansi_parser, ch);
-            if (ansi_res.is_done) {
-                if (ansi_res.result.key == CliKeyUp)         emulated_key = InputKeyUp;
-                else if (ansi_res.result.key == CliKeyDown)   emulated_key = InputKeyDown;
-                else if (ansi_res.result.key == CliKeyLeft)   emulated_key = InputKeyLeft;
-                else if (ansi_res.result.key == CliKeyRight)  emulated_key = InputKeyRight;
-                else if (ansi_res.result.key == CliKeyEsc)    emulated_key = InputKeyBack;
+            else if (key_code == '\r' || key_code == '\n' || key_code == ' ' || key_code == 'o') emulated_key = InputKeyOk;
+            else if (key_code == 0x7F || key_code == 0x08 || key_code == 'b' || key_code == 'B') emulated_key = InputKeyBack;
+                
+            else if (key_code == 'w' || key_code == 'W') emulated_key = InputKeyUp;
+            else if (key_code == 's' || key_code == 'S') emulated_key = InputKeyDown;
+            else if (key_code == 'a' || key_code == 'A') emulated_key = InputKeyLeft;
+            else if (key_code == 'd' || key_code == 'D') emulated_key = InputKeyRight;
+
+            else if (key_code == '1') emulated_key = InputKey1;
+            else if (key_code == '2') emulated_key = InputKey2;
+            else if (key_code == '3') emulated_key = InputKey3;
+            else if (key_code == '4') emulated_key = InputKey4;
+            else if (key_code == '5') emulated_key = InputKey5;
+
+            else if (key_code == '\t' || key_code == 'x' || key_code == 'X') emulated_key = InputKeySw;
+            else if (key_code == 'p' || key_code == 'P') emulated_key = InputKeyPtt;
+
+            if(emulated_key != InputKeyMask) {
+                cli_screen_emulate_click(input_pubsub, emulated_key);
             }
-        }
-        
-        if(emulated_key != InputKeyMask) {
-            cli_screen_emulate_click(input_pubsub, emulated_key);
         }
     }
     return false;
