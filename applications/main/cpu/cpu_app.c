@@ -66,6 +66,11 @@ static void furi_hal_bsp_linux_reset(void) {
     furi_bsp_main_reset();
 }
 
+static bool furi_hal_bsp_linux_is_load(void) {
+    uint32_t status = furi_bsp_expander_main_read_output();
+    return (status & (OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En)) != 0;
+}
+
 static void furi_hal_bsp_linux_start(void) {
     uint32_t status = furi_bsp_expander_main_read_output();
     FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
@@ -168,6 +173,12 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
         case CpuAppMessageTypeStart:
+            if(!furi_hal_bsp_linux_is_load()) {
+                furi_hal_bsp_linux_reset();
+                furi_hal_bsp_linux_start();
+            }
+            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
+            break;
         case CpuAppMessageTypeReset:
             furi_hal_reset_pd_and_charger();
             furi_hal_bsp_linux_reset();
