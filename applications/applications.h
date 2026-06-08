@@ -14,6 +14,7 @@ typedef struct {
     const char* appid;
     const size_t stack_size;
     const FlipperInternalApplicationFlag flags;
+    const char* args;
 } FlipperInternalApplication;
 
 typedef struct {

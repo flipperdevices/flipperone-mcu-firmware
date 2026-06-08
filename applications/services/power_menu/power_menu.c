@@ -1,12 +1,16 @@
+#include "power_menu.h"
 #include <furi.h>
 #include <furi_hal_i2c_config.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include <led/led_batch.h>
 #include <power/power.h>
+#include <m-array.h>
+#include <api_lock.h>
 
-#define TAG              "PowerMenu"
-#define POWER_MENU_ID(x) CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
+#define TAG                     "PowerMenu"
+#define POWER_MENU_MAX_MESSAGES (8)
+#define POWER_MENU_ID(x)        CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
 
 typedef enum {
     PowerMenuActionLeds,
@@ -30,7 +34,37 @@ static const char* power_menu_items[] = {
     [PowerMenuActionCancel] = "Cancel",
 };
 
-static size_t power_menu_items_count = COUNT_OF(power_menu_items);
+typedef struct {
+    const char* text;
+    FuriCallbackWithContext on_click;
+} PowerMenuCallbacks;
+
+ARRAY_DEF(PowerMenuArray, PowerMenuCallbacks, M_POD_OPLIST);
+#define M_OPL_PowerMenuArray_t() ARRAY_OPLIST(PowerMenuArray, M_POD_OPLIST)
+
+typedef struct {
+    PowerMenuArray_t data;
+} PowerMenuStruct;
+
+typedef enum {
+    PowerMenuMessageTypeAddItem,
+    PowerMenuMessageTypeRemoveItem,
+} PowerMenuMessageType;
+
+typedef struct {
+    PowerMenuMessageType type;
+    FuriApiLock lock;
+    bool* result;
+    union {
+        struct {
+            const char* text;
+            FuriCallbackWithContext on_click;
+        } add_item;
+        struct {
+            const char* text;
+        } remove_item;
+    } as;
+} PowerMenuMessage;
 
 typedef struct {
     bool visible;
@@ -40,6 +74,8 @@ typedef struct {
     FuriString* power_led_brightness_text;
     FuriString* wattmeter_led_brightness_text;
     const char* led_text;
+    size_t power_menu_items_count;
+    PowerMenuStruct* menu_items;
 } PowerMenuModel;
 
 typedef struct {
@@ -52,6 +88,7 @@ typedef struct {
     size_t selected_link_led_brightness_index;
     size_t selected_power_led_brightness_index;
     size_t selected_wattmeter_led_brightness_index;
+    FuriMessageQueue* message_queue;
 } PowerMenu;
 
 static const LedBatch* items[] = {
@@ -105,6 +142,15 @@ static size_t led_brightness_get_nearest_index(uint8_t value) {
         }
     }
     return nearest_index;
+}
+
+static const char* power_menu_item_get_text(PowerMenuModel* model, size_t index) {
+    PowerMenuCallbacks* item = PowerMenuArray_get(model->menu_items->data, index);
+    return item ? item->text : NULL;
+}
+
+static size_t power_menu_item_get_count(PowerMenuModel* model) {
+    return PowerMenuArray_size(model->menu_items->data);
 }
 
 static bool power_menu_layout(void* _model) {
@@ -162,8 +208,21 @@ static bool power_menu_layout(void* _model) {
                 .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
             }) {
             // Menu items
-            for(uint32_t i = 0; i < power_menu_items_count; i++) {
+            for(uint32_t i = 0; i < model->power_menu_items_count; i++) {
                 bool selected = (i == model->selected_index);
+
+                // add a divider between built-in menu items and custom menu items
+                if(power_menu_item_get_count(model) > 0 && i == power_menu_item_get_count(model)) {
+                    CLAY_AUTO_ID({
+                        .layout =
+                            {
+                                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT(0)},
+                            },
+                        .border = {.color = COLOR_BLACK, .width = {.bottom = 1}},
+                    }) {
+                    }
+                }
+
                 CLAY(
                     POWER_MENU_ID(i),
                     {
@@ -176,15 +235,12 @@ static bool power_menu_layout(void* _model) {
                         .cornerRadius = CLAY_CORNER_RADIUS(2),
                     }) {
                     CLAY_TEXT(
-                        clay_helper_string_from_chars(power_menu_items[i]),
+                        clay_helper_string_from_chars(
+                            i < power_menu_item_get_count(model) ? power_menu_item_get_text(model, i) :
+                                                                   (power_menu_items[i - power_menu_item_get_count(model)])),
                         CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
 
-                    switch(i) {
-                    case PowerMenuActionBacklight:
-                        CLAY_TEXT(
-                            clay_helper_string_from(model->backlight_text),
-                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
-                        break;
+                    switch(i - power_menu_item_get_count(model)) {
                     case PowerMenuActionLeds:
                         CLAY_TEXT(
                             clay_helper_string_from_chars(model->led_text),
@@ -203,6 +259,11 @@ static bool power_menu_layout(void* _model) {
                     case PowerMenuActionWattmeterLedBrightness:
                         CLAY_TEXT(
                             clay_helper_string_from(model->wattmeter_led_brightness_text),
+                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
+                        break;
+                    case PowerMenuActionBacklight:
+                        CLAY_TEXT(
+                            clay_helper_string_from(model->backlight_text),
                             CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
                         break;
                     default:
@@ -239,20 +300,39 @@ static bool power_menu_model_init(PowerMenuModel* model, void* context) {
     model->power_led_brightness_text = furi_string_alloc();
     model->wattmeter_led_brightness_text = furi_string_alloc();
     model->led_text = led_batch_names[0];
+    model->power_menu_items_count = COUNT_OF(power_menu_items);
+
+    model->menu_items = malloc(sizeof(PowerMenuStruct));
+    PowerMenuArray_init(model->menu_items->data);
+
     return false;
 }
 
-static bool power_menu_model_deinit(PowerMenuModel* model, void* context) {
-    furi_string_free(model->backlight_text);
-    furi_string_free(model->link_led_brightness_text);
-    furi_string_free(model->power_led_brightness_text);
-    furi_string_free(model->wattmeter_led_brightness_text);
-    model->backlight_text = NULL;
-    model->link_led_brightness_text = NULL;
-    model->power_led_brightness_text = NULL;
-    model->wattmeter_led_brightness_text = NULL;
-    model->led_text = NULL;
-    return false;
+static void power_menu_add_item(PowerMenuModel* model, const char* text, FuriCallbackWithContext on_click) {
+    PowerMenuCallbacks* item = PowerMenuArray_push_raw(model->menu_items->data);
+    item->text = text;
+    item->on_click = on_click;
+    model->power_menu_items_count++;
+}
+
+static bool power_menu_remove_item(PowerMenuModel* model, const char* text) {
+    size_t index = 0;
+    bool found = false;
+    for
+        M_EACH(item, model->menu_items->data, PowerMenuArray_t) {
+            if(strcmp(item->text, text) == 0) {
+                item->text = NULL;
+                item->on_click.callback = NULL;
+                found = true;
+                break;
+            }
+            index++;
+        }
+    if(found) {
+        PowerMenuArray_erase(model->menu_items->data, index);
+        model->power_menu_items_count--;
+    }
+    return found;
 }
 
 static bool power_menu_model_set_backlight_text(PowerMenuModel* model, void* context) {
@@ -286,19 +366,25 @@ static bool power_menu_model_set_led_text(PowerMenuModel* model, void* context) 
 }
 
 static bool power_menu_model_menu_next(PowerMenuModel* model, void* context) {
-    model->selected_index = (model->selected_index + 1) % power_menu_items_count;
+    model->selected_index = (model->selected_index + 1) % model->power_menu_items_count;
     return true;
 }
 
 static bool power_menu_model_menu_prev(PowerMenuModel* model, void* context) {
-    model->selected_index = (model->selected_index - 1 + power_menu_items_count) % power_menu_items_count;
+    model->selected_index = (model->selected_index - 1 + model->power_menu_items_count) % model->power_menu_items_count;
     return true;
 }
 
 static bool power_menu_input_menu_get_selected_index(PowerMenuModel* model, void* context) {
     furi_check(context);
-    size_t* selected_index = context;
-    *selected_index = model->selected_index;
+    int* selected_index = context;
+
+    if(model->selected_index < power_menu_item_get_count(model)) {
+        *selected_index = -((int)model->selected_index) - 1;
+    } else {
+        *selected_index = (int)(model->selected_index - power_menu_item_get_count(model));
+    }
+
     return false;
 }
 
@@ -333,7 +419,7 @@ static void power_menu_apply_backlight(PowerMenu* instance) {
 
 #define POWER_MENU_PREV(var, min) (var = (var - 1 + min) % min)
 
-static void power_menu_input_left(PowerMenu* instance, size_t selected_index) {
+static void power_menu_input_left(PowerMenu* instance, int selected_index) {
     switch(selected_index) {
     case PowerMenuActionLinkLedBrightness:
         POWER_MENU_PREV(instance->selected_link_led_brightness_index, led_brightness_levels_count);
@@ -366,7 +452,7 @@ static void power_menu_input_left(PowerMenu* instance, size_t selected_index) {
 
 #define POWER_MENU_NEXT(var, max) (var = (var + 1) % max)
 
-static void power_menu_input_right(PowerMenu* instance, size_t selected_index) {
+static void power_menu_input_right(PowerMenu* instance, int selected_index) {
     switch(selected_index) {
     case PowerMenuActionLinkLedBrightness:
         POWER_MENU_NEXT(instance->selected_link_led_brightness_index, led_brightness_levels_count);
@@ -397,26 +483,42 @@ static void power_menu_input_right(PowerMenu* instance, size_t selected_index) {
     }
 }
 
-static void power_menu_input_menu(PowerMenu* instance, size_t selected_index) {
+static void power_menu_input_menu(PowerMenu* instance, int selected_index) {
     // OK on menu does the same thing as right
-    power_menu_input_right(instance, selected_index);
+    if(selected_index >= 0) {
+        power_menu_input_right(instance, selected_index);
 
-    switch(selected_index) {
-    case PowerMenuActionPowerOff:
-        Power* power_off = furi_record_open(RECORD_POWER);
-        power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
-        furi_record_close(RECORD_POWER);
-        break;
-    case PowerMenuActionReboot:
-        Power* power_reset = furi_record_open(RECORD_POWER);
-        power_bq25792_set_power_switch(power_reset, Bq25792PowerReset);
-        furi_record_close(RECORD_POWER);
-        break;
-    case PowerMenuActionCancel:
+        switch(selected_index) {
+        case PowerMenuActionPowerOff:
+            Power* power_off = furi_record_open(RECORD_POWER);
+            power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
+            furi_record_close(RECORD_POWER);
+            break;
+        case PowerMenuActionReboot:
+            Power* power_reset = furi_record_open(RECORD_POWER);
+            power_bq25792_set_power_switch(power_reset, Bq25792PowerReset);
+            furi_record_close(RECORD_POWER);
+            break;
+        case PowerMenuActionCancel:
+            power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
+            break;
+        default:
+            break;
+        }
+    } else {
+        size_t custom_index = selected_index * -1 - 1;
+
+        with_view_model(
+            instance->view,
+            PowerMenuModel * model,
+            {
+                PowerMenuCallbacks* item = PowerMenuArray_get(model->menu_items->data, custom_index);
+                if(item && item->on_click.callback) {
+                    item->on_click.callback(item->on_click.context);
+                }
+            },
+            true);
         power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
-        break;
-    default:
-        break;
     }
 }
 
@@ -434,15 +536,15 @@ static bool power_menu_input(InputEvent* event, void* context) {
             } else if(event->key == InputKeyDown) {
                 power_menu_model_apply(instance, power_menu_model_menu_next, NULL);
             } else if(event->key == InputKeyLeft) {
-                size_t selected_index;
+                int selected_index;
                 power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
                 power_menu_input_left(instance, selected_index);
             } else if(event->key == InputKeyRight) {
-                size_t selected_index;
+                int selected_index;
                 power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
                 power_menu_input_right(instance, selected_index);
             } else if(event->key == InputKeyOk) {
-                size_t selected_index;
+                int selected_index;
                 power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
                 power_menu_input_menu(instance, selected_index);
             } else if(event->key == InputKeyBack) {
@@ -457,8 +559,8 @@ static bool power_menu_input(InputEvent* event, void* context) {
             consumed = true;
         }
     } else {
-        if(event->key == InputKey3) {
-            if(event->type == InputTypeLong) {
+        if(event->type == InputTypePress) {
+            if(event->key == InputKey3) {
                 power_menu_model_apply(instance, power_menu_input_menu_show, NULL);
                 consumed = true;
             }
@@ -492,11 +594,45 @@ static void power_menu_wattmeter_led_brightness_callback(const void* item, void*
     power_menu_model_apply(instance, power_menu_model_set_wattmeter_led_brightness_text, brightness);
 }
 
+static void power_menu_message_queue_callback(FuriEventLoopObject* object, void* context) {
+    furi_assert(context);
+    PowerMenu* instance = context;
+    furi_assert(object == instance->message_queue);
+
+    PowerMenuMessage msg;
+    furi_check(furi_message_queue_get(instance->message_queue, &msg, 0) == FuriStatusOk);
+
+    bool result = false;
+
+    switch(msg.type) {
+    case PowerMenuMessageTypeAddItem:
+        with_view_model(instance->view, PowerMenuModel * model, { power_menu_add_item(model, msg.as.add_item.text, msg.as.add_item.on_click); }, true);
+        result = true;
+        break;
+    case PowerMenuMessageTypeRemoveItem:
+        with_view_model(instance->view, PowerMenuModel * model, { result = power_menu_remove_item(model, msg.as.remove_item.text); }, true);
+        break;
+
+    default:
+        furi_crash("Invalid message type");
+        break;
+    }
+
+    if(msg.result) {
+        *msg.result = result;
+    }
+
+    if(msg.lock) {
+        api_lock_unlock(msg.lock);
+    }
+}
+
 static PowerMenu* power_menu_alloc(void) {
     PowerMenu* instance = malloc(sizeof(PowerMenu));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->led = furi_record_open(RECORD_LEDS);
     instance->event_loop = furi_event_loop_alloc();
+    instance->message_queue = furi_message_queue_alloc(POWER_MENU_MAX_MESSAGES, sizeof(PowerMenuMessage));
 
     instance->view = view_alloc();
     view_set_transparent(instance->view, true);
@@ -512,25 +648,72 @@ static PowerMenu* power_menu_alloc(void) {
     furi_state_subscribe(led_get_link_brightness_state(instance->led), power_menu_link_led_brightness_callback, instance);
     furi_state_subscribe(led_get_power_brightness_state(instance->led), power_menu_power_led_brightness_callback, instance);
     furi_state_subscribe(led_get_wattmeter_brightness_state(instance->led), power_menu_wattmeter_led_brightness_callback, instance);
+    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, power_menu_message_queue_callback, instance);
+
+    furi_record_create(RECORD_POWER_MENU, instance);
 
     return instance;
-}
-
-static void power_menu_free(PowerMenu* instance) {
-    gui_remove_view(instance->gui, instance->view);
-    furi_record_close(RECORD_GUI);
-    furi_record_close(RECORD_LEDS);
-
-    power_menu_model_apply(instance, power_menu_model_deinit, NULL);
-    view_free(instance->view);
-    furi_event_loop_free(instance->event_loop);
-    free(instance);
 }
 
 int32_t power_menu_srv(void* p) {
     UNUSED(p);
     PowerMenu* instance = power_menu_alloc();
     furi_event_loop_run(instance->event_loop);
-    power_menu_free(instance);
+    furi_crash();
     return 0;
+}
+
+static void power_menu_send_message(PowerMenu* instance, const PowerMenuMessage* message) {
+    furi_check(furi_message_queue_put(instance->message_queue, message, FuriWaitForever) == FuriStatusOk);
+
+    if(message->lock) {
+        api_lock_wait_unlock_and_free(message->lock);
+    }
+}
+
+bool power_menu_add_menu_item(const char* text, FuriCallbackWithContext on_click) {
+    furi_assert(text);
+    bool result;
+    PowerMenuMessage msg = {
+        .type = PowerMenuMessageTypeAddItem,
+        .as.add_item =
+            {
+                .text = text,
+                .on_click = on_click,
+            },
+        .result = &result,
+        .lock = api_lock_alloc_locked(),
+    };
+
+    PowerMenu* instance = furi_record_open(RECORD_POWER_MENU);
+    power_menu_send_message(instance, &msg);
+    furi_record_close(RECORD_POWER_MENU);
+
+    if(!result) {
+        FURI_LOG_E(TAG, "Failed to add menu item");
+    }
+    return result;
+}
+
+bool power_menu_remove_menu_item(const char* text) {
+    furi_assert(text);
+    bool result;
+    PowerMenuMessage msg = {
+        .type = PowerMenuMessageTypeRemoveItem,
+        .as.remove_item =
+            {
+                .text = text,
+            },
+        .result = &result,
+        .lock = api_lock_alloc_locked(),
+    };
+
+    PowerMenu* instance = furi_record_open(RECORD_POWER_MENU);
+    power_menu_send_message(instance, &msg);
+    furi_record_close(RECORD_POWER_MENU);
+
+    if(!result) {
+        FURI_LOG_E(TAG, "Failed to remove menu item");
+    }
+    return result;
 }

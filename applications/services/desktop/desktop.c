@@ -159,7 +159,7 @@ static bool desktop_input(InputEvent* event, void* context) {
             DesktopMessage message = {
                 .type = DesktopMessageTypeAppStart,
                 .app = &FLIPPER_APPS[selected_index],
-                .args = NULL,
+                .args = FLIPPER_APPS[selected_index].args,
             };
 
             furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
