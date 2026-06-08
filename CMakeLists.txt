@@ -75,7 +75,6 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/bq28z620/*.c*"
     "lib/drivers/fusb302/*.c*"
     "lib/drivers/hd3ss3220/*.c*"
-    "lib/drivers/i2c_multi_slave/*.c*"
     "lib/drivers/i2c_slave/*.c*"
     "lib/drivers/headphones/*.c*"
     "lib/tusb/*.c*"
@@ -143,7 +142,6 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/uart_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/ws2812)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
-add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_multi_slave)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/rtt)
@@ -170,7 +168,6 @@ target_link_libraries(${PROJECT_NAME}
     containers
     ws2812
     pio_i2c
-    i2c_multi
     freertos
     assets
     mlib

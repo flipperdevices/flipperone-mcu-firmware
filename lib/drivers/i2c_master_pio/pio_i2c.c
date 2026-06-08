@@ -124,14 +124,15 @@ void pio_i2c_repstart(I2cMasterPio* instance, absolute_time_t until) {
     pio_i2c_put_or_err(instance, pio_encode_mov(pio_isr, pio_null), until);
 }
 
-static void pio_i2c_wait_idle(I2cMasterPio* instance, absolute_time_t until) {
+static bool pio_i2c_wait_idle(I2cMasterPio* instance, absolute_time_t until) {
     furi_check(instance);
     // Finished when TX runs dry or SM hits an IRQ
     instance->pio->fdebug = 1u << (PIO_FDEBUG_TXSTALL_LSB + instance->sm);
     while(!(instance->pio->fdebug & 1u << (PIO_FDEBUG_TXSTALL_LSB + instance->sm) || pio_i2c_check_error(instance))) {
-        if(until != 0 && time_us_64() >= until) break;
+        if(until != 0 && time_us_64() >= until) return false;
         tight_loop_contents();
     }
+    return true;
 }
 
 int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, const uint8_t* txbuf, uint len, bool nostop, absolute_time_t until) {
@@ -163,10 +164,14 @@ int pio_i2c_write_blocking(I2cMasterPio* instance, uint8_t addr, const uint8_t* 
     if(!nostop) {
         pio_i2c_stop(instance, until);
     }
-    pio_i2c_wait_idle(instance, until);
+    if(!pio_i2c_wait_idle(instance, until) && !err) {
+        err = PICO_ERROR_TIMEOUT;
+    }
 
     if(pio_i2c_check_error(instance) || err) {
-        err = PICO_ERROR_GENERIC;
+        if(pio_i2c_check_error(instance)) {
+            err = PICO_ERROR_GENERIC;
+        }
         pio_i2c_resume_after_error(instance);
         pio_i2c_stop(instance, until);
         instance->previous_nostop = false;
@@ -221,9 +226,13 @@ int pio_i2c_read_blocking(I2cMasterPio* instance, uint8_t addr, uint8_t* rxbuf, 
         pio_i2c_stop(instance, until);
     }
 
-    pio_i2c_wait_idle(instance, until);
+    if(!pio_i2c_wait_idle(instance, until) && !err) {
+        err = PICO_ERROR_TIMEOUT;
+    }
     if(pio_i2c_check_error(instance) || err) {
-        err = PICO_ERROR_GENERIC;
+        if(pio_i2c_check_error(instance)) {
+            err = PICO_ERROR_GENERIC;
+        }
         pio_i2c_resume_after_error(instance);
         pio_i2c_stop(instance, until);
         instance->previous_nostop = false;

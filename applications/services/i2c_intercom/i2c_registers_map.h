@@ -40,15 +40,15 @@
  * 0x0200+6 Touchpad press state        (read)
  * 0x0200+8 Headphones state            (read)
  * 
- * 0x0300+0 Link LED group brightness (write), 0 is off, 255 is max brightness
- * 0x0300+2 Power LED group brightness (write), 0 is off, 255 is max brightness
- * 0x0300+4 Wattmeter LED group brightness (write), 0 is off, 255 is max brightness
+ * 0x0300+0 Link LED group brightness      (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
+ * 0x0300+2 Power LED group brightness     (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
+ * 0x0300+4 Wattmeter LED group brightness (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
  * 
  * All LED colors are in RGB 565 format
- * 0x0310+0 Link1 LED color (write)
- * 0x0310+2 Link2 LED color (write)
- * 0x0310+4 Link3 LED color (write)
- * 0x0310+6 Link4 LED color (write)
+ * 0x0310+0 Link1 LED color (read, write)
+ * 0x0310+2 Link2 LED color (read, write)
+ * 0x0310+4 Link3 LED color (read, write)
+ * 0x0310+6 Link4 LED color (read, write)
  */
 
 // Device address
