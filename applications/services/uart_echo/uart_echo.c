@@ -1,3 +1,4 @@
+#include "uart_echo.h"
 #include "furi_hal_serial.h"
 #include <furi.h>
 #include <furi_hal.h>
@@ -9,11 +10,12 @@
 #define DEFAULT_PARITY    FuriHalSerialConfigParityNone
 #define DEFAULT_STOP_BITS FuriHalSerialConfigStopBits_1
 
-typedef struct {
+struct UartEchoApp{
     FuriThread* worker_thread;
     FuriStreamBuffer* rx_stream;
     FuriHalSerialHandle* serial_handle;
-} UartEchoApp;
+    bool stop_worker;
+};
 
 typedef enum {
     WorkerEventReserved = (1 << 0), // Reserved for StreamBuffer internal event
@@ -35,7 +37,7 @@ static int32_t uart_echo_worker(void* context) {
     furi_assert(context);
     UartEchoApp* app = context;
 
-    while(1) {
+    while(!app->stop_worker) {
         uint32_t events = furi_thread_flags_wait(WORKER_EVENTS_MASK, FuriFlagWaitAny, FuriWaitForever);
         furi_check((events & FuriFlagError) == 0);
 
@@ -141,12 +143,13 @@ static UartEchoApp*
     uart_echo_app_alloc(uint32_t baudrate, FuriHalSerialConfigDataBits data_bits, FuriHalSerialConfigParity parity, FuriHalSerialConfigStopBits stop_bits) {
     UartEchoApp* app = malloc(sizeof(UartEchoApp));
     app->rx_stream = furi_stream_buffer_alloc(2048, 1);
+    app->stop_worker = false;
 
     app->worker_thread = furi_thread_alloc_ex("UsbUartWorker", 1024, uart_echo_worker, app);
     furi_thread_start(app->worker_thread);
 
     // Enable uart listener
-    app->serial_handle = furi_hal_serial_control_acquire(FuriHalSerialIdUart1);
+    app->serial_handle = furi_hal_serial_control_acquire(FuriHalSerialIdUart0);
     furi_check(app->serial_handle);
     furi_hal_serial_init(app->serial_handle, baudrate);
     furi_hal_serial_set_config(app->serial_handle, data_bits, parity, stop_bits);
@@ -174,18 +177,20 @@ static void uart_echo_app_free(UartEchoApp* app) {
     free(app);
 }
 
-int32_t uart_echo_app(void* p) {
-    UNUSED(p);
+UartEchoApp* uart_echo_app_start(void) {
+
     uint32_t baudrate = DEFAULT_BAUD_RATE;
     FuriHalSerialConfigDataBits data_bits = DEFAULT_DATA_BITS;
     FuriHalSerialConfigParity parity = DEFAULT_PARITY;
     FuriHalSerialConfigStopBits stop_bits = DEFAULT_STOP_BITS;
 
     UartEchoApp* app = uart_echo_app_alloc(baudrate, data_bits, parity, stop_bits);
-    // ToDo: do nothing
-    while(1) {
-        furi_delay_ms(FuriWaitForever);
-    }
+
+    return app;
+}
+
+void uart_echo_app_stop(UartEchoApp* app) {
+    furi_assert(app);
+    app->stop_worker = true;
     uart_echo_app_free(app);
-    return 0;
 }
