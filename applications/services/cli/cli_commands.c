@@ -5,13 +5,10 @@
 #include <applications.h>
 
 #include "cli_command_gpio.h"
+#include "cli_command_screen.h"
 #include "cli_commands_common.h"
 #include "cli_vcp.h"
 #include "cli_uart.h"
-
-#ifdef EN_USB_DISPLAY_EMU
-    #include "cli_command_screen.h"
-#endif
 
 static void cli_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "uptime", CliCommandFlagParallelSafe, cli_command_uptime, NULL);
@@ -23,10 +20,7 @@ static void cli_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "expander_ext", CliCommandFlagParallelSafe, cli_command_expander_ext, NULL);
     cli_registry_add_command(registry, "clock_out", CliCommandFlagParallelSafe, cli_command_clock_out, NULL);
     cli_registry_add_command(registry, "gpio", CliCommandFlagParallelSafe, cli_command_gpio, NULL);
-
-    #ifdef EN_USB_DISPLAY_EMU
-        cli_registry_add_command(registry, "screen", CliCommandFlagParallelSafe, cli_command_screen, NULL);
-    #endif
+    cli_registry_add_command(registry, "screen", CliCommandFlagParallelSafe, cli_command_screen, NULL);
     
     if(!furi_hal_otp_usb_white_label_valid()) {
         cli_registry_add_command(registry, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
