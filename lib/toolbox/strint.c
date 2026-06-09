@@ -20,7 +20,7 @@
  */
 StrintParseError strint_to_uint64_internal(
     const char* str,
-    char** end,
+    const char** end,
     uint64_t* abs_out,
     bool* negative_out,
     uint8_t base,
@@ -98,12 +98,12 @@ StrintParseError strint_to_uint64_internal(
 
     if(abs_out) *abs_out = result;
     if(negative_out) *negative_out = negative;
-    if(end) *end = (char*)str; // rabbit hole: https://c-faq.com/ansi/constmismatch.html
+    if(end) *end = str; // rabbit hole: https://c-faq.com/ansi/constmismatch.html
     return StrintParseNoError;
 }
 
 #define STRINT_MONO(name, ret_type, neg_abs_limit, pos_limit)                         \
-    StrintParseError name(const char* str, char** end, ret_type* out, uint8_t base) { \
+    StrintParseError name(const char* str, const char** end, ret_type* out, uint8_t base) { \
         uint64_t absolute;                                                            \
         bool negative;                                                                \
         StrintParseError err = strint_to_uint64_internal(                             \
