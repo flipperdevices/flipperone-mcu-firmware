@@ -15,10 +15,10 @@ static const Clay_String font_test_rows[] = {
 };
 
 static const char* font_test_names[] = {
-    [FontBody]     = "FontBody     haxrcorp4089",
-    [FontButton]   = "FontButton   helvB08",
+    [FontBody] = "FontBody     haxrcorp4089",
+    [FontButton] = "FontButton   helvB08",
     [FontKeyboard] = "FontKeyboard profont11",
-    [FontBusy9]    = "FontBusy9    busy9_9px",
+    [FontBusy9] = "FontBusy9    busy9_9px",
 };
 
 typedef struct {
@@ -29,7 +29,7 @@ typedef struct {
     Gui* gui;
     View* view;
     FuriEventLoop* event_loop;
-    FuriThread* thread;
+    //FuriThread* thread;
 } FontTest;
 
 static bool font_test_layout(void* _model) {
@@ -48,47 +48,43 @@ static bool font_test_layout(void* _model) {
          }}) {
         /* Title: font name, centred */
         CLAY_AUTO_ID({
-            .layout = {
-                .sizing = {.width = CLAY_SIZING_GROW(0)},
-                .childAlignment = {.x = CLAY_ALIGN_X_CENTER},
-            },
+            .layout =
+                {
+                    .sizing = {.width = CLAY_SIZING_GROW(0)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_LEFT},
+                },
         }) {
-            CLAY_TEXT(
-                clay_helper_string_from_chars(font_test_names[font]),
-                CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
+            CLAY_TEXT(clay_helper_string_from_chars(font_test_names[font]), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
         }
 
         /* Separator */
         CLAY_AUTO_ID({
             .backgroundColor = COLOR_BLACK,
             .layout = {.sizing = {.height = CLAY_SIZING_FIXED(1), .width = CLAY_SIZING_GROW(0)}},
-        }) {}
+        }) {
+        }
 
         /* Glyph rows rendered with the selected font */
         for(size_t i = 0; i < COUNT_OF(font_test_rows); i++) {
             CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0)}}}) {
-                CLAY_TEXT(
-                    font_test_rows[i],
-                    CLAY_TEXT_CONFIG({.fontId = font, .textColor = COLOR_BLACK}));
+                CLAY_TEXT(font_test_rows[i], CLAY_TEXT_CONFIG({.fontId = font, .textColor = COLOR_BLACK}));
             }
         }
 
         /* Footer: navigation hint */
         CLAY_AUTO_ID({
-            .layout = {
-                .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(1)},
-                .childAlignment = {.y = CLAY_ALIGN_Y_BOTTOM},
-                .childGap = 4,
-            },
+            .layout =
+                {
+                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(1)},
+                    .childAlignment = {.y = CLAY_ALIGN_Y_BOTTOM},
+                    .childGap = 4,
+                },
         }) {
-            CLAY_TEXT(
-                CLAY_STRING("<  >  switch"),
-                CLAY_TEXT_CONFIG({.fontId = FontBusy9, .textColor = COLOR_BLACK}));
-            CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(1)}}}) {}
-            CLAY_TEXT(
-                CLAY_STRING("Back exit"),
-                CLAY_TEXT_CONFIG({.fontId = FontBusy9, .textColor = COLOR_BLACK}));
+            CLAY_TEXT(CLAY_STRING("<  >  switch"), CLAY_TEXT_CONFIG({.fontId = FontBusy9, .textColor = COLOR_BLACK}));
+            CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(1)}}}) {
+            }
+            CLAY_TEXT(CLAY_STRING("Back exit"), CLAY_TEXT_CONFIG({.fontId = FontBusy9, .textColor = COLOR_BLACK}));
         }
     }
 
@@ -98,54 +94,38 @@ static bool font_test_layout(void* _model) {
 static bool font_test_input(InputEvent* event, void* context) {
     furi_check(context);
     FontTest* instance = context;
+    bool consumed = false;
 
-    if(event->type != InputTypePress && event->type != InputTypeRepeat) return false;
+    if(event->type == InputTypePress) {
+        if(event->key == InputKeyBack) {
+            furi_event_loop_stop(instance->event_loop);
+            consumed = true;
+        }
 
-    if(event->key == InputKeyBack) {
-        furi_thread_signal(instance->thread, FuriSignalExit, NULL);
-        return true;
+        if(event->key == InputKeyLeft) {
+            with_view_model(instance->view, FontTestModel * model, { model->font_index = (model->font_index + FontMax - 1) % FontMax; }, true);
+            consumed = true;
+        }
+
+        if(event->key == InputKeyRight) {
+            with_view_model(instance->view, FontTestModel * model, { model->font_index = (model->font_index + 1) % FontMax; }, true);
+            consumed = true;
+        }
     }
-
-    if(event->key == InputKeyLeft) {
-        with_view_model(
-            instance->view,
-            FontTestModel* model,
-            { model->font_index = (model->font_index + FontMax - 1) % FontMax; },
-            true);
-        return true;
-    }
-
-    if(event->key == InputKeyRight) {
-        with_view_model(
-            instance->view,
-            FontTestModel* model,
-            { model->font_index = (model->font_index + 1) % FontMax; },
-            true);
-        return true;
-    }
-
-    return false;
-}
-
-static bool font_test_input_touch(InputTouchEvent* event, void* context) {
-    UNUSED(event);
-    UNUSED(context);
-    return false;
+    return consumed;
 }
 
 static FontTest* font_test_alloc(void) {
     FontTest* instance = malloc(sizeof(FontTest));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
-    instance->thread = furi_thread_get_current();
+   // instance->thread = furi_thread_get_current();
     instance->view = view_alloc();
     view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(FontTestModel));
-    with_view_model(
-        instance->view, FontTestModel* model, { model->font_index = FontBusy9; }, false);
+    with_view_model(instance->view, FontTestModel * model, { model->font_index = FontBusy9; }, false);
 
     view_set_layout_callback(instance->view, font_test_layout);
     view_set_input_callback(instance->view, font_test_input, instance);
-    view_set_input_touch_callback(instance->view, font_test_input_touch, instance);
     gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
     return instance;
 }
