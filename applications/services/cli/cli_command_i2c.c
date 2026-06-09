@@ -101,6 +101,12 @@ static bool cli_command_i2c_write(PipeSide* pipe, FuriString* args) {
         furi_string_trim(args);
 
         data_length = furi_string_size(args) / 2;
+        if(data_length == 0) {
+            printf(ANSI_FG_RED "No data provided to write\r\n" ANSI_RESET);
+            furi_string_free(bus_name);
+            return false;
+        }        
+
         data = malloc(data_length + 1); // +1 for device register
         data[0] = device_register;
         if(!args_read_hex_bytes(args, data + 1, data_length)) {
