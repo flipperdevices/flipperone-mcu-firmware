@@ -27,6 +27,7 @@ extern int32_t touchpad_test_app(void* p);
 extern int32_t cpu_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
+extern int32_t font_test_app(void* p);
 extern int32_t cli_on_system_start(void* p);
 
 // CLI commands
@@ -207,6 +208,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .app = haptic_test_app,
         .name = "Haptic Test",
         .appid = "haptic_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = font_test_app,
+        .name = "Font Test",
+        .appid = "font_test",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
