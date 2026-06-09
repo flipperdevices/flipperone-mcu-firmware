@@ -44,6 +44,8 @@ static const void* render_get_font_by_id(Font font_id) {
         return u8g2_font_profont11_mr;
     case FontBusy9:
         return u8g2_font_busy9_tr;
+    case FontBusy9LatCyr:
+        return u8g2_font_busy9_lat_cyr_tr;
     default:
         return u8g2_font_haxrcorp4089_tr;
     }

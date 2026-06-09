@@ -6,12 +6,12 @@
 
 /* Printable ASCII split into rows of 16 glyphs (the last row has 15). */
 static const Clay_String font_test_rows[] = {
-    CLAY_STRING(" !\"#$%&'()*+,-./"),
-    CLAY_STRING("0123456789:;<=>?"),
-    CLAY_STRING("@ABCDEFGHIJKLMNO"),
-    CLAY_STRING("PQRSTUVWXYZ[\\]^_"),
-    CLAY_STRING("`abcdefghijklmno"),
-    CLAY_STRING("pqrstuvwxyz{|}~"),
+    CLAY_STRING(" !\"#$%&'()*+,-./0123456789:;<=>?"),
+    CLAY_STRING("@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"),
+    CLAY_STRING("`abcdefghijklmnopqrstuvwxyz{|}~"),
+    //add Russian chars
+    CLAY_STRING("АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"),
+    CLAY_STRING("абвгдежзийклмнопрстуфхцчшщъыьэюя"),
 };
 
 static const char* font_test_names[] = {
@@ -19,6 +19,7 @@ static const char* font_test_names[] = {
     [FontButton] = "FontButton   helvB08",
     [FontKeyboard] = "FontKeyboard profont11",
     [FontBusy9] = "FontBusy9    busy9_9px",
+    [FontBusy9LatCyr] = "FontBusy9LatCyr    busy9_9px_lat_cyr",
 };
 
 typedef struct {
