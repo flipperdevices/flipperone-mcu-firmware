@@ -5,8 +5,8 @@
 
 #define TAG "HeadphonesSrv"
 
-#define HEADPHONES_TIMEOUT_UPDATE_MS             (100U)
-#define HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER (10U) // Timeout = HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER * HEADPHONES_TIMEOUT_UPDATE_MS
+#define HEADPHONES_UPDATE_INTERVAL_MS              (100U)
+#define HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUNTER (10U) // Timeout = HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUNTER * HEADPHONES_UPDATE_INTERVAL_MS
 
 #define HEADPHONES_SRV_DEBUG_ENABLE
 
@@ -52,13 +52,13 @@ static void headphones_custom_event_callback(uint32_t events, void* context) {
 
     if(events & HeadphonesEventTypeIsrConnected) {
         if(!furi_event_loop_timer_is_running(instance->timer)) {
-            furi_event_loop_timer_start(instance->timer, HEADPHONES_TIMEOUT_UPDATE_MS);
+            furi_event_loop_timer_start(instance->timer, HEADPHONES_UPDATE_INTERVAL_MS);
         }
         instance->debounce_counter = 0;
     }
 
     if(events & HeadphonesEventTypeIsrDisconnected) {
-        if(instance->debounce_counter >= HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER) {
+        if(instance->debounce_counter >= HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUNTER) {
             if(headphones_update(&hp_status)) {
                 HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
                 HeadphonesEvent event = {
@@ -74,7 +74,7 @@ static void headphones_custom_event_callback(uint32_t events, void* context) {
     }
 
     if(events & HeadphonesEventTypeIsrTimer) {
-        if(instance->debounce_counter < HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUTER) {
+        if(instance->debounce_counter < HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUNTER) {
             instance->debounce_counter++;
         } else {
             if(headphones_update(&hp_status)) {
