@@ -7,8 +7,10 @@
  * the NVM area and the BT/errata sectors at the end of flash.  If the firmware
  * ever grows past that limit the linker will emit a hard error.
  *
- * NOLOAD emits no bytes into the .bin/.uf2.  Augments the SDK's
- * memmap_default.ld via INSERT; see the wiring in CMakeLists.txt.
+ * NOLOAD emits no bytes into the .bin/.uf2.
+ *
+ * Note: this fragment must be passed to the linker (e.g. via target_link_options)
+ * to take effect.
  */
 
 SECTIONS
