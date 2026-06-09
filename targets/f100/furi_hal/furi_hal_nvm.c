@@ -10,7 +10,7 @@
 
 //#include "kvstore.h"
 
-#define FURI_HAL_NVM_BANK_DEFAULT_SIZE (128 * 1024)
+/* FURI_HAL_NVM_BANK_DEFAULT_SIZE is passed as a compile definition from CMakeLists.txt */
 #define FURI_HAL_NVM_BANK_OFFSET       (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)
 
 bool kvs_init(void) {
