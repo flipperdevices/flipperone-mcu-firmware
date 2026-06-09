@@ -16,7 +16,7 @@
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
 
 #define CPU_APP_MENU_START   "CPU Start"
-#define CPU_APP_MENU_RESET   "CPU Reset"
+#define CPU_APP_MENU_REBOOT  "CPU Reboot"
 #define CPU_APP_MENU_MASKROM "CPU Maskrom"
 #define CPU_APP_MENU_CLOSE   "CPU Shutdown"
 
@@ -64,6 +64,12 @@ static void furi_hal_reset_pd_and_charger(void) {
 
 static void furi_hal_bsp_linux_reset(void) {
     furi_bsp_main_reset();
+}
+
+static bool furi_hal_bsp_linux_is_load(void) {
+    const uint32_t mask = OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En;
+    uint32_t status = furi_bsp_expander_main_read_output();
+    return (status & mask) == mask;
 }
 
 static void furi_hal_bsp_linux_start(void) {
@@ -168,6 +174,12 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
         case CpuAppMessageTypeStart:
+            if(!furi_hal_bsp_linux_is_load()) {
+                furi_hal_bsp_linux_reset();
+                furi_hal_bsp_linux_start();
+            }
+            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
+            break;
         case CpuAppMessageTypeReset:
             furi_hal_reset_pd_and_charger();
             furi_hal_bsp_linux_reset();
@@ -227,13 +239,13 @@ static CpuApp* cpu_app_alloc(void) {
 
     //add some test menu items
     power_menu_add_menu_item(CPU_APP_MENU_CLOSE, (FuriCallbackWithContext){.callback = cpu_app_menu_close_click_callback, .context = instance});
-    power_menu_add_menu_item(CPU_APP_MENU_RESET, (FuriCallbackWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
+    power_menu_add_menu_item(CPU_APP_MENU_REBOOT, (FuriCallbackWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
     power_menu_remove_menu_item(CPU_APP_MENU_CLOSE);
-    power_menu_remove_menu_item(CPU_APP_MENU_RESET);
+    power_menu_remove_menu_item(CPU_APP_MENU_REBOOT);
 
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);

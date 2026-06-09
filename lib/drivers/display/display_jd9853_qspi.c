@@ -15,10 +15,13 @@
 
 #include <hardware/clocks.h>
 
-#define FIRST_HSTX_PIN                      12
-#define DISPLAY_JD9853_HSTX_END_TX_DELAY_US 5 //5us
-#define DISPLAY_JD9853_BACKLIGHT_BIT        8 //8-bit PWM for backlight
-#define DISPLAY_JD9853_BACKLIGHT_FREQ_HZ    40000 //25kHz PWM for backlight
+#define TAG "DisplayDriver"
+
+#define FIRST_HSTX_PIN                             12
+#define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        5 //5us
+#define DISPLAY_JD9853_BACKLIGHT_BIT               8 //8-bit PWM for backlight
+#define DISPLAY_JD9853_BACKLIGHT_FREQ_HZ           40000 //25kHz PWM for backlight
+#define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS 1000
 
 typedef struct {
     uint32_t cmd[4];
@@ -32,6 +35,7 @@ struct DisplayJd9853QSPI {
     Tps62868x* power_supply;
     uint8_t backlight;
     DisplayJd9853QSPIBufferHeader buffer_header;
+    bool display_is_connected;
 };
 
 static DisplayJd9853QSPI* display_instance = NULL;
@@ -39,7 +43,7 @@ static DisplayJd9853QSPI* display_instance = NULL;
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853QSPI* display) {
     UNUSED(display);
     while(!(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS)) {
-        tight_loop_contents();
+        furi_thread_yield();
     }
 }
 
@@ -82,7 +86,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
     while(hstx_fifo_hw->stat & HSTX_FIFO_STAT_FULL_BITS) {
-        tight_loop_contents();
+        furi_thread_yield();
     }
     hstx_fifo_hw->fifo = data;
 }
@@ -168,8 +172,12 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
     furi_assert(display);
     furi_check(size == JD9853_WIDTH * JD9853_HEIGHT); //size must be equal to full buffer size
 
+    if(!display->display_is_connected) {
+        return; // Don't attempt to write if display is not connected
+    }
+
     while(furi_semaphore_get_space(display->busy)) {
-        tight_loop_contents();
+        furi_thread_yield();
     };
 
     memcpy(display->buffer_header.data, buffer, size);
@@ -258,6 +266,19 @@ int8_t display_jd9853_qspi_get_brightness(DisplayJd9853QSPI* display) {
     return (int8_t)display->backlight;
 }
 
+bool display_jd9853_qspi_check_connection(DisplayJd9853QSPI* display, uint32_t timeout_ms) {
+    furi_check(display);
+    int64_t start_time = furi_get_tick();
+
+    while(!furi_hal_gpio_read(&gpio_display_te)) {
+        if(furi_get_tick() - start_time > timeout_ms) {
+            return false;
+        }
+        furi_thread_yield();
+    };
+    return true;
+}
+
 DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_check(display_instance == NULL); // Only one instance allowed
     DisplayJd9853QSPI* display = malloc(sizeof(DisplayJd9853QSPI));
@@ -319,6 +340,12 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
 
     //Initialization sequence
     display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_white_mod);
+
+    display->display_is_connected = display_jd9853_qspi_check_connection(display, DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS);
+    if(!display->display_is_connected) {
+        FURI_LOG_E(TAG, "Display not connected");
+    }
+
     display_jd9853_qspi_fill(display, 0); // Fill black
 
     display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 2%
