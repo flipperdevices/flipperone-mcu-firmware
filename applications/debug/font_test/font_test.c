@@ -29,7 +29,6 @@ typedef struct {
     Gui* gui;
     View* view;
     FuriEventLoop* event_loop;
-    //FuriThread* thread;
 } FontTest;
 
 static bool font_test_layout(void* _model) {
@@ -119,7 +118,6 @@ static FontTest* font_test_alloc(void) {
     FontTest* instance = malloc(sizeof(FontTest));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
-   // instance->thread = furi_thread_get_current();
     instance->view = view_alloc();
     view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(FontTestModel));
     with_view_model(instance->view, FontTestModel * model, { model->font_index = FontBusy9; }, false);
