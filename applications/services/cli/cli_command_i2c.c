@@ -23,7 +23,7 @@ typedef struct {
     const FuriHalI2cBusHandle* handle;
 } I2CBusInfo;
 
-const I2CBusInfo i2c_buses[] = {
+static const I2CBusInfo i2c_buses[] = {
     {I2C_BUS_CONTROL, &furi_hal_i2c_handle_control},
     {I2C_BUS_MAIN, &furi_hal_i2c_handle_main},
 };
@@ -31,7 +31,7 @@ const I2CBusInfo i2c_buses[] = {
 static const I2CBusInfo* cli_command_i2c_bus_by_name(FuriString* name) {
     for(size_t i = 0; i < COUNT_OF(i2c_buses); i++) {
         char name_buffer[16];
-        snprintf(name_buffer, sizeof(name_buffer), "%d", i);
+        snprintf(name_buffer, sizeof(name_buffer), "%zu", i);
         if(furi_string_cmp(name, i2c_buses[i].name) == 0 || furi_string_cmp(name, name_buffer) == 0) {
             return &i2c_buses[i];
         }
@@ -70,7 +70,7 @@ static bool cli_command_i2c_list(PipeSide* pipe, FuriString* args) {
     UNUSED(args);
     printf("Available I2C buses:\r\n");
     for(size_t i = 0; i < COUNT_OF(i2c_buses); i++) {
-        printf(" %d - %s\r\n", i, i2c_buses[i].name);
+        printf(" %zu - %s\r\n", i, i2c_buses[i].name);
     }
     return true;
 }
@@ -246,7 +246,6 @@ void cli_command_i2c(PipeSide* pipe, FuriString* args, void* context) {
 
     if(args_read_string_and_trim(args, cmd)) {
         const char* cmd_str = furi_string_get_cstr(cmd);
-        const char* arg_str = furi_string_get_cstr(args);
         for(size_t i = 0; i < COUNT_OF(i2c_cmds); i++) {
             const I2CCmd* c = &i2c_cmds[i];
             if(strcmp(cmd_str, c->name) == 0) {

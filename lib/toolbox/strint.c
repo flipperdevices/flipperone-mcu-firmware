@@ -98,7 +98,7 @@ StrintParseError strint_to_uint64_internal(
 
     if(abs_out) *abs_out = result;
     if(negative_out) *negative_out = negative;
-    if(end) *end = str; // rabbit hole: https://c-faq.com/ansi/constmismatch.html
+    if(end) *end = str;
     return StrintParseNoError;
 }
 
