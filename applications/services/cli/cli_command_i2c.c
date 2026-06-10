@@ -93,6 +93,7 @@ static bool cli_command_i2c_write(PipeSide* pipe, FuriString* args) {
     bool result = false;
     FuriString* arg_bus_name = furi_string_alloc();
     FuriString* data_str = furi_string_alloc();
+    FuriString* data_write = furi_string_alloc();
     uint8_t* data = NULL;
 
     do {
@@ -124,8 +125,11 @@ static bool cli_command_i2c_write(PipeSide* pipe, FuriString* args) {
 
         furi_string_set(data_str, args_cstr);
         furi_string_trim(data_str);
+        args_read_string_and_trim(data_str, data_write);
 
-        data_length = furi_string_size(data_str) / 2;
+        printf("Data to write: '%s'\r\n", furi_string_get_cstr(data_write));
+
+        data_length = furi_string_size(data_write) / 2;
         if(data_length == 0) {
             printf(ANSI_FG_RED "No data provided to write\r\n" ANSI_RESET);
             break;
@@ -133,7 +137,7 @@ static bool cli_command_i2c_write(PipeSide* pipe, FuriString* args) {
 
         data = malloc(data_length + 1); // +1 for device register
         data[0] = device_register;
-        if(!args_read_hex_bytes(data_str, data + 1, data_length)) {
+        if(!args_read_hex_bytes(data_write, data + 1, data_length)) {
             printf(ANSI_FG_RED "Failed" ANSI_RESET " to read hex data\r\n");
             break;
         }
@@ -158,6 +162,7 @@ static bool cli_command_i2c_write(PipeSide* pipe, FuriString* args) {
     free(data);
     furi_string_free(arg_bus_name);
     furi_string_free(data_str);
+    furi_string_free(data_write);
     return result;
 }
 
