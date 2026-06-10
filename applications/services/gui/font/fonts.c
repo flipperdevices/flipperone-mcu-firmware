@@ -128,7 +128,7 @@ const uint8_t u8g2_font_profont11_mr[1203] =
 
 /*
   Fontname: FontBusy9
-  Copyright: Copyright: "2021 TakWolf (https://ark-pixel-font.takwolf.com/)", "2024-2026 Flipper FZCO", "OFL-1.1"
+  Copyright: "2021 TakWolf (https://ark-pixel-font.takwolf.com/)", "2024-2026 Flipper FZCO", "OFL-1.1"
   Glyphs: 94/237
   BBX Build Mode: 0
 */
