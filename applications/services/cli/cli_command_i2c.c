@@ -31,7 +31,7 @@ static const I2CBusInfo i2c_buses[] = {
 static const I2CBusInfo* cli_command_i2c_bus_by_name(FuriString* name) {
     for(size_t i = 0; i < COUNT_OF(i2c_buses); i++) {
         char name_buffer[16];
-        snprintf(name_buffer, sizeof(name_buffer), "%zu", i);
+        snprintf(name_buffer, sizeof(name_buffer), "%zu", i); // The buffer name can be specified by its index in the array.
         if(furi_string_cmp(name, i2c_buses[i].name) == 0 || furi_string_cmp(name, name_buffer) == 0) {
             return &i2c_buses[i];
         }
@@ -159,7 +159,9 @@ static bool cli_command_i2c_write(PipeSide* pipe, FuriString* args) {
         result = true;
     } while(0);
 
-    free(data);
+    if(data) {
+        free(data);
+    }
     furi_string_free(arg_bus_name);
     furi_string_free(data_str);
     furi_string_free(data_write);
