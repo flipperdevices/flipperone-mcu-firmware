@@ -127,7 +127,7 @@ const uint8_t u8g2_font_profont11_mr[1203] =
     "\225\212\316\21\177\7\336\370\371\67\0\0\0\0\4\377\377\0";
 
 /*
-  Fontname: -FreeType-busy _9px-Medium-R-Normal--16-160-72-72-P-57-ISO10646-1
+  Fontname: FontBusy9
   Copyright: -FreeType-busy _9px-Medium-R-Normal--16-160-72-72-P-57-ISO10646-1
   Glyphs: 94/237
   BBX Build Mode: 0
@@ -170,7 +170,7 @@ const uint8_t u8g2_font_busy9_tr[1103] =
   "\67.\216\30\25\25\0\0\0\0\4\377\377\0";
 
 /*
-  Fontname: -FreeType-busy _9px-Medium-R-Normal--16-160-72-72-P-60-ISO10646-1
+  Fontname: FontBusy9LatCyr
   Copyright: -FreeType-busy _9px-Medium-R-Normal--16-160-72-72-P-60-ISO10646-1
   Glyphs: 160/160
   BBX Build Mode: 0

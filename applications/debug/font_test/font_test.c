@@ -6,9 +6,10 @@
 
 /* Printable ASCII split into rows of 16 glyphs (the last row has 15). */
 static const Clay_String font_test_rows[] = {
-    CLAY_STRING(" !\"#$%&'()*+,-./0123456789:;<=>?"),
-    CLAY_STRING("@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_"),
-    CLAY_STRING("`abcdefghijklmnopqrstuvwxyz{|}~"),
+    CLAY_STRING("ABCDEFGHIJKLMNOPQRSTUVWXYZ"),
+    CLAY_STRING("abcdefghijklmnopqrstuvwxyz"),
+    CLAY_STRING("1234567890"),
+    CLAY_STRING("!\"#$%&'()*+,-./:;<=>?@ [\\]^_`{|}~"),
     //add Russian chars
     CLAY_STRING("АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"),
     CLAY_STRING("абвгдежзийклмнопрстуфхцчшщъыьэюя"),
@@ -46,7 +47,6 @@ static bool font_test_layout(void* _model) {
              .padding = {4, 4, 4, 4},
              .childGap = 2,
          }}) {
-        /* Title: font name, centred */
         CLAY_AUTO_ID({
             .layout =
                 {
