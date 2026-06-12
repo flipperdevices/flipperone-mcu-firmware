@@ -147,34 +147,18 @@ I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4);
 
 // Haptic functions
 void i2c_negotiator_haptic_play_effect(I2CNegotiator* instance, uint16_t value) {
-    Drv2605lEffect effect_id;
-    with_i2c_register({
-        uint16_t reg_value = i2c_register_get_value(I2C_HAPTIC_EFFECT_REG_ADDRESS);
-        effect_id = reg_value & 0xFF;
-    });
+    Drv2605lEffect effect_id = (Drv2605lEffect)((value & I2C_HAPTIC_NUM_EFFECTS_MASK) >> I2C_HAPTIC_NUM_EFFECTS_SHIFT);
 
     if(effect_id >= Drv2605lEffectCountMax) {
         FURI_LOG_E(TAG, "Invalid haptic effect ID: %d", effect_id);
         return;
     }
 
-    if(value > HAPTIC_TIMEOUT_OFF_MS && value != 0xFFFF) {
-        FURI_LOG_E(TAG, "Invalid haptic effect duration: %d ms", value);
-        return;
-    }
-
-    // value is duration in ms, 0,1 means play full effect, 0xFFFF means stop effect
-    switch(value) {
-    case 0x0000:
-    case 0x0001: // play full effect
-        haptic_play_effect(instance->haptic, effect_id, 0);
-        break;
-    case 0xFFFF: // stop effect
+    if(value & (1 << I2C_HAPTIC_PLAY_EFFECT_BIT)) {
+        uint32_t time_ms = (value & I2C_HAPTIC_DURATION_MASK) >> I2C_HAPTIC_DURATION_SHIFT;
+        haptic_play_effect(instance->haptic, effect_id, time_ms <= 1 ? 0 : time_ms);
+    } else {
         haptic_stop(instance->haptic);
-        break;
-    default:
-        haptic_play_effect(instance->haptic, effect_id, value);
-        break;
     }
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_haptic_play_effect);
