@@ -147,7 +147,7 @@ I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4);
 
 // Haptic functions
 void i2c_negotiator_haptic_play_effect(I2CNegotiator* instance, uint16_t value) {
-    Drv2605lEffect effect_id = (Drv2605lEffect)((value & I2C_HAPTIC_NUM_EFFECTS_MASK) >> I2C_HAPTIC_NUM_EFFECTS_SHIFT);
+    Drv2605lEffect effect_id = (Drv2605lEffect)((value & I2C_HAPTIC_NUM_EFFECT_MASK) >> I2C_HAPTIC_NUM_EFFECT_SHIFT);
 
     if(effect_id >= Drv2605lEffectCountMax) {
         FURI_LOG_E(TAG, "Invalid haptic effect ID: %d", effect_id);
