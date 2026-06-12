@@ -5,8 +5,6 @@
 
 #define RECORD_HAPTIC "haptic"
 
-#define HAPTIC_TIMEOUT_OFF_MS (3000)
-
 typedef struct Haptic Haptic;
 
 typedef enum {

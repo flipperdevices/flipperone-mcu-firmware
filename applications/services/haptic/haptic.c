@@ -10,6 +10,7 @@
 #define TAG "Haptic"
 
 #define HAPTIC_MAX_MESSAGES   (8)
+#define HAPTIC_TIMEOUT_OFF_MS (3000)
 
 struct Haptic {
     FuriEventLoop* event_loop;
