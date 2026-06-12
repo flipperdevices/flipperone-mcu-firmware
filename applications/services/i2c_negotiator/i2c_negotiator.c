@@ -5,6 +5,7 @@
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
 #include <led/led.h>
+#include <haptic/haptic.h>
 
 #define TAG "I2CNegotiator"
 
@@ -16,6 +17,7 @@ typedef struct {
     FuriMessageQueue* negotiator_queue;
     I2CIntercom* intercom;
     Led* led;
+    Haptic* haptic;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -142,6 +144,30 @@ void i2c_negotiator_led_link4(I2CNegotiator* instance, uint16_t value) {
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4);
 
+// Haptic functions
+void i2c_negotiator_haptic_play_effect(I2CNegotiator* instance, uint16_t value) {
+    Drv2605lEffect effect_id;
+    with_i2c_register({
+        uint16_t reg_value = i2c_register_get_value(I2C_HAPTIC_EFFECT_REG_ADDRESS);
+        effect_id = reg_value & 0xFF;
+    });
+
+    // value is duration in ms, 0,1 means play full effect, 0xFFFF means stop effect
+    switch(value) {
+    case 0x0000:
+    case 0x0001: // play full effect
+        haptic_play_effect(instance->haptic, effect_id, 0);
+        break;
+    case 0xFFFF: // stop effect
+        haptic_stop(instance->haptic);
+        break;
+    default:
+        haptic_play_effect(instance->haptic, effect_id, value);
+        break;
+    }
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_haptic_play_effect);
+
 // Internal functions
 static void i2c_negotiator_queue_worker(FuriEventLoopObject* object, void* context) {
     furi_check(context);
@@ -176,6 +202,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
     instance->gui = furi_record_open(RECORD_GUI);
     instance->intercom = furi_record_open(RECORD_I2C_INTERCOM);
     instance->led = furi_record_open(RECORD_LEDS);
+    instance->haptic = furi_record_open(RECORD_HAPTIC);
     instance->event_loop = furi_event_loop_alloc();
 
     instance->negotiator_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
@@ -213,6 +240,9 @@ I2CNegotiator* i2c_negotiator_alloc() {
         furi_state_subscribe(led_get_link_brightness_state(instance->led), i2c_negotiator_link_led_brightness_callback, NULL);
         furi_state_subscribe(led_get_power_brightness_state(instance->led), i2c_negotiator_power_led_brightness_callback, NULL);
         furi_state_subscribe(led_get_wattmeter_brightness_state(instance->led), i2c_negotiator_wattmeter_led_brightness_callback, NULL);
+
+        // Haptic
+        i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);

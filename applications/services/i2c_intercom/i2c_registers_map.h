@@ -109,3 +109,7 @@
 #define I2C_LED_LINK2_COLOR_REG_ADDRESS (0x0310 + 2)
 #define I2C_LED_LINK3_COLOR_REG_ADDRESS (0x0310 + 4)
 #define I2C_LED_LINK4_COLOR_REG_ADDRESS (0x0310 + 6)
+
+// Haptic registers
+#define I2C_HAPTIC_EFFECT_REG_ADDRESS      (0x0400 + 0) // 2 bytes - effect ID
+#define I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS (0x0400 + 2) // 2 bytes - duration in ms, 0x0000 or 0x0001 = play full effect, 0xFFFF = stop effect
