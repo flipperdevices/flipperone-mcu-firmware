@@ -6,6 +6,7 @@
 #include <i2c_intercom/i2c_registers_map.h>
 #include <led/led.h>
 #include <haptic/haptic.h>
+#include <drivers/drv2605l/drv2605l.h>
 
 #define TAG "I2CNegotiator"
 
@@ -151,6 +152,16 @@ void i2c_negotiator_haptic_play_effect(I2CNegotiator* instance, uint16_t value) 
         uint16_t reg_value = i2c_register_get_value(I2C_HAPTIC_EFFECT_REG_ADDRESS);
         effect_id = reg_value & 0xFF;
     });
+
+    if(effect_id >= Drv2605lEffectCountMax) {
+        FURI_LOG_E(TAG, "Invalid haptic effect ID: %d", effect_id);
+        return;
+    }
+
+    if(value > HAPTIC_TIMEOUT_OFF_MS && value != 0xFFFF) {
+        FURI_LOG_E(TAG, "Invalid haptic effect duration: %d ms", value);
+        return;
+    }
 
     // value is duration in ms, 0,1 means play full effect, 0xFFFF means stop effect
     switch(value) {
