@@ -7,7 +7,6 @@ typedef enum {
     FontButton,
     FontKeyboard,
     FontBusy9,
-    FontBusy9LatCyr,
 
     // Special value, used to determine the size of the Font enum. Do not use.
     FontMax,

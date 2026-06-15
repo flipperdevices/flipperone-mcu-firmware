@@ -10,9 +10,6 @@ static const Clay_String font_test_rows[] = {
     CLAY_STRING("abcdefghijklmnopqrstuvwxyz"),
     CLAY_STRING("1234567890"),
     CLAY_STRING("!\"#$%&'()*+,-./:;<=>?@ [\\]^_`{|}~"),
-    //add Russian chars
-    CLAY_STRING("АБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"),
-    CLAY_STRING("абвгдежзийклмнопрстуфхцчшщъыьэюя"),
 };
 
 static const char* font_test_names[] = {
@@ -20,7 +17,6 @@ static const char* font_test_names[] = {
     [FontButton] = "FontButton   helvB08",
     [FontKeyboard] = "FontKeyboard profont11",
     [FontBusy9] = "FontBusy9    busy9_9px",
-    [FontBusy9LatCyr] = "FontBusy9LatCyr    busy9_9px_lat_cyr",
 };
 
 typedef struct {
