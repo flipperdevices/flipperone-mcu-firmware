@@ -5,6 +5,7 @@
 #include <applications.h>
 
 #include "cli_command_gpio.h"
+#include "cli_command_i2c.h"
 #include "cli_commands_common.h"
 #include "cli_vcp.h"
 #include "cli_uart.h"
