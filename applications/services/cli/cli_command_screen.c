@@ -27,7 +27,8 @@ typedef struct {
 
 static void cli_command_screen_gui_update_callback(const uint8_t* data, size_t width, size_t height, void* context) {
     CommandScreen* instance = context;
-    if (!instance || !data) return;
+    furi_check(instance);
+    furi_check(data);
 
     furi_check(width * height == instance->framebuffer_size); //size must be equal to full buffer size
 
@@ -41,7 +42,7 @@ static void cli_command_screen_gui_update_callback(const uint8_t* data, size_t w
 
 static void cli_command_screen_render_callback(uint32_t events, void* context) {
     CommandScreen* instance = context;
-    if (!context) return;
+    furi_check(instance);
 
     if (events & SCREEN_CUSTOM_EVENT_NEW_FRAME) {
         if (furi_mutex_acquire(instance->mutex, FuriWaitForever) == FuriStatusOk) {
@@ -107,7 +108,7 @@ static void cli_command_screen_emulate_click(FuriPubSub* input_pubsub, InputKey 
 
 static void cli_command_screen_click_callback(PipeSide* pipe, void* context) {
     CommandScreen* instance = context;
-    if (!instance) return;
+    furi_check(instance);
 
     while (pipe_bytes_available(pipe) > 0) {
         char ch = getchar();
@@ -150,6 +151,7 @@ static void cli_command_screen_click_callback(PipeSide* pipe, void* context) {
 
 static void cli_command_screen_pipe_broken_callback(PipeSide* pipe, void* context) {
     CommandScreen* instance = context;
+    furi_check(instance);
     UNUSED(pipe);
     furi_event_loop_stop(instance->event_loop);
 }
