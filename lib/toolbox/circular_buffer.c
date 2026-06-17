@@ -18,6 +18,11 @@ CircularBuffer* circular_buffer_alloc(size_t size) {
     return cb;
 }
 
+void circular_buffer_free(CircularBuffer* cb) {
+    free(cb->data);
+    free(cb);
+}
+
 size_t circular_buffer_bytes_available(const CircularBuffer* cb) {
     const size_t head = cb->head;
     const size_t tail = cb->tail;
