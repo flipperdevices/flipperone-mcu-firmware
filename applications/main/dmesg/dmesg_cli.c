@@ -19,6 +19,8 @@ static void dmesg_cli_show_log(PipeSide* pipe, FuriString* args) {
 
     size_t size = DMESG_BUFFER_SIZE;
     uint8_t buffer[DMESG_BUFFER_SIZE];
+
+    dmesg_app_read_acquire(instance);
     dmesg_app_update_read_index(instance);
 
     while(dmesg_app_get_log_data(instance, buffer, &size)) {
@@ -28,6 +30,8 @@ static void dmesg_cli_show_log(PipeSide* pipe, FuriString* args) {
         size = DMESG_BUFFER_SIZE;
     }
     dmesg_app_restore_read_index(instance);
+    dmesg_app_read_release(instance);
+    
     furi_record_close(RECORD_DMESG_APP);
 }
 

@@ -1,26 +1,39 @@
 #include "circular_buffer.h"
 
-#include <core/check.h>
+#include <furi.h>
 
 struct CircularBuffer {
     uint8_t* data;
     size_t size;
     volatile size_t head; /**< write position (writer only) */
     volatile size_t tail; /**< read position  (reader only) */
+    FuriMutex* mutex; /**< mutex for thread-safe access */
+    bool overwrite; /**< flag to allow overwriting old data when buffer is full */
 };
 
-CircularBuffer* circular_buffer_alloc(size_t size) {
+CircularBuffer* circular_buffer_alloc(size_t size, bool overwrite) {
     CircularBuffer* cb = malloc(sizeof(CircularBuffer));
+    cb->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     cb->data = malloc(size);
     cb->size = size;
     cb->head = 0;
+    cb->overwrite = overwrite;
     cb->tail = 0;
     return cb;
 }
 
 void circular_buffer_free(CircularBuffer* cb) {
+    furi_mutex_free(cb->mutex);
     free(cb->data);
     free(cb);
+}
+
+bool circular_buffer_acquire(CircularBuffer* cb) {
+    return furi_mutex_acquire(cb->mutex, !FURI_IS_ISR() ? FuriWaitForever : 0) == FuriStatusOk;
+}
+
+void circular_buffer_release(CircularBuffer* cb) {
+    furi_mutex_release(cb->mutex);
 }
 
 size_t circular_buffer_bytes_available(const CircularBuffer* cb) {
@@ -33,7 +46,7 @@ size_t circular_buffer_spaces_available(const CircularBuffer* cb) {
     return cb->size - circular_buffer_bytes_available(cb);
 }
 
-size_t circular_buffer_write(CircularBuffer* cb, const uint8_t* data, size_t size, bool overwrite) {
+size_t circular_buffer_write(CircularBuffer* cb, const uint8_t* data, size_t size) {
     furi_check(cb);
     furi_check(size > 0);
     furi_check(data);
@@ -41,7 +54,7 @@ size_t circular_buffer_write(CircularBuffer* cb, const uint8_t* data, size_t siz
     size_t space = circular_buffer_spaces_available(cb);
 
     if(size > space) {
-        if(!overwrite) return 0; /* drop new, preserve old */
+        if(!cb->overwrite) return 0; /* drop new, preserve old */
 
         /* Overwrite: advance tail by exactly (size - space + 1 ) bytes,
            wrapping around the buffer as needed. */
