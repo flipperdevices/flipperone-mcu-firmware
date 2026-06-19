@@ -48,6 +48,7 @@ static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle,
     with_i2c_register({
         if(!i2c_register_read_start(instance->mem_address, &data)) {
             data = I2C_INTERCOM_INVALID_ADDRESS_VALUE;
+            FURI_LOG_W(TAG, "read from invalid addr 0x%04X", instance->mem_address);
         }
         uint8_t len = furi_hal_i2c_slave_write_blocking(handle, &data, 1);
         if(len) {
@@ -64,7 +65,11 @@ static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle
         uint8_t data;
         len = furi_hal_i2c_slave_read_blocking(handle, &data, 1);
         if(len) {
-            with_i2c_register({ i2c_register_write(instance->mem_address, data); });
+            bool valid = false;
+            with_i2c_register({ valid = i2c_register_write(instance->mem_address, data); });
+            if(!valid) {
+                FURI_LOG_W(TAG, "write to invalid addr 0x%04X", instance->mem_address);
+            }
             instance->mem_address++;
         }
         total += len;
@@ -138,8 +143,6 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     default:
         break;
     }
-
-    // furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_FLAG_ISR);
 }
 
 void i2c_intercom_setup_end(I2CIntercom* instance) {
@@ -157,7 +160,7 @@ int32_t i2c_intercom_srv(void* p) {
 
     furi_record_create(RECORD_I2C_INTERCOM, instance);
 
-    FURI_LOG_I(TAG, "started");
+    FURI_LOG_I(TAG, "Started");
 
     // wait to end of setup before allowing interrupts
     {
@@ -165,7 +168,7 @@ int32_t i2c_intercom_srv(void* p) {
         furi_check(!(flags & FuriFlagError));
     }
 
-    FURI_LOG_I(TAG, "setup completed, enabling I2C slave mode");
+    FURI_LOG_I(TAG, "Setup completed, enabling I2C slave mode");
 
     furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
