@@ -13,5 +13,4 @@
 - [ ] I have tested these changes myself (on hardware or in simulation)
 - [ ] I am able to respond to review comments on my own, not by forwarding them to an AI
 
-> If you used AI tools to assist with this PR, that is fine — but the checklist above
-> still applies to you personally.
+> If you used AI tools to assist with this PR, that is fine — but the checklist above still applies to you personally.

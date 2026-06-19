@@ -5,17 +5,20 @@
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
 #include <led/led.h>
+#include <haptic/haptic.h>
+#include <drivers/drv2605l/drv2605l.h>
 
 #define TAG "I2CNegotiator"
 
-#define I2C_NEGOTIATOR_LED_QUEUE_SIZE 16
+#define I2C_NEGOTIATOR_QUEUE_SIZE 32
 
 typedef struct {
     Gui* gui;
     FuriEventLoop* event_loop;
-    FuriMessageQueue* led_queue;
+    FuriMessageQueue* negotiator_queue;
     I2CIntercom* intercom;
     Led* led;
+    Haptic* haptic;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -25,13 +28,14 @@ typedef struct {
     uint16_t value;
 } I2CNegotiatorI2CMessage;
 
-#define I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(func)                                      \
-    void func##_message(void* context, uint16_t address, uint16_t value) {                  \
-        UNUSED(address);                                                                    \
-        furi_check(context);                                                                \
-        FuriMessageQueue* queue = context;                                                  \
-        I2CNegotiatorI2CMessage message = {.fn = func, .value = value};                     \
-        furi_check(furi_message_queue_put(queue, &message, 0) != FuriStatusErrorParameter); \
+#define I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(func)                                           \
+    void func##_message(void* context, uint16_t address, uint16_t value) {                       \
+        furi_check(context);                                                                     \
+        FuriMessageQueue* queue = context;                                                       \
+        I2CNegotiatorI2CMessage message = {.fn = func, .value = value};                          \
+        FuriStatus stat = furi_message_queue_put(queue, &message, 0);                            \
+        furi_check(stat != FuriStatusErrorParameter);                                            \
+        if(stat != FuriStatusOk) FURI_LOG_E(TAG, "Failed to receive 0x%04X: %d", address, stat); \
     }
 
 // Input event
@@ -141,6 +145,24 @@ void i2c_negotiator_led_link4(I2CNegotiator* instance, uint16_t value) {
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4);
 
+// Haptic functions
+void i2c_negotiator_haptic_play_effect(I2CNegotiator* instance, uint16_t value) {
+    Drv2605lEffect effect_id = (Drv2605lEffect)((value & I2C_HAPTIC_NUM_EFFECT_MASK) >> I2C_HAPTIC_NUM_EFFECT_SHIFT);
+
+    if(effect_id >= Drv2605lEffectCountMax) {
+        FURI_LOG_E(TAG, "Invalid haptic effect ID: %d", effect_id);
+        return;
+    }
+
+    if(value & (1 << I2C_HAPTIC_PLAY_EFFECT_BIT)) {
+        uint32_t time_ms = (value & I2C_HAPTIC_DURATION_MASK) >> I2C_HAPTIC_DURATION_SHIFT;
+        haptic_play_effect(instance->haptic, effect_id, time_ms <= 1 ? 0 : time_ms);
+    } else {
+        haptic_stop(instance->haptic);
+    }
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_haptic_play_effect);
+
 // Internal functions
 static void i2c_negotiator_queue_worker(FuriEventLoopObject* object, void* context) {
     furi_check(context);
@@ -175,9 +197,10 @@ I2CNegotiator* i2c_negotiator_alloc() {
     instance->gui = furi_record_open(RECORD_GUI);
     instance->intercom = furi_record_open(RECORD_I2C_INTERCOM);
     instance->led = furi_record_open(RECORD_LEDS);
+    instance->haptic = furi_record_open(RECORD_HAPTIC);
     instance->event_loop = furi_event_loop_alloc();
 
-    instance->led_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_LED_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
+    instance->negotiator_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
 
     {
         // Version
@@ -200,21 +223,24 @@ I2CNegotiator* i2c_negotiator_alloc() {
         furi_pubsub_subscribe(furi_record_open(RECORD_HEADPHONES), i2c_negotiator_headphones_event_glue, NULL);
 
         // LEDs
-        i2c_register_add_writable(I2C_LED_LINK1_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link1_message, instance->led_queue);
-        i2c_register_add_writable(I2C_LED_LINK2_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link2_message, instance->led_queue);
-        i2c_register_add_writable(I2C_LED_LINK3_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link3_message, instance->led_queue);
-        i2c_register_add_writable(I2C_LED_LINK4_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link4_message, instance->led_queue);
+        i2c_register_add_writable(I2C_LED_LINK1_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link1_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_LED_LINK2_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link2_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_LED_LINK3_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link3_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_LED_LINK4_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link4_message, instance->negotiator_queue);
 
-        i2c_register_add_writable(I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS, 0, i2c_negotiator_link_led_brightness_set_message, instance->led_queue);
-        i2c_register_add_writable(I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS, 0, i2c_negotiator_power_led_brightness_set_message, instance->led_queue);
-        i2c_register_add_writable(I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS, 0, i2c_negotiator_wattmeter_led_brightness_set_message, instance->led_queue);
+        i2c_register_add_writable(I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS, 0, i2c_negotiator_link_led_brightness_set_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS, 0, i2c_negotiator_power_led_brightness_set_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS, 0, i2c_negotiator_wattmeter_led_brightness_set_message, instance->negotiator_queue);
 
         furi_state_subscribe(led_get_link_brightness_state(instance->led), i2c_negotiator_link_led_brightness_callback, NULL);
         furi_state_subscribe(led_get_power_brightness_state(instance->led), i2c_negotiator_power_led_brightness_callback, NULL);
         furi_state_subscribe(led_get_wattmeter_brightness_state(instance->led), i2c_negotiator_wattmeter_led_brightness_callback, NULL);
+
+        // Haptic
+        i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
     }
 
-    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->led_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);
+    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);
 
     gui_add_unhandled_input_callback(instance->gui, i2c_negotiator_input_event_glue, instance);
     gui_add_unhandled_touch_input_callback(instance->gui, i2c_negotiator_input_touch_event_glue, instance);

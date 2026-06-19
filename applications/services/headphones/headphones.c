@@ -5,7 +5,8 @@
 
 #define TAG "HeadphonesSrv"
 
-#define HEADPHONES_TIMEOUT_UPDATE_MS (100)
+#define HEADPHONES_UPDATE_INTERVAL_MS              (100U)
+#define HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUNTER (10U) // Timeout = HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUNTER * HEADPHONES_UPDATE_INTERVAL_MS
 
 #define HEADPHONES_SRV_DEBUG_ENABLE
 
@@ -19,6 +20,7 @@ struct Headphones {
     FuriEventLoop* event_loop;
     FuriEventLoopTimer* timer;
     FuriPubSub* event_pubsub;
+    uint32_t debounce_counter;
 };
 
 typedef enum {
@@ -49,27 +51,39 @@ static void headphones_custom_event_callback(uint32_t events, void* context) {
     HeadphonesStatus hp_status;
 
     if(events & HeadphonesEventTypeIsrConnected) {
-        furi_event_loop_timer_start(instance->timer, HEADPHONES_TIMEOUT_UPDATE_MS);
+        if(!furi_event_loop_timer_is_running(instance->timer)) {
+            furi_event_loop_timer_start(instance->timer, HEADPHONES_UPDATE_INTERVAL_MS);
+        }
+        instance->debounce_counter = 0;
     }
 
     if(events & HeadphonesEventTypeIsrDisconnected) {
-        if(headphones_update(&hp_status)) {
-            HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
-            HeadphonesEvent event = {
-                .hp_status = hp_status,
-            };
-            furi_pubsub_publish(instance->event_pubsub, &event);
+        if(instance->debounce_counter >= HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUNTER) {
+            if(headphones_update(&hp_status)) {
+                HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
+                HeadphonesEvent event = {
+                    .hp_status = hp_status,
+                };
+                furi_pubsub_publish(instance->event_pubsub, &event);
+            }
         }
-        furi_event_loop_timer_stop(instance->timer);
+        if(furi_event_loop_timer_is_running(instance->timer)) {
+            furi_event_loop_timer_stop(instance->timer);
+        }
+        instance->debounce_counter = 0;
     }
 
     if(events & HeadphonesEventTypeIsrTimer) {
-        if(headphones_update(&hp_status)) {
-            HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
-            HeadphonesEvent event = {
-                .hp_status = hp_status,
-            };
-            furi_pubsub_publish(instance->event_pubsub, &event);
+        if(instance->debounce_counter < HEADPHONES_CHECK_CONNECT_DEBOUNCE_COUNTER) {
+            instance->debounce_counter++;
+        } else {
+            if(headphones_update(&hp_status)) {
+                HEADPHONES_SRV_DEBUG(TAG, "Headphones status changed: %08b", hp_status);
+                HeadphonesEvent event = {
+                    .hp_status = hp_status,
+                };
+                furi_pubsub_publish(instance->event_pubsub, &event);
+            }
         }
     }
 }
@@ -77,6 +91,7 @@ static void headphones_custom_event_callback(uint32_t events, void* context) {
 static Headphones* headphones_alloc(void) {
     Headphones* instance = (Headphones*)malloc(sizeof(Headphones));
     instance->event_loop = furi_event_loop_alloc();
+    instance->debounce_counter = 0;
 
     furi_event_loop_set_custom_event_callback(instance->event_loop, headphones_custom_event_callback, instance);
     instance->timer = furi_event_loop_timer_alloc(instance->event_loop, headphones_timer_callback, FuriEventLoopTimerTypePeriodic, instance);

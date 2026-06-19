@@ -6,7 +6,8 @@
 typedef enum {
     FuriHalSerialIdUart0,
     FuriHalSerialIdUart1,
-
+    FuriHalSerialIdUartPio,
+    
     FuriHalSerialIdMax,
 } FuriHalSerialId;
 

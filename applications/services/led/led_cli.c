@@ -1,10 +1,10 @@
 #include "led_cli.h"
 
-#include <args.h>
+#include <cli/args.h>
 #include <led/led.h>
 
-static void cli_command_led_help(Cli* cli, FuriString* args, void* context) {
-    UNUSED(cli);
+static void cli_command_led_help(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
     UNUSED(args);
     UNUSED(context);
     printf(
@@ -68,38 +68,38 @@ LedColor cli_led_colors[] = {
     LED_COLOR_BLACK,
 };
 
-void led_cli(Cli* cli, FuriString* args, void* context) {
-    UNUSED(cli);
+void led_cli(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
     UNUSED(context);
 
     if(furi_string_size(args) < 1) {
-        cli_command_led_help(cli, args, context);
+        cli_command_led_help(pipe, args, context);
         return;
     }
 
     int led_type = 0;
     int color = 0;
     if(!args_read_int_and_trim(args, &led_type)) {
-        cli_command_led_help(cli, args, context);
+        cli_command_led_help(pipe, args, context);
         return;
     }
     if(led_type < 0 || led_type >= sizeof(cli_led_types) / sizeof(LedType)) {
-        cli_command_led_help(cli, args, context);
+        cli_command_led_help(pipe, args, context);
         return;
     }
 
     if(furi_string_size(args) < 1 && cli_led_types[led_type] != LedTypeLineAllOff) {
-        cli_command_led_help(cli, args, context);
+        cli_command_led_help(pipe, args, context);
         return;
     }
 
     if(cli_led_types[led_type] != LedTypeLineAllOff) {
         if(!args_read_int_and_trim(args, &color)) {
-            cli_command_led_help(cli, args, context);
+            cli_command_led_help(pipe, args, context);
             return;
         }
         if(color < 0 || color >= sizeof(cli_led_colors) / sizeof(LedColor)) {
-            cli_command_led_help(cli, args, context);
+            cli_command_led_help(pipe, args, context);
             return;
         }
     }

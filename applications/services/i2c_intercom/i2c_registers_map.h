@@ -40,15 +40,15 @@
  * 0x0200+6 Touchpad press state        (read)
  * 0x0200+8 Headphones state            (read)
  * 
- * 0x0300+0 Link LED group brightness (write), 0 is off, 255 is max brightness
- * 0x0300+2 Power LED group brightness (write), 0 is off, 255 is max brightness
- * 0x0300+4 Wattmeter LED group brightness (write), 0 is off, 255 is max brightness
+ * 0x0300+0 Link LED group brightness      (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
+ * 0x0300+2 Power LED group brightness     (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
+ * 0x0300+4 Wattmeter LED group brightness (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
  * 
  * All LED colors are in RGB 565 format
- * 0x0310+0 Link1 LED color (write)
- * 0x0310+2 Link2 LED color (write)
- * 0x0310+4 Link3 LED color (write)
- * 0x0310+6 Link4 LED color (write)
+ * 0x0310+0 Link1 LED color (read, write)
+ * 0x0310+2 Link2 LED color (read, write)
+ * 0x0310+4 Link3 LED color (read, write)
+ * 0x0310+6 Link4 LED color (read, write)
  */
 
 // Device address
@@ -109,3 +109,17 @@
 #define I2C_LED_LINK2_COLOR_REG_ADDRESS (0x0310 + 2)
 #define I2C_LED_LINK3_COLOR_REG_ADDRESS (0x0310 + 4)
 #define I2C_LED_LINK4_COLOR_REG_ADDRESS (0x0310 + 6)
+
+// Haptic registers
+/*
+ * 0x0400 + 0: 2 bytes
+ * bit 15 - Play effect (1 - play, 0 - stop)
+ * bits 14:8 - Effect number (0..123)
+ * bits 7:0 - Duration of the effect, ms (0 or 1 - play full effect, 2..255 - play ms)
+*/
+#define I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS (0x0400 + 0)
+#define I2C_HAPTIC_PLAY_EFFECT_BIT         (15)
+#define I2C_HAPTIC_NUM_EFFECT_MASK         (0x7F00)
+#define I2C_HAPTIC_NUM_EFFECT_SHIFT        (8)
+#define I2C_HAPTIC_DURATION_MASK           (0x00FF)
+#define I2C_HAPTIC_DURATION_SHIFT          (0)

@@ -12,11 +12,11 @@
 int32_t init_task(void* context) {
     UNUSED(context);
 
-    // Flipper FURI HAL
-    furi_hal_init();
-
     // Set the UART for logging output
     furi_hal_log_hardware_init();
+    
+    // Flipper FURI HAL
+    furi_hal_init();
 
     FURI_LOG_I(TAG, "Initializing BSP");
     // Flipper BSP init
@@ -33,11 +33,12 @@ int32_t init_task(void* context) {
 }
 
 int main(void) {
+    
     // Initialize FURI layer
     furi_init();
 
     // TODO: read log level and output from nvm
-    furi_hal_log_init(FuriLogLevelInfo, FuriHalLogOutputSerial);
+    furi_hal_log_init(FuriLogLevelInfo, FuriHalLogOutputAll);
 
     // Critical FURI HAL
     furi_hal_init_early();

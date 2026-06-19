@@ -3,10 +3,12 @@
 #include <furi_hal_nvm.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_adc.h>
+#include <furi_hal_cortex.h>
 
 #define TAG "FuriHal"
 
 void furi_hal_init_early(void) {
+    furi_hal_cortex_init_early();
     furi_hal_nvm_init();
     furi_hal_os_init();
     furi_hal_i2c_init_control();
@@ -22,11 +24,6 @@ void furi_hal_deinit_early(void) {
 
 void furi_hal_init(void) {
     furi_hal_gpio_interrupt_init();
-    furi_hal_serial_control_init();
     furi_hal_adc_init();
-
-    // Set the UART for logging output
-    furi_hal_serial_control_set_logging_config(FuriHalSerialIdUart1, 230400);
-    furi_log_puts("\n================================================================\n");
     furi_hal_otp_init();
 }

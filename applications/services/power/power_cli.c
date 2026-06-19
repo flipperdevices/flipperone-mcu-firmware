@@ -1,8 +1,10 @@
 #include "power_cli.h"
 
-#include <args.h>
-#include <power/power.h>
+#include <cli/args.h>
 #include <cli/cli_ansi.h>
+#include <cli/cli_command.h>
+
+#include <power/power.h>
 
 static char* power_cli_get_charger_status1_vbus_str(uint8_t stat) {
     switch(stat) {
@@ -383,15 +385,15 @@ static void power_cli_print_bq28z620_battery_status(Power* power, FuriString* ar
     printf("%s\r\n", furi_string_get_cstr(arena));
 }
 
-void power_cli(Cli* cli, FuriString* args, void* context) {
-    UNUSED(cli);
+void power_cli(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
     UNUSED(args);
     UNUSED(context);
     Power* power = furi_record_open(RECORD_POWER);
     FuriString* arena = furi_string_alloc();
     printf(ANSI_ERASE_DISPLAY(ANSI_ERASE_ENTIRE)); // Clear display
-    while(!cli_cmd_interrupt_received(cli)) {
-        printf(ANSI_CURSOR_POS("0", "0")); // Return to 0, but don't clear (faster and less flickery)
+    while(!cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
+        printf(ANSI_CURSOR_POS("1", "1")); // Return to 0, but don't clear (faster and less flickery)
         power_cli_print_ina219(power);
         power_cli_print_bq25792(power);
         power_cli_print_charger_status(power, arena);
