@@ -24,6 +24,11 @@ void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t
 // @returns true if the register value is changed after the update, false otherwise.
 bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
 
+// Get register value. This is used to read the whole 16-bit value of the register, even if it is read/write or write-only.
+// @warning Must be called in a critical section, use with_i2c_register macro for convenience.
+// @returns value of the register.
+uint16_t i2c_register_get_value(uint16_t address);
+
 // Sets the interrupt bits if the interrupt is not masked. Also, the interrupt line will be raised if some interrupt bits are set.
 // @warning Must be called in a critical section, use with_i2c_register macro for convenience.
 void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_bits);

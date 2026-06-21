@@ -118,3 +118,16 @@
 // Watchdog kick register
 #define I2C_WATCHDOG_KICK_REG_ADDRESS     (0xDEAD)
 #define I2C_WATCHDOG_DEFAULT_TIMEOUT_MS   (2000)
+// Haptic registers
+/*
+ * 0x0400 + 0: 2 bytes
+ * bit 15 - Play effect (1 - play, 0 - stop)
+ * bits 14:8 - Effect number (0..123)
+ * bits 7:0 - Duration of the effect, ms (0 or 1 - play full effect, 2..255 - play ms)
+*/
+#define I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS (0x0400 + 0)
+#define I2C_HAPTIC_PLAY_EFFECT_BIT         (15)
+#define I2C_HAPTIC_NUM_EFFECT_MASK         (0x7F00)
+#define I2C_HAPTIC_NUM_EFFECT_SHIFT        (8)
+#define I2C_HAPTIC_DURATION_MASK           (0x00FF)
+#define I2C_HAPTIC_DURATION_SHIFT          (0)

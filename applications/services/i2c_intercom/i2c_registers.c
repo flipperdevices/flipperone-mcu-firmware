@@ -253,3 +253,9 @@ void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_b
         i2c_register_interrupt_line_set(true);
     }
 }
+
+uint16_t i2c_register_get_value(uint16_t address) {
+    I2CReg* reg = i2c_register_get(address);
+    furi_check(reg); // address must exist
+    return reg->value;
+}

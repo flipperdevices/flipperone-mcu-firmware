@@ -8,8 +8,6 @@
 #include <furi_bsp.h>
 #include <led/led.h>
 #include <furi_hal_clock.h>
-#include <furi_hal_i2c_types.h>
-#include <furi_hal_i2c_config.h>
 #include <furi_hal_otp.h>
 
 void cli_command_uptime(PipeSide* pipe, FuriString* args, void* context) {
@@ -176,41 +174,6 @@ void cli_command_free_blocks(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(context);
 
     memmgr_heap_printf_free_blocks();
-}
-
-static void cli_scan_i2c_bus(const FuriHalI2cBusHandle* handle, const char* bus_name) {
-    furi_hal_i2c_acquire(handle);
-    furi_check(handle);
-
-    printf("Scanning %s bus (%s):\r\n", bus_name, furi_hal_i2c_bus_name(handle));
-    printf("     0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\r\n");
-    printf("    -----------------------------------------------\r\n");
-
-    for(uint8_t addr = 0; addr < 128; addr++) {
-        if(addr % 16 == 0) {
-            printf("%02x | ", addr);
-        }
-
-        // Perform a 1-byte dummy read from the probe address. If a slave
-        // acknowledges this address, the function returns the number of bytes
-        // transferred. If the address byte is ignored, the function returns
-        // -1.
-
-        // Skip over any reserved addresses.
-        bool ret = furi_hal_i2c_device_ready(handle, addr, FURI_HAL_I2C_TIMEOUT_US);
-        printf(ret ? "@" : ".");
-        printf(addr % 16 == 15 ? "\r\n" : "  ");
-    }
-    furi_hal_i2c_release(handle);
-}
-
-void cli_command_i2c(PipeSide* pipe, FuriString* args, void* context) {
-    UNUSED(pipe);
-    UNUSED(args);
-    UNUSED(context);
-    cli_scan_i2c_bus(&furi_hal_i2c_handle_control, "control");
-    printf("\r\n");
-    cli_scan_i2c_bus(&furi_hal_i2c_handle_main, "main");
 }
 
 static void cli_command_expander_ext_help(PipeSide* pipe, FuriString* args, void* context) {

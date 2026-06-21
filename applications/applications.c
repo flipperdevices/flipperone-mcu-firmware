@@ -6,7 +6,6 @@ const char* FLIPPER_AUTORUN_APP_NAME = "";
 extern int32_t haptic_srv(void* p);
 extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
-extern int32_t uart_echo_app(void* p);
 extern int32_t input_touch_srv(void* p);
 extern int32_t i2c_intercom_srv(void* p);
 extern int32_t i2c_negotiator_srv(void* p);
@@ -28,12 +27,14 @@ extern int32_t touchpad_test_app(void* p);
 extern int32_t cpu_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
+extern int32_t font_test_app(void* p);
 extern int32_t cli_on_system_start(void* p);
 
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void power_consumption_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void led_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void uart_echo_cli(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -210,6 +211,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+    {
+        .app = font_test_app,
+        .name = "Font Test",
+        .appid = "font_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
 
@@ -248,6 +256,12 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
         .callback = led_cli,
         .name = "led",
         .stack_size = 1024,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = uart_echo_cli,
+        .name = "uart_echo",
+        .stack_size = 1024 * 2,
         .flags = CliCommandFlagParallelSafe,
     },
 };
