@@ -49,6 +49,11 @@
  * 0x0310+2 Link2 LED color (read, write)
  * 0x0310+4 Link3 LED color (read, write)
  * 0x0310+6 Link4 LED color (read, write)
+ *
+ * 0xDEAD   Watchdog kick register (write)
+ *          Write any value at this address to reset the watchdog timer.
+ *          If no kick is received within the configured timeout, subscribed
+ *          callbacks are invoked.
  */
 
 // Device address
@@ -109,3 +114,7 @@
 #define I2C_LED_LINK2_COLOR_REG_ADDRESS (0x0310 + 2)
 #define I2C_LED_LINK3_COLOR_REG_ADDRESS (0x0310 + 4)
 #define I2C_LED_LINK4_COLOR_REG_ADDRESS (0x0310 + 6)
+
+// Watchdog kick register
+#define I2C_WATCHDOG_KICK_REG_ADDRESS     (0xDEAD)
+#define I2C_WATCHDOG_DEFAULT_TIMEOUT_MS   (2000)

@@ -10,6 +10,7 @@ typedef enum {
     I2CRegFlagWrite = 1 << 1,
     I2CRegFlagReadToClear = 1 << 2,
     I2CRegFlagInterrupt = 1 << 3,
+    I2CRegFlagKickOnWrite = 1 << 4,
 } I2CRegFlag;
 
 typedef struct {
@@ -130,6 +131,14 @@ void i2c_register_add_writable(uint16_t address, uint16_t default_value, I2CRegi
     FURI_CRITICAL_EXIT();
 }
 
+void i2c_register_add_kickable(uint16_t address, I2CRegisterCallback kick_callback, void* kick_callback_context) {
+    FURI_CRITICAL_ENTER();
+    i2c_register_add_internal(address, 0, I2CRegFlagWrite | I2CRegFlagKickOnWrite);
+    I2CRegisterCallbackWithContext callback_with_context = {.callback = kick_callback, .context = kick_callback_context};
+    i2c_interrupt_callback_set_at(address, callback_with_context);
+    FURI_CRITICAL_EXIT();
+}
+
 void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit) {
     FURI_CRITICAL_ENTER();
     i2c_register_add_internal(address, 0x0000, I2CRegFlagRead | I2CRegFlagReadToClear | I2CRegFlagInterrupt);
@@ -199,15 +208,22 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
         if(reg && (reg->flags & I2CRegFlagWrite)) {
             if(is_hi_byte) {
                 REG16_SET_HI(reg->value, value);
-
-                // we assume that if hi byte is written, then the whole register is being written
-                I2CRegisterCallbackWithContext* callback_with_context = i2c_interrupt_callback_get(even_address);
-                if(callback_with_context && callback_with_context->callback) {
-                    callback_with_context->callback(callback_with_context->context, even_address, reg->value);
-                }
             } else {
                 REG16_SET_LO(reg->value, value);
             }
+
+            I2CRegisterCallbackWithContext* callback_with_context = i2c_interrupt_callback_get(even_address);
+            if(callback_with_context && callback_with_context->callback) {
+                if(reg->flags & I2CRegFlagKickOnWrite) {
+                    callback_with_context->callback(
+                        callback_with_context->context, even_address, reg->value);
+                } else if(is_hi_byte) {
+                    // we assume that if hi byte is written, then the whole register is being written
+                    callback_with_context->callback(
+                        callback_with_context->context, even_address, reg->value);
+                }
+            }
+
             result = true;
         }
     } while(false);

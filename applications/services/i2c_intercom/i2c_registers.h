@@ -13,6 +13,9 @@ void i2c_register_add_readable(uint16_t address, uint16_t default_value);
 // Add a writable register to the register map. Address must be even. Register will be readable as well.
 void i2c_register_add_writable(uint16_t address, uint16_t default_value, I2CRegisterCallback write_callback, void* write_callback_context);
 
+// Add a write-only kick register. Address must be even. Callback is invoked on any byte write.
+void i2c_register_add_kickable(uint16_t address, I2CRegisterCallback kick_callback, void* kick_callback_context);
+
 // Adds an interrupt register with a corresponding mask register and connects it to the status register.
 void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit);
 

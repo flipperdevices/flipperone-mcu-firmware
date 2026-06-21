@@ -7,6 +7,8 @@
 
 #include "i2c_intercom.h"
 #include "i2c_registers_i.h"
+#include "i2c_registers_map.h"
+#include "i2c_watchdog.h"
 
 #define TAG "I2CIntercom"
 
@@ -154,6 +156,7 @@ int32_t i2c_intercom_srv(void* p) {
     instance->bus_handle = &furi_hal_i2c_handle_cpu;
 
     i2c_registers_init();
+    i2c_watchdog_init(I2C_WATCHDOG_DEFAULT_TIMEOUT_MS);
 
     furi_record_create(RECORD_I2C_INTERCOM, instance);
 
@@ -166,6 +169,8 @@ int32_t i2c_intercom_srv(void* p) {
     }
 
     FURI_LOG_I(TAG, "setup completed, enabling I2C slave mode");
+
+    i2c_watchdog_start();
 
     furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
