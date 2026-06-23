@@ -9,9 +9,43 @@
 #include <m-array.h>
 #include <api_lock.h>
 
+#include <desktop/desktop.h>
+
+extern int32_t cpu_app(void* p);
+
 #define TAG                     "PowerMenu"
 #define POWER_MENU_MAX_MESSAGES (8)
 #define POWER_MENU_ID(x)        CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
+
+#define POWER_MENU_CPU_APP_START   "CPU Start"
+#define POWER_MENU_CPU_APP_MASKROM "CPU Maskrom"
+
+typedef enum {
+    PowerMenuCpuAppStart,
+    PowerMenuCpuAppMaskrom,
+    PowerMenuCpuAppCount
+} PowerMenuCpuApp;
+
+static const FlipperInternalApplication app[] = {
+    [PowerMenuCpuAppStart] =
+        {
+            .app = cpu_app,
+            .name = "CPU Start",
+            .appid = "cpu",
+            .stack_size = 4096,
+            .flags = FlipperInternalApplicationFlagDefault,
+            .args = "CPU Start",
+        },
+    [PowerMenuCpuAppMaskrom] =
+        {
+            .app = cpu_app,
+            .name = "CPU Maskrom",
+            .appid = "cpu",
+            .stack_size = 4096,
+            .flags = FlipperInternalApplicationFlagDefault,
+            .args = "CPU Maskrom",
+        },
+};
 
 typedef enum {
     PowerMenuActionLeds,
@@ -90,6 +124,8 @@ typedef struct {
     size_t selected_power_led_brightness_index;
     size_t selected_wattmeter_led_brightness_index;
     FuriMessageQueue* message_queue;
+    bool app_running;
+    bool app_add_item;
 } PowerMenu;
 
 static const LedBatch* items[] = {
@@ -106,7 +142,7 @@ static const char* led_batch_names[] = {
     " White",
 };
 
-static_assert(COUNT_OF(items) == COUNT_OF(led_batch_names));
+static_assert(COUNT_OF(items) == COUNT_OF(led_batch_names), "items and led_batch_names count mismatch");
 
 static const size_t led_batch_count = COUNT_OF(items);
 
@@ -491,16 +527,18 @@ static void power_menu_input_menu(PowerMenu* instance, int selected_index, bool 
             power_menu_input_right(instance, selected_index);
 
             switch(selected_index) {
-            case PowerMenuActionPowerOff:
+            case PowerMenuActionPowerOff: {
                 Power* power_off = furi_record_open(RECORD_POWER);
                 power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
                 furi_record_close(RECORD_POWER);
                 break;
-            case PowerMenuActionReboot:
+            }
+            case PowerMenuActionReboot: {
                 Power* power_reset = furi_record_open(RECORD_POWER);
                 power_bq25792_set_power_switch(power_reset, Bq25792PowerReset);
                 furi_record_close(RECORD_POWER);
                 break;
+            }
             case PowerMenuActionCancel:
                 power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
                 break;
@@ -526,6 +564,32 @@ static void power_menu_input_menu(PowerMenu* instance, int selected_index, bool 
         }
     }
 }
+
+// #### app
+// static void power_menu_remove_app_menu_items(PowerMenu* instance) {
+//     power_menu_remove_menu_item(POWER_MENU_CPU_APP_START);
+//     power_menu_remove_menu_item(POWER_MENU_CPU_APP_MASKROM);
+//     instance->app_running = false;
+// }
+
+static void power_menu_cpu_app_start_callback(bool pressed, void* context) {
+    PowerMenu* instance = context;
+    furi_check(instance);
+    if(pressed) {
+        instance->app_running = true;
+        desktop_start_app(&app[PowerMenuCpuAppStart]);
+       // power_menu_remove_app_menu_items(instance);
+    }
+}
+
+static void power_menu_add_app_menu_items(PowerMenu* instance) {
+    if(!instance->app_running && !instance->app_add_item) {
+        power_menu_add_menu_item(POWER_MENU_CPU_APP_START, (PowerMenuClickWithContext){.callback = power_menu_cpu_app_start_callback, .context = instance});
+        power_menu_add_menu_item(POWER_MENU_CPU_APP_MASKROM, (PowerMenuClickWithContext){.callback = power_menu_cpu_app_start_callback, .context = instance});
+        instance->app_add_item = true;
+    }
+}
+// ####
 
 static bool power_menu_input(InputEvent* event, void* context) {
     furi_check(context);
@@ -571,6 +635,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
         if(event->type == InputTypePress) {
             if(event->key == InputKey3) {
                 power_menu_model_apply(instance, power_menu_input_menu_show, NULL);
+                power_menu_add_app_menu_items(instance);
                 consumed = true;
             }
         }

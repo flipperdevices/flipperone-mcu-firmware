@@ -1,3 +1,4 @@
+#include "cpu_app.h"
 #include <furi.h>
 #include <furi_bsp.h>
 #include <gui/gui.h>

@@ -167,22 +167,22 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
 const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);
 
 const FlipperInternalApplication FLIPPER_APPS[] = {
-    {
-        .app = cpu_app,
-        .name = "CPU Start",
-        .appid = "cpu",
-        .stack_size = 4096,
-        .flags = FlipperInternalApplicationFlagDefault,
-        .args = "CPU Start",
-    },
-        {
-        .app = cpu_app,
-        .name = "CPU Maskrom",
-        .appid = "cpu",
-        .stack_size = 4096,
-        .flags = FlipperInternalApplicationFlagDefault,
-        .args = "CPU Maskrom",
-    },
+    // {
+    //     .app = cpu_app,
+    //     .name = "CPU Start",
+    //     .appid = "cpu",
+    //     .stack_size = 4096,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    //     .args = "CPU Start",
+    // },
+    //     {
+    //     .app = cpu_app,
+    //     .name = "CPU Maskrom",
+    //     .appid = "cpu",
+    //     .stack_size = 4096,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    //     .args = "CPU Maskrom",
+    // },
     {
         .app = self_check_app,
         .name = "Self Check",
