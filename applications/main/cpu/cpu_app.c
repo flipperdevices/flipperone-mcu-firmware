@@ -213,7 +213,7 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
 void cpu_app_menu_close_click_callback(bool pressed, void* context) {
     furi_check(context);
     CpuApp* instance = context;
-    if(pressed) {
+    if(!pressed) {
         cpu_app_send_message(instance, CpuAppMessageTypeClose);
     }
 }
@@ -221,7 +221,7 @@ void cpu_app_menu_close_click_callback(bool pressed, void* context) {
 void cpu_app_menu_restart_click_callback(bool pressed, void* context) {
     furi_check(context);
     CpuApp* instance = context;
-    if(pressed) {
+    if(!pressed) {
         cpu_app_send_message(instance, CpuAppMessageTypeReset);
     }
 }
