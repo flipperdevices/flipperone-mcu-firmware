@@ -1,4 +1,5 @@
 #include "power_menu.h"
+#include "input/input.h"
 #include <furi.h>
 #include <furi_hal_i2c_config.h>
 #include <gui/gui.h>
@@ -36,7 +37,7 @@ static const char* power_menu_items[] = {
 
 typedef struct {
     const char* text;
-    FuriCallbackWithContext on_click;
+    PowerMenuClickWithContext on_click;
 } PowerMenuCallbacks;
 
 ARRAY_DEF(PowerMenuArray, PowerMenuCallbacks, M_POD_OPLIST);
@@ -58,7 +59,7 @@ typedef struct {
     union {
         struct {
             const char* text;
-            FuriCallbackWithContext on_click;
+            PowerMenuClickWithContext on_click;
         } add_item;
         struct {
             const char* text;
@@ -308,7 +309,7 @@ static bool power_menu_model_init(PowerMenuModel* model, void* context) {
     return false;
 }
 
-static void power_menu_add_item(PowerMenuModel* model, const char* text, FuriCallbackWithContext on_click) {
+static void power_menu_add_item(PowerMenuModel* model, const char* text, PowerMenuClickWithContext on_click) {
     PowerMenuCallbacks* item = PowerMenuArray_push_raw(model->menu_items->data);
     item->text = text;
     item->on_click = on_click;
@@ -483,27 +484,29 @@ static void power_menu_input_right(PowerMenu* instance, int selected_index) {
     }
 }
 
-static void power_menu_input_menu(PowerMenu* instance, int selected_index) {
+static void power_menu_input_menu(PowerMenu* instance, int selected_index, bool pressed) {
     // OK on menu does the same thing as right
     if(selected_index >= 0) {
-        power_menu_input_right(instance, selected_index);
+        if(pressed) {
+            power_menu_input_right(instance, selected_index);
 
-        switch(selected_index) {
-        case PowerMenuActionPowerOff:
-            Power* power_off = furi_record_open(RECORD_POWER);
-            power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
-            furi_record_close(RECORD_POWER);
-            break;
-        case PowerMenuActionReboot:
-            Power* power_reset = furi_record_open(RECORD_POWER);
-            power_bq25792_set_power_switch(power_reset, Bq25792PowerReset);
-            furi_record_close(RECORD_POWER);
-            break;
-        case PowerMenuActionCancel:
-            power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
-            break;
-        default:
-            break;
+            switch(selected_index) {
+            case PowerMenuActionPowerOff:
+                Power* power_off = furi_record_open(RECORD_POWER);
+                power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
+                furi_record_close(RECORD_POWER);
+                break;
+            case PowerMenuActionReboot:
+                Power* power_reset = furi_record_open(RECORD_POWER);
+                power_bq25792_set_power_switch(power_reset, Bq25792PowerReset);
+                furi_record_close(RECORD_POWER);
+                break;
+            case PowerMenuActionCancel:
+                power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
+                break;
+            default:
+                break;
+            }
         }
     } else {
         size_t custom_index = selected_index * -1 - 1;
@@ -514,11 +517,13 @@ static void power_menu_input_menu(PowerMenu* instance, int selected_index) {
             {
                 PowerMenuCallbacks* item = PowerMenuArray_get(model->menu_items->data, custom_index);
                 if(item && item->on_click.callback) {
-                    item->on_click.callback(item->on_click.context);
+                    item->on_click.callback(pressed, item->on_click.context);
                 }
             },
             true);
-        power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
+        if(!pressed) {
+            power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
+        }
     }
 }
 
@@ -546,12 +551,16 @@ static bool power_menu_input(InputEvent* event, void* context) {
             } else if(event->key == InputKeyOk) {
                 int selected_index;
                 power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
-                power_menu_input_menu(instance, selected_index);
+                power_menu_input_menu(instance, selected_index, true);
             } else if(event->key == InputKeyBack) {
                 power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
             } else if(event->key == InputKey3) {
                 power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
             }
+        } else if(event->type == InputTypeRelease && event->key == InputKeyOk) {
+            int selected_index;
+            power_menu_model_apply(instance, power_menu_input_menu_get_selected_index, &selected_index);
+            power_menu_input_menu(instance, selected_index, false);
         }
 
         // Consume all events when visible, except for release events
@@ -671,7 +680,7 @@ static void power_menu_send_message(PowerMenu* instance, const PowerMenuMessage*
     }
 }
 
-bool power_menu_add_menu_item(const char* text, FuriCallbackWithContext on_click) {
+bool power_menu_add_menu_item(const char* text, PowerMenuClickWithContext on_click) {
     furi_assert(text);
     bool result;
     PowerMenuMessage msg = {
