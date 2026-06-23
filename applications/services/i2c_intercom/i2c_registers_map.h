@@ -41,13 +41,15 @@
  *          Bit 0: Buttons input interrupt masked
  *          Bit 1: Touchpad input interrupt masked
  *          Bit 2: Headphones input interrupt masked
- *          Bit 3-15: Reserved
+ *          Bit 3: SW buttons input interrupt masked
+ *          Bit 4-15: Reserved
 */
 #define I2C_INPUT_INTERRUPT_REG_ADDRESS        (0x0100 + 0)
 #define I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS   (0x0180 + 0)
 #define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS    (0)
 #define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
 #define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
+#define I2C_INPUT_INTERRUPT_REG_BIT_SW_BUTTONS (3)
 
 // Buttons state register
 /*
@@ -91,6 +93,15 @@
 #define I2C_TOUCHPAD_X_REG_ADDRESS     (0x0200 + 2)
 #define I2C_TOUCHPAD_Y_REG_ADDRESS     (0x0200 + 4)
 #define I2C_TOUCHPAD_PRESS_REG_ADDRESS (0x0200 + 6)
+
+// Software buttons state register
+/*
+ * 0x0200+0xA   Software buttons state    (read)
+ *              Bit 0: Power button state
+ *              Bit 1-15: Reserved
+*/
+#define I2C_SW_BUTTONS_STATE_REG_ADDRESS                  (0x0200 + 0xA)
+#define I2C_SW_BUTTONS_STATE_REG_BIT_POWER                (0)
 
 // Headphones state register
 /*
