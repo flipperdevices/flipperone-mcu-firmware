@@ -94,6 +94,12 @@ static bool i2c_negotiator_input_touch_event_glue(InputTouchEvent* event, void* 
     return false;
 }
 
+//Cpu state register
+void i2c_negotiator_cpu_state(I2CNegotiator* instance, uint16_t value) {
+    FURI_LOG_I(TAG, "CPU state register write: 0x%04X", value);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_cpu_state);
+
 // Headphones event
 static void i2c_negotiator_headphones_event_glue(const void* value, void* ctx) {
     UNUSED(ctx);
@@ -210,6 +216,9 @@ I2CNegotiator* i2c_negotiator_alloc() {
         // Interrupt register
         i2c_register_add_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_INPUT);
 
+        //Cpu state register
+        i2c_register_add_writable(I2C_CPU_STATUS_REG_ADDRESS, 0, i2c_negotiator_cpu_state_message, instance->negotiator_queue);
+        
         // Buttons state
         i2c_register_add_readable(I2C_BUTTONS_STATE_REG_ADDRESS, 0);
 
