@@ -15,9 +15,6 @@ static void dmesg_cli_command_dmesg_help(void) {
 }
 
 static void dmesg_cli_show_log(PipeSide* pipe, FuriString* args) {
-    UNUSED(pipe);
-    UNUSED(args);
-
     bool wait_for_new_logs = false;
 
     if(furi_string_size(args) > 0) {
@@ -60,8 +57,6 @@ static void dmesg_cli_show_log(PipeSide* pipe, FuriString* args) {
 }
 
 void dmesg_cli(PipeSide* pipe, FuriString* args, void* context) {
-    UNUSED(pipe);
     UNUSED(context);
-
     dmesg_cli_show_log(pipe, args);
 }

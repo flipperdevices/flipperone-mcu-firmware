@@ -53,7 +53,7 @@ size_t circular_buffer_write(CircularBuffer* cb, const uint8_t* data, size_t siz
 
     size_t space = circular_buffer_spaces_available(cb);
 
-    if(size > space) {
+    if(size >= space) {
         if(!cb->overwrite) return 0; /* drop new, preserve old */
 
         /* Overwrite: advance tail by exactly (size - space + 1 ) bytes,

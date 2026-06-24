@@ -1,6 +1,7 @@
 #pragma once
-
-#include <furi_hal_resources.h>
+#include <stdint.h>
+#include <stddef.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
