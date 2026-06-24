@@ -94,6 +94,36 @@ static bool i2c_negotiator_input_touch_event_glue(InputTouchEvent* event, void* 
     return false;
 }
 
+// Sw button event
+bool i2c_negotiator_input_sw_button_event(SwInputKey key, bool pressed, void* context) {
+    UNUSED(context);
+    furi_check(key & SwKeyMask);
+    FURI_LOG_I(TAG, "SW button event: key=0x%04X pressed=%d", key, pressed);
+
+    with_i2c_register({
+        if(pressed) {
+            if(i2c_register_update(I2C_SW_BUTTONS_STATE_REG_ADDRESS, key, key)) {
+                // issue interrupt if button state is changed
+                i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_SW_BUTTONS);
+            }
+        } else {
+            if(i2c_register_update(I2C_SW_BUTTONS_STATE_REG_ADDRESS, 0, key)) {
+                // issue interrupt if button state is changed
+                i2c_register_set_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, 1 << I2C_INPUT_INTERRUPT_REG_BIT_SW_BUTTONS);
+            }
+        }
+    });
+
+    // we dont consume the event in any case
+    return false;
+}
+
+//Cpu state register
+void i2c_negotiator_cpu_state(I2CNegotiator* instance, uint16_t value) {
+    FURI_LOG_I(TAG, "CPU state register write: 0x%04X", value);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_cpu_state);
+
 // Headphones event
 static void i2c_negotiator_headphones_event_glue(const void* value, void* ctx) {
     UNUSED(ctx);
@@ -210,6 +240,9 @@ I2CNegotiator* i2c_negotiator_alloc() {
         // Interrupt register
         i2c_register_add_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_INPUT);
 
+        //Cpu state register
+        i2c_register_add_writable(I2C_CPU_STATUS_REG_ADDRESS, 0, i2c_negotiator_cpu_state_message, instance->negotiator_queue);
+        
         // Buttons state
         i2c_register_add_readable(I2C_BUTTONS_STATE_REG_ADDRESS, 0);
 
@@ -217,6 +250,9 @@ I2CNegotiator* i2c_negotiator_alloc() {
         i2c_register_add_readable(I2C_TOUCHPAD_X_REG_ADDRESS, 0);
         i2c_register_add_readable(I2C_TOUCHPAD_Y_REG_ADDRESS, 0);
         i2c_register_add_readable(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0);
+
+        // SW buttons state
+        i2c_register_add_readable(I2C_SW_BUTTONS_STATE_REG_ADDRESS, 0);
 
         // Headphones
         i2c_register_add_readable(I2C_HEADPHONES_STATE_REG_ADDRESS, 0);
