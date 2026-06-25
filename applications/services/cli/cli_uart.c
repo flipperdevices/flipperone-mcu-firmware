@@ -9,7 +9,7 @@
 #define TAG "CliUart"
 
 #define PIPE_SZ_PER_DIRECTION 1024UL
-#define UART_BAUD_RATE        230400UL
+#define UART_BAUD_RATE        1500000UL
 #define UART_SERIAL_ID        FuriHalSerialIdUart1
 #define TRANSFER_BATCH_SIZE   32UL
 #define CLI_UART_SHELL_PROMPT "control"
@@ -54,10 +54,7 @@ struct CliUart {
 };
 
 static void cli_uart_signal_event(CliUart* cli_uart, CliUartEvent event) {
-    uint32_t ret = furi_event_flag_set(cli_uart->event_flag, event);
-    if((ret & FuriFlagError)) {
-        FURI_LOG_E(TAG, "Failed to set event flag, error code: 0x%08lX", ret);
-    }
+    furi_event_flag_set(cli_uart->event_flag, event);
 }
 
 static void cli_uart_event(FuriEventLoopObject* object, void* context) {
