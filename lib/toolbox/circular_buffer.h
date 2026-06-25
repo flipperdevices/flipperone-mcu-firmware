@@ -75,7 +75,7 @@ size_t circular_buffer_read(CircularBuffer* cb, uint8_t* data, size_t size);
  * @param cb CircularBuffer to query
  * @return Current read index (tail)
  */
-size_t circular_buffer_get_index_tail(const CircularBuffer* cb);
+size_t circular_buffer_get_index_tail(CircularBuffer* cb);
 
 /**
  * @brief Set the current read index (tail) of the circular buffer

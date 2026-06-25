@@ -4,7 +4,7 @@
 
 #define TAG "CircularBufferTest"
 
-#define CB_DEBUG
+//#define CB_DEBUG
 
 #ifdef CB_DEBUG
 #define CB_LOG(...) FURI_LOG_I(TAG, __VA_ARGS__)
@@ -73,6 +73,28 @@ bool circular_buffer_test_write_read_overwrite_true(void) {
     TEST_ASSERT(circular_buffer_read(cb, data, size) == 0);
     CB_LOG("Read from circular buffer: data=%s", data);
 
+    // Test sequentially recording short segments without prior reading and reading the resulting data from the FIFO at the end
+    const char* short_str = "abc#1234412";
+    for(size_t i = 0; i < 5; ++i) {
+        CB_LOG("Writing to circular buffer: size=%zu, data=%s", strlen(short_str), short_str);
+        TEST_ASSERT(circular_buffer_write(cb, (const uint8_t*)short_str, strlen(short_str)) == strlen(short_str));
+    }
+
+    memset(data, 0, sizeof(data));
+    size = sizeof(data);
+    CB_LOG("Reading from circular buffer: size=%zu", circular_buffer_bytes_available(cb));
+    TEST_ASSERT(circular_buffer_read(cb, data, size) == buffer_size);
+    CB_LOG("Read from circular buffer: data=%s", data);
+
+    /* Calculate expected: last `buffer_size` bytes of all concatenated writes */
+    char full_str[128] = {0};
+    for(size_t i = 0; i < 5; ++i)
+        strcat(full_str, short_str);
+    size_t full_len = strlen(full_str);
+    const char* expected_data = full_str + full_len - buffer_size;
+
+    TEST_ASSERT(strncmp((const char*)data, expected_data, buffer_size) == 0);
+
     circular_buffer_free(cb);
     return true;
 }
@@ -99,7 +121,7 @@ bool circular_buffer_test_write_read_overwrite_false(void) {
         CB_LOG("Read from circular buffer: data=%s", data);
         TEST_ASSERT(strcmp((const char*)data, test_str) == 0);
     }
-    
+
     //test overwrite behavior with increasing input size
     char long_str[32];
     for(size_t i = 0; i < buffer_size; ++i) {
@@ -117,8 +139,22 @@ bool circular_buffer_test_write_read_overwrite_false(void) {
         TEST_ASSERT(circular_buffer_read(cb, data, size) == buffer_size);
         CB_LOG("Read from circular buffer: data=%s", data);
 
-        TEST_ASSERT(strncmp((const char*)data, long_str + (len_str - (buffer_size)), buffer_size) == 0);
+        /* overwrite=false: first `buffer_size` bytes of input are stored */
+        TEST_ASSERT(strncmp((const char*)data, long_str, buffer_size) == 0);
     }
+
+    // Test sequentially recording short segments without prior reading and reading the resulting data from the FIFO at the end
+    const char* short_str = "a";
+    for(size_t i = 0; i < 5; ++i) {
+        CB_LOG("Writing to circular buffer: size=%zu, data=%s", strlen(short_str), short_str);
+        TEST_ASSERT(circular_buffer_write(cb, (const uint8_t*)short_str, strlen(short_str)) == strlen(short_str));
+    }
+    memset(data, 0, sizeof(data));
+    size = sizeof(data);
+    size_t avail_before = circular_buffer_bytes_available(cb);
+    CB_LOG("Reading from circular buffer: size=%zu", avail_before);
+    TEST_ASSERT(circular_buffer_read(cb, data, size) == avail_before);
+    CB_LOG("Read from circular buffer: data=%s", data);
 
     circular_buffer_free(cb);
     return true;

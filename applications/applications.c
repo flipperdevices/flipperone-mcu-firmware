@@ -225,13 +225,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
 
 const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
-    // {
-    //     .app = dmesg_app,
-    //     .name = "Dmesg",
-    //     .appid = "dmesg",
-    //     .stack_size = 2048,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
+    {
+        .app = dmesg_app,
+        .name = "Dmesg",
+        .appid = "dmesg",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
     {
         .app = self_check_app,
         .name = "Self Check",
@@ -281,11 +281,11 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
         .stack_size = 1024 * 2,
         .flags = CliCommandFlagParallelSafe,
     },
-    // {
-    //     .callback = dmesg_cli,
-    //     .name = "dmesg",
-    //     .stack_size = 1024 * 2,
-    //     .flags = CliCommandFlagParallelSafe,
-    // },
+    {
+        .callback = dmesg_cli,
+        .name = "dmesg",
+        .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
 };
 const size_t FLIPPER_CLI_COMMANDS_COUNT = COUNT_OF(FLIPPER_CLI_COMMANDS);

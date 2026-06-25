@@ -10,6 +10,7 @@ struct CircularBuffer {
     FuriMutex* mutex; /**< mutex for thread-safe access */
     bool overwrite; /**< flag to allow overwriting old data when buffer is full */
     bool full; /**< true when head == tail but buffer contains data */
+    bool full_backup; /**< backup flag for full state */
 };
 
 CircularBuffer* circular_buffer_alloc(size_t size, bool overwrite) {
@@ -40,9 +41,7 @@ void circular_buffer_release(CircularBuffer* cb) {
 
 size_t circular_buffer_bytes_available(const CircularBuffer* cb) {
     if(cb->full) return cb->size;
-    const size_t head = cb->head;
-    const size_t tail = cb->tail;
-    return (head >= tail) ? (head - tail) : (cb->size - (tail - head));
+    return (cb->head - cb->tail + cb->size) % cb->size;
 }
 
 size_t circular_buffer_spaces_available(const CircularBuffer* cb) {
@@ -58,19 +57,22 @@ size_t circular_buffer_write(CircularBuffer* cb, const uint8_t* data, size_t siz
     size_t space = circular_buffer_spaces_available(cb);
 
     if(size > space) {
-        if(!cb->overwrite) return 0; /* drop new, preserve old */
-
-        if(cb->overwrite && size > cb->size) {
-            /* Input larger than whole buffer: discard everything,
-               keep only the last `cb->size` bytes of input. */
-            data += size - cb->size;
-            size = cb->size;
-            cb->tail = cb->head; /* discard all current data */
-            cb->full = true;
+        if(!cb->overwrite) {
+            /* Write what fits from the beginning of input, drop the rest */
+            size = space;
+            if(size == 0) return 0;
         } else {
-            /* Regular overwrite: advance tail to make room */
-            size_t drop = size - space;
-            cb->tail = (cb->tail + drop) % cb->size;
+            if(size > cb->size) {
+                /* Input larger than whole buffer: keep only the last `cb->size` bytes */
+                data += size - cb->size;
+                size = cb->size;
+                cb->tail = cb->head;
+                cb->full = true;
+            } else {
+                /* Regular overwrite: advance tail to make room */
+                size_t drop = size - space;
+                cb->tail = (cb->tail + drop) % cb->size;
+            }
         }
     }
 
@@ -89,7 +91,7 @@ size_t circular_buffer_write(CircularBuffer* cb, const uint8_t* data, size_t siz
     /* If head caught up to tail after writing, buffer is full */
     if(cb->head == cb->tail) cb->full = true;
 
-    return original_size;
+    return cb->overwrite ? original_size : size;
 }
 
 size_t circular_buffer_read(CircularBuffer* cb, uint8_t* data, size_t size) {
@@ -117,13 +119,15 @@ size_t circular_buffer_read(CircularBuffer* cb, uint8_t* data, size_t size) {
     return size;
 }
 
-size_t circular_buffer_get_index_tail(const CircularBuffer* cb) {
+size_t circular_buffer_get_index_tail(CircularBuffer* cb) {
     furi_check(cb);
+    cb->full_backup = cb->full; /* backup full state */
     return cb->tail;
 }
 
 void circular_buffer_set_index_tail(CircularBuffer* cb, size_t index) {
     furi_check(cb);
     furi_check(index < cb->size);
+    cb->full = cb->full_backup; /* restore full state */
     cb->tail = index;
 }
