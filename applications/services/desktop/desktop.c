@@ -2,6 +2,7 @@
 #include <applications.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
+#include <assets.h>
 
 #define DESKTOP_INPUT_QUEUE_SIZE       16
 #define DESKTOP_INPUT_TOUCH_QUEUE_SIZE 16
@@ -35,6 +36,7 @@ typedef struct {
 typedef struct {
     Gui* gui;
     View* view;
+    View* header_view;
 
     FuriEventLoop* event_loop;
     DesktopApp app;
@@ -49,6 +51,30 @@ typedef struct {
     DesktopEventType type;
 } DesktopEvent;
 
+static void desktop_softkey_button_element(const char* text, bool active) {
+    const Image* image = active ? &button_pressed : &button_released;
+    const Clay_Sizing sizing = {.width = CLAY_SIZING_FIXED(image->width), .height = CLAY_SIZING_FIXED(image->height)};
+
+    CLAY_AUTO_ID({
+        .layout =
+            {
+                .sizing = sizing,
+            },
+    }) {
+        CLAY_AUTO_ID({
+            .layout =
+                {
+                    .sizing = sizing,
+                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                    .padding = {.left = 0, .right = 0, .top = 3, .bottom = 0},
+                },
+            .image = {.imageData = (void*)image},
+        }) {
+            CLAY_TEXT(clay_helper_string_from_chars(text), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
+        }
+    }
+}
+
 static bool desktop_layout(void* _model) {
     DesktopModel* model = _model;
     furi_check(model);
@@ -61,31 +87,31 @@ static bool desktop_layout(void* _model) {
                 {
                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                    .childGap = 4,
                     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                 },
             .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
         }) {
-        for(uint32_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
-            bool selected = (i == model->selected_index);
-            CLAY(
-                DESKTOP_MENU_ID(i),
+        CLAY_AUTO_ID({
+            .layout =
                 {
-                    .layout =
-                        {
-                            .sizing = {.width = CLAY_SIZING_FIXED(120), .height = CLAY_SIZING_FIXED(13)},
-                            .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                        },
-                    .backgroundColor = selected ? COLOR_BLACK : COLOR_WHITE,
-                    .cornerRadius = CLAY_CORNER_RADIUS(2),
-                }) {
-                CLAY_TEXT(
-                    clay_helper_string_from_chars(FLIPPER_APPS[i].name),
-                    CLAY_TEXT_CONFIG({
-                        .fontId = FontBody,
-                        .textColor = selected ? COLOR_WHITE : COLOR_BLACK,
-                    }));
-            }
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                },
+        }) {
+            clay_fixed_image(&face_sleep);
+        }
+
+        CLAY_AUTO_ID({
+            .layout =
+                {
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT(0)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                    .childGap = 4,
+                },
+        }) {
+            desktop_softkey_button_element("Help", false);
+            desktop_softkey_button_element("Power", false);
+            desktop_softkey_button_element("Settings", false);
         }
     }
 
@@ -229,6 +255,90 @@ static void desktop_app_message_logic(FuriEventLoopObject* object, void* context
     }
 }
 
+#include <version.h>
+
+typedef struct {
+    FuriString* version_text;
+    FuriString* charge_text;
+} DesktopHeaderModel;
+
+static const Clay_Color COLOR_VERSION = {0x69, 0x69, 0x69, 255};
+
+static bool desktop_header_layout(void* _model) {
+    furi_assert(_model);
+    DesktopHeaderModel* model = _model;
+
+    CLAY(
+        CLAY_APP_ID("Container"),
+        {
+            .backgroundColor = COLOR_WHITE,
+            .layout =
+                {
+                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(11)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
+                    .padding = {.left = 3, .right = 2, .top = 0, .bottom = 0},
+                },
+            .floating =
+                {
+                    .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
+                    .attachTo = CLAY_ATTACH_TO_ROOT,
+                },
+        }) {
+        CLAY_AUTO_ID({
+            .layout =
+                {
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
+                    .padding = {.left = 0, .right = 0, .top = 2, .bottom = 0},
+
+                },
+        }) {
+            CLAY_TEXT(
+                clay_helper_string_from(model->version_text),
+                CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_VERSION, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+        }
+        CLAY_AUTO_ID({
+            .layout =
+                {
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_RIGHT, .y = CLAY_ALIGN_Y_CENTER},
+                    .padding = {.left = 0, .right = 0, .top = 2, .bottom = 0},
+                },
+        }) {
+            CLAY_TEXT(clay_helper_string_from(model->charge_text), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
+        }
+        CLAY_AUTO_ID() {
+            clay_fixed_image(&battery);
+        }
+    }
+    return false;
+}
+
+static View* desktop_alloc_header_view(Desktop* desktop) {
+    View* view = view_alloc();
+    view_allocate_model(view, ViewModelTypeLockFree, sizeof(DesktopHeaderModel));
+    view_set_layout_callback(view, desktop_header_layout);
+    view_set_transparent(view, true);
+
+    with_view_model(
+        view,
+        DesktopHeaderModel * model,
+        {
+            const Version* version = version_get();
+
+            model->version_text = furi_string_alloc();
+            furi_string_printf(model->version_text, "%s %s", version_get_gitbranch(version), version_get_githash(version));
+
+            // TODO: charge bar
+            model->charge_text = furi_string_alloc();
+            furi_string_printf(model->charge_text, "-1%%");
+        },
+        false);
+
+    return view;
+}
+
 static Desktop* desktop_alloc(void) {
     Desktop* desktop = malloc(sizeof(Desktop));
     desktop->gui = furi_record_open(RECORD_GUI);
@@ -242,7 +352,10 @@ static Desktop* desktop_alloc(void) {
     view_set_input_callback(desktop->view, desktop_input, desktop);
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
 
+    desktop->header_view = desktop_alloc_header_view(desktop);
+
     gui_add_view(desktop->gui, desktop->view, GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, desktop->header_view, GuiViewPriorityHeader);
 
     furi_record_create(RECORD_DESKTOP, desktop);
 

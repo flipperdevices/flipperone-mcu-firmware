@@ -14,6 +14,7 @@ typedef struct Gui Gui;
 typedef enum {
     GuiViewPriorityDesktop = 0,
     GuiViewPriorityApplication = 50000,
+    GuiViewPriorityHeader = 50000,
     GuiViewPriorityMenu = 100000,
 } GuiViewPriority;
 
