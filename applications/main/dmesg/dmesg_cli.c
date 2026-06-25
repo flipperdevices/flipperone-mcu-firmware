@@ -42,6 +42,7 @@ static void dmesg_cli_show_log(PipeSide* pipe, FuriString* args) {
 
     while(dmesg_app_get_log_data(instance, buffer, &size)) {
         if(size != 0) {
+            //Self-deadlock is possible if printf triggers log output.
             printf("%.*s", (int)size, buffer);
         }
         size = DMESG_BUFFER_SIZE;
