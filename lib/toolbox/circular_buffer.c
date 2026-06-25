@@ -9,6 +9,7 @@ struct CircularBuffer {
     volatile size_t tail; /**< read position  (reader only) */
     FuriMutex* mutex; /**< mutex for thread-safe access */
     bool overwrite; /**< flag to allow overwriting old data when buffer is full */
+    bool full; /**< true when head == tail but buffer contains data */
 };
 
 CircularBuffer* circular_buffer_alloc(size_t size, bool overwrite) {
@@ -19,6 +20,7 @@ CircularBuffer* circular_buffer_alloc(size_t size, bool overwrite) {
     cb->head = 0;
     cb->overwrite = overwrite;
     cb->tail = 0;
+    cb->full = false;
     return cb;
 }
 
@@ -37,6 +39,7 @@ void circular_buffer_release(CircularBuffer* cb) {
 }
 
 size_t circular_buffer_bytes_available(const CircularBuffer* cb) {
+    if(cb->full) return cb->size;
     const size_t head = cb->head;
     const size_t tail = cb->tail;
     return (head >= tail) ? (head - tail) : (cb->size - (tail - head));
@@ -51,15 +54,24 @@ size_t circular_buffer_write(CircularBuffer* cb, const uint8_t* data, size_t siz
     furi_check(size > 0);
     furi_check(data);
 
+    const size_t original_size = size;
     size_t space = circular_buffer_spaces_available(cb);
 
-    if(size >= space) {
+    if(size > space) {
         if(!cb->overwrite) return 0; /* drop new, preserve old */
 
-        /* Overwrite: advance tail by exactly (size - space + 1 ) bytes,
-           wrapping around the buffer as needed. */
-        size_t drop = size - space + 1;
-        cb->tail = (cb->tail + drop) % cb->size;
+        if(cb->overwrite && size > cb->size) {
+            /* Input larger than whole buffer: discard everything,
+               keep only the last `cb->size` bytes of input. */
+            data += size - cb->size;
+            size = cb->size;
+            cb->tail = cb->head; /* discard all current data */
+            cb->full = true;
+        } else {
+            /* Regular overwrite: advance tail to make room */
+            size_t drop = size - space;
+            cb->tail = (cb->tail + drop) % cb->size;
+        }
     }
 
     /* Write data at head position */
@@ -74,7 +86,10 @@ size_t circular_buffer_write(CircularBuffer* cb, const uint8_t* data, size_t siz
         cb->head = size - first;
     }
 
-    return size;
+    /* If head caught up to tail after writing, buffer is full */
+    if(cb->head == cb->tail) cb->full = true;
+
+    return original_size;
 }
 
 size_t circular_buffer_read(CircularBuffer* cb, uint8_t* data, size_t size) {
@@ -84,11 +99,15 @@ size_t circular_buffer_read(CircularBuffer* cb, uint8_t* data, size_t size) {
 
     size_t avail = circular_buffer_bytes_available(cb);
     if(size > avail) size = avail;
+    if(size == 0) return 0;
+
+    cb->full = false; /* after reading, buffer definitely has space */
 
     size_t first = cb->size - cb->tail;
     if(size <= first) {
         memcpy(data, cb->data + cb->tail, size);
         cb->tail += size;
+        if(cb->tail == cb->size) cb->tail = 0;
     } else {
         memcpy(data, cb->data + cb->tail, first);
         memcpy(data + first, cb->data, size - first);

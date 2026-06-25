@@ -30,6 +30,7 @@ extern int32_t self_check_app(void* p);
 extern int32_t font_test_app(void* p);
 extern int32_t cli_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
+extern int32_t unit_test_app(void* p);
 
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
@@ -224,13 +225,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
 
 const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
-    {
-        .app = dmesg_app,
-        .name = "Dmesg",
-        .appid = "dmesg",
-        .stack_size = 2048,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
+    // {
+    //     .app = dmesg_app,
+    //     .name = "Dmesg",
+    //     .appid = "dmesg",
+    //     .stack_size = 2048,
+    //     .flags = FlipperInternalApplicationFlagDefault,
+    // },
     {
         .app = self_check_app,
         .name = "Self Check",
@@ -243,6 +244,13 @@ const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
         .name = "CliOnSystemStart",
         .appid = "cli_on_system_start",
         .stack_size = 1024 * 2,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = unit_test_app,
+        .name = "Unit Test",
+        .appid = "unit_test",
+        .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
 };
@@ -273,11 +281,11 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
         .stack_size = 1024 * 2,
         .flags = CliCommandFlagParallelSafe,
     },
-    {
-        .callback = dmesg_cli,
-        .name = "dmesg",
-        .stack_size = 1024 * 2,
-        .flags = CliCommandFlagParallelSafe,
-    },
+    // {
+    //     .callback = dmesg_cli,
+    //     .name = "dmesg",
+    //     .stack_size = 1024 * 2,
+    //     .flags = CliCommandFlagParallelSafe,
+    // },
 };
 const size_t FLIPPER_CLI_COMMANDS_COUNT = COUNT_OF(FLIPPER_CLI_COMMANDS);
