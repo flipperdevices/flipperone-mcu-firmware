@@ -17,11 +17,12 @@
 
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
 
-#define CPU_APP_MENU_START   "CPU Start"
-#define CPU_APP_MENU_REBOOT  "CPU Reboot"
-#define CPU_APP_MENU_MASKROM "CPU Maskrom"
-#define CPU_APP_MENU_CLOSE   "CPU Power Off"
-#define CPU_APP_MENU_SHUTDOWN   "CPU Shutdown"
+#define CPU_ARG_START   "start"
+#define CPU_ARG_MASKROM "maskrom"
+
+#define CPU_APP_MENU_REBOOT   "CPU Reboot"
+#define CPU_APP_MENU_CLOSE    "CPU Power Off"
+#define CPU_APP_MENU_SHUTDOWN "CPU Shutdown"
 
 typedef struct {
     Image frame;
@@ -279,9 +280,9 @@ int32_t cpu_app(void* p) {
     if(p) {
         char* arg = (char*)p;
         FURI_LOG_I(TAG, "CPU app started with arg: %s", arg);
-        if(strcmp(arg, CPU_APP_MENU_START) == 0) {
+        if(strcmp(arg, CPU_ARG_START) == 0) {
             cpu_app_send_message(instance, CpuAppMessageTypeStart);
-        } else if(strcmp(arg, CPU_APP_MENU_MASKROM) == 0) {
+        } else if(strcmp(arg, CPU_ARG_MASKROM) == 0) {
             cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
         } else {
             FURI_LOG_E(TAG, "Unknown argument: %s", arg);
