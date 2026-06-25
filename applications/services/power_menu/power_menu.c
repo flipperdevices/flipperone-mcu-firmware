@@ -10,6 +10,7 @@
 #include <api_lock.h>
 
 #include <desktop/desktop.h>
+#include <assets.h>
 
 extern int32_t cpu_app(void* p);
 
@@ -17,8 +18,8 @@ extern int32_t cpu_app(void* p);
 #define POWER_MENU_MAX_MESSAGES (8)
 #define POWER_MENU_ID(x)        CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
 
-#define POWER_MENU_CPU_APP_START   "CPU Start"
-#define POWER_MENU_CPU_APP_MASKROM "CPU Maskrom"
+#define POWER_MENU_CPU_APP_START   "Start Linux"
+#define POWER_MENU_CPU_APP_MASKROM "Maskrom"
 
 typedef enum {
     PowerMenuCpuAppStart,
@@ -30,20 +31,20 @@ static const FlipperInternalApplication app[] = {
     [PowerMenuCpuAppStart] =
         {
             .app = cpu_app,
-            .name = "CPU Start",
+            .name = POWER_MENU_CPU_APP_START,
             .appid = "cpu",
             .stack_size = 4096,
             .flags = FlipperInternalApplicationFlagDefault,
-            .args = "CPU Start",
+            .args = "start",
         },
     [PowerMenuCpuAppMaskrom] =
         {
             .app = cpu_app,
-            .name = "CPU Maskrom",
+            .name = POWER_MENU_CPU_APP_MASKROM,
             .appid = "cpu",
             .stack_size = 4096,
             .flags = FlipperInternalApplicationFlagDefault,
-            .args = "CPU Maskrom",
+            .args = "maskrom",
         },
 };
 
@@ -199,112 +200,127 @@ static bool power_menu_layout(void* _model) {
     }
 
     CLAY(
-        CLAY_APP_ID("Container"),
+        CLAY_APP_ID("Background"),
         {
-            .backgroundColor = COLOR_WHITE,
             .layout =
                 {
                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                    .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0)},
-                    .childGap = 4,
-                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                    .padding = {4, 4, 4, 4},
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                 },
+            .backgroundColor = (Clay_Color){0xFF, 0xFF, 0xFF, 255 / 2},
             .floating =
                 {
-                    .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
+                    .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
                     .attachTo = CLAY_ATTACH_TO_ROOT,
                 },
-            .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
-            .cornerRadius = CLAY_CORNER_RADIUS(4),
         }) {
-        // Header
-        CLAY_AUTO_ID({
-            .layout =
-                {
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(13)},
-                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                },
-            .backgroundColor = COLOR_WHITE,
-            .border = {.color = COLOR_BLACK, .width = {.bottom = 1}},
-        }) {
-            CLAY_TEXT(CLAY_STRING("Power"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
-        }
-
         CLAY(
-            CLAY_APP_ID("MenuContainer"),
+            CLAY_APP_ID("Container"),
             {
                 .backgroundColor = COLOR_WHITE,
                 .layout =
                     {
                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                        .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIXED(100)},
+                        .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0)},
                         .childGap = 4,
                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                        .padding = {.top = 4, .bottom = 4},
                     },
-                .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
-            }) {
-            // Menu items
-            for(uint32_t i = 0; i < model->power_menu_items_count; i++) {
-                bool selected = (i == model->selected_index);
-
-                // add a divider between built-in menu items and custom menu items
-                if(power_menu_item_get_count(model) > 0 && i == power_menu_item_get_count(model)) {
-                    CLAY_AUTO_ID({
-                        .layout =
-                            {
-                                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT(0)},
-                            },
-                        .border = {.color = COLOR_BLACK, .width = {.bottom = 1}},
-                    }) {
-                    }
-                }
-
-                CLAY(
-                    POWER_MENU_ID(i),
+                .floating =
                     {
-                        .layout =
-                            {
-                                .sizing = {.width = CLAY_SIZING_FIXED(80), .height = CLAY_SIZING_FIXED(13)},
-                                .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                            },
-                        .backgroundColor = selected ? COLOR_BLACK : COLOR_WHITE,
-                        .cornerRadius = CLAY_CORNER_RADIUS(2),
-                    }) {
-                    CLAY_TEXT(
-                        clay_helper_string_from_chars(
-                            i < power_menu_item_get_count(model) ? power_menu_item_get_text(model, i) :
-                                                                   (power_menu_items[i - power_menu_item_get_count(model)])),
-                        CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
+                        .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
+                        .attachTo = CLAY_ATTACH_TO_ROOT,
+                    },
+                .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
+                .cornerRadius = CLAY_CORNER_RADIUS(5),
+            }) {
+            CLAY(
+                CLAY_APP_ID("ClipWrapper"),
+                {
+                    .backgroundColor = COLOR_WHITE,
+                    .layout =
+                        {
+                            .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                            .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIXED(100)},
+                            .childGap = 4,
+                            .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                        },
+                    .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
+                }) {
+                // Menu items
+                for(uint32_t i = 0; i < model->power_menu_items_count; i++) {
+                    bool selected = (i == model->selected_index);
 
-                    switch(i - power_menu_item_get_count(model)) {
-                    case PowerMenuActionLeds:
-                        CLAY_TEXT(
-                            clay_helper_string_from_chars(model->led_text),
-                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
-                        break;
-                    case PowerMenuActionLinkLedBrightness:
-                        CLAY_TEXT(
-                            clay_helper_string_from(model->link_led_brightness_text),
-                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
-                        break;
-                    case PowerMenuActionPowerLedBrightness:
-                        CLAY_TEXT(
-                            clay_helper_string_from(model->power_led_brightness_text),
-                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
-                        break;
-                    case PowerMenuActionWattmeterLedBrightness:
-                        CLAY_TEXT(
-                            clay_helper_string_from(model->wattmeter_led_brightness_text),
-                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
-                        break;
-                    case PowerMenuActionBacklight:
-                        CLAY_TEXT(
-                            clay_helper_string_from(model->backlight_text),
-                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
-                        break;
-                    default:
-                        break;
+                    // add a divider between built-in menu items and custom menu items
+                    if(power_menu_item_get_count(model) > 0 && i == power_menu_item_get_count(model)) {
+                        CLAY_AUTO_ID({
+                            .layout =
+                                {
+                                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT(0)},
+                                },
+                            .border = {.color = COLOR_BLACK, .width = {.bottom = 1}},
+                        }) {
+                        }
+                    }
+
+                    Clay_TextElementConfig text_config = {
+                        .fontId = FontBody,
+                        .textColor = COLOR_BLACK,
+                        .wrapMode = CLAY_TEXT_WRAP_NONE,
+                    };
+
+                    CLAY(
+                        POWER_MENU_ID(i),
+                        {
+                            .layout =
+                                {
+                                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(16)},
+                                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                                    .padding = {.left = 4 + (selected ? 0 : power_menu_left.width), .right = 4 + (selected ? 0 : power_menu_right.width)},
+                                },
+                        }) {
+                        if(selected) {
+                            clay_fixed_image(&power_menu_left);
+                        }
+
+                        CLAY_AUTO_ID({
+                            .layout =
+                                {
+                                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(16)},
+                                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                                },
+                            .border = {.color = COLOR_BLACK, .width = {.bottom = selected ? 2 : 0, .top = selected ? 1 : 0}},
+                        }) {
+                            CLAY_TEXT(
+                                clay_helper_string_from_chars(
+                                    i < power_menu_item_get_count(model) ? power_menu_item_get_text(model, i) :
+                                                                           (power_menu_items[i - power_menu_item_get_count(model)])),
+                                CLAY_TEXT_CONFIG(text_config));
+
+                            switch(i - power_menu_item_get_count(model)) {
+                            case PowerMenuActionLeds:
+                                CLAY_TEXT(clay_helper_string_from_chars(model->led_text), CLAY_TEXT_CONFIG(text_config));
+                                break;
+                            case PowerMenuActionLinkLedBrightness:
+                                CLAY_TEXT(clay_helper_string_from(model->link_led_brightness_text), CLAY_TEXT_CONFIG(text_config));
+                                break;
+                            case PowerMenuActionPowerLedBrightness:
+                                CLAY_TEXT(clay_helper_string_from(model->power_led_brightness_text), CLAY_TEXT_CONFIG(text_config));
+                                break;
+                            case PowerMenuActionWattmeterLedBrightness:
+                                CLAY_TEXT(clay_helper_string_from(model->wattmeter_led_brightness_text), CLAY_TEXT_CONFIG(text_config));
+                                break;
+                            case PowerMenuActionBacklight:
+                                CLAY_TEXT(clay_helper_string_from(model->backlight_text), CLAY_TEXT_CONFIG(text_config));
+                                break;
+                            default:
+                                break;
+                            }
+                        }
+
+                        if(selected) {
+                            clay_fixed_image(&power_menu_right);
+                        }
                     }
                 }
             }
@@ -321,7 +337,7 @@ static bool power_menu_post_layout(void* _model) {
         return false;
     }
 
-    Clay_ElementId scrollContainerId = CLAY_APP_ID("MenuContainer");
+    Clay_ElementId scrollContainerId = CLAY_APP_ID("ClipWrapper");
     Clay_ElementId targetChildId = POWER_MENU_ID(model->selected_index);
 
     if(clay_helper_scroll_to_child(scrollContainerId, targetChildId, 0, 0, 15)) {
@@ -578,7 +594,7 @@ static void power_menu_cpu_app_start_callback(bool pressed, void* context) {
     if(pressed) {
         instance->app_running = true;
         desktop_start_app(&app[PowerMenuCpuAppStart]);
-       // power_menu_remove_app_menu_items(instance);
+        // power_menu_remove_app_menu_items(instance);
     }
 }
 
