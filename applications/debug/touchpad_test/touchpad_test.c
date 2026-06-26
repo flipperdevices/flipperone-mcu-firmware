@@ -104,8 +104,8 @@ static bool touchpad_test_app_layout(void* _model) {
 void touchpad_test_app_update_frame(TouchpadTestModel* model) {
     canvas_clear(model->canvas, 0xFF);
 
-    ColorDraw color_gray = {.color = 220, .alpha = 255};
-    ColorDraw color_black = {.color = 0x00, .alpha = 255};
+    ColorA color_gray = {.color = 220, .alpha = 255};
+    ColorA color_black = {.color = 0x00, .alpha = 255};
 
     // grid
     render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH / 2, 1, TOUCHPAD_CANVAS_WIDTH / 2, TOUCHPAD_CANVAS_HEIGHT - 1, color_gray);
@@ -120,7 +120,7 @@ void touchpad_test_app_update_frame(TouchpadTestModel* model) {
         int32_t w = TOUCHPAD_CANVAS_WIDTH - 2 * margin_x - 2;
         int32_t h = TOUCHPAD_CANVAS_HEIGHT - 2 * margin_y - 2;
         int32_t r = h / 2;
-        ColorDraw color = {.color = (i == 0) ? 0x00 : 220, .alpha = 255};
+        ColorA color = {.color = (i == 0) ? 0x00 : 220, .alpha = 255};
         render_draw_round_rectangle(model->canvas, margin_x + 1, margin_y + 1, w, h, r, 1, color);
     }
 
