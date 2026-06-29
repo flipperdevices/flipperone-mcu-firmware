@@ -19,7 +19,7 @@ static volatile FuriHalPower furi_hal_power = {
 static volatile int wakeup_alarm_irq_num;
 
 void furi_hal_power_reset(void) {
-    watchdog_reboot(0, 0, 10);
+    watchdog_reboot(0, 0, 0);
 }
 
 uint16_t furi_hal_power_insomnia_level(void) {
