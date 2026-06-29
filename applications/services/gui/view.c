@@ -161,9 +161,15 @@ bool view_is_transparent(const View* view) {
 
 void view_set_enabled(View* view, bool enabled) {
     furi_check(view);
+    bool was_enabled = view_is_enabled(view);
+
     furi_check(furi_mutex_acquire(view->mutex, FuriWaitForever) == FuriStatusOk);
     view->is_enabled = enabled;
     furi_check(furi_mutex_release(view->mutex) == FuriStatusOk);
+
+    if(view->gui && was_enabled != enabled) {
+        gui_update(view->gui);
+    }
 }
 
 void view_set_transparent(View* view, bool transparent) {
