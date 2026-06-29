@@ -1,4 +1,5 @@
 #pragma once
+#include <furi/core/string.h>
 #include "clay.h"
 #include "clay_render.h"
 
@@ -9,9 +10,9 @@ extern "C" {
 // Macro for defining application element IDs with a prefix based on the application TAG
 #define CLAY_APP_ID(x) CLAY_ID(TAG x)
 
-static const Clay_Color COLOR_WHITE = {255, 255, 255, 255};
+static const Clay_Color COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 
-static const Clay_Color COLOR_BLACK = {0, 0, 0, 255};
+static const Clay_Color COLOR_BLACK = {.r = 0, .g = 0, .b = 0, .a = 255};
 
 /**
  * @brief Scrolls a scroll container to make a child element visible, with optional padding and speed.
