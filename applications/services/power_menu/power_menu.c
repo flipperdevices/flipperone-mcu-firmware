@@ -224,7 +224,7 @@ static bool power_menu_layout(void* _model) {
                         .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0)},
                         .childGap = 4,
                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                        .padding = {.top = 4, .bottom = 4},
+                        .padding = {.top = 3, .bottom = 2},
                     },
                 .floating =
                     {
@@ -242,7 +242,7 @@ static bool power_menu_layout(void* _model) {
                         {
                             .layoutDirection = CLAY_TOP_TO_BOTTOM,
                             .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIXED(100)},
-                            .childGap = 4,
+                            .childGap = 1,
                             .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                         },
                     .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},

@@ -15,7 +15,6 @@ extern int32_t led_srv(void* p);
 extern int32_t usb_srv(void* p);
 extern int32_t power_srv(void* p);
 extern int32_t pd_srv(void* p);
-extern int32_t power_menu_srv(void* p);
 extern int32_t headphones_srv(void* p);
 extern int32_t usb_mux_srv(void* p);
 extern int32_t cli_uart_srv(void* p);
@@ -24,7 +23,6 @@ extern int32_t cli_vcp_srv(void* p);
 // applications
 extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
-extern int32_t cpu_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
 extern int32_t font_test_app(void* p);
@@ -54,7 +52,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
         .app = power_srv,
         .name = "PowerSrv",
-        .appid = "power",
+        .appid = "power_srv",
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
@@ -143,13 +141,6 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = power_menu_srv,
-        .name = "PowerMenuSrv",
-        .appid = "power_menu_srv",
-        .stack_size = 1024 * 2,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
-    {
         .app = headphones_srv,
         .name = "HeadphonesSrv",
         .appid = "headphones_srv",
@@ -167,22 +158,6 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
 const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);
 
 const FlipperInternalApplication FLIPPER_APPS[] = {
-    // {
-    //     .app = cpu_app,
-    //     .name = "CPU Start",
-    //     .appid = "cpu",
-    //     .stack_size = 4096,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    //     .args = "CPU Start",
-    // },
-    //     {
-    //     .app = cpu_app,
-    //     .name = "CPU Maskrom",
-    //     .appid = "cpu",
-    //     .stack_size = 4096,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    //     .args = "CPU Maskrom",
-    // },
     {
         .app = self_check_app,
         .name = "Self Check",
