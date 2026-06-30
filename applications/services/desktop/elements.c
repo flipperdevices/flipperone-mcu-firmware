@@ -3,28 +3,36 @@
 #include <gui/clay_helper.h>
 #include "elements.h"
 
-void elements_softkey_button_element(const char* text, SoftkeyButtonState state) {
+void elements_softkey_button_element(size_t index, const char* text, bool active, bool pressed) {
+    furi_check(text);
+    furi_check(index < 5);
+
     const Image* image;
-    switch(state) {
-    case SoftkeyButtonStateInactive:
-        image = &button_inactive;
-        break;
-    case SoftkeyButtonStateActive:
-        image = &button_active;
-        break;
-    case SoftkeyButtonStatePressed:
+
+    if(pressed) {
         image = &button_pressed;
-        break;
-    default:
-        furi_crash();
+    } else if(active) {
+        image = &button_active;
+    } else {
+        image = &button_inactive;
     }
 
     const Clay_Sizing sizing = {.width = CLAY_SIZING_FIXED(image->width), .height = CLAY_SIZING_FIXED(image->height)};
+
+    const float offset_x = ((float)index - 2.0f) * (image->width + 4);
 
     CLAY_AUTO_ID({
         .layout =
             {
                 .sizing = sizing,
+
+            },
+        .floating =
+            {
+                .offset = {.x = offset_x, .y = 0},
+                .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_BOTTOM, .parent = CLAY_ATTACH_POINT_CENTER_BOTTOM},
+                .attachTo = CLAY_ATTACH_TO_ROOT,
+                .zIndex = active ? 100 : 0,
             },
     }) {
         CLAY_AUTO_ID({
@@ -36,9 +44,7 @@ void elements_softkey_button_element(const char* text, SoftkeyButtonState state)
                 },
             .image = {.imageData = (void*)image},
         }) {
-            CLAY_TEXT(
-                clay_helper_string_from_chars(text),
-                CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = state == SoftkeyButtonStatePressed ? COLOR_WHITE : COLOR_BLACK}));
+            CLAY_TEXT(clay_helper_string_from_chars(text), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = pressed ? COLOR_WHITE : COLOR_BLACK}));
         }
     }
 }

@@ -62,44 +62,9 @@ static bool desktop_layout(void* _model) {
             clay_fixed_image(&face_sleep);
         }
 
-        CLAY_AUTO_ID({
-            .layout =
-                {
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIT(0)},
-                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                    .childGap = 4,
-                },
-        }) {
-            if(model->help_pressed) {
-                elements_softkey_button_element("Help", SoftkeyButtonStatePressed);
-            } else {
-                if(false) {
-                    elements_softkey_button_element("Help", SoftkeyButtonStateActive);
-                } else {
-                    elements_softkey_button_element("Help", SoftkeyButtonStateInactive);
-                }
-            }
-
-            if(model->power_pressed) {
-                elements_softkey_button_element("Power", SoftkeyButtonStatePressed);
-            } else {
-                if(desktop_get_power_menu_state(model->desktop)) {
-                    elements_softkey_button_element("Power", SoftkeyButtonStateActive);
-                } else {
-                    elements_softkey_button_element("Power", SoftkeyButtonStateInactive);
-                }
-            }
-
-            if(model->settings_pressed) {
-                elements_softkey_button_element("Settings", SoftkeyButtonStatePressed);
-            } else {
-                if(false) {
-                    elements_softkey_button_element("Settings", SoftkeyButtonStateActive);
-                } else {
-                    elements_softkey_button_element("Settings", SoftkeyButtonStateInactive);
-                }
-            }
-        }
+        elements_softkey_button_element(1, "Help", false, model->help_pressed);
+        elements_softkey_button_element(2, "Power", desktop_get_power_menu_state(model->desktop), model->power_pressed);
+        elements_softkey_button_element(3, "Settings", false, model->settings_pressed);
     }
 
     return false;

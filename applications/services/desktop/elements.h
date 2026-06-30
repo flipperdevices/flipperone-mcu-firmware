@@ -4,13 +4,7 @@
 extern "C" {
 #endif
 
-typedef enum {
-    SoftkeyButtonStateInactive,
-    SoftkeyButtonStateActive,
-    SoftkeyButtonStatePressed,
-} SoftkeyButtonState;
-
-void elements_softkey_button_element(const char* text, SoftkeyButtonState state);
+void elements_softkey_button_element(size_t index, const char* text, bool active, bool pressed);
 
 #if defined(__cplusplus)
 }
