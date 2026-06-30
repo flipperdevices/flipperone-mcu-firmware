@@ -55,6 +55,44 @@ static void desktop_power_menu_state_mcu(void) {
 
 static const size_t power_menu_items_count = COUNT_OF(power_menu_items);
 
+static void desktop_power_menu_start_linux(Scene* scene) {
+    Desktop* desktop = scene_get_data(scene);
+    desktop_power_menu_state_cpu();
+    desktop_hide_power_menu(desktop);
+}
+
+static void desktop_power_menu_start_maskrom(Scene* scene) {
+    Desktop* desktop = scene_get_data(scene);
+    desktop_power_menu_state_cpu();
+    desktop_hide_power_menu(desktop);
+}
+
+static void desktop_power_menu_power_off(Scene* scene) {
+    UNUSED(scene);
+
+    Power* power_off = furi_record_open(RECORD_POWER);
+    power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
+    furi_record_close(RECORD_POWER);
+}
+
+static void desktop_power_menu_stop_linux(Scene* scene) {
+    Desktop* desktop = scene_get_data(scene);
+    desktop_power_menu_state_mcu();
+    desktop_hide_power_menu(desktop);
+}
+
+static void desktop_power_menu_reboot_linux(Scene* scene) {
+    Desktop* desktop = scene_get_data(scene);
+    desktop_power_menu_state_mcu();
+    desktop_hide_power_menu(desktop);
+}
+
+static void desktop_power_menu_boot_menu(Scene* scene) {
+    Desktop* desktop = scene_get_data(scene);
+    desktop_power_menu_state_mcu();
+    desktop_hide_power_menu(desktop);
+}
+
 static bool power_menu_layout(void* _model) {
     furi_assert(_model);
     PowerMenuModel* model = _model;
@@ -130,11 +168,12 @@ static bool power_menu_layout(void* _model) {
                                 {
                                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(16)},
                                     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                                    .padding = {.left = 3 + (selected ? 0 : power_menu_left.width), .right = 3 + (selected ? 0 : power_menu_right.width)},
+                                    .padding =
+                                        {.left = 3 + (selected ? 0 : power_menu_border_left.width), .right = 3 + (selected ? 0 : power_menu_border_right.width)},
                                 },
                         }) {
                         if(selected) {
-                            clay_fixed_image(&power_menu_left);
+                            clay_fixed_image(&power_menu_border_left);
                         }
 
                         CLAY_AUTO_ID({
@@ -142,7 +181,7 @@ static bool power_menu_layout(void* _model) {
                                 {
                                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(16)},
                                     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                                    .padding = {.left = 7 - power_menu_left.width + 1, .right = 7 - power_menu_right.width + 1},
+                                    .padding = {.left = 7 - power_menu_border_left.width + 1, .right = 7 - power_menu_border_right.width + 1},
                                 },
                             .border = {.color = COLOR_BLACK, .width = {.bottom = selected ? 2 : 0, .top = selected ? 1 : 0}},
                         }) {
@@ -150,7 +189,7 @@ static bool power_menu_layout(void* _model) {
                         }
 
                         if(selected) {
-                            clay_fixed_image(&power_menu_right);
+                            clay_fixed_image(&power_menu_border_right);
                         }
                     }
                 }
@@ -224,44 +263,6 @@ static bool power_menu_model_init(PowerMenuModel* model, void* context) {
     model->selected_item = &power_menu_items[first_enabled_index];
 
     return false;
-}
-
-static void desktop_power_menu_start_linux(Scene* scene) {
-    Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_cpu();
-    desktop_hide_power_menu(desktop);
-}
-
-static void desktop_power_menu_start_maskrom(Scene* scene) {
-    Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_cpu();
-    desktop_hide_power_menu(desktop);
-}
-
-static void desktop_power_menu_power_off(Scene* scene) {
-    UNUSED(scene);
-
-    Power* power_off = furi_record_open(RECORD_POWER);
-    power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
-    furi_record_close(RECORD_POWER);
-}
-
-static void desktop_power_menu_stop_linux(Scene* scene) {
-    Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_mcu();
-    desktop_hide_power_menu(desktop);
-}
-
-static void desktop_power_menu_reboot_linux(Scene* scene) {
-    Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_mcu();
-    desktop_hide_power_menu(desktop);
-}
-
-static void desktop_power_menu_boot_menu(Scene* scene) {
-    Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_mcu();
-    desktop_hide_power_menu(desktop);
 }
 
 static bool power_menu_input(InputEvent* event, void* context) {

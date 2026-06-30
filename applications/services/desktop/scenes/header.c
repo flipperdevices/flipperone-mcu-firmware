@@ -58,7 +58,7 @@ static bool header_layout(void* _model) {
             CLAY_TEXT(clay_helper_string_from(model->charge_text), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
         }
         CLAY_AUTO_ID() {
-            clay_fixed_image(&battery);
+            clay_fixed_image(&header_battery);
         }
     }
     return false;

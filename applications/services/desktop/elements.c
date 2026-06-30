@@ -10,11 +10,11 @@ void elements_softkey_button_element(size_t index, const char* text, bool active
     const Image* image;
 
     if(pressed) {
-        image = &button_pressed;
+        image = &desktop_button_pressed;
     } else if(active) {
-        image = &button_active;
+        image = &desktop_button_active;
     } else {
-        image = &button_inactive;
+        image = &desktop_button_inactive;
     }
 
     const Clay_Sizing sizing = {.width = CLAY_SIZING_FIXED(image->width), .height = CLAY_SIZING_FIXED(image->height)};

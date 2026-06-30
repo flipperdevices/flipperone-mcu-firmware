@@ -138,7 +138,7 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
 }
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
-    model->frame = flipper_one_256x144_test_screen_v002;
+    model->frame = display_starting;
     return false;
 }
 

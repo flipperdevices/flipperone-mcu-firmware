@@ -276,11 +276,12 @@ static bool power_menu_layout(void* _model) {
                                 {
                                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(16)},
                                     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                                    .padding = {.left = 4 + (selected ? 0 : power_menu_left.width), .right = 4 + (selected ? 0 : power_menu_right.width)},
+                                    .padding =
+                                        {.left = 4 + (selected ? 0 : power_menu_border_left.width), .right = 4 + (selected ? 0 : power_menu_border_right.width)},
                                 },
                         }) {
                         if(selected) {
-                            clay_fixed_image(&power_menu_left);
+                            clay_fixed_image(&power_menu_border_left);
                         }
 
                         CLAY_AUTO_ID({
@@ -319,7 +320,7 @@ static bool power_menu_layout(void* _model) {
                         }
 
                         if(selected) {
-                            clay_fixed_image(&power_menu_right);
+                            clay_fixed_image(&power_menu_border_right);
                         }
                     }
                 }
