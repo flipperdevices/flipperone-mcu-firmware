@@ -38,6 +38,11 @@ void furi_hal_nvm_init(void);
  */
 void furi_hal_nvm_deinit(void);
 
+/** Wipe NVM storage
+ *
+ */
+void furi_hal_nvm_wipe(void);
+
 /** Delete a key from NVM storage
  *
  * @param      key   The key

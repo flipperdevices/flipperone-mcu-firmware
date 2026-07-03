@@ -11,7 +11,7 @@
 //#include "kvstore.h"
 
 /* FURI_HAL_NVM_BANK_DEFAULT_SIZE is passed as a compile definition from CMakeLists.txt */
-#define FURI_HAL_NVM_BANK_OFFSET       (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)
+#define FURI_HAL_NVM_BANK_OFFSET (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)
 
 bool kvs_init(void) {
     FURI_LOG_I(
@@ -36,9 +36,11 @@ bool kvs_init(void) {
     return true;
 }
 
-static void furi_hal_nvm_wipe(void) {
+void furi_hal_nvm_wipe(void) {
     // Erase the entire area used for NVM
+    FURI_CRITICAL_ENTER();
     flash_range_erase(FURI_HAL_NVM_BANK_OFFSET, FURI_HAL_NVM_BANK_DEFAULT_SIZE);
+    FURI_CRITICAL_EXIT();
 }
 
 FuriHalNvmBootMode furi_hal_nvm_get_boot_mode(void) {

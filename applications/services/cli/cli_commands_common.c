@@ -9,6 +9,7 @@
 #include <led/led.h>
 #include <furi_hal_clock.h>
 #include <furi_hal_otp.h>
+#include <furi_hal_nvm.h>
 
 void cli_command_uptime(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
@@ -34,10 +35,8 @@ static bool cli_command_log_level_set_from_string(FuriString* level) {
         printf("<log warn> — non-critical errors and warnings including <log error>\r\n");
         printf("<log info> — non-critical information including <log warn>\r\n");
         printf("<log default> — the default system log level (equivalent to <log info>)\r\n");
-        printf(
-            "<log debug> — debug information including <log info> (may impact system performance)\r\n");
-        printf(
-            "<log trace> — system traces including <log debug> (may impact system performance)\r\n");
+        printf("<log debug> — debug information including <log info> (may impact system performance)\r\n");
+        printf("<log trace> — system traces including <log debug> (may impact system performance)\r\n");
     }
     return false;
 }
@@ -84,9 +83,9 @@ void cli_command_top(PipeSide* pipe, FuriString* args, void* context) {
 
     int interval = 1000;
     args_read_int_and_trim(args, &interval);
-    
+
     printf(ANSI_ERASE_DISPLAY(ANSI_ERASE_ENTIRE)); // Clear display
-    
+
     FuriThreadList* thread_list = furi_thread_list_alloc();
     while(!cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
         uint32_t tick = furi_get_tick();
@@ -96,8 +95,7 @@ void cli_command_top(PipeSide* pipe, FuriString* args, void* context) {
 
         uint32_t uptime = tick / furi_kernel_get_tick_frequency();
         printf(
-            "Threads: %zu, ISR Time: %0.2f%%, Uptime: %luh%lum%lus" ANSI_ERASE_LINE(
-                ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n",
+            "Threads: %zu, ISR Time: %0.2f%%, Uptime: %luh%lum%lus" ANSI_ERASE_LINE(ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n",
             furi_thread_list_size(thread_list),
             (double)furi_thread_list_get_isr_time(thread_list),
             uptime / 60 / 60,
@@ -105,16 +103,15 @@ void cli_command_top(PipeSide* pipe, FuriString* args, void* context) {
             uptime % 60);
 
         printf(
-            "Heap: total %zu, free %zu, minimum %zu, max block %zu" ANSI_ERASE_LINE(
-                ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n" ANSI_ERASE_LINE(ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n",
+            "Heap: total %zu, free %zu, minimum %zu, max block %zu" ANSI_ERASE_LINE(ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n" ANSI_ERASE_LINE(
+                ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n",
             memmgr_get_total_heap(),
             memmgr_get_free_heap(),
             memmgr_get_minimum_free_heap(),
             memmgr_heap_get_max_free_block());
 
         printf(
-            "%-25s %-20s %-10s %5s %12s %6s %10s %7s %5s" ANSI_ERASE_LINE(
-                ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n",
+            "%-25s %-20s %-10s %5s %12s %6s %10s %7s %5s" ANSI_ERASE_LINE(ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n",
             "AppID",
             "Name",
             "State",
@@ -128,8 +125,7 @@ void cli_command_top(PipeSide* pipe, FuriString* args, void* context) {
         for(size_t i = 0; i < furi_thread_list_size(thread_list); i++) {
             const FuriThreadListItem* item = furi_thread_list_get_at(thread_list, i);
             printf(
-                "%-25s %-20s %-10s %5d   0x%08lx %6lu %10lu %7zu %5.1f" ANSI_ERASE_LINE(
-                    ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n",
+                "%-25s %-20s %-10s %5d   0x%08lx %6lu %10lu %7zu %5.1f" ANSI_ERASE_LINE(ANSI_ERASE_FROM_CURSOR_TO_END) "\r\n",
                 item->app_id,
                 item->name,
                 item->state,
@@ -152,7 +148,6 @@ void cli_command_top(PipeSide* pipe, FuriString* args, void* context) {
     }
     furi_thread_list_free(thread_list);
 }
-
 
 void cli_command_free(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
@@ -401,6 +396,94 @@ void cli_command_otp(PipeSide* pipe, FuriString* args, void* context) {
             printf("USB white label written to OTP successfully\r\n");
         } else {
             printf("Failed to write USB white label to OTP: %d\r\n", error);
+        }
+    } while(0);
+    furi_string_free(action);
+}
+
+static void cli_command_nvm_help(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
+    UNUSED(args);
+    UNUSED(context);
+    printf(
+        "nvm get <type:i|u|b|s> <key>\r\n"
+        "nvm wipe\r\n"
+        "");
+}
+
+static bool cli_command_nvm_parse_args(FuriString* args, char* type, FuriString* key) {
+    FuriString* type_str = furi_string_alloc();
+    bool result = false;
+    do {
+        if(!args_read_string_and_trim(args, type_str)) {
+            break;
+        }
+        if(!args_read_string_and_trim(args, key)) {
+            break;
+        }
+        if(furi_string_size(type_str) != 1) {
+            break;
+        }
+        *type = furi_string_get_char(type_str, 0);
+        result = true;
+    } while(0);
+    furi_string_free(type_str);
+    return result;
+}
+
+void cli_command_nvm(PipeSide* pipe, FuriString* args, void* context) {
+    FuriString* action = furi_string_alloc();
+    do {
+        if(!args_read_string_and_trim(args, action)) {
+            cli_command_nvm_help(pipe, args, context);
+            break;
+        }
+
+        if(furi_string_cmp(action, "get") == 0) {
+            FuriString* key = furi_string_alloc();
+            char type;
+            if(!cli_command_nvm_parse_args(args, &type, key)) {
+                cli_command_nvm_help(pipe, args, context);
+                furi_string_free(key);
+                break;
+            }
+
+            FuriHalNvmStorage res = FuriHalNvmStorageError;
+            if(type == 'i') {
+                int32_t value;
+                res = furi_hal_nvm_get_int32(furi_string_get_cstr(key), &value);
+                if(res == FuriHalNvmStorageOK) printf("%s: %ld\r\n", furi_string_get_cstr(key), value);
+            } else if(type == 'u') {
+                uint32_t value;
+                res = furi_hal_nvm_get_uint32(furi_string_get_cstr(key), &value);
+                if(res == FuriHalNvmStorageOK) printf("%s: %lu\r\n", furi_string_get_cstr(key), value);
+            } else if(type == 'b') {
+                bool value;
+                res = furi_hal_nvm_get_bool(furi_string_get_cstr(key), &value);
+                if(res == FuriHalNvmStorageOK) printf("%s: %s\r\n", furi_string_get_cstr(key), value ? "true" : "false");
+            } else if(type == 's') {
+                FuriString* value = furi_string_alloc();
+                res = furi_hal_nvm_get_str(furi_string_get_cstr(key), value);
+                if(res == FuriHalNvmStorageOK) printf("%s: %s\r\n", furi_string_get_cstr(key), furi_string_get_cstr(value));
+                furi_string_free(value);
+            } else {
+                cli_command_nvm_help(pipe, args, context);
+                furi_string_free(key);
+                break;
+            }
+
+            if(res == FuriHalNvmStorageItemNotFound) {
+                printf("Key %s is missing\r\n", furi_string_get_cstr(key));
+            } else if(res == FuriHalNvmStorageError) {
+                printf("NVM error\r\n");
+            }
+            furi_string_free(key);
+        } else if(furi_string_cmp(action, "wipe") == 0) {
+            furi_hal_nvm_wipe();
+            printf("Done\r\n");
+            break;
+        } else {
+            cli_command_nvm_help(pipe, args, context);
         }
     } while(0);
     furi_string_free(action);
