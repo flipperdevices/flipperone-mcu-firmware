@@ -4,7 +4,11 @@
 #include <power/power.h>
 #include "../scene.h"
 #include "../elements.h"
+#include "../desktop.h"
 #include "../desktop_i.h"
+#include "scene_events.h"
+
+extern int32_t cpu_app(void* p);
 
 #define TAG              "PowerMenu"
 #define POWER_MENU_ID(x) CLAY_SIDI(CLAY_STRING("PowerMenu"), x)
@@ -22,49 +26,43 @@ typedef struct {
 static void desktop_power_menu_start_linux(Scene* scene);
 static void desktop_power_menu_start_maskrom(Scene* scene);
 static void desktop_power_menu_power_off(Scene* scene);
-static void desktop_power_menu_stop_linux(Scene* scene);
-static void desktop_power_menu_reboot_linux(Scene* scene);
-static void desktop_power_menu_boot_menu(Scene* scene);
 
 static PowerMenuItem power_menu_items[] = {
     {.text = "Start Linux", .on_click = desktop_power_menu_start_linux, .enabled = true},
     {.text = "Maskrom", .on_click = desktop_power_menu_start_maskrom, .enabled = true},
     {.text = "Power Off", .on_click = desktop_power_menu_power_off, .enabled = true},
-    {.text = "Stop Linux", .on_click = desktop_power_menu_stop_linux, .enabled = false},
-    {.text = "Reboot Linux", .on_click = desktop_power_menu_reboot_linux, .enabled = false},
-    {.text = "Boot Menu", .on_click = desktop_power_menu_boot_menu, .enabled = false},
 };
-
-static void desktop_power_menu_state_cpu(void) {
-    power_menu_items[0].enabled = false;
-    power_menu_items[1].enabled = false;
-    power_menu_items[2].enabled = false;
-    power_menu_items[3].enabled = true;
-    power_menu_items[4].enabled = true;
-    power_menu_items[5].enabled = true;
-}
-
-static void desktop_power_menu_state_mcu(void) {
-    power_menu_items[0].enabled = true;
-    power_menu_items[1].enabled = true;
-    power_menu_items[2].enabled = true;
-    power_menu_items[3].enabled = false;
-    power_menu_items[4].enabled = false;
-    power_menu_items[5].enabled = false;
-}
 
 static const size_t power_menu_items_count = COUNT_OF(power_menu_items);
 
+static const FlipperInternalApplication cpu_app_start = {
+    .app = cpu_app,
+    .name = "Start Linux",
+    .appid = "cpu",
+    .stack_size = 4096,
+    .flags = FlipperInternalApplicationFlagDefault,
+    .args = "start",
+};
+
+static const FlipperInternalApplication cpu_maskrom_app = {
+    .app = cpu_app,
+    .name = "Maskrom",
+    .appid = "cpu",
+    .stack_size = 4096,
+    .flags = FlipperInternalApplicationFlagDefault,
+    .args = "maskrom",
+};
+
 static void desktop_power_menu_start_linux(Scene* scene) {
     Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_cpu();
-    desktop_hide_power_menu(desktop);
+    desktop_start_app(&cpu_app_start);
+    desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, NULL);
 }
 
 static void desktop_power_menu_start_maskrom(Scene* scene) {
     Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_cpu();
-    desktop_hide_power_menu(desktop);
+    desktop_start_app(&cpu_maskrom_app);
+    desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, NULL);
 }
 
 static void desktop_power_menu_power_off(Scene* scene) {
@@ -73,24 +71,6 @@ static void desktop_power_menu_power_off(Scene* scene) {
     Power* power_off = furi_record_open(RECORD_POWER);
     power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
     furi_record_close(RECORD_POWER);
-}
-
-static void desktop_power_menu_stop_linux(Scene* scene) {
-    Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_mcu();
-    desktop_hide_power_menu(desktop);
-}
-
-static void desktop_power_menu_reboot_linux(Scene* scene) {
-    Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_mcu();
-    desktop_hide_power_menu(desktop);
-}
-
-static void desktop_power_menu_boot_menu(Scene* scene) {
-    Desktop* desktop = scene_get_data(scene);
-    desktop_power_menu_state_mcu();
-    desktop_hide_power_menu(desktop);
 }
 
 static bool power_menu_layout(void* _model) {
@@ -286,7 +266,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
             power_menu_model_apply(view, power_menu_input_menu_get_selected_item, &selected_item);
             selected_item->on_click(scene);
         } else if(event->key == InputKeyBack) {
-            desktop_hide_power_menu(desktop);
+            desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, NULL);
         }
     }
 
@@ -321,7 +301,7 @@ static void power_menu_on_enter(Scene* scene, void* app) {
 
 const SceneCallbacks scene_power_menu_callbacks = {
     .on_alloc = power_menu_on_alloc,
-    .on_free = NULL,
     .on_enter = power_menu_on_enter,
     .on_exit = NULL,
+    .on_event = NULL,
 };

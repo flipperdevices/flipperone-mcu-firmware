@@ -20,20 +20,19 @@ Scene* scene_alloc(const SceneCallbacks* callbacks, void* context) {
     return scene;
 }
 
-void scene_free(Scene* scene) {
-    furi_check(scene);
-
-    if(scene->callbacks->on_free) {
-        scene->callbacks->on_free(scene);
-    }
-    view_free(scene->view);
-    free(scene);
-}
-
 View* scene_get_view(Scene* scene) {
     furi_check(scene);
 
     return scene->view;
+}
+
+bool scene_event(Scene* scene, uint32_t event, void* data) {
+    furi_check(scene);
+
+    if(scene->callbacks->on_event) {
+        return scene->callbacks->on_event(scene, event, data);
+    }
+    return false;
 }
 
 void scene_enter(Scene* scene, void* app) {

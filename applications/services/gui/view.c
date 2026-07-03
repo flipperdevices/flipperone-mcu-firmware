@@ -116,6 +116,7 @@ static void view_update(View* view) {
 void view_set_input_callback(View* view, ViewInputCallback input_callback, void* input_context) {
     furi_check(view);
     furi_check(furi_mutex_acquire(view->mutex, FuriWaitForever) == FuriStatusOk);
+    furi_check(view->input.callback == NULL || input_callback == NULL);
     view->input.callback = input_callback;
     view->input.context = input_context;
     furi_check(furi_mutex_release(view->mutex) == FuriStatusOk);
@@ -124,6 +125,7 @@ void view_set_input_callback(View* view, ViewInputCallback input_callback, void*
 void view_set_input_touch_callback(View* view, ViewInputTouchCallback input_touch_callback, void* input_touch_context) {
     furi_check(view);
     furi_check(furi_mutex_acquire(view->mutex, FuriWaitForever) == FuriStatusOk);
+    furi_check(view->input_touch.callback == NULL || input_touch_callback == NULL);
     view->input_touch.callback = input_touch_callback;
     view->input_touch.context = input_touch_context;
     furi_check(furi_mutex_release(view->mutex) == FuriStatusOk);
@@ -132,6 +134,7 @@ void view_set_input_touch_callback(View* view, ViewInputTouchCallback input_touc
 void view_set_layout_callback(View* view, ViewLayoutCallback layout_callback) {
     furi_check(view);
     furi_check(furi_mutex_acquire(view->mutex, FuriWaitForever) == FuriStatusOk);
+    furi_check(view->layout.callback == NULL || layout_callback == NULL);
     view->layout.callback = layout_callback;
     furi_check(furi_mutex_release(view->mutex) == FuriStatusOk);
 }
@@ -139,6 +142,7 @@ void view_set_layout_callback(View* view, ViewLayoutCallback layout_callback) {
 void view_set_post_layout_callback(View* view, ViewLayoutCallback post_layout_callback) {
     furi_check(view);
     furi_check(furi_mutex_acquire(view->mutex, FuriWaitForever) == FuriStatusOk);
+    furi_check(view->post_layout.callback == NULL || post_layout_callback == NULL);
     view->post_layout.callback = post_layout_callback;
     furi_check(furi_mutex_release(view->mutex) == FuriStatusOk);
 }

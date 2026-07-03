@@ -4,6 +4,7 @@
 #include "../scene.h"
 #include "../elements.h"
 #include "../desktop_i.h"
+#include "scene_events.h"
 
 #define TAG "Desktop"
 
@@ -83,11 +84,7 @@ static bool desktop_input(InputEvent* event, void* context) {
             break;
         case InputKey3:
             with_view_model(view, DesktopViewModel * model, { model->power_pressed = true; }, true);
-            if(!desktop_get_power_menu_state(desktop)) {
-                desktop_show_power_menu(desktop);
-            } else {
-                desktop_hide_power_menu(desktop);
-            }
+            desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, NULL);
             consumed = true;
             break;
         case InputKey4:
@@ -132,7 +129,7 @@ static void desktop_on_alloc(Scene* scene, void* context) {
 
 const SceneCallbacks scene_desktop_callbacks = {
     .on_alloc = desktop_on_alloc,
-    .on_free = NULL,
     .on_enter = NULL,
     .on_exit = NULL,
+    .on_event = NULL,
 };

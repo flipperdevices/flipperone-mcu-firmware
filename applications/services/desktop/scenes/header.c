@@ -91,7 +91,7 @@ static void header_on_alloc(Scene* scene, void* context) {
 
 const SceneCallbacks scene_header_callbacks = {
     .on_alloc = header_on_alloc,
-    .on_free = NULL,
     .on_enter = NULL,
     .on_exit = NULL,
+    .on_event = NULL,
 };

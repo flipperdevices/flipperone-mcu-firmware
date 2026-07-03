@@ -7,8 +7,8 @@ typedef struct Desktop Desktop;
 extern "C" {
 #endif
 
-void desktop_show_power_menu(Desktop* desktop);
-void desktop_hide_power_menu(Desktop* desktop);
+void desktop_send_scene_event(Desktop* desktop, uint32_t event, void* data);
+
 bool desktop_get_power_menu_state(Desktop* desktop);
 
 #ifdef __cplusplus
