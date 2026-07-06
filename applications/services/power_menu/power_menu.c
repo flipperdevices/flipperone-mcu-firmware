@@ -370,7 +370,7 @@ static bool power_menu_model_set_backlight_text(PowerMenuModel* model, void* con
 
 static bool power_menu_model_set_backlight_time_text(PowerMenuModel* model, void* context) {
     uint32_t* time = context;
-    furi_string_printf(model->backlight_time_text, " %ld s", *time);
+    furi_string_printf(model->backlight_time_text, " %lu s", *time);
     return true;
 }
 

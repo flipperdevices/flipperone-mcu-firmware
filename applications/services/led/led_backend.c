@@ -30,6 +30,7 @@
 #define LED_BACKLIGHT_PWM_FREQ_HZ    40000 // 40kHz PWM for backlight
 
 #define LED_BACKLIGHT_TIME_DEFAULT 15
+#define LED_BACKLIGHT_TIME_MAX     ((UINT32_MAX - 1) / 1000)
 
 typedef struct {
     uint32_t line[LED_TOTAL_LEDS_COUNT];
@@ -264,7 +265,7 @@ static const LedType* leds_group[LedGroupMax] = {
     [LedGroupDisplayBacklight] = NULL,
 };
 
-const size_t leds_in_group_count[LedGroupMax] = {
+static const size_t leds_in_group_count[LedGroupMax] = {
     [LedGroupLink] = COUNT_OF(leds_in_link_group),
     [LedGroupPower] = COUNT_OF(leds_in_power_group),
     [LedGroupWattmeter] = COUNT_OF(leds_in_wattmeter_group),
@@ -340,7 +341,7 @@ static void led_process_set_color_batch(Led* instance, LedItem* items, size_t co
     led_update_lines(instance, update_line);
 }
 
-void led_process_set_brightness(Led* instance, LedGroup group, uint8_t brightness, bool save_to_nvm) {
+static void led_process_set_brightness(Led* instance, LedGroup group, uint8_t brightness, bool save_to_nvm) {
     furi_assert(instance);
     furi_check(group < LedGroupMax);
     furi_state_set(instance->led_state.brightness[group], &brightness);
@@ -490,7 +491,8 @@ static Led* led_alloc(void) {
 
     instance->led_state.backlight_time = furi_state_alloc(sizeof(uint32_t));
     uint32_t backlight_time_value = 0;
-    if(furi_hal_nvm_get_uint32(SETTINGS_LED_BACKLIGHT_TIME, &backlight_time_value) != FuriHalNvmStorageOK) {
+    FuriHalNvmStorage res = furi_hal_nvm_get_uint32(SETTINGS_LED_BACKLIGHT_TIME, &backlight_time_value);
+    if((res != FuriHalNvmStorageOK) || (backlight_time_value == 0) || (backlight_time_value > LED_BACKLIGHT_TIME_MAX)) {
         backlight_time_value = LED_BACKLIGHT_TIME_DEFAULT;
         FURI_LOG_E(TAG, "Failed to read %s from NVM, defaulting to %lu", SETTINGS_LED_BACKLIGHT_TIME, backlight_time_value);
         furi_hal_nvm_set_uint32(SETTINGS_LED_BACKLIGHT_TIME, backlight_time_value);
@@ -563,7 +565,7 @@ void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness) {
 
 bool led_backlight_set_time(Led* instance, uint32_t timeout_seconds) {
     furi_check(instance);
-    if(timeout_seconds == 0) {
+    if((timeout_seconds == 0) || (timeout_seconds > LED_BACKLIGHT_TIME_MAX)) {
         return false;
     }
 
