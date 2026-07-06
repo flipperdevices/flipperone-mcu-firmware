@@ -242,7 +242,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
         //Cpu state register
         i2c_register_add_writable(I2C_CPU_STATUS_REG_ADDRESS, 0, i2c_negotiator_cpu_state_message, instance->negotiator_queue);
-        
+
         // Buttons state
         i2c_register_add_readable(I2C_BUTTONS_STATE_REG_ADDRESS, 0);
 
@@ -268,9 +268,10 @@ I2CNegotiator* i2c_negotiator_alloc() {
         i2c_register_add_writable(I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS, 0, i2c_negotiator_power_led_brightness_set_message, instance->negotiator_queue);
         i2c_register_add_writable(I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS, 0, i2c_negotiator_wattmeter_led_brightness_set_message, instance->negotiator_queue);
 
-        furi_state_subscribe(led_get_link_brightness_state(instance->led), i2c_negotiator_link_led_brightness_callback, NULL);
-        furi_state_subscribe(led_get_power_brightness_state(instance->led), i2c_negotiator_power_led_brightness_callback, NULL);
-        furi_state_subscribe(led_get_wattmeter_brightness_state(instance->led), i2c_negotiator_wattmeter_led_brightness_callback, NULL);
+        furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupLink), i2c_negotiator_link_led_brightness_callback, NULL);
+        furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupPower), i2c_negotiator_power_led_brightness_callback, NULL);
+        furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupWattmeter), i2c_negotiator_wattmeter_led_brightness_callback, NULL);
+        // TODO: backlight
 
         // Haptic
         i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);

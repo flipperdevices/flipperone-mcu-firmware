@@ -53,6 +53,7 @@ typedef enum {
     PowerMenuActionPowerLedBrightness,
     PowerMenuActionWattmeterLedBrightness,
     PowerMenuActionBacklight,
+    PowerMenuActionBacklightTime,
     PowerMenuActionPowerOff,
     PowerMenuActionReboot,
     PowerMenuActionCancel,
@@ -64,6 +65,7 @@ static const char* power_menu_items[] = {
     [PowerMenuActionPowerLedBrightness] = "Pwr Led",
     [PowerMenuActionWattmeterLedBrightness] = "Wtm Led",
     [PowerMenuActionBacklight] = "Backlight",
+    [PowerMenuActionBacklightTime] = "BL Time",
     [PowerMenuActionPowerOff] = "Power Off",
     [PowerMenuActionReboot] = "Reboot",
     [PowerMenuActionCancel] = "Cancel",
@@ -105,6 +107,7 @@ typedef struct {
     bool visible;
     size_t selected_index;
     FuriString* backlight_text;
+    FuriString* backlight_time_text;
     FuriString* link_led_brightness_text;
     FuriString* power_led_brightness_text;
     FuriString* wattmeter_led_brightness_text;
@@ -120,6 +123,7 @@ typedef struct {
     FuriEventLoop* event_loop;
     size_t selected_led_batch_index;
     size_t selected_backlight_brightness_index;
+    size_t selected_backlight_time_index;
     size_t selected_link_led_brightness_index;
     size_t selected_power_led_brightness_index;
     size_t selected_wattmeter_led_brightness_index;
@@ -141,40 +145,20 @@ static const char* led_batch_names[] = {
     " On",
     " White",
 };
-
 static_assert(COUNT_OF(items) == COUNT_OF(led_batch_names), "items and led_batch_names count mismatch");
 
 static const size_t led_batch_count = COUNT_OF(items);
 
-static const uint8_t brightness_levels[] = {
-    0,
-    2,
-    5,
-    20,
-    50,
-    75,
-    100,
-};
-
-static const size_t brightness_levels_count = COUNT_OF(brightness_levels);
-
-static const uint8_t led_brightness_levels[] = {
-    0,
-    5,
-    13,
-    26,
-    52,
-    128,
-    192,
-    255,
-};
-
+static const uint8_t led_brightness_levels[] = {0, 5, 13, 26, 52, 128, 192, 255};
 static const size_t led_brightness_levels_count = COUNT_OF(led_brightness_levels);
 
-static size_t led_brightness_get_nearest_index(uint8_t value) {
+static const uint8_t backlight_time_values[] = {1, 5, 10, 15, 30, 60, 90, 120};
+static const size_t backlight_time_values_count = COUNT_OF(backlight_time_values);
+
+static size_t get_nearest_index(uint8_t value, const uint8_t* array, size_t array_size) {
     size_t nearest_index = 0;
-    for(size_t i = 1; i < led_brightness_levels_count; i++) {
-        if(abs((int)led_brightness_levels[i] - value) < abs((int)led_brightness_levels[nearest_index] - value)) {
+    for(size_t i = 1; i < array_size; i++) {
+        if(abs((int)array[i] - value) < abs((int)array[nearest_index] - value)) {
             nearest_index = i;
         }
     }
@@ -303,6 +287,11 @@ static bool power_menu_layout(void* _model) {
                             clay_helper_string_from(model->backlight_text),
                             CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
                         break;
+                    case PowerMenuActionBacklightTime:
+                        CLAY_TEXT(
+                            clay_helper_string_from(model->backlight_time_text),
+                            CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = selected ? COLOR_WHITE : COLOR_BLACK}));
+                        break;
                     default:
                         break;
                     }
@@ -333,6 +322,7 @@ static bool power_menu_post_layout(void* _model) {
 
 static bool power_menu_model_init(PowerMenuModel* model, void* context) {
     model->backlight_text = furi_string_alloc();
+    model->backlight_time_text = furi_string_alloc();
     model->link_led_brightness_text = furi_string_alloc();
     model->power_led_brightness_text = furi_string_alloc();
     model->wattmeter_led_brightness_text = furi_string_alloc();
@@ -374,7 +364,13 @@ static bool power_menu_remove_item(PowerMenuModel* model, const char* text) {
 
 static bool power_menu_model_set_backlight_text(PowerMenuModel* model, void* context) {
     uint8_t* brightness = context;
-    furi_string_printf(model->backlight_text, " %d%%", *brightness);
+    furi_string_printf(model->backlight_text, " %d%%", (uint8_t)(*brightness / (255.0f / 100.0f)));
+    return true;
+}
+
+static bool power_menu_model_set_backlight_time_text(PowerMenuModel* model, void* context) {
+    uint32_t* time = context;
+    furi_string_printf(model->backlight_time_text, " %ld s", *time);
     return true;
 }
 
@@ -448,12 +444,6 @@ static void power_menu_model_apply(PowerMenu* instance, bool (*callback)(PowerMe
     with_view_model(instance->view, PowerMenuModel * model, { update = callback(model, context); }, update);
 }
 
-static void power_menu_apply_backlight(PowerMenu* instance) {
-    uint8_t brightness = brightness_levels[instance->selected_backlight_brightness_index];
-    gui_set_backlight(instance->gui, brightness);
-    power_menu_model_apply(instance, power_menu_model_set_backlight_text, &brightness);
-}
-
 #define POWER_MENU_PREV(var, min) (var = (var - 1 + min) % min)
 
 static void power_menu_input_left(PowerMenu* instance, int selected_index) {
@@ -474,8 +464,14 @@ static void power_menu_input_left(PowerMenu* instance, int selected_index) {
         led_set_brightness(instance->led, LedGroupWattmeter, wattmeter_brightness);
         break;
     case PowerMenuActionBacklight:
-        POWER_MENU_PREV(instance->selected_backlight_brightness_index, brightness_levels_count);
-        power_menu_apply_backlight(instance);
+        POWER_MENU_PREV(instance->selected_backlight_brightness_index, led_brightness_levels_count);
+        uint8_t brightness = led_brightness_levels[instance->selected_backlight_brightness_index];
+        led_set_brightness(instance->led, LedGroupDisplayBacklight, brightness);
+        break;
+    case PowerMenuActionBacklightTime:
+        POWER_MENU_PREV(instance->selected_backlight_time_index, backlight_time_values_count);
+        uint8_t backlight_time = backlight_time_values[instance->selected_backlight_time_index];
+        led_backlight_set_time(instance->led, backlight_time);
         break;
     case PowerMenuActionLeds:
         POWER_MENU_PREV(instance->selected_led_batch_index, led_batch_count);
@@ -507,8 +503,14 @@ static void power_menu_input_right(PowerMenu* instance, int selected_index) {
         led_set_brightness(instance->led, LedGroupWattmeter, wattmeter_brightness);
         break;
     case PowerMenuActionBacklight:
-        POWER_MENU_NEXT(instance->selected_backlight_brightness_index, brightness_levels_count);
-        power_menu_apply_backlight(instance);
+        POWER_MENU_NEXT(instance->selected_backlight_brightness_index, led_brightness_levels_count);
+        uint8_t brightness = led_brightness_levels[instance->selected_backlight_brightness_index];
+        led_set_brightness(instance->led, LedGroupDisplayBacklight, brightness);
+        break;
+    case PowerMenuActionBacklightTime:
+        POWER_MENU_NEXT(instance->selected_backlight_time_index, backlight_time_values_count);
+        uint8_t backlight_time = backlight_time_values[instance->selected_backlight_time_index];
+        led_backlight_set_time(instance->led, backlight_time);
         break;
     case PowerMenuActionLeds:
         POWER_MENU_NEXT(instance->selected_led_batch_index, led_batch_count);
@@ -578,7 +580,7 @@ static void power_menu_cpu_app_start_callback(bool pressed, void* context) {
     if(pressed) {
         instance->app_running = true;
         desktop_start_app(&app[PowerMenuCpuAppStart]);
-       // power_menu_remove_app_menu_items(instance);
+        // power_menu_remove_app_menu_items(instance);
     }
 }
 
@@ -647,7 +649,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
 static void power_menu_link_led_brightness_callback(const void* item, void* context) {
     uint8_t* brightness = (uint8_t*)item;
     PowerMenu* instance = context;
-    instance->selected_link_led_brightness_index = led_brightness_get_nearest_index(*brightness);
+    instance->selected_link_led_brightness_index = get_nearest_index(*brightness, led_brightness_levels, led_brightness_levels_count);
     *brightness = led_brightness_levels[instance->selected_link_led_brightness_index];
     power_menu_model_apply(instance, power_menu_model_set_link_led_brightness_text, brightness);
 }
@@ -655,7 +657,7 @@ static void power_menu_link_led_brightness_callback(const void* item, void* cont
 static void power_menu_power_led_brightness_callback(const void* item, void* context) {
     uint8_t* brightness = (uint8_t*)item;
     PowerMenu* instance = context;
-    instance->selected_power_led_brightness_index = led_brightness_get_nearest_index(*brightness);
+    instance->selected_power_led_brightness_index = get_nearest_index(*brightness, led_brightness_levels, led_brightness_levels_count);
     *brightness = led_brightness_levels[instance->selected_power_led_brightness_index];
     power_menu_model_apply(instance, power_menu_model_set_power_led_brightness_text, brightness);
 }
@@ -663,9 +665,26 @@ static void power_menu_power_led_brightness_callback(const void* item, void* con
 static void power_menu_wattmeter_led_brightness_callback(const void* item, void* context) {
     uint8_t* brightness = (uint8_t*)item;
     PowerMenu* instance = context;
-    instance->selected_wattmeter_led_brightness_index = led_brightness_get_nearest_index(*brightness);
+    instance->selected_wattmeter_led_brightness_index = get_nearest_index(*brightness, led_brightness_levels, led_brightness_levels_count);
     *brightness = led_brightness_levels[instance->selected_wattmeter_led_brightness_index];
     power_menu_model_apply(instance, power_menu_model_set_wattmeter_led_brightness_text, brightness);
+}
+
+static void power_menu_display_backlight_brightness_callback(const void* item, void* context) {
+    uint8_t* brightness = (uint8_t*)item;
+    PowerMenu* instance = context;
+    instance->selected_backlight_brightness_index = get_nearest_index(*brightness, led_brightness_levels, led_brightness_levels_count);
+    *brightness = led_brightness_levels[instance->selected_backlight_brightness_index];
+    power_menu_model_apply(instance, power_menu_model_set_backlight_text, brightness);
+}
+
+static void power_menu_display_backlight_time_callback(const void* item, void* context) {
+    uint32_t* time = (uint32_t*)item;
+    uint8_t time_temp = *time > 255 ? 255 : (uint8_t)*time; // FIXME:
+    PowerMenu* instance = context;
+    instance->selected_backlight_time_index = get_nearest_index(time_temp, backlight_time_values, backlight_time_values_count);
+    *time = backlight_time_values[instance->selected_backlight_time_index];
+    power_menu_model_apply(instance, power_menu_model_set_backlight_time_text, time);
 }
 
 static void power_menu_message_queue_callback(FuriEventLoopObject* object, void* context) {
@@ -716,12 +735,13 @@ static PowerMenu* power_menu_alloc(void) {
     view_set_post_layout_callback(instance->view, power_menu_post_layout);
     view_set_input_callback(instance->view, power_menu_input, instance);
     gui_add_view(instance->gui, instance->view, GuiViewPriorityMenu);
-    instance->selected_backlight_brightness_index = 3; // 20%
-    power_menu_apply_backlight(instance);
 
-    furi_state_subscribe(led_get_link_brightness_state(instance->led), power_menu_link_led_brightness_callback, instance);
-    furi_state_subscribe(led_get_power_brightness_state(instance->led), power_menu_power_led_brightness_callback, instance);
-    furi_state_subscribe(led_get_wattmeter_brightness_state(instance->led), power_menu_wattmeter_led_brightness_callback, instance);
+    furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupLink), power_menu_link_led_brightness_callback, instance);
+    furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupPower), power_menu_power_led_brightness_callback, instance);
+    furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupWattmeter), power_menu_wattmeter_led_brightness_callback, instance);
+    furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupDisplayBacklight), power_menu_display_backlight_brightness_callback, instance);
+    furi_state_subscribe(led_get_backlight_time_state(instance->led), power_menu_display_backlight_time_callback, instance);
+
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, power_menu_message_queue_callback, instance);
 
     furi_record_create(RECORD_POWER_MENU, instance);

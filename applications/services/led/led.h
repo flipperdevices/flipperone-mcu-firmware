@@ -70,6 +70,7 @@ typedef enum {
     LedGroupLink,
     LedGroupPower,
     LedGroupWattmeter,
+    LedGroupDisplayBacklight,
 
     LedGroupMax, // internal use only, keep it last
 } LedGroup;
@@ -84,11 +85,13 @@ void led_set_color_batch(Led* instance, const LedBatch* items);
 
 void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness);
 
-FuriState* led_get_link_brightness_state(Led* instance);
+bool led_backlight_set_time(Led* instance, uint32_t timeout_seconds);
 
-FuriState* led_get_power_brightness_state(Led* instance);
+void led_backlight_timeout_control(Led* instance, bool ping, bool set_always_on);
 
-FuriState* led_get_wattmeter_brightness_state(Led* instance);
+FuriState* led_get_brightness_state(Led* instance, LedGroup group);
+
+FuriState* led_get_backlight_time_state(Led* instance);
 
 #ifdef __cplusplus
 }
