@@ -397,7 +397,7 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
         result = true;
         break;
     case LedMessageTypeSetBacklightTime:
-        uint32_t timeout = msg.set_backlight_time.timeout_seconds;
+        uint32_t timeout = msg.set_backlight_time.timeout_ms;
         furi_state_set(instance->led_state.backlight_time, &timeout);
         furi_hal_nvm_set_uint32(SETTINGS_LED_BACKLIGHT_TIME, timeout);
 
