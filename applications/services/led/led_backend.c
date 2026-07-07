@@ -29,8 +29,8 @@
 #define LED_BACKLIGHT_PWM_RESOLUTION 8 // 8-bit PWM for backlight
 #define LED_BACKLIGHT_PWM_FREQ_HZ    40000 // 40kHz PWM for backlight
 
-#define LED_BACKLIGHT_TIME_DEFAULT 15
-#define LED_BACKLIGHT_TIME_MAX     ((UINT16_MAX) * 100)
+#define LED_BACKLIGHT_TIME_DEFAULT (15 * 1000)
+#define LED_BACKLIGHT_TIME_MAX     ((UINT16_MAX) * 100) // I2C: 16-bit register with 100ms resolution
 
 typedef struct {
     uint32_t line[LED_TOTAL_LEDS_COUNT];
@@ -85,7 +85,7 @@ typedef struct {
         } set_brightness;
 
         struct {
-            uint32_t timeout_seconds;
+            uint32_t timeout_ms;
         } set_backlight_time;
 
         struct {
@@ -563,15 +563,15 @@ void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness) {
     led_send_message(instance, &msg);
 }
 
-bool led_backlight_set_time(Led* instance, uint32_t timeout_seconds) {
+bool led_backlight_set_time(Led* instance, uint32_t timeout_ms) {
     furi_check(instance);
-    if((timeout_seconds == 0) || (timeout_seconds > LED_BACKLIGHT_TIME_MAX)) {
+    if((timeout_ms == 0) || (timeout_ms > LED_BACKLIGHT_TIME_MAX)) {
         return false;
     }
 
     const LedMessage msg = {
         .type = LedMessageTypeSetBacklightTime,
-        .set_backlight_time = {.timeout_seconds = timeout_seconds},
+        .set_backlight_time = {.timeout_ms = timeout_ms},
     };
     led_send_message(instance, &msg);
     return true;

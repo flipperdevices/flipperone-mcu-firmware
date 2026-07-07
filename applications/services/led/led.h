@@ -85,7 +85,7 @@ void led_set_color_batch(Led* instance, const LedBatch* items);
 
 void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness);
 
-bool led_backlight_set_time(Led* instance, uint32_t timeout_seconds);
+bool led_backlight_set_time(Led* instance, uint32_t timeout_ms);
 
 void led_backlight_timeout_control(Led* instance, bool ping, bool set_always_on);
 
