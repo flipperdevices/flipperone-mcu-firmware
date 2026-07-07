@@ -118,7 +118,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white[] = {
 
         2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
         1, 20, 0x11,                            // Exit sleep mode
-        1, 2, 0x29,                             // Main screen turn on, then wait 500 ms
+        // 1, 2, 0x29,                             // Main screen turn on, then wait 500 ms
         0,                                      // Terminate list
 };
 
@@ -243,7 +243,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
 
         2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
         1, 20, 0x11,                            // Exit sleep mode
-        1, 2, 0x29,                             // Main screen turn on, then wait 500 ms
+        // 1, 2, 0x29,                             // Main screen turn on, then wait 500 ms
         0,                                      // Terminate list
 };
 
@@ -368,7 +368,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_black[] = {
         
         2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
         1, 20, 0x11,                            // Exit sleep mode
-        1, 2, 0x29,                             // Main screen turn on
+        // 1, 2, 0x29,                             // Main screen turn on
         0,                                      // Terminate list
 
         

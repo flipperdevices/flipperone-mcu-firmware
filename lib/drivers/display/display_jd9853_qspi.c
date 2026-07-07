@@ -153,6 +153,14 @@ void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* confi
     display_jd9853_hstx_init_4_line(display);
 }
 
+static void display_jd9853_enable(DisplayJd9853QSPI* display, bool enable) {
+    display_jd9853_hstx_init_1_line(display);
+
+    display_jd9853_write_reg(display, enable ? dispon : dispoff);
+
+    display_jd9853_hstx_init_4_line(display);
+}
+
 static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853QSPI* display, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     uint8_t caset_data[4] = {(uint8_t)(x0 >> 8), (uint8_t)(x0 & 0xFF), (uint8_t)(x1 >> 8), (uint8_t)(x1 & 0xFF)};
     uint8_t paset_data[4] = {(uint8_t)(y0 >> 8), (uint8_t)(y0 & 0xFF), (uint8_t)(y1 >> 8), (uint8_t)(y1 & 0xFF)};
@@ -198,6 +206,25 @@ void display_jd9853_qspi_fill(DisplayJd9853QSPI* display, uint8_t color) {
 
     display_jd9853_qspi_write_buffer(display, data, width * height);
     free(data);
+}
+
+static void display_jd9853_qspi_clear(DisplayJd9853QSPI* display) {
+    furi_assert(display);
+    if(!display->display_is_connected) {
+        return; // Don't attempt to write if display is not connected
+    }
+
+    memset(display->buffer_header.data, 0xFF, JD9853_WIDTH * JD9853_HEIGHT);
+
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
+
+    // Don't wait for TE, send the buffer instantly
+    furi_hal_gpio_write(&gpio_display_cs, false);
+    display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
+
+    while(furi_semaphore_get_space(display->busy)) {
+        furi_thread_yield();
+    };
 }
 
 static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
@@ -346,7 +373,8 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
         FURI_LOG_E(TAG, "Display not connected");
     }
 
-    display_jd9853_qspi_fill(display, 0); // Fill black
+    display_jd9853_qspi_clear(display); // Clear display before enable to avoid garbage on screen
+    display_jd9853_enable(display, true);
 
     display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 2%
 
