@@ -30,7 +30,7 @@
 #define LED_BACKLIGHT_PWM_FREQ_HZ    40000 // 40kHz PWM for backlight
 
 #define LED_BACKLIGHT_TIME_DEFAULT 15
-#define LED_BACKLIGHT_TIME_MAX     ((UINT32_MAX - 1) / 1000)
+#define LED_BACKLIGHT_TIME_MAX     ((UINT16_MAX) * 100)
 
 typedef struct {
     uint32_t line[LED_TOTAL_LEDS_COUNT];
@@ -296,7 +296,7 @@ static void led_backlight_ping(Led* instance) {
     if(!instance->led_state.backlight_always_on) {
         uint32_t backlight_time;
         furi_state_get(instance->led_state.backlight_time, &backlight_time);
-        furi_event_loop_timer_start(instance->backlight_timer, backlight_time * 1000);
+        furi_event_loop_timer_start(instance->backlight_timer, backlight_time);
     }
 }
 
@@ -403,14 +403,11 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
 
         furi_event_loop_timer_stop(instance->backlight_timer);
         if(!instance->led_state.backlight_always_on) {
-            furi_event_loop_timer_start(instance->backlight_timer, timeout * 1000);
+            furi_event_loop_timer_start(instance->backlight_timer, timeout);
         }
         result = true;
         break;
     case LedMessageTypeBacklightControl:
-        if(msg.backlight_time_control.flags & LedBacklightTimeFlagPing) {
-            led_backlight_ping(instance);
-        }
         if(msg.backlight_time_control.flags & LedBacklightTimeFlagAlwaysOn) {
             instance->led_state.backlight_always_on = true;
             led_backlight_enable(instance, true);
@@ -419,6 +416,9 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
             if((msg.backlight_time_control.flags & LedBacklightTimeFlagPing) == 0) {
                 led_backlight_enable(instance, false);
             }
+        }
+        if(msg.backlight_time_control.flags & LedBacklightTimeFlagPing) {
+            led_backlight_ping(instance);
         }
         result = true;
         break;

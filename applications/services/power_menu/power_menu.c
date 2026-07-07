@@ -471,7 +471,7 @@ static void power_menu_input_left(PowerMenu* instance, int selected_index) {
     case PowerMenuActionBacklightTime:
         POWER_MENU_PREV(instance->selected_backlight_time_index, backlight_time_values_count);
         uint8_t backlight_time = backlight_time_values[instance->selected_backlight_time_index];
-        led_backlight_set_time(instance->led, backlight_time);
+        led_backlight_set_time(instance->led, backlight_time * 1000);
         break;
     case PowerMenuActionLeds:
         POWER_MENU_PREV(instance->selected_led_batch_index, led_batch_count);
@@ -510,7 +510,7 @@ static void power_menu_input_right(PowerMenu* instance, int selected_index) {
     case PowerMenuActionBacklightTime:
         POWER_MENU_NEXT(instance->selected_backlight_time_index, backlight_time_values_count);
         uint8_t backlight_time = backlight_time_values[instance->selected_backlight_time_index];
-        led_backlight_set_time(instance->led, backlight_time);
+        led_backlight_set_time(instance->led, backlight_time * 1000);
         break;
     case PowerMenuActionLeds:
         POWER_MENU_NEXT(instance->selected_led_batch_index, led_batch_count);
@@ -679,12 +679,12 @@ static void power_menu_display_backlight_brightness_callback(const void* item, v
 }
 
 static void power_menu_display_backlight_time_callback(const void* item, void* context) {
-    uint32_t* time = (uint32_t*)item;
-    uint8_t time_temp = *time > 255 ? 255 : (uint8_t)*time; // FIXME:
+    uint32_t time = *(uint32_t*)item / 1000;
+    uint8_t time_temp = time > 255 ? 255 : (uint8_t)time; // FIXME:
     PowerMenu* instance = context;
     instance->selected_backlight_time_index = get_nearest_index(time_temp, backlight_time_values, backlight_time_values_count);
-    *time = backlight_time_values[instance->selected_backlight_time_index];
-    power_menu_model_apply(instance, power_menu_model_set_backlight_time_text, time);
+    time = backlight_time_values[instance->selected_backlight_time_index];
+    power_menu_model_apply(instance, power_menu_model_set_backlight_time_text, &time);
 }
 
 static void power_menu_message_queue_callback(FuriEventLoopObject* object, void* context) {

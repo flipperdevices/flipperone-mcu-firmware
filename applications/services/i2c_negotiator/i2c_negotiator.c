@@ -151,6 +151,21 @@ void i2c_negotiator_wattmeter_led_brightness_set(I2CNegotiator* instance, uint16
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_wattmeter_led_brightness_set);
 
+void i2c_negotiator_backlight_led_brightness_set(I2CNegotiator* instance, uint16_t value) {
+    led_set_brightness(instance->led, LedGroupDisplayBacklight, value & 0xFF);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_backlight_led_brightness_set);
+
+void i2c_negotiator_backlight_time_set(I2CNegotiator* instance, uint16_t value) {
+    led_backlight_set_time(instance->led, value * 100);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_backlight_time_set);
+
+void i2c_negotiator_backlight_control_set(I2CNegotiator* instance, uint16_t value) {
+    led_backlight_timeout_control(instance->led, value & (1 << I2C_BACKLIGHT_CONTROL_REG_BIT_PING), value & (1 << I2C_BACKLIGHT_CONTROL_REG_BIT_OVERRIDE));
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_backlight_control_set);
+
 void i2c_negotiator_led_link1(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
     led_set_color_single(instance->led, LedTypeNet, color);
@@ -222,6 +237,18 @@ static void i2c_negotiator_wattmeter_led_brightness_callback(const void* item, v
     with_i2c_register({ i2c_register_update(I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS, *brightness, 0xFF); });
 }
 
+static void i2c_negotiator_backlight_led_brightness_callback(const void* item, void* context) {
+    UNUSED(context);
+    uint8_t* brightness = (uint8_t*)item;
+    with_i2c_register({ i2c_register_update(I2C_BACKLIGHT_LEVEL, *brightness, 0xFF); });
+}
+
+static void i2c_negotiator_backlight_timeout_callback(const void* item, void* context) {
+    UNUSED(context);
+    uint32_t* timeout = (uint32_t*)item;
+    with_i2c_register({ i2c_register_update(I2C_BACKLIGHT_TIMEOUT, *timeout / 100, 0xFFFF); });
+}
+
 I2CNegotiator* i2c_negotiator_alloc() {
     I2CNegotiator* instance = malloc(sizeof(I2CNegotiator));
     instance->gui = furi_record_open(RECORD_GUI);
@@ -271,7 +298,13 @@ I2CNegotiator* i2c_negotiator_alloc() {
         furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupLink), i2c_negotiator_link_led_brightness_callback, NULL);
         furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupPower), i2c_negotiator_power_led_brightness_callback, NULL);
         furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupWattmeter), i2c_negotiator_wattmeter_led_brightness_callback, NULL);
-        // TODO: backlight
+
+        // Backlight
+        i2c_register_add_writable(I2C_BACKLIGHT_LEVEL, 0, i2c_negotiator_backlight_led_brightness_set_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_BACKLIGHT_TIMEOUT, 0, i2c_negotiator_backlight_time_set_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_BACKLIGHT_CONTROL, 0, i2c_negotiator_backlight_control_set_message, instance->negotiator_queue);
+        furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupDisplayBacklight), i2c_negotiator_backlight_led_brightness_callback, NULL);
+        furi_state_subscribe(led_get_backlight_time_state(instance->led), i2c_negotiator_backlight_timeout_callback, NULL);
 
         // Haptic
         i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
