@@ -406,6 +406,7 @@ static void cli_command_nvm_help(PipeSide* pipe, FuriString* args, void* context
     UNUSED(args);
     UNUSED(context);
     printf(
+        "nvm list\r\n"
         "nvm get <type:i|u|b|s> <key>\r\n"
         "nvm wipe\r\n"
         "");
@@ -431,6 +432,12 @@ static bool cli_command_nvm_parse_args(FuriString* args, char* type, FuriString*
     return result;
 }
 
+static bool cli_command_nvm_list_callback(const char* key, void* context) {
+    PipeSide* pipe = context;
+    printf("%s\r\n", key);
+    return !cli_is_pipe_broken_or_is_etx_next_char(pipe);
+}
+
 void cli_command_nvm(PipeSide* pipe, FuriString* args, void* context) {
     FuriString* action = furi_string_alloc();
     do {
@@ -439,7 +446,12 @@ void cli_command_nvm(PipeSide* pipe, FuriString* args, void* context) {
             break;
         }
 
-        if(furi_string_cmp(action, "get") == 0) {
+        if(furi_string_cmp(action, "list") == 0) {
+            FuriHalNvmStorage res = furi_hal_nvm_list_keys(cli_command_nvm_list_callback, pipe);
+            if(res == FuriHalNvmStorageError) {
+                printf("NVM error\r\n");
+            }
+        } else if(furi_string_cmp(action, "get") == 0) {
             FuriString* key = furi_string_alloc();
             char type;
             if(!cli_command_nvm_parse_args(args, &type, key)) {

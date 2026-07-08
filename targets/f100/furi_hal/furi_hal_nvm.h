@@ -43,6 +43,13 @@ void furi_hal_nvm_deinit(void);
  */
 void furi_hal_nvm_wipe(void);
 
+/** List all keys in NVM storage
+ *
+ * @param callback  The callback function to call for each key
+ * @param context   The context to pass to the callback function
+ */
+FuriHalNvmStorage furi_hal_nvm_list_keys(bool (*callback)(const char* key, void* context), void* context);
+
 /** Delete a key from NVM storage
  *
  * @param      key   The key
