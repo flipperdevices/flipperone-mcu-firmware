@@ -11,7 +11,7 @@
 //#include "kvstore.h"
 
 /* FURI_HAL_NVM_BANK_DEFAULT_SIZE is passed as a compile definition from CMakeLists.txt */
-#define FURI_HAL_NVM_BANK_OFFSET       (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)
+#define FURI_HAL_NVM_BANK_OFFSET (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)
 
 bool kvs_init(void) {
     FURI_LOG_I(
@@ -121,6 +121,7 @@ FuriHalNvmStorage furi_hal_nvm_set_str(const char* key, FuriString* value) {
     int rc = kvs_set_safe(key, furi_string_get_cstr(value), furi_string_size(value) + 1);
     return furi_hal_nvm_check_error(key, rc);
 }
+
 FuriHalNvmStorage furi_hal_nvm_get_str(const char* key, FuriString* value) {
     furi_check(key);
     furi_check(value);
