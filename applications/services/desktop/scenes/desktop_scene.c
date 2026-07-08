@@ -31,28 +31,6 @@ static bool desktop_layout(void* _model) {
                 },
             .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
         }) {
-        // for(uint32_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
-        //     bool selected = (i == model->selected_index);
-        //     CLAY(
-        //         DESKTOP_MENU_ID(i),
-        //         {
-        //             .layout =
-        //                 {
-        //                     .sizing = {.width = CLAY_SIZING_FIXED(120), .height = CLAY_SIZING_FIXED(13)},
-        //                     .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-        //                 },
-        //             .backgroundColor = selected ? COLOR_BLACK : COLOR_WHITE,
-        //             .cornerRadius = CLAY_CORNER_RADIUS(2),
-        //         }) {
-        //         CLAY_TEXT(
-        //             clay_helper_string_from_chars(FLIPPER_APPS[i].name),
-        //             CLAY_TEXT_CONFIG({
-        //                 .fontId = FontBody,
-        //                 .textColor = selected ? COLOR_WHITE : COLOR_BLACK,
-        //             }));
-        //     }
-        // }
-
         CLAY_AUTO_ID({
             .layout =
                 {
@@ -89,6 +67,10 @@ static bool desktop_input(InputEvent* event, void* context) {
             break;
         case InputKey4:
             with_view_model(view, DesktopViewModel * model, { model->settings_pressed = true; }, true);
+            consumed = true;
+            break;
+        case InputKeySw:
+            desktop_send_scene_event(desktop, DesktopSceneEventTypeEnterDebugMenu, NULL);
             consumed = true;
             break;
         default:

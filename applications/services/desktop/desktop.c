@@ -42,6 +42,7 @@ struct Desktop {
     Scene* main_scene;
     Scene* header_scene;
     Scene* power_menu_scene;
+    Scene* debug_menu_scene;
 
     FuriEventLoop* event_loop;
     DesktopApp app;
@@ -175,6 +176,14 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         }
         consumed = true;
         break;
+    case DesktopSceneEventTypeEnterDebugMenu:
+        scene_enter(desktop->debug_menu_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeExitDebugMenu:
+        scene_exit(desktop->debug_menu_scene, desktop);
+        consumed = true;
+        break;
     }
 }
 
@@ -191,10 +200,12 @@ static Desktop* desktop_alloc(void) {
     desktop->header_scene = scene_alloc(&scene_header_callbacks, desktop);
     desktop->main_scene = scene_alloc(&scene_desktop_callbacks, desktop);
     desktop->power_menu_scene = scene_alloc(&scene_power_menu_callbacks, desktop);
+    desktop->debug_menu_scene = scene_alloc(&scene_debug_menu_callbacks, desktop);
 
     gui_add_view(desktop->gui, scene_get_view(desktop->header_scene), GuiViewPriorityDesktopHeader);
     gui_add_view(desktop->gui, scene_get_view(desktop->main_scene), GuiViewPriorityDesktop);
     gui_add_view(desktop->gui, scene_get_view(desktop->power_menu_scene), GuiViewPriorityMenu);
+    gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication);
 
     scene_enter(desktop->header_scene, desktop);
     scene_enter(desktop->main_scene, desktop);

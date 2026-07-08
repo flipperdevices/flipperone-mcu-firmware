@@ -605,7 +605,7 @@ static void power_menu_cpu_app_maskrom_callback(bool pressed, void* context) {
     if(pressed) {
         instance->app_running = true;
         desktop_start_app(&app[PowerMenuCpuAppMaskrom]);
-       // power_menu_remove_app_menu_items(instance);
+        // power_menu_remove_app_menu_items(instance);
     }
 }
 
@@ -645,7 +645,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
                 power_menu_input_menu(instance, selected_index, true);
             } else if(event->key == InputKeyBack) {
                 power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
-            } else if(event->key == InputKey3) {
+            } else if(event->key == InputKeyPtt) {
                 power_menu_model_apply(instance, power_menu_input_menu_hide, NULL);
             }
         } else if(event->type == InputTypeRelease && event->key == InputKeyOk) {
@@ -660,7 +660,7 @@ static bool power_menu_input(InputEvent* event, void* context) {
         }
     } else {
         if(event->type == InputTypePress) {
-            if(event->key == InputKey3) {
+            if(event->key == InputKeyPtt) {
                 power_menu_model_apply(instance, power_menu_input_menu_show, NULL);
                 power_menu_add_app_menu_items(instance);
                 consumed = true;

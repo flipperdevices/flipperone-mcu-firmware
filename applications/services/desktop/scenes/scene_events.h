@@ -2,4 +2,7 @@
 
 typedef enum {
     DesktopSceneEventTypeTogglePowerMenu,
+    DesktopSceneEventTypeEnterDebugMenu,
+    DesktopSceneEventTypeExitDebugMenu,
+
 } DesktopSceneEvent;
