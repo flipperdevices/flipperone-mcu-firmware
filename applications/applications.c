@@ -6,6 +6,8 @@ const char* FLIPPER_AUTORUN_APP_NAME = "";
 extern int32_t haptic_srv(void* p);
 extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
+extern int32_t uart_echo_app(void* p);
+extern int32_t bootlog_srv(void* p);
 extern int32_t input_touch_srv(void* p);
 extern int32_t i2c_intercom_srv(void* p);
 extern int32_t i2c_negotiator_srv(void* p);
@@ -35,6 +37,7 @@ extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void power_consumption_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void led_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void uart_echo_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void bootlog_cli(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -72,6 +75,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
     //     .stack_size = 2048,
     //     .flags = FlipperInternalApplicationFlagDefault,
     // },
+    {
+        .app = bootlog_srv,
+        .name = "BootlogSrv",
+        .appid = "bootlog",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
     {
         .app = input_touch_srv,
         .name = "InputTouchSrv",
@@ -262,6 +272,12 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
         .callback = uart_echo_cli,
         .name = "uart_echo",
         .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = bootlog_cli,
+        .name = "bootlog",
+        .stack_size = 1024,
         .flags = CliCommandFlagParallelSafe,
     },
 };
