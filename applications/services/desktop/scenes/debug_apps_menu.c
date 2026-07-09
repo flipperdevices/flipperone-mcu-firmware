@@ -59,8 +59,9 @@ static bool debug_menu_layout(void* _model) {
 
 static bool debug_menu_input(InputEvent* event, void* context) {
     bool consumed = false;
-    Desktop* desktop = scene_get_data(context);
-    View* view = scene_get_view(context);
+    Scene* scene = context;
+    Desktop* desktop = scene_get_data(scene);
+    View* view = scene_get_view(scene);
 
     if(event->type == InputTypePress && event->key == InputKeyOk) {
         uint32_t selected_index;
@@ -68,7 +69,7 @@ static bool debug_menu_input(InputEvent* event, void* context) {
         desktop_start_app(&FLIPPER_APPS[selected_index]);
         consumed = true;
     } else if(event->type == InputTypePress && event->key == InputKeyBack) {
-        desktop_send_scene_event(desktop, DesktopSceneEventTypeExitDebugMenu, NULL);
+        scene_exit(scene, desktop);
         consumed = true;
     } else if((event->type == InputTypePress) || (event->type == InputTypeRepeat)) {
         switch(event->key) {

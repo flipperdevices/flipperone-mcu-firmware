@@ -10,6 +10,8 @@
 #define DESKTOP_APP_MESSAGE_QUEUE_SIZE         4
 #define DESKTOP_SCENE_EVENT_MESSAGE_QUEUE_SIZE 16
 
+#define DESKTOP_POWER_UPDATE_PERIOD_MS 5000
+
 #define TAG "DesktopSrv"
 
 #define DESKTOP_MENU_ID(x) CLAY_SIDI(CLAY_STRING("DesktopMenu"), x)
@@ -48,6 +50,8 @@ struct Desktop {
     DesktopApp app;
     FuriMessageQueue* app_message_queue;
     FuriMessageQueue* scene_event_message_queue;
+
+    FuriEventLoopTimer* power_update_timer;
 };
 
 static void desktop_app_thread_state_callback(FuriThread* thread, FuriThreadState thread_state, void* context) {
@@ -143,8 +147,6 @@ bool desktop_get_power_menu_state(Desktop* desktop) {
 void desktop_send_scene_event(Desktop* desktop, uint32_t event, void* data) {
     furi_check(desktop);
 
-    FURI_LOG_I(TAG, "e%lu", event);
-
     DesktopSceneEventMessage message;
     message.event = event;
     message.data = data;
@@ -166,6 +168,8 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
 
     bool consumed = false;
 
+    // FURI_LOG_I(TAG, "ev %lu", message.event);
+
     // TODO: think about a better way to handle this, maybe a scene stack or something
     switch(message.event) {
     case DesktopSceneEventTypeTogglePowerMenu:
@@ -180,11 +184,17 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         scene_enter(desktop->debug_menu_scene, desktop);
         consumed = true;
         break;
-    case DesktopSceneEventTypeExitDebugMenu:
-        scene_exit(desktop->debug_menu_scene, desktop);
-        consumed = true;
-        break;
     }
+
+    if(!consumed) {
+        consumed = scene_event(desktop->header_scene, message.event, message.data);
+    }
+}
+
+static void desktop_power_update_timer_callback(void* context) {
+    furi_check(context);
+    Desktop* desktop = context;
+    desktop_send_scene_event(desktop, DesktopSceneEventTypePowerUpdate, NULL);
 }
 
 static Desktop* desktop_alloc(void) {
@@ -193,6 +203,8 @@ static Desktop* desktop_alloc(void) {
     desktop->event_loop = furi_event_loop_alloc();
     desktop->app_message_queue = furi_message_queue_alloc(DESKTOP_APP_MESSAGE_QUEUE_SIZE, sizeof(DesktopAppMessage));
     desktop->scene_event_message_queue = furi_message_queue_alloc(DESKTOP_SCENE_EVENT_MESSAGE_QUEUE_SIZE, sizeof(DesktopSceneEventMessage));
+    desktop->power_update_timer =
+        furi_event_loop_timer_alloc(desktop->event_loop, desktop_power_update_timer_callback, FuriEventLoopTimerTypePeriodic, desktop);
 
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->scene_event_message_queue, FuriEventLoopEventIn, desktop_scene_event_logic, desktop);
@@ -211,6 +223,8 @@ static Desktop* desktop_alloc(void) {
     scene_enter(desktop->main_scene, desktop);
 
     furi_record_create(RECORD_DESKTOP, desktop);
+
+    furi_event_loop_timer_start(desktop->power_update_timer, DESKTOP_POWER_UPDATE_PERIOD_MS);
 
     return desktop;
 }
