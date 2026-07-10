@@ -11,6 +11,8 @@
 #include "cli_uart.h"
 
 static void cli_commands_init(CliRegistry* registry) {
+    cli_log_history_init();
+    cli_registry_add_command(registry, "dmesg", CliCommandFlagParallelSafe, cli_command_dmesg, NULL);
     cli_registry_add_command(registry, "uptime", CliCommandFlagParallelSafe, cli_command_uptime, NULL);
     cli_registry_add_command(registry, "log", CliCommandFlagParallelSafe, cli_command_log, NULL);
     cli_registry_add_command(registry, "top", CliCommandFlagParallelSafe, cli_command_top, NULL);

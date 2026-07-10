@@ -10,6 +10,12 @@
 #include <furi_hal_clock.h>
 #include <furi_hal_otp.h>
 
+#define CLI_LOG_HISTORY_CAPACITY 4096
+
+static uint8_t cli_log_history_buffer[CLI_LOG_HISTORY_CAPACITY];
+static size_t cli_log_history_write_index = 0;
+static size_t cli_log_history_size = 0;
+
 void cli_command_uptime(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(args);
@@ -22,6 +28,46 @@ static void cli_command_log_tx_callback(const uint8_t* buffer, size_t size, void
     PipeSide* pipe = context;
     pipe_send(pipe, buffer, size);
 }
+
+static void cli_log_history_tx_callback(const uint8_t* buffer, size_t size, void* context){
+    UNUSED(context);
+
+    for(size_t i = 0; i < size; ++i){
+        cli_log_history_buffer[cli_log_history_write_index] = buffer[i];
+
+        cli_log_history_write_index = 
+            (cli_log_history_write_index + 1) % CLI_LOG_HISTORY_CAPACITY;
+        
+            if(cli_log_history_size < CLI_LOG_HISTORY_CAPACITY){
+                ++cli_log_history_size;
+            }
+    }
+}
+
+void cli_log_history_init(void) {
+    FuriLogHandler log_handler = {
+        .callback = cli_log_history_tx_callback,
+        .context = NULL,
+    };
+
+    furi_log_add_handler(log_handler);
+}
+
+void cli_command_dmesg(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(args);
+    UNUSED(context);
+
+    size_t read_index = 
+        (cli_log_history_write_index + CLI_LOG_HISTORY_CAPACITY - cli_log_history_size) %
+        CLI_LOG_HISTORY_CAPACITY;
+    
+    for(size_t i = 0; i < CLI_LOG_HISTORY_CAPACITY; ++i){
+        pipe_send(pipe, &cli_log_history_buffer[read_index], 1);
+        read_index = (read_index + 1) % CLI_LOG_HISTORY_CAPACITY;
+    }
+
+}
+
 
 static bool cli_command_log_level_set_from_string(FuriString* level) {
     FuriLogLevel log_level;
