@@ -32,6 +32,7 @@ static void cli_command_log_tx_callback(const uint8_t* buffer, size_t size, void
 static void cli_log_history_tx_callback(const uint8_t* buffer, size_t size, void* context){
     UNUSED(context);
 
+    FURI_CRITICAL_ENTER();
     for(size_t i = 0; i < size; ++i){
         cli_log_history_buffer[cli_log_history_write_index] = buffer[i];
 
@@ -42,6 +43,7 @@ static void cli_log_history_tx_callback(const uint8_t* buffer, size_t size, void
                 ++cli_log_history_size;
             }
     }
+    FURI_CRITICAL_EXIT();
 }
 
 void cli_log_history_init(void) {
@@ -56,14 +58,23 @@ void cli_log_history_init(void) {
 void cli_command_dmesg(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(args);
     UNUSED(context);
+    static uint8_t cli_log_history_snapshot[CLI_LOG_HISTORY_CAPACITY];
+    size_t snapshot_size = 0;
 
-    size_t read_index = 
+    FURI_CRITICAL_ENTER();
+    size_t read_index =
         (cli_log_history_write_index + CLI_LOG_HISTORY_CAPACITY - cli_log_history_size) %
         CLI_LOG_HISTORY_CAPACITY;
-    
-    for(size_t i = 0; i < CLI_LOG_HISTORY_CAPACITY; ++i){
-        pipe_send(pipe, &cli_log_history_buffer[read_index], 1);
+
+    snapshot_size = cli_log_history_size;
+    for(size_t i = 0; i < snapshot_size; ++i) {
+        cli_log_history_snapshot[i] = cli_log_history_buffer[read_index];
         read_index = (read_index + 1) % CLI_LOG_HISTORY_CAPACITY;
+    }
+    FURI_CRITICAL_EXIT();
+
+    for(size_t i = 0; i < snapshot_size; ++i) {
+        pipe_send(pipe, &cli_log_history_snapshot[i], 1);
     }
 
 }
