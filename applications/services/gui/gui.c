@@ -336,11 +336,6 @@ static void gui_redraw_logic(FuriEventLoopObject* object, void* context) {
     gui_redraw(gui);
 }
 
-void gui_set_backlight(Gui* gui, int8_t brightness) {
-    furi_check(gui);
-    display_jd9853_qspi_set_brightness(gui->display, brightness);
-}
-
 static Gui* gui_alloc(void) {
     canvas_init();
 
@@ -360,7 +355,6 @@ static Gui* gui_alloc(void) {
 
     // Display and buffer
     gui->display = display_jd9853_qspi_init();
-    gui_set_backlight(gui, 20);
     gui->render_canvas = canvas_alloc(JD9853_WIDTH, JD9853_HEIGHT);
 
     // Clay initialization

@@ -6,6 +6,7 @@
 
 #define TAG "FuriHalNvm"
 
+#define FURI_HAL_NVM_MAX_KEY_SIZE 256
 #define FURI_HAL_NVM_MAX_STR_SIZE 256
 
 //#include "kvstore.h"
@@ -36,9 +37,11 @@ bool kvs_init(void) {
     return true;
 }
 
-static void furi_hal_nvm_wipe(void) {
+void furi_hal_nvm_wipe(void) {
     // Erase the entire area used for NVM
+    FURI_CRITICAL_ENTER();
     flash_range_erase(FURI_HAL_NVM_BANK_OFFSET, FURI_HAL_NVM_BANK_DEFAULT_SIZE);
+    FURI_CRITICAL_EXIT();
 }
 
 FuriHalNvmBootMode furi_hal_nvm_get_boot_mode(void) {
@@ -73,10 +76,10 @@ static FuriHalNvmStorage furi_hal_nvm_check_error(const char* key, int rc) {
     if(rc == KVSTORE_SUCCESS) {
         return FuriHalNvmStorageOK;
     } else if(rc == KVSTORE_ERROR_ITEM_NOT_FOUND) {
-        FURI_LOG_E(TAG, "Key = \"%s\", %s", key, kvs_strerror(rc));
+        FURI_LOG_E(TAG, "Key = \"%s\", %s", key ? key : "(null)", kvs_strerror(rc));
         return FuriHalNvmStorageItemNotFound;
     } else {
-        FURI_LOG_E(TAG, "Key = \"%s\", %s", key, kvs_strerror(rc));
+        FURI_LOG_E(TAG, "Key = \"%s\", %s", key ? key : "(null)", kvs_strerror(rc));
         return FuriHalNvmStorageError;
     }
 }
@@ -107,6 +110,32 @@ int kvs_delete_safe(const char* key) {
     int rc = kvs_delete(key);
     FURI_CRITICAL_EXIT();
     return rc;
+}
+
+FuriHalNvmStorage furi_hal_nvm_list_keys(bool (*callback)(const char* key, void* context), void* context) {
+    furi_check(callback);
+
+    FURI_CRITICAL_ENTER();
+    kvs_find_t ctx;
+    int rc = kvs_find(NULL, &ctx);
+    FURI_CRITICAL_EXIT();
+
+    if(rc != KVSTORE_SUCCESS) {
+        return furi_hal_nvm_check_error(NULL, rc);
+    }
+
+    char* key = malloc(FURI_HAL_NVM_MAX_KEY_SIZE);
+    while(1) {
+        FURI_CRITICAL_ENTER();
+        int rc = kvs_find_next(&ctx, key, FURI_HAL_NVM_MAX_KEY_SIZE);
+        FURI_CRITICAL_EXIT();
+
+        if(rc != KVSTORE_SUCCESS) break;
+        if(!callback(key, context)) break;
+    }
+    kvs_find_close(&ctx);
+    free(key);
+    return FuriHalNvmStorageOK;
 }
 
 FuriHalNvmStorage furi_hal_nvm_delete(const char* key) {

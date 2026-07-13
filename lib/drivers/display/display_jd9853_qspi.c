@@ -3,7 +3,6 @@
 
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
-#include <furi_hal_pwm.h>
 #include <drivers/tps62868x/tps62868x.h>
 #include <furi_hal_i2c_config.h>
 
@@ -19,8 +18,6 @@
 
 #define FIRST_HSTX_PIN                             12
 #define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        5 //5us
-#define DISPLAY_JD9853_BACKLIGHT_BIT               8 //8-bit PWM for backlight
-#define DISPLAY_JD9853_BACKLIGHT_FREQ_HZ           40000 //25kHz PWM for backlight
 #define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS 1000
 
 typedef struct {
@@ -31,9 +28,7 @@ typedef struct {
 struct DisplayJd9853QSPI {
     FuriSemaphore* busy;
     uint32_t dma_tx_channel;
-    FuriHalPwm* backlight_pwm;
     Tps62868x* power_supply;
-    uint8_t backlight;
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
 };
@@ -258,41 +253,6 @@ void display_jd9853_qspi_on_sleep_exit(void) {
     display_jd9853_hstx_clock_init();
 }
 
-void display_jd9853_qspi_set_brightness(DisplayJd9853QSPI* display, int8_t brightness) {
-    furi_check(display);
-    if(brightness > 100) brightness = 100;
-    if(brightness < 0) brightness = 0;
-    display->backlight = (uint8_t)brightness;
-    if(!display->backlight) {
-        if(display->backlight_pwm) {
-            furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 0);
-            furi_hal_pwm_deinit(display->backlight_pwm);
-            display->backlight_pwm = NULL;
-        }
-    } else {
-        uint32_t max_value = (1 << DISPLAY_JD9853_BACKLIGHT_BIT) - 1;
-        uint32_t duty_cycle = (brightness * max_value) / 100;
-        if(!display->backlight_pwm) {
-            //To enable the device, the CTRL signal must be high for 500 µs.
-            // The PWM signal can then be applied with a pulse width (tp)
-            // greater or smaller than tON. To force the device into shutdown mode,
-            // the CTRL signal must be low for at least 32 ms.
-            // Requiring the CTRL pin to be low for 32 mS before the device enters
-            // shutdown allows for PWM dimming frequencies as low as 100 Hz.
-            // The device is enabled again when a CTRL signal is high for a period of 500 µs minimum.
-            display->backlight_pwm = furi_hal_pwm_init(&gpio_display_ctrl, DISPLAY_JD9853_BACKLIGHT_BIT, DISPLAY_JD9853_BACKLIGHT_FREQ_HZ, false);
-            furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 140);
-            furi_delay_us(2400);
-        }
-        furi_hal_pwm_set_duty_cycle(display->backlight_pwm, duty_cycle);
-    }
-}
-
-int8_t display_jd9853_qspi_get_brightness(DisplayJd9853QSPI* display) {
-    furi_check(display);
-    return (int8_t)display->backlight;
-}
-
 bool display_jd9853_qspi_check_connection(DisplayJd9853QSPI* display, uint32_t timeout_ms) {
     furi_check(display);
     int64_t start_time = furi_get_tick();
@@ -311,7 +271,6 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     DisplayJd9853QSPI* display = malloc(sizeof(DisplayJd9853QSPI));
     display_instance = display;
     display->busy = furi_semaphore_alloc(1, 1);
-    display->backlight = 0;
 
     display->buffer_header.cmd[0] = JD9853_QSPI_CMD_4_LINE_MODE;
     display->buffer_header.cmd[1] = 0;
@@ -373,10 +332,10 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
         FURI_LOG_E(TAG, "Display not connected");
     }
 
-    display_jd9853_qspi_clear(display); // Clear display before enable to avoid garbage on screen
-    display_jd9853_enable(display, true);
+    // Clear display before enable to avoid garbage on screen
+    display_jd9853_qspi_clear(display);
 
-    display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 2%
+    display_jd9853_enable(display, true);
 
     return display;
 }
