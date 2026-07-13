@@ -582,10 +582,20 @@ static void power_menu_cpu_app_start_callback(bool pressed, void* context) {
     }
 }
 
+static void power_menu_cpu_app_maskrom_callback(bool pressed, void* context) {
+    PowerMenu* instance = context;
+    furi_check(instance);
+    if(pressed) {
+        instance->app_running = true;
+        desktop_start_app(&app[PowerMenuCpuAppMaskrom]);
+       // power_menu_remove_app_menu_items(instance);
+    }
+}
+
 static void power_menu_add_app_menu_items(PowerMenu* instance) {
     if(!instance->app_running && !instance->app_add_item) {
         power_menu_add_menu_item(POWER_MENU_CPU_APP_START, (PowerMenuClickWithContext){.callback = power_menu_cpu_app_start_callback, .context = instance});
-        power_menu_add_menu_item(POWER_MENU_CPU_APP_MASKROM, (PowerMenuClickWithContext){.callback = power_menu_cpu_app_start_callback, .context = instance});
+        power_menu_add_menu_item(POWER_MENU_CPU_APP_MASKROM, (PowerMenuClickWithContext){.callback = power_menu_cpu_app_maskrom_callback, .context = instance});
         instance->app_add_item = true;
     }
 }
