@@ -33,6 +33,11 @@ typedef enum {
 } InputKey;
 
 typedef enum {
+    SwPowerKey = (1 << 0),
+    SwKeyMask = (0b0000000000000001),
+} SwInputKey;
+
+typedef enum {
     StatusLedPowerLine3 = (1 << 13),
     StatusLedPowerLine2 = (1 << 14),
     StatusLedPowerLine1 = (1 << 15),
@@ -140,6 +145,8 @@ extern const GpioPin gpio_main_expander_int;
 
 extern const GpioPin gpio_uart0_tx;
 extern const GpioPin gpio_uart0_rx;
+
+extern const GpioPin gpio_debug_tx;
 
 extern const GpioPinRecord gpio_pins[];
 extern const size_t gpio_pins_count;

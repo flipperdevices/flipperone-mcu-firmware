@@ -1,25 +1,58 @@
 #pragma once
 
-/**
+// Device address
+/*
  * Device address: 0x69
- * 
- * Register map:
+*/
+#define I2C_DEVICE_ADDRESS (0x69)
+
+// Status register
+/*
  * 0x0000   Status register             (read)
  *          Bit 0: Input interrupt flag (cleared when input interrupt register is cleared)
  *          Bit 1-15: Reserved
+*/
+#define I2C_STATUS_REG_ADDRESS   (0x0000)
+#define I2C_STATUS_REG_BIT_INPUT (0)
+
+// CPU state registers
+/*
+ * 0x0040   CPU state register          (read)
+ *          ToDo: add ENUM: state register values
+*/
+#define I2C_CPU_STATUS_REG_ADDRESS   (0x0040) 
+
+// Intercom version register
+/*
  * 0x0080   Intercom version register   (read)
+*/
+#define I2C_INTERCOM_VERSION_REG_ADDRESS (0x0080)
+#define I2C_INTERCOM_VERSION             (0x0001)
+
+// Input interrupt register and mask
+/*
  * 0x0100+0 Input interrupt register    (read, read to clear)
  *          Bit 0: Buttons input happened
  *          Bit 1: Touchpad input happened
  *          Bit 2: Headphones input happened
  *          Bit 3-15: Reserved
- * 
  * All mask registers work the same way: writing 1 to a bit will mask the corresponding interrupt and writing 0 will unmask it.
  * 0x0180+0 Input interrupt mask        (read, write)
  *          Bit 0: Buttons input interrupt masked
  *          Bit 1: Touchpad input interrupt masked
  *          Bit 2: Headphones input interrupt masked
- *          Bit 3-15: Reserved
+ *          Bit 3: SW buttons input interrupt masked
+ *          Bit 4-15: Reserved
+*/
+#define I2C_INPUT_INTERRUPT_REG_ADDRESS        (0x0100 + 0)
+#define I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS   (0x0180 + 0)
+#define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS    (0)
+#define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
+#define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
+#define I2C_INPUT_INTERRUPT_REG_BIT_SW_BUTTONS (3)
+
+// Buttons state register
+/*
  * 0x0200+0 Buttons state register      (read)
  *          Bit 0: InputKey2 state
  *          Bit 1: InputKey1 state
@@ -35,41 +68,7 @@
  *          Bit 11: InputKeyUp state
  *          Bit 12: InputKeyPtt state
  *          Bit 13-15: Reserved
- * 0x0200+2 Touchpad X position         (read)
- * 0x0200+4 Touchpad Y position         (read)
- * 0x0200+6 Touchpad press state        (read)
- * 0x0200+8 Headphones state            (read)
- * 
- * 0x0300+0 Link LED group brightness (write), 0 is off, 255 is max brightness
- * 0x0300+2 Power LED group brightness (write), 0 is off, 255 is max brightness
- * 0x0300+4 Wattmeter LED group brightness (write), 0 is off, 255 is max brightness
- * 
- * All LED colors are in RGB 565 format
- * 0x0310+0 Link1 LED color (write)
- * 0x0310+2 Link2 LED color (write)
- * 0x0310+4 Link3 LED color (write)
- * 0x0310+6 Link4 LED color (write)
- */
-
-// Device address
-#define I2C_DEVICE_ADDRESS (0x69)
-
-// Status register
-#define I2C_STATUS_REG_ADDRESS   (0x0000)
-#define I2C_STATUS_REG_BIT_INPUT (0)
-
-// Intercom version register
-#define I2C_INTERCOM_VERSION_REG_ADDRESS (0x0080)
-#define I2C_INTERCOM_VERSION             (0x0001)
-
-// Input interrupt register and mask
-#define I2C_INPUT_INTERRUPT_REG_ADDRESS        (0x0100 + 0)
-#define I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS   (0x0180 + 0)
-#define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS    (0)
-#define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
-#define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
-
-// Buttons state register
+*/
 #define I2C_BUTTONS_STATE_REG_ADDRESS      (0x0200 + 0)
 #define I2C_BUTTONS_STATE_REG_BIT_KEY2     (0)
 #define I2C_BUTTONS_STATE_REG_BIT_KEY1     (1)
@@ -86,11 +85,35 @@
 #define I2C_BUTTONS_STATE_REG_BIT_KEYPTT   (12)
 
 // Touchpad state registers
+/*
+ * 0x0200+2 Touchpad X position         (read)
+ * 0x0200+4 Touchpad Y position         (read)
+ * 0x0200+6 Touchpad press state        (read)
+*/
 #define I2C_TOUCHPAD_X_REG_ADDRESS     (0x0200 + 2)
 #define I2C_TOUCHPAD_Y_REG_ADDRESS     (0x0200 + 4)
 #define I2C_TOUCHPAD_PRESS_REG_ADDRESS (0x0200 + 6)
 
+// Software buttons state register
+/*
+ * 0x0200+0xA   Software buttons state    (read)
+ *              Bit 0: Power button state
+ *              Bit 1-15: Reserved
+*/
+#define I2C_SW_BUTTONS_STATE_REG_ADDRESS                  (0x0200 + 0xA)
+#define I2C_SW_BUTTONS_STATE_REG_BIT_POWER                (0)
+
 // Headphones state register
+/*
+ * 0x0200+8 Headphones state            (read)
+ *          Bit 0: Headphones present
+ *          Bit 1: Microphone present
+ *          Bit 2: Button A pressed
+ *          Bit 3: Button B pressed
+ *          Bit 4: Button C pressed
+ *          Bit 5: Button D pressed
+ *          Bit 6-15: Reserved
+ */
 #define I2C_HEADPHONES_STATE_REG_ADDRESS                (0x0200 + 8)
 #define I2C_HEADPHONES_STATE_REG_HEADPHONES_PRESENT_BIT (0)
 #define I2C_HEADPHONES_STATE_REG_MIC_PRESENT_BIT        (1)
@@ -100,12 +123,38 @@
 #define I2C_HEADPHONES_STATE_REG_BUTTON_D_PRESSED_BIT   (5)
 
 // Led brightness registers
+/* 
+ * 0x0300+0 Link LED group brightness      (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
+ * 0x0300+2 Power LED group brightness     (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
+ * 0x0300+4 Wattmeter LED group brightness (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
+*/
 #define I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS      (0x0300 + 0)
 #define I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS     (0x0300 + 2)
 #define I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS (0x0300 + 4)
 
 // Led color registers
+/*
+ * All LED colors are in RGB 565 format
+ * 0x0310+0 Link1 LED color (read, write)
+ * 0x0310+2 Link2 LED color (read, write)
+ * 0x0310+4 Link3 LED color (read, write)
+ * 0x0310+6 Link4 LED color (read, write)
+ */
 #define I2C_LED_LINK1_COLOR_REG_ADDRESS (0x0310 + 0)
 #define I2C_LED_LINK2_COLOR_REG_ADDRESS (0x0310 + 2)
 #define I2C_LED_LINK3_COLOR_REG_ADDRESS (0x0310 + 4)
 #define I2C_LED_LINK4_COLOR_REG_ADDRESS (0x0310 + 6)
+
+// Haptic registers
+/*
+ * 0x0400 + 0: 2 bytes
+ * bit 15 - Play effect (1 - play, 0 - stop)
+ * bits 14:8 - Effect number (0..123)
+ * bits 7:0 - Duration of the effect, ms (0 or 1 - play full effect, 2..255 - play ms)
+*/
+#define I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS (0x0400 + 0)
+#define I2C_HAPTIC_PLAY_EFFECT_BIT         (15)
+#define I2C_HAPTIC_NUM_EFFECT_MASK         (0x7F00)
+#define I2C_HAPTIC_NUM_EFFECT_SHIFT        (8)
+#define I2C_HAPTIC_DURATION_MASK           (0x00FF)
+#define I2C_HAPTIC_DURATION_SHIFT          (0)

@@ -4,15 +4,15 @@
 #include <rp2350_linker.h>
 #include <pico.h>
 
-static FuriHalMemoryRegion memory_regions[] = {
+static const FuriHalMemoryRegion memory_regions[] = {
     {
-        .start = (void*)&__heap_start,
-        .size_bytes = 0,
+        .start = (void*)&__heap_start__,
+        .size_bytes = (size_t)&__heap_size__,
     },
 };
 
 void furi_hal_memory_init(void) {
-    memory_regions[0].size_bytes = (size_t)&__heap_end - (size_t)&__heap_start - PICO_STACK_SIZE;
+    // TODO: implement
 }
 
 void* furi_hal_memory_alloc(size_t size) {

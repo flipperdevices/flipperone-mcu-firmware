@@ -1,3 +1,4 @@
+#include "desktop.h"
 #include <applications.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
@@ -159,7 +160,7 @@ static bool desktop_input(InputEvent* event, void* context) {
             DesktopMessage message = {
                 .type = DesktopMessageTypeAppStart,
                 .app = &FLIPPER_APPS[selected_index],
-                .args = NULL,
+                .args = FLIPPER_APPS[selected_index].args,
             };
 
             furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
@@ -243,6 +244,8 @@ static Desktop* desktop_alloc(void) {
 
     gui_add_view(desktop->gui, desktop->view, GuiViewPriorityDesktop);
 
+    furi_record_create(RECORD_DESKTOP, desktop);
+
     return desktop;
 }
 
@@ -251,4 +254,20 @@ int32_t desktop_srv(void* p) {
     Desktop* desktop = desktop_alloc();
     furi_event_loop_run(desktop->event_loop);
     return 0;
+}
+
+bool desktop_start_app(const FlipperInternalApplication* app) {
+    furi_assert(app);
+
+    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+    DesktopMessage message = {
+        .type = DesktopMessageTypeAppStart,
+        .app = app,
+        .args = app->args,
+    };
+
+    furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
+    furi_record_close(RECORD_DESKTOP);
+
+    return true;
 }

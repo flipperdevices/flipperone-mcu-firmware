@@ -26,6 +26,7 @@ static int furi_bsp_stdio_in_chars(char* buf, int length) {
 
 static void furi_bsp_stdio_out_flush(void) {
     furi_thread_stdout_flush();
+    
 }
 
 stdio_driver_t furi_bsp_stdio = {

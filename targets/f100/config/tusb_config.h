@@ -93,7 +93,7 @@
 #endif
 
 //------------- CLASS -------------//
-#define CFG_TUD_CDC               2
+#define CFG_TUD_CDC               1 // USB Serial Port : 1 or 2 CDCs are supported.
 #define CFG_TUD_MSC               0
 #define CFG_TUD_HID               0
 #define CFG_TUD_MIDI              0

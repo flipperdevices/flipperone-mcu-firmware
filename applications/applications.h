@@ -1,7 +1,7 @@
 #pragma once
 
 #include <furi.h>
-#include <cli/cli.h>
+#include <cli/cli_command_min.h>
 
 typedef enum {
     FlipperInternalApplicationFlagDefault = 0,
@@ -14,6 +14,7 @@ typedef struct {
     const char* appid;
     const size_t stack_size;
     const FlipperInternalApplicationFlag flags;
+    const char* args;
 } FlipperInternalApplication;
 
 typedef struct {
@@ -24,8 +25,9 @@ typedef struct {
 typedef void (*FlipperInternalOnStartHook)(void);
 
 typedef struct {
-    const CliCallback callback;
+    const CliCommandExecuteCallback callback;
     const char* name;
+    const size_t stack_size;
     const CliCommandFlag flags;
 } FlipperInternalCommandApplication;
 
