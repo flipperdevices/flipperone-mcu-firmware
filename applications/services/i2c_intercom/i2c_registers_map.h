@@ -20,7 +20,7 @@
  * 0x0040   CPU state register          (read)
  *          ToDo: add ENUM: state register values
 */
-#define I2C_CPU_STATUS_REG_ADDRESS   (0x0040) 
+#define I2C_CPU_STATUS_REG_ADDRESS (0x0040)
 
 // Intercom version register
 /*
@@ -100,8 +100,8 @@
  *              Bit 0: Power button state
  *              Bit 1-15: Reserved
 */
-#define I2C_SW_BUTTONS_STATE_REG_ADDRESS                  (0x0200 + 0xA)
-#define I2C_SW_BUTTONS_STATE_REG_BIT_POWER                (0)
+#define I2C_SW_BUTTONS_STATE_REG_ADDRESS   (0x0200 + 0xA)
+#define I2C_SW_BUTTONS_STATE_REG_BIT_POWER (0)
 
 // Headphones state register
 /*
@@ -144,6 +144,18 @@
 #define I2C_LED_LINK2_COLOR_REG_ADDRESS (0x0310 + 2)
 #define I2C_LED_LINK3_COLOR_REG_ADDRESS (0x0310 + 4)
 #define I2C_LED_LINK4_COLOR_REG_ADDRESS (0x0310 + 6)
+
+// Backlight control registers
+/*
+ * 0x0350+0 Backlight level register (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
+ * 0x0350+2 Backlight time register (read, write), in 100ms intervals, should be greater than 0
+ * 0x0350+4 Backlight control register (read, write)
+*/
+#define I2C_BACKLIGHT_LEVEL                    (0x0350 + 0)
+#define I2C_BACKLIGHT_TIMEOUT                  (0x0350 + 2) // * 100 ms, 10 = 1s
+#define I2C_BACKLIGHT_CONTROL                  (0x0350 + 4) // bit 0 - override backlight timeout, bit 1 - ping backlight
+#define I2C_BACKLIGHT_CONTROL_REG_BIT_OVERRIDE (0)
+#define I2C_BACKLIGHT_CONTROL_REG_BIT_PING     (1)
 
 // Haptic registers
 /*

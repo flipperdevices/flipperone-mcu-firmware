@@ -594,6 +594,7 @@ static Canvas* canvas_alloc_in_place_internal(void* buffer, size_t width, size_t
     Canvas* canvas = buffer;
     canvas->canary_pre = (uint32_t*)((uint8_t*)buffer + sizeof(Canvas));
     canvas->data = (Color*)(canvas->canary_pre + 1);
+    memset(canvas->data, 0xFF, sizeof(Color) * width * height);
     canvas->canary_post = (uint32_t*)(canvas->data + width * height);
     *(canvas->canary_pre) = CANARY_VALUE;
     *(canvas->canary_post) = CANARY_VALUE;
