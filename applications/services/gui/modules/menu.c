@@ -39,6 +39,10 @@ typedef struct {
     char* title;
     MenuItemArray_t items;
     size_t position;
+
+    size_t scrollbar_offset;
+    float scrollbar_len;
+    bool show_scrollbar;
 } MenuViewModel;
 
 static void menu_draw_title(const char* title) {
@@ -167,47 +171,27 @@ static void menu_draw_item_list(MenuViewModel* model) {
     }
 }
 
-static void menu_draw_scrollbar(Clay_ElementId container_id) {
-    bool show_scrollbar = false;
-    float bar_height = 1.f;
-    float bar_offset = 0;
-    Clay_ScrollContainerData scroll_data = Clay_GetScrollContainerData(container_id);
-    if(scroll_data.found) {
-        int32_t scroll_y = scroll_data.scrollPosition->y;
-        int32_t container_height = scroll_data.scrollContainerDimensions.height;
-        int32_t content_height = scroll_data.contentDimensions.height;
-        if(content_height > container_height) {
-            show_scrollbar = true;
-            bar_height = (float)container_height / (float)content_height;
-            bar_offset = (float)(-scroll_y) / (float)content_height;
-        }
-        FURI_LOG_I(TAG, "Y: %ld H: %ld Hmax: %ld len: %f off: %f", scroll_y, container_height, content_height, bar_height, bar_offset);
-    }
-
-    Clay_ElementId scrollbar_id = CLAY_ID("Scrollbar");
+static void menu_draw_scrollbar(MenuViewModel* model) {
     CLAY(
-        scrollbar_id,
+        CLAY_ID("Scrollbar"),
         {
             .backgroundColor = COLOR_WHITE,
             .layout =
                 {
                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                    .sizing = {.width = CLAY_SIZING_FIXED(show_scrollbar ? 3 : 0), .height = CLAY_SIZING_GROW(0)},
+                    .sizing = {.width = CLAY_SIZING_FIXED(model->show_scrollbar ? 3 : 0), .height = CLAY_SIZING_GROW(0)},
                 },
             .image = {.imageData = (void*)&scrollbar_background},
         }) {
-        if(show_scrollbar) {
-            Clay_ElementData scrollbar_data = Clay_GetElementData(scrollbar_id);
-            int32_t scrollbar_height = scrollbar_data.boundingBox.height;
-            float y_offset = (float)scrollbar_height * bar_offset;
+        if(model->show_scrollbar) {
             CLAY_AUTO_ID({
                 .backgroundColor = COLOR_BLACK,
-                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_PERCENT(bar_height)}},
+                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_PERCENT(model->scrollbar_len)}},
                 .floating =
                     {
                         .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
                         .attachTo = CLAY_ATTACH_TO_PARENT,
-                        .offset = {.y = y_offset},
+                        .offset = {.y = model->scrollbar_offset},
                     },
             }){};
         }
@@ -243,7 +227,7 @@ static bool menu_layout_callback(void* _model) {
                 },
         }) {
             menu_draw_item_list(model);
-            menu_draw_scrollbar(CLAY_ID("MenuItems"));
+            menu_draw_scrollbar(model);
         }
     }
 
@@ -254,14 +238,34 @@ static bool menu_post_layout_callback(void* _model) {
     MenuViewModel* model = _model;
     furi_check(model);
 
-    Clay_ElementId scrollContainerId = CLAY_ID("MenuItems");
-    Clay_ElementId targetChildId = MENU_ID(model->position);
+    bool need_redraw = false;
 
-    if(clay_helper_scroll_to_child(scrollContainerId, targetChildId, 0, 0, 15)) {
-        return true;
+    Clay_ElementId scrollable_container = CLAY_ID("MenuItems");
+    Clay_ElementId scroll_target = MENU_ID(model->position);
+    Clay_ElementId scrollbar = CLAY_ID("Scrollbar");
+
+    if(clay_helper_scroll_to_child(scrollable_container, scroll_target, 0, 0, 15)) {
+        need_redraw = true;
     }
 
-    return false;
+    Clay_ScrollContainerData scroll_data = Clay_GetScrollContainerData(scrollable_container);
+
+    if(scroll_data.found) {
+        float scroll_y = scroll_data.scrollPosition->y;
+        float container_height = scroll_data.scrollContainerDimensions.height;
+        float content_height = scroll_data.contentDimensions.height;
+
+        if(content_height > container_height) {
+            Clay_ElementData scrollbar_data = Clay_GetElementData(scrollbar);
+
+            if(model->show_scrollbar == false) need_redraw = true;
+            model->show_scrollbar = true;
+            model->scrollbar_len = container_height / content_height;
+            model->scrollbar_offset = (-scroll_y) / content_height * scrollbar_data.boundingBox.height;
+        }
+    }
+
+    return need_redraw;
 }
 
 static void menu_process_up_down(Menu* menu, int8_t delta) {
