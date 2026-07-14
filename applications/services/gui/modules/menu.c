@@ -45,9 +45,9 @@ static void menu_draw_title(const char* title) {
         {
             .layout =
                 {
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(13)},
-                    .padding = {0, 4, 0, 4},
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(11)},
                     .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
+                    .padding = {.left = 0, .right = 4, .top = 0, .bottom = 0},
                 },
             .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
         }) {
@@ -69,7 +69,7 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(MENU_LINE_HEIGHT)},
                     .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                    .padding = {.left = 2, .right = 2, .top = 6, .bottom = 2},
+                    .padding = {.left = selected ? 1 : 2, .right = 0, .top = selected ? 2 : 4, .bottom = 0},
                     .childGap = 10,
                 },
         }) {
@@ -106,7 +106,7 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
 
         if(selected) {
             CLAY_AUTO_ID({
-                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(MENU_LINE_HEIGHT + 2)}},
+                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(MENU_LINE_HEIGHT + 1)}},
                 .floating =
                     {
                         .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
@@ -119,8 +119,8 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
                     },
             }){};
 
-            const Image* left_border = &power_menu_border_left;
-            const Image* right_border = &power_menu_border_right;
+            const Image* left_border = &menu_border_left;
+            const Image* right_border = &menu_border_right;
 
             CLAY_AUTO_ID({
                 .layout = {.sizing = {.height = CLAY_SIZING_FIXED(left_border->height), .width = CLAY_SIZING_FIXED(left_border->width)}},
@@ -171,6 +171,21 @@ static void menu_draw_item_list(MenuViewModel* model) {
 
 static void menu_draw_scrollbar(MenuViewModel* model) {
     UNUSED(model);
+    bool show_scrollbar = false;
+    CLAY_AUTO_ID({
+        .backgroundColor = COLOR_BLACK,
+        .layout =
+            {
+                .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                .sizing = {.width = CLAY_SIZING_FIXED(show_scrollbar ? 3 : 0), .height = CLAY_SIZING_GROW(0)},
+                // .padding = {.left = 1, .right = 1, .top = 0, .bottom = 0},
+            },
+    }) {
+        // CLAY_AUTO_ID({
+        //     .backgroundColor = COLOR_BLACK,
+        //     .layout = {.sizing = {.width = CLAY_SIZING_FIXED(3), .height = CLAY_SIZING_GROW(0)}},
+        // }){};
+    }
 }
 
 static bool menu_layout_callback(void* _model) {
@@ -184,7 +199,7 @@ static bool menu_layout_callback(void* _model) {
                 .layoutDirection = CLAY_TOP_TO_BOTTOM,
                 .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                 .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-                .padding = {.left = 4, .right = 4, .top = 2, .bottom = 2},
+                .padding = {.left = 4, .right = 1, .top = 2, .bottom = 2},
             },
     }) {
         if(model->title) {
@@ -197,7 +212,8 @@ static bool menu_layout_callback(void* _model) {
                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                     .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-                    .padding = {.left = 4, .right = 4, .top = 0, .bottom = 0},
+                    .padding = {.left = 4, .right = 1, .top = 0, .bottom = 0},
+                    .childGap = 9,
                 },
         }) {
             menu_draw_item_list(model);
