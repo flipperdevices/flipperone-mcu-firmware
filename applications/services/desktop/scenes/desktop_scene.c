@@ -67,6 +67,7 @@ static bool desktop_input(InputEvent* event, void* context) {
             break;
         case InputKey4:
             with_view_model(view, DesktopViewModel * model, { model->settings_pressed = true; }, true);
+            desktop_send_scene_event(desktop, DesktopSceneEventTypeEnterSettingsMenu, NULL);
             consumed = true;
             break;
         case InputKeySw:
