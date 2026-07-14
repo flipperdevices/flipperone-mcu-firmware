@@ -4,6 +4,8 @@
 #include <gui/gui.h>
 #include <assets.h>
 
+#define TAG "GuiMenu"
+
 #define MENU_ID(x) CLAY_SIDI(CLAY_STRING("Menu"), x)
 
 #define MENU_LINE_HEIGHT 21
@@ -40,17 +42,13 @@ typedef struct {
 } MenuViewModel;
 
 static void menu_draw_title(const char* title) {
-    CLAY(
-        CLAY_ID("Title"),
-        {
-            .layout =
-                {
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(11)},
-                    .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-                    .padding = {.left = 0, .right = 4, .top = 0, .bottom = 0},
-                },
-            .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
-        }) {
+    CLAY_AUTO_ID({
+        .layout =
+            {
+                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(11)},
+                .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
+            },
+    }) {
         CLAY_TEXT(
             clay_helper_string_from_chars(title),
             CLAY_TEXT_CONFIG({
@@ -169,22 +167,50 @@ static void menu_draw_item_list(MenuViewModel* model) {
     }
 }
 
-static void menu_draw_scrollbar(MenuViewModel* model) {
-    UNUSED(model);
+static void menu_draw_scrollbar(Clay_ElementId container_id) {
     bool show_scrollbar = false;
-    CLAY_AUTO_ID({
-        .backgroundColor = COLOR_BLACK,
-        .layout =
-            {
-                .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                .sizing = {.width = CLAY_SIZING_FIXED(show_scrollbar ? 3 : 0), .height = CLAY_SIZING_GROW(0)},
-                // .padding = {.left = 1, .right = 1, .top = 0, .bottom = 0},
-            },
-    }) {
-        // CLAY_AUTO_ID({
-        //     .backgroundColor = COLOR_BLACK,
-        //     .layout = {.sizing = {.width = CLAY_SIZING_FIXED(3), .height = CLAY_SIZING_GROW(0)}},
-        // }){};
+    float bar_height = 1.f;
+    float bar_offset = 0;
+    Clay_ScrollContainerData scroll_data = Clay_GetScrollContainerData(container_id);
+    if(scroll_data.found) {
+        int32_t scroll_y = scroll_data.scrollPosition->y;
+        int32_t container_height = scroll_data.scrollContainerDimensions.height;
+        int32_t content_height = scroll_data.contentDimensions.height;
+        if(content_height > container_height) {
+            show_scrollbar = true;
+            bar_height = (float)container_height / (float)content_height;
+            bar_offset = (float)(-scroll_y) / (float)content_height;
+        }
+        FURI_LOG_I(TAG, "Y: %ld H: %ld Hmax: %ld len: %f off: %f", scroll_y, container_height, content_height, bar_height, bar_offset);
+    }
+
+    Clay_ElementId scrollbar_id = CLAY_ID("Scrollbar");
+    CLAY(
+        scrollbar_id,
+        {
+            .backgroundColor = COLOR_WHITE,
+            .layout =
+                {
+                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                    .sizing = {.width = CLAY_SIZING_FIXED(show_scrollbar ? 3 : 0), .height = CLAY_SIZING_GROW(0)},
+                },
+            .image = {.imageData = (void*)&scrollbar_background},
+        }) {
+        if(show_scrollbar) {
+            Clay_ElementData scrollbar_data = Clay_GetElementData(scrollbar_id);
+            int32_t scrollbar_height = scrollbar_data.boundingBox.height;
+            float y_offset = (float)scrollbar_height * bar_offset;
+            CLAY_AUTO_ID({
+                .backgroundColor = COLOR_BLACK,
+                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_PERCENT(bar_height)}},
+                .floating =
+                    {
+                        .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
+                        .attachTo = CLAY_ATTACH_TO_PARENT,
+                        .offset = {.y = y_offset},
+                    },
+            }){};
+        }
     }
 }
 
@@ -217,7 +243,7 @@ static bool menu_layout_callback(void* _model) {
                 },
         }) {
             menu_draw_item_list(model);
-            menu_draw_scrollbar(model);
+            menu_draw_scrollbar(CLAY_ID("MenuItems"));
         }
     }
 

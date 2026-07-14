@@ -52,7 +52,7 @@ static void settings_menu_on_alloc(Scene* scene, void* context) {
     menu_item_selector_set_value(menu, item, 0, test_options[0]);
 
     FuriString* line_name = furi_string_alloc();
-    for(size_t i = 0; i < 10; i++) {
+    for(size_t i = 0; i < 20; i++) {
         furi_string_printf(line_name, "Line %u", i + 4);
         menu_add_item(menu, furi_string_get_cstr(line_name), i + 4, MenuItemSubTypeSelector);
     }
