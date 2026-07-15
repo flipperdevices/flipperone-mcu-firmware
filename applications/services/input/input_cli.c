@@ -65,7 +65,7 @@ static void input_cli_dump_touch_events_callback(const void* value, void* ctx) {
 }
 
 static void input_cli_dump(PipeSide* pipe) {
-    FuriMessageQueue* input_queue = furi_message_queue_alloc(8, sizeof(InputCliDumpEvent));
+    FuriMessageQueue* input_queue = furi_message_queue_alloc(32, sizeof(InputCliDumpEvent));
 
     FuriPubSub* input_events = furi_record_open(RECORD_INPUT_EVENTS);
     FuriPubSubSubscription* input_subscription = furi_pubsub_subscribe(input_events, input_cli_dump_events_callback, input_queue);
