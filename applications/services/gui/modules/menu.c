@@ -45,23 +45,6 @@ typedef struct {
     bool show_scrollbar;
 } MenuViewModel;
 
-static void menu_draw_title(const char* title) {
-    CLAY_AUTO_ID({
-        .layout =
-            {
-                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(11)},
-                .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-            },
-    }) {
-        CLAY_TEXT(
-            clay_helper_string_from_chars(title),
-            CLAY_TEXT_CONFIG({
-                .fontId = FontBody,
-                .textColor = COLOR_GRAY,
-            }));
-    }
-}
-
 static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
     CLAY(
         MENU_ID(line_index),
@@ -72,7 +55,7 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
                     .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
                     .padding = {.left = selected ? 1 : 2, .right = 0, .top = selected ? 2 : 4, .bottom = 0},
-                    .childGap = 10,
+                    .childGap = 4,
                 },
         }) {
         const char* sub_label = NULL;
@@ -82,20 +65,14 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
             sub_label = furi_string_get_cstr(item->selector.value_text);
         }
 
-        CLAY_AUTO_ID({
-            .layout =
-                {
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                    .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
-                },
-        }) {
-            CLAY_TEXT(
-                clay_helper_string_from_chars(item->label),
-                CLAY_TEXT_CONFIG({
-                    .fontId = selected ? FontBig : FontBusy9,
-                    .textColor = COLOR_BLACK,
-                }));
-        }
+        CLAY_TEXT(
+            clay_helper_string_from_chars(item->label),
+            CLAY_TEXT_CONFIG({
+                .fontId = selected ? FontBig : FontBusy9,
+                .textColor = COLOR_BLACK,
+            }));
+
+        CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}}}){};
 
         if(sub_label) {
             CLAY_TEXT(
@@ -210,10 +187,11 @@ static bool menu_layout_callback(void* _model) {
                 .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                 .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
                 .padding = {.left = 4, .right = 1, .top = 2, .bottom = 2},
+                .childGap = 2,
             },
     }) {
         if(model->title) {
-            menu_draw_title(model->title);
+            CLAY_TEXT(clay_helper_string_from_chars(model->title), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_GRAY}));
         }
         CLAY_AUTO_ID({
             .backgroundColor = COLOR_WHITE,
@@ -222,7 +200,7 @@ static bool menu_layout_callback(void* _model) {
                     .layoutDirection = CLAY_LEFT_TO_RIGHT,
                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                     .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-                    .padding = {.left = 4, .right = 1, .top = 0, .bottom = 0},
+                    .padding = {.left = 4, .right = 0, .top = 0, .bottom = 0},
                     .childGap = 9,
                 },
         }) {

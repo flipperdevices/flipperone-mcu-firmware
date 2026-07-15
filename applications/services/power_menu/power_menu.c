@@ -760,7 +760,7 @@ static PowerMenu* power_menu_alloc(void) {
     view_set_layout_callback(instance->view, power_menu_layout);
     view_set_post_layout_callback(instance->view, power_menu_post_layout);
     view_set_input_callback(instance->view, power_menu_input, instance);
-    gui_add_view(instance->gui, instance->view, GuiViewPriorityMenu);
+    gui_add_view(instance->gui, instance->view, GuiViewPriorityPowerMenu);
 
     furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupLink), power_menu_link_led_brightness_callback, instance);
     furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupPower), power_menu_power_led_brightness_callback, instance);

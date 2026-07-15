@@ -31,11 +31,6 @@ static bool header_layout(void* _model) {
                     .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
                     .padding = {.left = 3, .right = 2, .top = 0, .bottom = 0},
                 },
-            .floating =
-                {
-                    .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
-                    .attachTo = CLAY_ATTACH_TO_ROOT,
-                },
         }) {
         CLAY_AUTO_ID({
             .layout =
@@ -43,7 +38,6 @@ static bool header_layout(void* _model) {
                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                     .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
                     .padding = {.left = 0, .right = 0, .top = 2, .bottom = 0},
-
                 },
         }) {
             CLAY_TEXT(
@@ -115,7 +109,6 @@ static void header_on_alloc(Scene* scene, void* context) {
 
     view_allocate_model(view, ViewModelTypeLockFree, sizeof(HeaderViewModel));
     view_set_layout_callback(view, header_layout);
-    view_set_transparent(view, true);
 
     with_view_model(
         view,

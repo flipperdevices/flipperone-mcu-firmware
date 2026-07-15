@@ -5,6 +5,7 @@
 #include <m-algo.h>
 #include "clay.h"
 #include "clay_render.h"
+#include "clay_helper.h"
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/display/display_jd9853_reg.h>
 
@@ -56,26 +57,23 @@ static int gui_view_compare(const ViewHandle* a, const ViewHandle* b) {
 }
 
 static bool gui_view_find_opaque_from_top(ViewHandleArray_t array, ViewHandleArray_it_t* it) {
-    // Iterating backward
     ViewHandleArray_it_last(*it, array);
-    while(!ViewHandleArray_end_p(*it)) {
-        View* view = ViewHandleArray_ref(*it)->view;
-        if(view_is_enabled(view) && !view_is_transparent(view)) {
-            return true;
-        }
-        ViewHandleArray_previous(*it);
-    }
-    return false;
-}
 
-static bool gui_view_find_next_transparent(ViewHandleArray_it_t* it) {
-    // Iterating forward
-    while(!ViewHandleArray_last_p(*it)) {
-        ViewHandleArray_next(*it);
-        View* view = ViewHandleArray_ref(*it)->view;
-        if(view_is_enabled(view) && view_is_transparent(view)) {
+    // Iterating backward
+    while(!ViewHandleArray_end_p(*it)) {
+        ViewHandle* handle = ViewHandleArray_ref(*it);
+
+        // Root layer: draw everything
+        if(handle->priority == 0) {
+            ViewHandleArray_it(*it, array);
             return true;
         }
+        if(view_is_enabled(handle->view) && (!view_is_transparent(handle->view))) {
+            // ViewHandleArray_next(*it);
+            return true;
+        }
+
+        ViewHandleArray_previous(*it);
     }
     return false;
 }
@@ -137,13 +135,16 @@ static void gui_redraw(Gui* gui) {
                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                     // workaround for the pixel shift bug
-                    .padding = {.left = 1, .top = 0, .right = 0, .bottom = 0},
+                    .padding = {.left = 1, .top = 0, .right = 1, .bottom = 0},
                 },
         }) {
         if(gui_view_find_opaque_from_top(gui->views, &it)) {
             do {
-                view_layout(gui_view_from_it(&it));
-            } while(gui_view_find_next_transparent(&it));
+                ViewHandle* handle = ViewHandleArray_ref(it);
+                View* view = gui_view_from_it(&it);
+                if(view_is_enabled(view)) view_layout(view);
+                ViewHandleArray_next(it);
+            } while(!ViewHandleArray_end_p(it));
         }
     }
 
@@ -153,8 +154,11 @@ static void gui_redraw(Gui* gui) {
 
     if(gui_view_find_opaque_from_top(gui->views, &it)) {
         do {
-            view_post_layout(gui_view_from_it(&it));
-        } while(gui_view_find_next_transparent(&it));
+            ViewHandle* handle = ViewHandleArray_ref(it);
+            View* view = gui_view_from_it(&it);
+            if(view_is_enabled(view)) view_post_layout(view);
+            ViewHandleArray_next(it);
+        } while(!ViewHandleArray_end_p(it));
     }
 
     size_t width = canvas_get_width(gui->render_canvas);
@@ -358,7 +362,7 @@ static Gui* gui_alloc(void) {
     gui->render_canvas = canvas_alloc(JD9853_WIDTH, JD9853_HEIGHT);
 
     // Clay initialization
-    Clay_SetMaxElementCount(128);
+    Clay_SetMaxElementCount(256);
     Clay_SetMaxMeasureTextCacheWordCount(512);
     uint64_t totalMemorySize = Clay_MinMemorySize();
     FURI_LOG_I(TAG, "Clay allocation: %lluk", totalMemorySize / 1024);
