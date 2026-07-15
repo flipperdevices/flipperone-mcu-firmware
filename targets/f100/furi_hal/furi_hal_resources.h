@@ -33,6 +33,11 @@ typedef enum {
 } InputKey;
 
 typedef enum {
+    SwPowerKey = (1 << 0),
+    SwKeyMask = (0b0000000000000001),
+} SwInputKey;
+
+typedef enum {
     StatusLedPowerLine3 = (1 << 13),
     StatusLedPowerLine2 = (1 << 14),
     StatusLedPowerLine1 = (1 << 15),

@@ -30,7 +30,7 @@ I2cMasterPio* pio_i2c_init(const GpioPin* sda_pin, const GpioPin* scl_pin, uint3
 void pio_i2c_deinit(I2cMasterPio* instance) {
     furi_check(instance);
     i2c_program_deinit(instance->pio, instance->sm, instance->sda_pin->pin, instance->scl_pin->pin);
-    pio_remove_program_and_unclaim_sm(&i2c_program, instance->pio, instance->sm, instance->offset);
+    pio_remove_program(instance->pio, &i2c_program, instance->offset);
     free(instance);
 }
 

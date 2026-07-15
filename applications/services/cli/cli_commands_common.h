@@ -11,3 +11,4 @@ void cli_command_i2c(PipeSide* pipe, FuriString* args, void* context);
 void cli_command_expander_ext(PipeSide* pipe, FuriString* args, void* context);
 void cli_command_clock_out(PipeSide* pipe, FuriString* args, void* context);
 void cli_command_otp(PipeSide* pipe, FuriString* args, void* context);
+void cli_command_nvm(PipeSide* pipe, FuriString* args, void* context);

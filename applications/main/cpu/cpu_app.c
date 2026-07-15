@@ -1,3 +1,4 @@
+#include "cpu_app.h"
 #include <furi.h>
 #include <furi_bsp.h>
 #include <gui/gui.h>
@@ -8,6 +9,7 @@
 #include <pd/pd.h>
 #include <power/power.h>
 #include <power_menu/power_menu.h>
+#include <i2c_negotiator/i2c_negotiator.h>
 
 #define TAG "CpuApp"
 
@@ -18,7 +20,8 @@
 #define CPU_APP_MENU_START   "CPU Start"
 #define CPU_APP_MENU_REBOOT  "CPU Reboot"
 #define CPU_APP_MENU_MASKROM "CPU Maskrom"
-#define CPU_APP_MENU_CLOSE   "CPU Shutdown"
+#define CPU_APP_MENU_CLOSE   "CPU Power Off"
+#define CPU_APP_MENU_SHUTDOWN   "CPU Shutdown"
 
 typedef struct {
     Image frame;
@@ -207,16 +210,26 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     }
 }
 
-void cpu_app_menu_close_click_callback(void* context) {
+void cpu_app_menu_close_click_callback(bool pressed, void* context) {
     furi_check(context);
     CpuApp* instance = context;
-    cpu_app_send_message(instance, CpuAppMessageTypeClose);
+    if(!pressed) {
+        cpu_app_send_message(instance, CpuAppMessageTypeClose);
+    }
 }
 
-void cpu_app_menu_restart_click_callback(void* context) {
+void cpu_app_menu_restart_click_callback(bool pressed, void* context) {
     furi_check(context);
     CpuApp* instance = context;
-    cpu_app_send_message(instance, CpuAppMessageTypeReset);
+    if(!pressed) {
+        cpu_app_send_message(instance, CpuAppMessageTypeReset);
+    }
+}
+
+void cpu_app_menu_shutdown_click_callback(bool pressed, void* context) {
+    furi_check(context);
+    CpuApp* instance = context;
+    i2c_negotiator_input_sw_button_event(SwPowerKey, pressed, NULL);
 }
 
 static CpuApp* cpu_app_alloc(void) {
@@ -238,14 +251,17 @@ static CpuApp* cpu_app_alloc(void) {
     gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
 
     //add some test menu items
-    power_menu_add_menu_item(CPU_APP_MENU_CLOSE, (FuriCallbackWithContext){.callback = cpu_app_menu_close_click_callback, .context = instance});
-    power_menu_add_menu_item(CPU_APP_MENU_REBOOT, (FuriCallbackWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
+    power_menu_add_menu_item(CPU_APP_MENU_SHUTDOWN, (PowerMenuClickWithContext){.callback = cpu_app_menu_shutdown_click_callback, .context = instance});
+    power_menu_add_menu_item(CPU_APP_MENU_REBOOT, (PowerMenuClickWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
+    power_menu_add_menu_item(CPU_APP_MENU_CLOSE, (PowerMenuClickWithContext){.callback = cpu_app_menu_close_click_callback, .context = instance});
+
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
-    power_menu_remove_menu_item(CPU_APP_MENU_CLOSE);
+    power_menu_remove_menu_item(CPU_APP_MENU_SHUTDOWN);
     power_menu_remove_menu_item(CPU_APP_MENU_REBOOT);
+    power_menu_remove_menu_item(CPU_APP_MENU_CLOSE);
 
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
