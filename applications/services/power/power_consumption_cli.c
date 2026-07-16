@@ -7,10 +7,9 @@
 #include <furi_hal_i2c_config.h>
 #include <drivers/ina4230/ina4230.h>
 
-void power_consumption_cli(PipeSide* pipe, FuriString* args, void* context) {
+bool power_consumption_cli(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
     UNUSED(args);
-    UNUSED(context);
 
     Ina4230* ina4230_add[5] = {0};
 
@@ -80,4 +79,5 @@ void power_consumption_cli(PipeSide* pipe, FuriString* args, void* context) {
         }
         furi_delay_ms(500);
     }
+    return true;
 }

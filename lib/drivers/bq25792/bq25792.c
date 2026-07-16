@@ -515,6 +515,7 @@ Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable) {
 
 Bq25792Status bq25792_get_charger_status(Bq25792* instance, Bq25792ChargerStatusReg* status) {
     furi_check(instance);
+    furi_check(status);
     Bq25792Status res = Bq25792StatusUnknown;
     do {
         res = bq25792_read_mem(instance, Bq25792RegChargerStatus0, status->data, sizeof(status->data));
@@ -527,6 +528,7 @@ Bq25792Status bq25792_get_charger_status(Bq25792* instance, Bq25792ChargerStatus
 
 Bq25792Status bq25792_get_charger_fault(Bq25792* instance, Bq25792FaultStatusReg* fault) {
     furi_check(instance);
+    furi_check(fault);
     Bq25792Status res = Bq25792StatusUnknown;
     do {
         res = bq25792_read_mem(instance, Bq25792RegFaultStatus0, fault->data, sizeof(fault->data));
@@ -551,6 +553,7 @@ Bq25792Status bq25792_clear_charger_fault(Bq25792* instance, Bq25792FaultStatusR
 
 Bq25792Status bq25792_get_charger_irq_flags(Bq25792* instance, Bq25792ChargerFlagReg* irq_flags) {
     furi_check(instance);
+    furi_check(irq_flags);
     Bq25792Status res = Bq25792StatusUnknown;
     do {
         res = bq25792_read_mem(instance, Bq25792RegChargerFlag0, irq_flags->data, sizeof(irq_flags->data));
@@ -710,3 +713,4 @@ Bq25792Status bq25792_watchdog_set_time(Bq25792* instance, Bq25792WatchdogTime t
     }
     return res;
 }
+

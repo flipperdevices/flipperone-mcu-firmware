@@ -52,6 +52,7 @@ bool power_bq25792_watchdog_reset(Power* instance);
 bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit);
 bool power_bq25792_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t current_ma);
 bool power_bq25792_otg_enable(Power* instance, bool enable);
+bool power_bq25792_usb_is_connected(Power* instance, bool* usb_connected);
 
 /** OTG overcurrent (IINDPM/IOTG) callback. Runs in the BQ25792 IRQ worker thread — keep it short. */
 void power_bq25792_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context);
