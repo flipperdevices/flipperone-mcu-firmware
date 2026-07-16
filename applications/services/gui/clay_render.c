@@ -608,11 +608,11 @@ static Canvas* canvas_alloc_in_place_internal(void* buffer, size_t width, size_t
 
 Canvas* canvas_alloc(size_t width, size_t height) {
     void* buffer = malloc(canvas_get_required_buffer_size(width, height));
-    return canvas_alloc_in_place_internal(buffer, width, height, false);
+    return canvas_alloc_in_place_internal(buffer, width, height, true);
 }
 
 Canvas* canvas_alloc_in_place(void* buffer, size_t width, size_t height) {
-    return canvas_alloc_in_place_internal(buffer, width, height, true);
+    return canvas_alloc_in_place_internal(buffer, width, height, false);
 }
 
 size_t canvas_get_required_buffer_size(size_t width, size_t height) {

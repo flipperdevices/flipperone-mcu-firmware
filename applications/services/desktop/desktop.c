@@ -243,7 +243,7 @@ static Desktop* desktop_alloc(void) {
     gui_add_view(desktop->gui, scene_get_view(desktop->settings_menu_scene), GuiViewPriorityDesktop);
     gui_add_view(desktop->gui, scene_get_view(desktop->display_settings_scene), GuiViewPriorityDesktop);
 
-    gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication);
+    gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication - 1);
     gui_add_view(desktop->gui, scene_get_view(desktop->power_menu_scene), GuiViewPriorityPowerMenu);
 
     scene_enter(desktop->header_scene, desktop);

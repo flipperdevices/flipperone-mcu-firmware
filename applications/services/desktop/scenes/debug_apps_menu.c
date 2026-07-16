@@ -89,7 +89,7 @@ static bool debug_menu_input(InputEvent* event, void* context) {
     return consumed;
 }
 
-static void debug_menu_on_alloc(Scene* scene, void* context) {
+static void debug_menu_on_enter(Scene* scene, void* context) {
     View* view = scene_get_view(scene);
     scene_set_data(scene, context);
 
@@ -97,16 +97,23 @@ static void debug_menu_on_alloc(Scene* scene, void* context) {
 
     view_set_layout_callback(view, debug_menu_layout);
     view_set_input_callback(view, debug_menu_input, scene);
-}
 
-static void debug_menu_on_enter(Scene* scene, void* app) {
-    View* view = scene_get_view(scene);
     with_view_model(view, DebugMenuViewModel * model, { model->selected_index = 0; }, false);
 }
 
+static void debug_menu_on_exit(Scene* scene, void* context) {
+    UNUSED(context);
+    View* view = scene_get_view(scene);
+    view_set_layout_callback(view, NULL);
+    view_set_post_layout_callback(view, NULL);
+    view_set_input_callback(view, NULL, NULL);
+    view_free_model(view);
+    scene_set_data(scene, NULL);
+}
+
 const SceneCallbacks scene_debug_menu_callbacks = {
-    .on_alloc = debug_menu_on_alloc,
+    .on_alloc = NULL,
     .on_enter = debug_menu_on_enter,
-    .on_exit = NULL,
+    .on_exit = debug_menu_on_exit,
     .on_event = NULL,
 };
