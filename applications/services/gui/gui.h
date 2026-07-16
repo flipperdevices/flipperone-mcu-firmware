@@ -12,7 +12,9 @@ typedef struct Gui Gui;
 #define RECORD_GUI "Gui"
 
 typedef enum {
-    GuiViewPriorityRoot = 0,
+    GuiViewPriorityStatusBar = 0,
+    GuiViewPriorityDesktop = 1,
+
     GuiViewPriorityApplication = 50000,
     GuiViewPriorityPowerMenu = 100000,
 } GuiViewPriority;

@@ -236,15 +236,15 @@ static Desktop* desktop_alloc(void) {
     desktop->display_settings_scene = scene_alloc(&scene_display_settings_callbacks, desktop);
     desktop->debug_menu_scene = scene_alloc(&scene_debug_menu_callbacks, desktop);
 
-    gui_add_view(desktop->gui, scene_get_view(desktop->header_scene), GuiViewPriorityRoot);
+    gui_add_view(desktop->gui, scene_get_view(desktop->header_scene), GuiViewPriorityStatusBar);
 
-    gui_add_view(desktop->gui, scene_get_view(desktop->main_scene), GuiViewPriorityRoot);
+    gui_add_view(desktop->gui, scene_get_view(desktop->main_scene), GuiViewPriorityDesktop);
+
+    gui_add_view(desktop->gui, scene_get_view(desktop->settings_menu_scene), GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, scene_get_view(desktop->display_settings_scene), GuiViewPriorityDesktop);
+
+    gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication);
     gui_add_view(desktop->gui, scene_get_view(desktop->power_menu_scene), GuiViewPriorityPowerMenu);
-
-    gui_add_view(desktop->gui, scene_get_view(desktop->settings_menu_scene), GuiViewPriorityRoot);
-    gui_add_view(desktop->gui, scene_get_view(desktop->display_settings_scene), GuiViewPriorityRoot);
-
-    // gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication);
 
     scene_enter(desktop->header_scene, desktop);
     scene_enter(desktop->main_scene, desktop);

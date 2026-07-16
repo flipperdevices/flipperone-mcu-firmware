@@ -64,7 +64,7 @@ static bool gui_view_find_opaque_from_top(ViewHandleArray_t array, ViewHandleArr
         ViewHandle* handle = ViewHandleArray_ref(*it);
 
         // Root layer: draw everything
-        if(handle->priority == 0) {
+        if(handle->priority < 100) {
             ViewHandleArray_it(*it, array);
             return true;
         }
@@ -118,6 +118,19 @@ static void gui_input_events_glue(const void* value, void* ctx) {
     furi_message_queue_put(ctx, value, FuriWaitForever);
 }
 
+static void gui_dump_views(Gui* gui) {
+    furi_assert(gui);
+    ViewHandleArray_it_t it;
+    ViewHandleArray_it(it, gui->views);
+    size_t index = 0;
+    while(!ViewHandleArray_end_p(it)) {
+        ViewHandle* handle = ViewHandleArray_ref(it);
+        View* view = handle->view;
+        FURI_LOG_I(TAG, "View %zu: %p, enabled: %d, priority: %d", index++, view, view_is_enabled(view), handle->priority);
+        ViewHandleArray_next(it);
+    }
+}
+
 static void gui_redraw(Gui* gui) {
     furi_assert(gui);
     gui_lock(gui);
@@ -126,6 +139,8 @@ static void gui_redraw(Gui* gui) {
     Clay_BeginLayout();
 
     ViewHandleArray_it_t it;
+
+    gui_dump_views(gui);
 
     CLAY(
         CLAY_ID("GUI"),
@@ -142,7 +157,10 @@ static void gui_redraw(Gui* gui) {
             do {
                 ViewHandle* handle = ViewHandleArray_ref(it);
                 View* view = gui_view_from_it(&it);
-                if(view_is_enabled(view)) view_layout(view);
+                if(view_is_enabled(view)) {
+                    view_layout(view);
+                    FURI_LOG_I(TAG, "Draw view %p", view);
+                }
                 ViewHandleArray_next(it);
             } while(!ViewHandleArray_end_p(it));
         }
