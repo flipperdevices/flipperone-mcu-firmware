@@ -44,6 +44,7 @@ bool power_bq25792_set_charge_voltage_limit_ma(Power* instance, uint16_t charge_
 bool power_bq25792_get_charge_current_limit_ma(Power* instance, uint16_t* charge_current_limit);
 bool power_bq25792_set_charge_current_limit_ma(Power* instance, uint16_t charge_current_limit);
 bool power_bq25792_charge_enable(Power* instance, bool enable);
+bool power_bq25792_charge_is_enabled(Power* instance, bool* enabled);
 bool power_bq25792_get_charger_status(Power* instance, Bq25792ChargerStatusReg* status);
 bool power_bq25792_get_charger_fault(Power* instance, Bq25792FaultStatusReg* fault);
 bool power_bq25792_get_charger_irq_flags(Power* instance, Bq25792ChargerFlagReg* irq_flags);

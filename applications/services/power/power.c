@@ -186,6 +186,7 @@ API_WRAPPER_PARAM(bq25792_get_charge_current_limit_ma, Bq25792Status, Bq25792*, 
 API_WRAPPER_PARAM(bq25792_set_charge_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
 API_WRAPPER_PARAM(bq25792_get_ico_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
 API_WRAPPER_PARAM(bq25792_charge_enable, Bq25792Status, Bq25792*, bool);
+API_WRAPPER_PARAM(bq25792_charge_is_enabled, Bq25792Status, Bq25792*, bool*);
 API_WRAPPER_PARAM(bq25792_get_charger_status, Bq25792Status, Bq25792*, Bq25792ChargerStatusReg*);
 API_WRAPPER_PARAM(bq25792_get_charger_fault, Bq25792Status, Bq25792*, Bq25792FaultStatusReg*);
 API_WRAPPER_PARAM(bq25792_get_charger_irq_flags, Bq25792Status, Bq25792*, Bq25792ChargerFlagReg*);
@@ -602,6 +603,13 @@ bool power_bq25792_charge_enable(Power* instance, bool enable) {
     furi_check(instance);
     Bq25792Status result;
     POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_charge_enable, instance->bq25792_header, enable, result);
+    return result == Bq25792StatusOk;
+}
+
+bool power_bq25792_charge_is_enabled(Power* instance, bool* enabled) {
+    furi_check(instance);
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_charge_is_enabled, instance->bq25792_header, enabled, result);
     return result == Bq25792StatusOk;
 }
 

@@ -513,6 +513,23 @@ Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable) {
     return res;
 }
 
+Bq25792Status bq25792_charge_is_enabled(Bq25792* instance, bool* enabled) {
+    furi_check(instance);
+    furi_check(enabled);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792ChargerControl0RegBits charger_control_0 = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl0, (uint8_t*)&charger_control_0);
+        if(res == Bq25792StatusOk) {
+            *enabled = charger_control_0.en_chg ? true : false;
+        }
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get charge enable status!");
+    }
+    return res;
+}
+
 Bq25792Status bq25792_get_charger_status(Bq25792* instance, Bq25792ChargerStatusReg* status) {
     furi_check(instance);
     furi_check(status);
@@ -713,4 +730,3 @@ Bq25792Status bq25792_watchdog_set_time(Bq25792* instance, Bq25792WatchdogTime t
     }
     return res;
 }
-
