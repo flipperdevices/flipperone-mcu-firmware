@@ -673,35 +673,35 @@ static bool power_menu_input(InputEvent* event, void* context) {
 }
 
 static void power_menu_link_led_brightness_callback(const void* item, void* context) {
-    uint8_t* brightness = (uint8_t*)item;
+    uint8_t brightness = *(uint8_t*)item;
     PowerMenu* instance = context;
-    instance->selected_link_led_brightness_index = get_nearest_index(*brightness, led_brightness_levels, led_brightness_levels_count);
-    *brightness = led_brightness_levels[instance->selected_link_led_brightness_index];
-    power_menu_model_apply(instance, power_menu_model_set_link_led_brightness_text, brightness);
+    instance->selected_link_led_brightness_index = get_nearest_index(brightness, led_brightness_levels, led_brightness_levels_count);
+    brightness = led_brightness_levels[instance->selected_link_led_brightness_index];
+    power_menu_model_apply(instance, power_menu_model_set_link_led_brightness_text, &brightness);
 }
 
 static void power_menu_power_led_brightness_callback(const void* item, void* context) {
-    uint8_t* brightness = (uint8_t*)item;
+    uint8_t brightness = *(uint8_t*)item;
     PowerMenu* instance = context;
-    instance->selected_power_led_brightness_index = get_nearest_index(*brightness, led_brightness_levels, led_brightness_levels_count);
-    *brightness = led_brightness_levels[instance->selected_power_led_brightness_index];
-    power_menu_model_apply(instance, power_menu_model_set_power_led_brightness_text, brightness);
+    instance->selected_power_led_brightness_index = get_nearest_index(brightness, led_brightness_levels, led_brightness_levels_count);
+    brightness = led_brightness_levels[instance->selected_power_led_brightness_index];
+    power_menu_model_apply(instance, power_menu_model_set_power_led_brightness_text, &brightness);
 }
 
 static void power_menu_wattmeter_led_brightness_callback(const void* item, void* context) {
-    uint8_t* brightness = (uint8_t*)item;
+    uint8_t brightness = *(uint8_t*)item;
     PowerMenu* instance = context;
-    instance->selected_wattmeter_led_brightness_index = get_nearest_index(*brightness, led_brightness_levels, led_brightness_levels_count);
-    *brightness = led_brightness_levels[instance->selected_wattmeter_led_brightness_index];
-    power_menu_model_apply(instance, power_menu_model_set_wattmeter_led_brightness_text, brightness);
+    instance->selected_wattmeter_led_brightness_index = get_nearest_index(brightness, led_brightness_levels, led_brightness_levels_count);
+    brightness = led_brightness_levels[instance->selected_wattmeter_led_brightness_index];
+    power_menu_model_apply(instance, power_menu_model_set_wattmeter_led_brightness_text, &brightness);
 }
 
 static void power_menu_display_backlight_brightness_callback(const void* item, void* context) {
-    uint8_t* brightness = (uint8_t*)item;
+    uint8_t brightness = *(uint8_t*)item;
     PowerMenu* instance = context;
-    instance->selected_backlight_brightness_index = get_nearest_index(*brightness, led_brightness_levels, led_brightness_levels_count);
-    *brightness = led_brightness_levels[instance->selected_backlight_brightness_index];
-    power_menu_model_apply(instance, power_menu_model_set_backlight_text, brightness);
+    instance->selected_backlight_brightness_index = get_nearest_index(brightness, led_brightness_levels, led_brightness_levels_count);
+    brightness = led_brightness_levels[instance->selected_backlight_brightness_index];
+    power_menu_model_apply(instance, power_menu_model_set_backlight_text, &brightness);
 }
 
 static void power_menu_display_backlight_time_callback(const void* item, void* context) {

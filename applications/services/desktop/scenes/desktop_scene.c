@@ -4,7 +4,6 @@
 #include "../scene.h"
 #include "../elements.h"
 #include "../desktop_i.h"
-#include "scene_events.h"
 
 #define TAG "Desktop"
 
@@ -67,12 +66,11 @@ static bool desktop_input(InputEvent* event, void* context) {
             break;
         case InputKey4:
             with_view_model(view, DesktopViewModel * model, { model->settings_pressed = true; }, true);
-            scene_exit(context, desktop);
-            desktop_send_scene_event(desktop, DesktopSceneEventTypeEnterSettingsMenu, NULL);
+            desktop_send_scene_event(desktop, DesktopSceneEventTypeEnterSettingsMenu, context);
             consumed = true;
             break;
         case InputKeySw:
-            desktop_send_scene_event(desktop, DesktopSceneEventTypeEnterDebugMenu, NULL);
+            desktop_send_scene_event(desktop, DesktopSceneEventTypeOpenDebugMenu, NULL);
             consumed = true;
             break;
         default:
@@ -111,9 +109,23 @@ static void desktop_on_alloc(Scene* scene, void* context) {
     view_set_input_callback(view, desktop_input, scene);
 }
 
+static void desktop_on_exit(Scene* scene, void* app) {
+    View* view = scene_get_view(scene);
+
+    with_view_model(
+        view,
+        DesktopViewModel * model,
+        {
+            model->help_pressed = false;
+            model->power_pressed = false;
+            model->settings_pressed = false;
+        },
+        true);
+}
+
 const SceneCallbacks scene_desktop_callbacks = {
     .on_alloc = desktop_on_alloc,
     .on_enter = NULL,
-    .on_exit = NULL,
+    .on_exit = desktop_on_exit,
     .on_event = NULL,
 };

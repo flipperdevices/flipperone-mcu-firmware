@@ -168,7 +168,7 @@ static void menu_draw_scrollbar(MenuViewModel* model) {
                     {
                         .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
                         .attachTo = CLAY_ATTACH_TO_PARENT,
-                        .offset = {.y = model->scrollbar_offset},
+                        .offset = {.y = model->scrollbar_offset + 1},
                     },
             }){};
         }
@@ -240,6 +240,9 @@ static bool menu_post_layout_callback(void* _model) {
             model->show_scrollbar = true;
             model->scrollbar_len = container_height / content_height;
             model->scrollbar_offset = (-scroll_y) / content_height * scrollbar_data.boundingBox.height;
+        } else {
+            if(model->show_scrollbar == true) need_redraw = true;
+            model->show_scrollbar = false;
         }
     }
 
@@ -346,6 +349,7 @@ Menu* menu_alloc(View* view) {
 
 void menu_free(Menu* menu) {
     furi_check(menu);
+    menu->callback = NULL;
     with_view_model(
         menu->view,
         MenuViewModel * model,
@@ -366,7 +370,10 @@ void menu_free(Menu* menu) {
             MenuItemArray_clear(model->items);
         },
         false);
-    view_free(menu->view);
+    view_set_layout_callback(menu->view, NULL);
+    view_set_post_layout_callback(menu->view, NULL);
+    view_set_input_callback(menu->view, NULL, NULL);
+    view_free_model(menu->view);
     free(menu);
 }
 

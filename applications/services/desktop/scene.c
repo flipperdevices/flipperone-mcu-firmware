@@ -57,7 +57,6 @@ void scene_exit(Scene* scene, void* app) {
 
 void scene_set_data(Scene* scene, void* data) {
     furi_check(scene);
-    furi_check(scene->data == NULL);
     scene->data = data;
 }
 

@@ -29,7 +29,7 @@
 #define LED_BACKLIGHT_PWM_RESOLUTION 8 // 8-bit PWM for backlight
 #define LED_BACKLIGHT_PWM_FREQ_HZ    40000 // 40kHz PWM for backlight
 
-#define LED_BACKLIGHT_TIME_DEFAULT (15 * 1000)
+#define LED_BACKLIGHT_TIME_DEFAULT (10 * 1000)
 #define LED_BACKLIGHT_TIME_MAX     ((UINT16_MAX) * 100) // I2C: 16-bit register with 100ms resolution
 
 typedef struct {
@@ -293,9 +293,9 @@ static void led_backlight_enable(Led* instance, bool enable) {
 
 static void led_backlight_ping(Led* instance) {
     led_backlight_enable(instance, true);
-    if(!instance->led_state.backlight_always_on) {
-        uint32_t backlight_time;
-        furi_state_get(instance->led_state.backlight_time, &backlight_time);
+    uint32_t backlight_time;
+    furi_state_get(instance->led_state.backlight_time, &backlight_time);
+    if((!instance->led_state.backlight_always_on) && (backlight_time > 0)) {
         furi_event_loop_timer_start(instance->backlight_timer, backlight_time);
     }
 }
@@ -402,7 +402,7 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
         furi_hal_nvm_set_uint32(SETTINGS_LED_BACKLIGHT_TIME, timeout);
 
         furi_event_loop_timer_stop(instance->backlight_timer);
-        if(!instance->led_state.backlight_always_on) {
+        if((!instance->led_state.backlight_always_on) && (timeout > 0)) {
             furi_event_loop_timer_start(instance->backlight_timer, timeout);
         }
         result = true;
@@ -492,7 +492,7 @@ static Led* led_alloc(void) {
     instance->led_state.backlight_time = furi_state_alloc(sizeof(uint32_t));
     uint32_t backlight_time_value = 0;
     FuriHalNvmStorage res = furi_hal_nvm_get_uint32(SETTINGS_LED_BACKLIGHT_TIME, &backlight_time_value);
-    if((res != FuriHalNvmStorageOK) || (backlight_time_value == 0) || (backlight_time_value > LED_BACKLIGHT_TIME_MAX)) {
+    if((res != FuriHalNvmStorageOK) || (backlight_time_value > LED_BACKLIGHT_TIME_MAX)) {
         backlight_time_value = LED_BACKLIGHT_TIME_DEFAULT;
         FURI_LOG_E(TAG, "Failed to read %s from NVM, defaulting to %lu", SETTINGS_LED_BACKLIGHT_TIME, backlight_time_value);
         furi_hal_nvm_set_uint32(SETTINGS_LED_BACKLIGHT_TIME, backlight_time_value);
@@ -565,7 +565,7 @@ void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness) {
 
 bool led_backlight_set_time(Led* instance, uint32_t timeout_ms) {
     furi_check(instance);
-    if((timeout_ms == 0) || (timeout_ms > LED_BACKLIGHT_TIME_MAX)) {
+    if(timeout_ms > LED_BACKLIGHT_TIME_MAX) {
         return false;
     }
 

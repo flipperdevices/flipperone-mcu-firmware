@@ -1,67 +1,91 @@
-#include <assets.h>
-#include <gui/gui.h>
-#include <gui/clay_helper.h>
-#include <gui/modules/menu.h>
-#include "../scene.h"
-#include "../elements.h"
 #include "../desktop_i.h"
-#include "scene_events.h"
+#include "../scene.h"
+#include <gui/modules/menu.h>
+#include <led/led.h>
 
 #define TAG "SettingsMenu"
 
-static const char* test_options[] = {
-    "Option 1",
-    "Option 2",
-    "Option 3",
-};
+typedef enum {
+    SettingsMenuItemDisplay = 0,
+    SettingsMenuItemPower,
+    SettingsMenuItemSelfCheck,
+    SettingsMenuItemMaskrom,
+    SettingsMenuItemTesting,
+    SettingsMenuItemInfo,
+} SettingsMenuItem;
+
+typedef struct {
+    Desktop* desktop;
+    Menu* menu;
+    MenuItem* brightness_item;
+    FuriStateSub* brightness_state_sub;
+} SettingsMenuData;
 
 static void settings_menu_item_callback(MenuItem* item, size_t item_id, void* context) {
+    furi_check(context);
+    Scene* scene = context;
+    SettingsMenuData* scene_data = scene_get_data(scene);
+
     if(item == NULL) {
         FURI_LOG_I(TAG, "Exit");
-        // scene_exit(scene, desktop);
+        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeReturnToDesktop, scene);
     } else {
-        size_t selector_index = 0;
-        if(item_id == 3) {
-            selector_index = menu_item_selector_get_value((Menu*)context, item);
+        if(item_id == SettingsMenuItemDisplay) {
+            desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterDisplaySettings, scene);
         }
-        FURI_LOG_I(TAG, "Item selected: %u %u", item_id, selector_index);
+        FURI_LOG_I(TAG, "Item selected: %u", item_id);
     }
 }
 
-static void settings_selector_callback(MenuItem* item, size_t selector_index, void* context) {
-    FURI_LOG_I(TAG, "Selector changed: %u", selector_index);
-    menu_item_selector_set_value((Menu*)context, item, selector_index, test_options[selector_index]);
+static void brightness_state_callback(const void* item, void* context) {
+    uint8_t* brightness = (uint8_t*)item;
+    furi_check(context);
+    SettingsMenuData* scene_data = context;
+
+    FuriString* backlight_text = furi_string_alloc();
+    if(*brightness == 0) {
+        furi_string_printf(backlight_text, "Backlight OFF");
+    } else {
+        furi_string_printf(backlight_text, "Backlight %lu%%", (uint32_t)*brightness * 100 / 255);
+    }
+    menu_item_sublabel_set(scene_data->menu, scene_data->brightness_item, furi_string_get_cstr(backlight_text));
+    furi_string_free(backlight_text);
 }
 
-static void settings_menu_on_alloc(Scene* scene, void* context) {
+static void settings_menu_on_enter(Scene* scene, void* context) {
     View* view = scene_get_view(scene);
-    scene_set_data(scene, context);
+    SettingsMenuData* scene_data = malloc(sizeof(SettingsMenuData));
+    scene_data->desktop = context;
+    scene_set_data(scene, scene_data);
 
-    Menu* menu = menu_alloc(view);
-    menu_set_callback(menu, settings_menu_item_callback, menu);
-    menu_set_title(menu, "> Settings");
+    scene_data->menu = menu_alloc(view);
+    menu_set_callback(scene_data->menu, settings_menu_item_callback, scene);
+    menu_set_title(scene_data->menu, "> Settings");
 
-    MenuItem* item = menu_add_item(menu, "Display", 0, MenuItemSubTypeLabel);
-    menu_item_sublabel_set(menu, item, "Backlight 10%");
+    scene_data->brightness_item = menu_add_item(scene_data->menu, "Display", SettingsMenuItemDisplay, MenuItemSubTypeLabel);
+    Led* led = furi_record_open(RECORD_LEDS);
+    scene_data->brightness_state_sub = furi_state_subscribe(led_get_brightness_state(led, LedGroupDisplayBacklight), brightness_state_callback, scene_data);
+    furi_record_close(RECORD_LEDS);
 
-    menu_add_item(menu, "Power Management", 1, MenuItemSubTypeNone);
-    menu_add_item(menu, "Self Check", 2, MenuItemSubTypeNone);
+    menu_add_item(scene_data->menu, "Power Management", SettingsMenuItemPower, MenuItemSubTypeNone);
+    menu_add_item(scene_data->menu, "Self Check", SettingsMenuItemSelfCheck, MenuItemSubTypeNone);
+    menu_add_item(scene_data->menu, "Maskrom", SettingsMenuItemMaskrom, MenuItemSubTypeNone);
+    menu_add_item(scene_data->menu, "Testing", SettingsMenuItemTesting, MenuItemSubTypeNone);
+    menu_add_item(scene_data->menu, "Info", SettingsMenuItemInfo, MenuItemSubTypeNone);
+}
 
-    item = menu_add_item(menu, "Line 3", 3, MenuItemSubTypeSelector);
-    menu_item_selector_configure(menu, item, COUNT_OF(test_options), settings_selector_callback);
-    menu_item_selector_set_value(menu, item, 0, test_options[0]);
-
-    FuriString* line_name = furi_string_alloc();
-    for(size_t i = 0; i < 10; i++) {
-        furi_string_printf(line_name, "Line %u", i + 4);
-        menu_add_item(menu, furi_string_get_cstr(line_name), i + 4, MenuItemSubTypeNone);
-    }
-    furi_string_free(line_name);
+static void settings_menu_on_exit(Scene* scene, void* context) {
+    UNUSED(context);
+    SettingsMenuData* scene_data = scene_get_data(scene);
+    furi_state_unsubscribe(scene_data->brightness_state_sub);
+    menu_free(scene_data->menu);
+    free(scene_data);
+    scene_set_data(scene, NULL);
 }
 
 const SceneCallbacks scene_settings_menu_callbacks = {
-    .on_alloc = settings_menu_on_alloc,
-    .on_enter = NULL,
-    .on_exit = NULL,
+    .on_alloc = NULL,
+    .on_enter = settings_menu_on_enter,
+    .on_exit = settings_menu_on_exit,
     .on_event = NULL,
 };

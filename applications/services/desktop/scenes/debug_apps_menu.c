@@ -4,7 +4,6 @@
 #include "../scene.h"
 #include "../elements.h"
 #include "../desktop_i.h"
-#include "scene_events.h"
 
 #define TAG "DebugApps"
 

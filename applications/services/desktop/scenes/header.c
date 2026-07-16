@@ -3,8 +3,8 @@
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include "../scene.h"
-#include "scene_events.h"
 #include <power/power.h>
+#include "../desktop_i.h"
 
 #define TAG "Header"
 

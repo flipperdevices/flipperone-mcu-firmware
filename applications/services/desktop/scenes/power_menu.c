@@ -6,7 +6,6 @@
 #include "../elements.h"
 #include "../desktop.h"
 #include "../desktop_i.h"
-#include "scene_events.h"
 
 extern int32_t cpu_app(void* p);
 

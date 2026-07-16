@@ -5,7 +5,6 @@
 #include <gui/gui.h>
 #include <assets.h>
 #include "scenes/scenes.h"
-#include "scenes/scene_events.h"
 
 #define DESKTOP_APP_MESSAGE_QUEUE_SIZE         4
 #define DESKTOP_SCENE_EVENT_MESSAGE_QUEUE_SIZE 16
@@ -45,6 +44,7 @@ struct Desktop {
     Scene* header_scene;
     Scene* power_menu_scene;
     Scene* settings_menu_scene;
+    Scene* display_settings_scene;
     Scene* debug_menu_scene;
 
     FuriEventLoop* event_loop;
@@ -181,11 +181,26 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         }
         consumed = true;
         break;
+    case DesktopSceneEventTypeReturnToDesktop:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->main_scene, desktop);
+        consumed = true;
+        break;
     case DesktopSceneEventTypeEnterSettingsMenu:
+        if(message.data) scene_exit(message.data, desktop);
         scene_enter(desktop->settings_menu_scene, desktop);
         consumed = true;
         break;
-    case DesktopSceneEventTypeEnterDebugMenu:
+    case DesktopSceneEventTypeEnterDisplaySettings:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->display_settings_scene, desktop);
+        consumed = true;
+        break;
+    // case DesktopSceneEventTypeEnterPowerSettings:
+    //     scene_enter(desktop->power_settings_scene, desktop);
+    //     consumed = true;
+    //     break;
+    case DesktopSceneEventTypeOpenDebugMenu:
         scene_enter(desktop->debug_menu_scene, desktop);
         consumed = true;
         break;
@@ -218,14 +233,18 @@ static Desktop* desktop_alloc(void) {
     desktop->main_scene = scene_alloc(&scene_desktop_callbacks, desktop);
     desktop->power_menu_scene = scene_alloc(&scene_power_menu_callbacks, desktop);
     desktop->settings_menu_scene = scene_alloc(&scene_settings_menu_callbacks, desktop);
+    desktop->display_settings_scene = scene_alloc(&scene_display_settings_callbacks, desktop);
     desktop->debug_menu_scene = scene_alloc(&scene_debug_menu_callbacks, desktop);
 
     gui_add_view(desktop->gui, scene_get_view(desktop->header_scene), GuiViewPriorityRoot);
 
     gui_add_view(desktop->gui, scene_get_view(desktop->main_scene), GuiViewPriorityRoot);
     gui_add_view(desktop->gui, scene_get_view(desktop->power_menu_scene), GuiViewPriorityPowerMenu);
+
     gui_add_view(desktop->gui, scene_get_view(desktop->settings_menu_scene), GuiViewPriorityRoot);
-    gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication);
+    gui_add_view(desktop->gui, scene_get_view(desktop->display_settings_scene), GuiViewPriorityRoot);
+
+    // gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication);
 
     scene_enter(desktop->header_scene, desktop);
     scene_enter(desktop->main_scene, desktop);
