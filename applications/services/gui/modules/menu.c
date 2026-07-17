@@ -70,6 +70,7 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
             CLAY_TEXT_CONFIG({
                 .fontId = selected ? FontBig : FontBusy9,
                 .textColor = COLOR_BLACK,
+                .wrapMode = CLAY_TEXT_WRAP_NONE,
             }));
 
         CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}}}){};
@@ -80,6 +81,7 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
                 CLAY_TEXT_CONFIG({
                     .fontId = FontBusy9,
                     .textColor = selected ? COLOR_BLACK : COLOR_GRAY,
+                    .wrapMode = CLAY_TEXT_WRAP_NONE,
                 }));
         }
 

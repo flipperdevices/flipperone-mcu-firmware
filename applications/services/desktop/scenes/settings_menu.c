@@ -29,11 +29,18 @@ static void settings_menu_item_callback(MenuItem* item, size_t item_id, void* co
     if(item == NULL) {
         FURI_LOG_I(TAG, "Exit");
         desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeReturnToDesktop, scene);
-    } else {
-        if(item_id == SettingsMenuItemDisplay) {
-            desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterDisplaySettings, scene);
-        }
-        FURI_LOG_I(TAG, "Item selected: %u", item_id);
+    } else if(item_id == SettingsMenuItemDisplay) {
+        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterDisplaySettings, scene);
+    } else if(item_id == SettingsMenuItemPower) {
+        // desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterPowerSettings, scene);
+    } else if(item_id == SettingsMenuItemSelfCheck) {
+        //
+    } else if(item_id == SettingsMenuItemMaskrom) {
+        desktop_start_cpu(true);
+    } else if(item_id == SettingsMenuItemTesting) {
+        // desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeOpenDebugMenu, NULL);
+    } else if(item_id == SettingsMenuItemInfo) {
+        // desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeOpenDebugMenu, NULL);
     }
 }
 

@@ -1,6 +1,7 @@
 #include "desktop.h"
 #include "desktop_i.h"
 #include <applications.h>
+#include <power/power.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
 #include <assets.h>
@@ -277,4 +278,34 @@ bool desktop_start_app(const FlipperInternalApplication* app) {
     furi_record_close(RECORD_DESKTOP);
 
     return true;
+}
+
+extern int32_t cpu_app(void* p);
+
+static const FlipperInternalApplication cpu_app_start = {
+    .app = cpu_app,
+    .name = "CPU App",
+    .appid = "cpu",
+    .stack_size = 1024 * 4,
+    .flags = FlipperInternalApplicationFlagDefault,
+    .args = "start",
+};
+
+static const FlipperInternalApplication cpu_app_maskrom = {
+    .app = cpu_app,
+    .name = "CPU App",
+    .appid = "cpu",
+    .stack_size = 1024 * 4,
+    .flags = FlipperInternalApplicationFlagDefault,
+    .args = "maskrom",
+};
+
+void desktop_start_cpu(bool to_maskrom) {
+    desktop_start_app(to_maskrom ? &cpu_app_maskrom : &cpu_app_start);
+}
+
+void desktop_power_off(void) {
+    Power* power_off = furi_record_open(RECORD_POWER);
+    power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
+    furi_record_close(RECORD_POWER);
 }
