@@ -328,6 +328,7 @@ static bool menu_input_callback(InputEvent* event, void* context) {
             if(menu->callback) {
                 menu->callback(NULL, 0, menu->context);
             }
+            consumed = true;
         }
     }
 

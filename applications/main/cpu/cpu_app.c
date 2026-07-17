@@ -3,6 +3,7 @@
 #include <furi_bsp.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
+#include <gui/modules/popup_menu.h>
 #include <drivers/display/display_jd9853_reg.h>
 #include <drivers/spi_get_frame/spi_get_frame.h>
 #include <assets.h>
@@ -13,16 +14,15 @@
 
 #define TAG "CpuApp"
 
-#define CPU_APP_MENU_ID(x) CLAY_SIDI(CLAY_STRING("CpuAppMenu"), x)
-
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
 
 #define CPU_ARG_START   "start"
 #define CPU_ARG_MASKROM "maskrom"
 
-#define CPU_APP_MENU_REBOOT   "CPU Reboot"
-#define CPU_APP_MENU_CLOSE    "CPU Power Off"
-#define CPU_APP_MENU_SHUTDOWN "CPU Shutdown"
+typedef enum {
+    CpuMenuItemStop = 0,
+    CpuMenuItemReboot,
+} CpuMenuItem;
 
 typedef struct {
     Image frame;
@@ -32,7 +32,7 @@ typedef enum {
     CpuAppMessageTypeStart,
     CpuAppMessageTypeReset,
     CpuAppMessageTypeMaskrom,
-    CpuAppMessageTypeClose,
+    CpuAppMessageTypeShutdown,
     CpuAppMessageTypeNewFrame,
 } CpuAppMessageType;
 
@@ -48,10 +48,13 @@ typedef struct {
 
 typedef struct {
     Gui* gui;
-    View* view;
+    View* display_view;
+    View* menu_view;
+    PopupMenu* menu;
     FuriEventLoop* event_loop;
     FuriMessageQueue* app_queue;
     SpiGetFrame* spi_get_frame;
+    size_t skip_frames;
 } CpuApp;
 
 static void furi_hal_reset_pd_and_charger(void) {
@@ -139,7 +142,7 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     model->frame = display_starting;
-    return false;
+    return true;
 }
 
 static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
@@ -151,7 +154,7 @@ static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
 
 static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* model, void* context), void* context) {
     bool update;
-    with_view_model(instance->view, CpuAppModel * model, { update = callback(model, context); }, update);
+    with_view_model(instance->display_view, CpuAppModel * model, { update = callback(model, context); }, update);
 }
 
 static void __isr __not_in_flash_func(cpu_app_spi_get_frame_isr)(uint8_t* data, size_t size, void* context) {
@@ -189,8 +192,10 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_hal_bsp_linux_reset();
             furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             furi_hal_bsp_linux_start();
+            instance->skip_frames = 2;
+            cpu_app_model_apply(instance, cpu_app_model_init, NULL);
             break;
-        case CpuAppMessageTypeClose:
+        case CpuAppMessageTypeShutdown:
             furi_hal_reset_pd_and_charger();
             furi_hal_bsp_linux_reset();
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
@@ -202,7 +207,11 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_hal_bsp_linux_maskrom();
             break;
         case CpuAppMessageTypeNewFrame:
-            cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
+            if (instance->skip_frames > 0) {
+                instance->skip_frames--;
+            } else {
+                cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
+            }
             break;
         default:
             furi_assert(false);
@@ -211,26 +220,22 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     }
 }
 
-void cpu_app_menu_close_click_callback(bool pressed, void* context) {
-    furi_check(context);
-    CpuApp* instance = context;
-    if(!pressed) {
-        cpu_app_send_message(instance, CpuAppMessageTypeClose);
-    }
-}
+// void cpu_app_menu_shutdown_click_callback(bool pressed, void* context) {
+//     furi_check(context);
+//     CpuApp* instance = context;
+//     i2c_negotiator_input_sw_button_event(SwPowerKey, pressed, NULL);
+// }
 
-void cpu_app_menu_restart_click_callback(bool pressed, void* context) {
+static void cpu_app_menu_item_selected(size_t item_id, void* context) {
     furi_check(context);
     CpuApp* instance = context;
-    if(!pressed) {
+
+    if(item_id == CpuMenuItemStop) {
+        cpu_app_send_message(instance, CpuAppMessageTypeShutdown);
+    } else if(item_id == CpuMenuItemReboot) {
+        popup_menu_set_visible(instance->menu, false);
         cpu_app_send_message(instance, CpuAppMessageTypeReset);
     }
-}
-
-void cpu_app_menu_shutdown_click_callback(bool pressed, void* context) {
-    furi_check(context);
-    CpuApp* instance = context;
-    i2c_negotiator_input_sw_button_event(SwPowerKey, pressed, NULL);
 }
 
 static CpuApp* cpu_app_alloc(void) {
@@ -244,29 +249,35 @@ static CpuApp* cpu_app_alloc(void) {
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->app_queue, FuriEventLoopEventIn, cpu_app_message_logic, instance);
 
-    instance->view = view_alloc();
-    view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(CpuAppModel));
+    instance->display_view = view_alloc();
+    view_allocate_model(instance->display_view, ViewModelTypeLockFree, sizeof(CpuAppModel));
     cpu_app_model_apply(instance, cpu_app_model_init, NULL);
 
-    view_set_layout_callback(instance->view, cpu_app_layout);
-    gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
+    view_set_layout_callback(instance->display_view, cpu_app_layout);
+    gui_add_view(instance->gui, instance->display_view, GuiViewPriorityApplication);
 
-    //add some test menu items
-    power_menu_add_menu_item(CPU_APP_MENU_SHUTDOWN, (PowerMenuClickWithContext){.callback = cpu_app_menu_shutdown_click_callback, .context = instance});
-    power_menu_add_menu_item(CPU_APP_MENU_REBOOT, (PowerMenuClickWithContext){.callback = cpu_app_menu_restart_click_callback, .context = instance});
-    power_menu_add_menu_item(CPU_APP_MENU_CLOSE, (PowerMenuClickWithContext){.callback = cpu_app_menu_close_click_callback, .context = instance});
+    instance->menu_view = view_alloc();
+    instance->menu = popup_menu_alloc(instance->menu_view);
+    popup_menu_set_callback(instance->menu, cpu_app_menu_item_selected, instance);
+    popup_menu_set_title(instance->menu, "Flipper OS");
+    popup_menu_add_item(instance->menu, "Stop", CpuMenuItemStop);
+    popup_menu_add_item(instance->menu, "Reboot", CpuMenuItemReboot);
+
+    gui_add_view(instance->gui, instance->menu_view, GuiViewPriorityPowerMenu);
 
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
-    power_menu_remove_menu_item(CPU_APP_MENU_SHUTDOWN);
-    power_menu_remove_menu_item(CPU_APP_MENU_REBOOT);
-    power_menu_remove_menu_item(CPU_APP_MENU_CLOSE);
+    gui_remove_view(instance->gui, instance->display_view);
+    gui_remove_view(instance->gui, instance->menu_view);
+    popup_menu_free(instance->menu);
 
-    gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
-    view_free(instance->view);
+
+    view_free(instance->display_view);
+    view_free(instance->menu_view);
+
     furi_event_loop_unsubscribe(instance->event_loop, instance->app_queue);
     furi_event_loop_free(instance->event_loop);
     furi_message_queue_free(instance->app_queue);

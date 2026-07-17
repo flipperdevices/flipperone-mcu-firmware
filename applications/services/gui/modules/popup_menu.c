@@ -135,6 +135,10 @@ static bool popup_menu_layout_callback(void* _model) {
     PopupMenuViewModel* model = _model;
     furi_assert(model);
 
+    if(model->visible == false) {
+        return false;
+    }
+
     CLAY_AUTO_ID({
         .backgroundColor = (Clay_Color){0xFF, 0xFF, 0xFF, 0xFF / 2},
         .layout =
@@ -179,6 +183,10 @@ static bool popup_menu_post_layout_callback(void* _model) {
     PopupMenuViewModel* model = _model;
     furi_check(model);
 
+    if(model->visible == false) {
+        return false;
+    }
+
     bool need_redraw = false;
 
     Clay_ElementId scrollable_container = CLAY_ID("PopupMenuItems");
@@ -210,6 +218,17 @@ static bool popup_menu_input_callback(InputEvent* event, void* context) {
     PopupMenu* menu = context;
     bool consumed = false;
 
+    bool visible = false;
+    with_view_model(menu->view, PopupMenuViewModel * model, { visible = model->visible; }, false);
+    if(!visible) {
+        if(event->type == InputTypePress && event->key == InputKeyPower) {
+            with_view_model(menu->view, PopupMenuViewModel * model, { model->visible = true; }, true);
+            consumed = true;
+        }
+
+        return consumed;
+    }
+
     if(event->type == InputTypePress && event->key == InputKeyOk) {
         size_t selected_id = 0;
         PopupMenuItem* selected_item = NULL;
@@ -226,14 +245,16 @@ static bool popup_menu_input_callback(InputEvent* event, void* context) {
             menu->callback(selected_id, menu->context);
         }
         consumed = true;
+    } else if(event->type == InputTypePress && (event->key == InputKeyPower || event->key == InputKeyBack)) {
+        with_view_model(menu->view, PopupMenuViewModel * model, { model->visible = false; }, true);
+        if(menu->callback) {
+            menu->callback(POPUP_MENU_EXIT_ID, menu->context);
+        }
+        consumed = true;
     } else if(event->type == InputTypePress || event->type == InputTypeRepeat) {
         if(event->key == InputKeyUp || event->key == InputKeyDown) {
             popup_menu_process_up_down(menu, event->key == InputKeyUp ? -1 : 1);
             consumed = true;
-        } else if(event->key == InputKeyBack) {
-            if(menu->callback) {
-                menu->callback(POPUP_MENU_EXIT_ID, menu->context);
-            }
         }
     }
 

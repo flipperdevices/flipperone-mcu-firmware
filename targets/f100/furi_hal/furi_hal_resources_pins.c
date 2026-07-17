@@ -74,7 +74,7 @@ const size_t gpio_pins_count = COUNT_OF(gpio_pins);
 const InputPin input_pins[] = {
     {.key = InputKey1, .inverted = true, .name = "Key1"},
     {.key = InputKey2, .inverted = true, .name = "Key2"},
-    {.key = InputKey3, .inverted = true, .name = "Power"},
+    {.key = InputKeyPower, .inverted = true, .name = "Power"},
     {.key = InputKey4, .inverted = true, .name = "Key4"},
     {.key = InputKey5, .inverted = true, .name = "Key5"},
     {.key = InputKeyBack, .inverted = true, .name = "Back"},

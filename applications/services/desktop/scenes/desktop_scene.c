@@ -59,7 +59,7 @@ static bool desktop_input(InputEvent* event, void* context) {
             with_view_model(view, DesktopViewModel * model, { model->help_pressed = true; }, true);
             consumed = true;
             break;
-        case InputKey3:
+        case InputKeyPower:
             with_view_model(view, DesktopViewModel * model, { model->power_pressed = true; }, true);
             desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, NULL);
             consumed = true;
@@ -82,7 +82,7 @@ static bool desktop_input(InputEvent* event, void* context) {
             with_view_model(view, DesktopViewModel * model, { model->help_pressed = false; }, true);
             consumed = true;
             break;
-        case InputKey3:
+        case InputKeyPower:
             with_view_model(view, DesktopViewModel * model, { model->power_pressed = false; }, true);
             consumed = true;
             break;

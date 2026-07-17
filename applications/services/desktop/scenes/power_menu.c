@@ -12,6 +12,11 @@ typedef enum {
     PowerMenuItemPowerOff,
 } PowerMenuItem;
 
+typedef struct {
+    Desktop* desktop;
+    PopupMenu* menu;
+} PowerMenuData;
+
 static void power_menu_item_selected(size_t item_id, void* context) {
     Desktop* desktop = context;
     if(item_id == POPUP_MENU_EXIT_ID) {
@@ -26,21 +31,30 @@ static void power_menu_item_selected(size_t item_id, void* context) {
 }
 
 static void power_menu_on_alloc(Scene* scene, void* context) {
-    Desktop* desktop = context;
+    PowerMenuData* scene_data = malloc(sizeof(PowerMenuData));
+    scene_data->desktop = context;
+    scene_set_data(scene, scene_data);
+
     View* view = scene_get_view(scene);
     furi_check(view);
 
-    scene_set_data(scene, desktop);
+    scene_data->menu = popup_menu_alloc(view);
+    popup_menu_set_callback(scene_data->menu, power_menu_item_selected, scene_data->desktop);
+    popup_menu_add_item(scene_data->menu, "Start Flipper OS", PowerMenuItemStartCpu);
+    popup_menu_add_item(scene_data->menu, "Power Off", PowerMenuItemPowerOff);
+}
 
-    PopupMenu* menu = popup_menu_alloc(view);
-    popup_menu_set_callback(menu, power_menu_item_selected, desktop);
-    popup_menu_add_item(menu, "Start Flipper OS", PowerMenuItemStartCpu);
-    popup_menu_add_item(menu, "Power Off", PowerMenuItemPowerOff);
+static void power_menu_on_enter(Scene* scene, void* app) {
+    PowerMenuData* scene_data = scene_get_data(scene);
+    furi_check(scene_data);
+
+    popup_menu_set_position(scene_data->menu, PowerMenuItemStartCpu);
+    popup_menu_set_visible(scene_data->menu, true);
 }
 
 const SceneCallbacks scene_power_menu_callbacks = {
     .on_alloc = power_menu_on_alloc,
-    .on_enter = NULL,
+    .on_enter = power_menu_on_enter,
     .on_exit = NULL,
     .on_event = NULL,
 };
