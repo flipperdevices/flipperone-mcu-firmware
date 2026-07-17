@@ -1,8 +1,8 @@
 #include <assets.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
+#include <gui/modules/elements.h>
 #include "../scene.h"
-#include "../elements.h"
 #include "../desktop_i.h"
 
 #define TAG "DebugApps"

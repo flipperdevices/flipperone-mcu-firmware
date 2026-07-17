@@ -1,7 +1,7 @@
 #include <assets.h>
 #include <furi.h>
 #include <gui/clay_helper.h>
-#include "elements.h"
+#include <gui/modules/elements.h>
 
 void elements_softkey_button_element(size_t index, const char* text, bool active, bool pressed) {
     furi_check(text);

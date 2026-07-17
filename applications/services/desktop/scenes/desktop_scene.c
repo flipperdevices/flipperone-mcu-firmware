@@ -1,15 +1,14 @@
 #include <assets.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
+#include <gui/modules/elements.h>
 #include "../scene.h"
-#include "../elements.h"
 #include "../desktop_i.h"
 
 #define TAG "Desktop"
 
 typedef struct {
     bool help_pressed;
-    bool power_pressed;
     bool settings_pressed;
     Desktop* desktop;
 } DesktopViewModel;
@@ -41,7 +40,7 @@ static bool desktop_layout(void* _model) {
         }
 
         elements_softkey_button_element(1, "Help", false, model->help_pressed);
-        elements_softkey_button_element(2, "Power", desktop_get_power_menu_state(model->desktop), model->power_pressed);
+        elements_softkey_button_element(2, "Power", false, false);
         elements_softkey_button_element(3, "Settings", false, model->settings_pressed);
     }
 
@@ -60,7 +59,6 @@ static bool desktop_input(InputEvent* event, void* context) {
             consumed = true;
             break;
         case InputKeyPower:
-            with_view_model(view, DesktopViewModel * model, { model->power_pressed = true; }, true);
             desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, NULL);
             consumed = true;
             break;
@@ -80,10 +78,6 @@ static bool desktop_input(InputEvent* event, void* context) {
         switch(event->key) {
         case InputKey2:
             with_view_model(view, DesktopViewModel * model, { model->help_pressed = false; }, true);
-            consumed = true;
-            break;
-        case InputKeyPower:
-            with_view_model(view, DesktopViewModel * model, { model->power_pressed = false; }, true);
             consumed = true;
             break;
         case InputKey4:
@@ -117,7 +111,6 @@ static void desktop_on_exit(Scene* scene, void* app) {
         DesktopViewModel * model,
         {
             model->help_pressed = false;
-            model->power_pressed = false;
             model->settings_pressed = false;
         },
         true);

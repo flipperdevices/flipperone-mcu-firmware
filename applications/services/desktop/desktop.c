@@ -141,11 +141,6 @@ static void desktop_app_message_logic(FuriEventLoopObject* object, void* context
     }
 }
 
-bool desktop_get_power_menu_state(Desktop* desktop) {
-    furi_check(desktop);
-    return view_is_enabled(scene_get_view(desktop->power_menu_scene));
-}
-
 void desktop_send_scene_event(Desktop* desktop, uint32_t event, void* data) {
     furi_check(desktop);
 
@@ -175,7 +170,7 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
     // TODO: think about a better way to handle this, maybe a scene stack or something
     switch(message.event) {
     case DesktopSceneEventTypeTogglePowerMenu:
-        if(desktop_get_power_menu_state(desktop)) {
+        if(message.data) {
             scene_exit(desktop->power_menu_scene, desktop);
         } else {
             scene_enter(desktop->power_menu_scene, desktop);

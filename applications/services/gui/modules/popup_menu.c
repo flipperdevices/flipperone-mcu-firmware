@@ -2,6 +2,7 @@
 #include <m-array.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
+#include <gui/modules/elements.h>
 #include <assets.h>
 
 #define TAG "GuiPopupMenu"
@@ -28,6 +29,7 @@ typedef struct {
     PopupMenuItemArray_t items;
     size_t position;
     bool visible;
+    bool power_pressed;
 } PopupMenuViewModel;
 
 static void popup_menu_draw_item(PopupMenuItem* item, size_t line_index, bool selected) {
@@ -175,6 +177,7 @@ static bool popup_menu_layout_callback(void* _model) {
             popup_menu_draw_item_list(model);
         }
     }
+    elements_softkey_button_element(2, "Power", true, model->power_pressed);
 
     return false;
 }
@@ -222,7 +225,14 @@ static bool popup_menu_input_callback(InputEvent* event, void* context) {
     with_view_model(menu->view, PopupMenuViewModel * model, { visible = model->visible; }, false);
     if(!visible) {
         if(event->type == InputTypePress && event->key == InputKeyPower) {
-            with_view_model(menu->view, PopupMenuViewModel * model, { model->visible = true; }, true);
+            with_view_model(
+                menu->view,
+                PopupMenuViewModel * model,
+                {
+                    model->visible = true;
+                    model->power_pressed = true;
+                },
+                true);
             consumed = true;
         }
 
@@ -251,12 +261,16 @@ static bool popup_menu_input_callback(InputEvent* event, void* context) {
             menu->callback(POPUP_MENU_EXIT_ID, menu->context);
         }
         consumed = true;
+    } else if(event->type == InputTypeRelease && event->key == InputKeyPower) {
+        with_view_model(menu->view, PopupMenuViewModel * model, { model->power_pressed = false; }, true);
     } else if(event->type == InputTypePress || event->type == InputTypeRepeat) {
         if(event->key == InputKeyUp || event->key == InputKeyDown) {
             popup_menu_process_up_down(menu, event->key == InputKeyUp ? -1 : 1);
             consumed = true;
         }
     }
+
+    consumed = true; // Consume all input events when the popup menu is visible
 
     return consumed;
 }
@@ -267,7 +281,14 @@ PopupMenu* popup_menu_alloc(View* view) {
     menu->view = view;
 
     view_allocate_model(menu->view, ViewModelTypeLockFree, sizeof(PopupMenuViewModel));
-    with_view_model(menu->view, PopupMenuViewModel * model, { PopupMenuItemArray_init(model->items); }, false);
+    with_view_model(
+        menu->view,
+        PopupMenuViewModel * model,
+        {
+            PopupMenuItemArray_init(model->items);
+            model->power_pressed = true;
+        },
+        false);
 
     view_set_layout_callback(menu->view, popup_menu_layout_callback);
     view_set_post_layout_callback(menu->view, popup_menu_post_layout_callback);
@@ -334,7 +355,14 @@ void popup_menu_set_position(PopupMenu* menu, size_t item_id) {
 
 void popup_menu_set_visible(PopupMenu* menu, bool visible) {
     furi_check(menu);
-    with_view_model(menu->view, PopupMenuViewModel * model, { model->visible = visible; }, true);
+    with_view_model(
+        menu->view,
+        PopupMenuViewModel * model,
+        {
+            model->visible = visible;
+            model->power_pressed = true;
+        },
+        true);
 }
 
 void popup_menu_set_callback(PopupMenu* menu, PopupMenuCallback callback, void* context) {
