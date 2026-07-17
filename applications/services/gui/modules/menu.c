@@ -317,17 +317,17 @@ static bool menu_input_callback(InputEvent* event, void* context) {
             menu->callback(selected_item, selected_id, menu->context);
         }
         consumed = true;
+    } else if(event->type == InputTypePress && event->key == InputKeyBack) {
+        if(menu->callback) {
+            menu->callback(NULL, 0, menu->context);
+        }
+        consumed = true;
     } else if(event->type == InputTypePress || event->type == InputTypeRepeat) {
         if(event->key == InputKeyUp || event->key == InputKeyDown) {
             menu_process_up_down(menu, event->key == InputKeyUp ? -1 : 1);
             consumed = true;
         } else if(event->key == InputKeyLeft || event->key == InputKeyRight) {
             menu_process_left_right(menu, event->key == InputKeyLeft ? -1 : 1);
-            consumed = true;
-        } else if(event->key == InputKeyBack) {
-            if(menu->callback) {
-                menu->callback(NULL, 0, menu->context);
-            }
             consumed = true;
         }
     }

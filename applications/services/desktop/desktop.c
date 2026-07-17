@@ -46,6 +46,9 @@ struct Desktop {
     Scene* power_menu_scene;
     Scene* settings_menu_scene;
     Scene* display_settings_scene;
+    Scene* power_settings_scene;
+    Scene* testing_menu_scene;
+    Scene* leds_menu_scene;
     Scene* debug_menu_scene;
 
     FuriEventLoop* event_loop;
@@ -165,8 +168,6 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
 
     bool consumed = false;
 
-    // FURI_LOG_I(TAG, "ev %lu", message.event);
-
     // TODO: think about a better way to handle this, maybe a scene stack or something
     switch(message.event) {
     case DesktopSceneEventTypeTogglePowerMenu:
@@ -192,10 +193,21 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         scene_enter(desktop->display_settings_scene, desktop);
         consumed = true;
         break;
-    // case DesktopSceneEventTypeEnterPowerSettings:
-    //     scene_enter(desktop->power_settings_scene, desktop);
-    //     consumed = true;
-    //     break;
+    case DesktopSceneEventTypeEnterPowerSettings:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->power_settings_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterTestingMenu:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->testing_menu_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterLedsMenu:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->leds_menu_scene, desktop);
+        consumed = true;
+        break;
     case DesktopSceneEventTypeOpenDebugMenu:
         scene_enter(desktop->debug_menu_scene, desktop);
         consumed = true;
@@ -230,6 +242,9 @@ static Desktop* desktop_alloc(void) {
     desktop->power_menu_scene = scene_alloc(&scene_power_menu_callbacks, desktop);
     desktop->settings_menu_scene = scene_alloc(&scene_settings_menu_callbacks, desktop);
     desktop->display_settings_scene = scene_alloc(&scene_display_settings_callbacks, desktop);
+    desktop->power_settings_scene = scene_alloc(&scene_power_settings_callbacks, desktop);
+    desktop->testing_menu_scene = scene_alloc(&scene_testing_menu_callbacks, desktop);
+    desktop->leds_menu_scene = scene_alloc(&scene_leds_menu_callbacks, desktop);
     desktop->debug_menu_scene = scene_alloc(&scene_debug_menu_callbacks, desktop);
 
     gui_add_view(desktop->gui, scene_get_view(desktop->header_scene), GuiViewPriorityStatusBar);
@@ -238,6 +253,9 @@ static Desktop* desktop_alloc(void) {
 
     gui_add_view(desktop->gui, scene_get_view(desktop->settings_menu_scene), GuiViewPriorityDesktop);
     gui_add_view(desktop->gui, scene_get_view(desktop->display_settings_scene), GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, scene_get_view(desktop->power_settings_scene), GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, scene_get_view(desktop->testing_menu_scene), GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, scene_get_view(desktop->leds_menu_scene), GuiViewPriorityDesktop);
 
     gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication - 1);
     gui_add_view(desktop->gui, scene_get_view(desktop->power_menu_scene), GuiViewPriorityPowerMenu);
