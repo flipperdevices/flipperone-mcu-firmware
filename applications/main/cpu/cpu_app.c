@@ -9,7 +9,6 @@
 #include <assets.h>
 #include <pd/pd.h>
 #include <power/power.h>
-#include <power_menu/power_menu.h>
 #include <i2c_negotiator/i2c_negotiator.h>
 
 #define TAG "CpuApp"
@@ -207,7 +206,7 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_hal_bsp_linux_maskrom();
             break;
         case CpuAppMessageTypeNewFrame:
-            if (instance->skip_frames > 0) {
+            if(instance->skip_frames > 0) {
                 instance->skip_frames--;
             } else {
                 cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
