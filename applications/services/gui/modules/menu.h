@@ -27,7 +27,7 @@ void menu_set_position(Menu* menu, size_t item_id);
 
 void menu_set_callback(Menu* menu, MenuItemCallback callback, void* context);
 
-MenuItem* menu_add_item(Menu* menu, const char* label, size_t index, MenuItemSubType type);
+MenuItem* menu_add_item(Menu* menu, const char* label, size_t id, MenuItemSubType type);
 
 // TODO: menu_remove_item for dynamic menus, needs dict instead of array
 

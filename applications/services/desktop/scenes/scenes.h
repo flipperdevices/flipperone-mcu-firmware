@@ -1,3 +1,4 @@
+#pragma once
 #include "../scene.h"
 
 extern const SceneCallbacks scene_header_callbacks;

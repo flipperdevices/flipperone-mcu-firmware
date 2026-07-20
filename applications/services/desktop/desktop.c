@@ -151,7 +151,7 @@ void desktop_send_scene_event(Desktop* desktop, uint32_t event, void* data) {
     message.event = event;
     message.data = data;
 
-    furi_message_queue_put(desktop->scene_event_message_queue, &message, 0);
+    furi_check(furi_message_queue_put(desktop->scene_event_message_queue, &message, 0) == FuriStatusOk);
 }
 
 bool furi_crash_handler(bool debug) {

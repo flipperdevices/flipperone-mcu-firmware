@@ -22,6 +22,6 @@ void popup_menu_set_visible(PopupMenu* menu, bool visible);
 
 void popup_menu_set_callback(PopupMenu* menu, PopupMenuCallback callback, void* context);
 
-void popup_menu_add_item(PopupMenu* menu, const char* label, size_t index);
+void popup_menu_add_item(PopupMenu* menu, const char* label, size_t id);
 
 // TODO: popup_menu_remove_item for dynamic menus, needs dict instead of array

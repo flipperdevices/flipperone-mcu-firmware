@@ -472,6 +472,8 @@ void menu_item_selector_set_value(Menu* menu, MenuItem* item, size_t index, cons
     furi_check(menu);
     furi_check(item);
     furi_check(item->type == MenuItemSubTypeSelector);
+    furi_check(item->selector.max_index > 0);
+    furi_check(index < item->selector.max_index);
     with_view_model(
         menu->view,
         MenuViewModel * model,
