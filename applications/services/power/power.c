@@ -12,6 +12,8 @@
 
 #define TAG "Power"
 
+#define BQ25792_IRQ_DEBUG_ENABLE
+
 #define POWER_MAX_MESSAGES            (8)
 #define POWER_INA_SHUNT_RESISTOR_OHMS (0.004f)
 #define POWER_INA_BUS_CURRENT_MAX     (9.0f)
@@ -19,6 +21,9 @@
 #define BQ25792_BAT_MAX_CHARGE_VOLTAGE 8650
 #define BQ25792_BAT_MAX_CHARGE_CURRENT 3000
 #define BQ25792_BAT_MAX_INPUT_CURRENT  3000
+
+#define BQ25792_OTG_WATCHDOG_TIME      Bq25792WatchdogTime0_5s
+#define BQ25792_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
 
 typedef enum {
     PowerEventTypeIsr = (1 << 0),
@@ -33,6 +38,9 @@ struct Power {
     Bq28z620* bq28z620_header;
     FuriMessageQueue* message_queue;
     PowerDevice devices;
+    FuriEventLoopTimer* otg_watchdog_timer;
+    volatile bool otg_enabled;
+    FuriCallbackWithContext otg_overcurrent;
 };
 
 static Bq25792Status power_bq25792_reset_and_load_config(Power* instance) {
@@ -65,10 +73,8 @@ static Bq25792Status power_bq25792_reset_and_load_config(Power* instance) {
     return res;
 }
 
-static void power_bq25792_print_charger_irq(Power* instance) {
-    Bq25792ChargerFlagReg fl = {0};
-    bq25792_get_charger_irq_flags(instance->bq25792_header, &fl);
-
+#ifdef BQ25792_IRQ_DEBUG_ENABLE
+static void power_bq25792_print_charger_irq(Power* instance, Bq25792ChargerFlagReg fl) {
     FuriString* arena = furi_string_alloc();
     furi_string_set(arena, "");
     if(fl.flag0.vbus_present_flag) furi_string_cat_printf(arena, " VBUS_PRESENT");
@@ -79,8 +85,7 @@ static void power_bq25792_print_charger_irq(Power* instance) {
     if(fl.flag0.wd_flag) furi_string_cat_printf(arena, " WD");
     if(fl.flag0.vindpm_flag) furi_string_cat_printf(arena, " VINDPM");
     if(fl.flag0.iindpm_flag) furi_string_cat_printf(arena, " IINDPM");
-    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
-    FURI_LOG_I(TAG, "  IRQ0:    0x%02X %s", fl.data[0], furi_string_get_cstr(arena));
+    if(furi_string_size(arena) != 0) FURI_LOG_I(TAG, "  IRQ0:    0x%02X %s", fl.data[0], furi_string_get_cstr(arena));
 
     furi_string_set(arena, "");
     if(fl.flag1.bc12_done_flag) furi_string_cat_printf(arena, " BC1.2_DONE");
@@ -89,8 +94,7 @@ static void power_bq25792_print_charger_irq(Power* instance) {
     if(fl.flag1.vbus_flag) furi_string_cat_printf(arena, " VBUS");
     if(fl.flag1.ico_flag) furi_string_cat_printf(arena, " ICO");
     if(fl.flag1.chg_flag) furi_string_cat_printf(arena, " CHG");
-    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
-    FURI_LOG_I(TAG, "  IRQ1:    0x%02X %s", fl.data[1], furi_string_get_cstr(arena));
+    if(furi_string_size(arena) != 0) FURI_LOG_I(TAG, "  IRQ1:    0x%02X %s", fl.data[1], furi_string_get_cstr(arena));
 
     furi_string_set(arena, "");
     if(fl.flag2.topoff_tmr_flag) furi_string_cat_printf(arena, " TOPOFF_TMR");
@@ -100,8 +104,7 @@ static void power_bq25792_print_charger_irq(Power* instance) {
     if(fl.flag2.vsys_flag) furi_string_cat_printf(arena, " VSYS");
     if(fl.flag2.adc_done_flag) furi_string_cat_printf(arena, " ADC_DONE");
     if(fl.flag2.dpdm_done_flag) furi_string_cat_printf(arena, " DPDM_DONE");
-    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
-    FURI_LOG_I(TAG, "  IRQ2:    0x%02X %s", fl.data[2], furi_string_get_cstr(arena));
+    if(furi_string_size(arena) != 0) FURI_LOG_I(TAG, "  IRQ2:    0x%02X %s", fl.data[2], furi_string_get_cstr(arena));
 
     furi_string_set(arena, "");
     if(fl.flag3.ts_hot_flag) furi_string_cat_printf(arena, " TS_HOT");
@@ -109,15 +112,25 @@ static void power_bq25792_print_charger_irq(Power* instance) {
     if(fl.flag3.ts_cool_flag) furi_string_cat_printf(arena, " TS_COOL");
     if(fl.flag3.ts_cold_flag) furi_string_cat_printf(arena, " TS_COLD");
     if(fl.flag3.vbatotg_low_flag) furi_string_cat_printf(arena, " VBATOTG_LOW");
-    if(furi_string_size(arena) == 0) furi_string_set(arena, " ---");
-    FURI_LOG_I(TAG, "  IRQ3:    0x%02X %s", fl.data[3], furi_string_get_cstr(arena));
+    if(furi_string_size(arena) != 0) FURI_LOG_I(TAG, "  IRQ3:    0x%02X %s", fl.data[3], furi_string_get_cstr(arena));
     furi_string_free(arena);
 }
+#endif
 
 static void __isr __not_in_flash_func(power_bq25792_event_isr)(void* context) {
     Power* instance = (Power*)context;
     furi_event_loop_set_custom_event(instance->event_loop, PowerEventTypeIsr);
-    power_bq25792_print_charger_irq(instance);
+
+    Bq25792ChargerFlagReg fl = {0};
+    bq25792_get_charger_irq_flags(instance->bq25792_header, &fl);
+
+    if(fl.flag0.iindpm_flag && instance->otg_enabled) {
+        if(instance->otg_overcurrent.callback) instance->otg_overcurrent.callback(instance->otg_overcurrent.context);
+    }
+
+#ifdef BQ25792_IRQ_DEBUG_ENABLE
+    power_bq25792_print_charger_irq(instance, fl);
+#endif
 }
 
 typedef void (*PowerFunction)(void* context, void* param, void* result);
@@ -181,6 +194,80 @@ API_WRAPPER(bq25792_watchdog_reset, Bq25792Status, Bq25792*);
 
 /* Wrapper for power-side BQ25792 reset/config function so it can be queued via PowerMessage */
 API_WRAPPER(power_bq25792_reset_and_load_config, Bq25792Status, Power*);
+
+typedef struct {
+    uint16_t voltage_mv;
+    uint16_t current_ma;
+} PowerBq25792OtgParams;
+
+static void power_bq25792_otg_watchdog_timer_callback(void* context) {
+    furi_assert(context);
+    Power* instance = (Power*)context;
+    if(bq25792_watchdog_reset(instance->bq25792_header) != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "OTG watchdog reset failed");
+    }
+}
+
+static Bq25792Status power_bq25792_set_otg_params_internal(Power* instance, PowerBq25792OtgParams* params) {
+    furi_assert(instance);
+    furi_assert(params);
+    Bq25792Status res = bq25792_set_otg_voltage_mv(instance->bq25792_header, params->voltage_mv);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set OTG voltage: %d", res);
+        return res;
+    }
+    res = bq25792_set_otg_current_ma(instance->bq25792_header, params->current_ma);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set OTG current: %d", res);
+    }
+    return res;
+}
+
+static Bq25792Status power_bq25792_otg_enable_internal(Power* instance, bool enable) {
+    furi_assert(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+
+    if(enable) {
+        res = bq25792_watchdog_set_time(instance->bq25792_header, BQ25792_OTG_WATCHDOG_TIME);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to set OTG watchdog time: %d", res);
+            return res;
+        }
+        res = bq25792_watchdog_reset(instance->bq25792_header);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to reset OTG watchdog: %d", res);
+            return res;
+        }
+        res = bq25792_otg_enable(instance->bq25792_header, true);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to enable OTG: %d", res);
+            return res;
+        }
+        instance->otg_enabled = true;
+        furi_event_loop_timer_start(instance->otg_watchdog_timer, BQ25792_OTG_WATCHDOG_PERIOD_MS);
+    } else {
+        // If OTG disable fails, stop pets so the chip WD resets it for us;
+        // keep WD enabled until OTG is confirmed off.
+        res = bq25792_otg_enable(instance->bq25792_header, false);
+        furi_event_loop_timer_stop(instance->otg_watchdog_timer);
+
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to disable OTG: %d", res);
+            return res;
+        }
+
+        instance->otg_enabled = false;
+
+        res = bq25792_watchdog_set_time(instance->bq25792_header, Bq25792WatchdogTimeDisabled);
+        if(res != Bq25792StatusOk) {
+            FURI_LOG_E(TAG, "Failed to disable OTG watchdog: %d", res);
+        }
+    }
+    return res;
+}
+
+API_WRAPPER_PARAM(power_bq25792_set_otg_params_internal, Bq25792Status, Power*, PowerBq25792OtgParams*);
+API_WRAPPER_PARAM(power_bq25792_otg_enable_internal, Bq25792Status, Power*, bool);
 
 // Bq28z620 wrappers
 
@@ -249,6 +336,10 @@ static Power* power_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(POWER_MAX_MESSAGES, sizeof(PowerMessage));
     instance->devices = 0;
+    instance->otg_enabled = false;
+    instance->otg_overcurrent = (FuriCallbackWithContext){0};
+    instance->otg_watchdog_timer =
+        furi_event_loop_timer_alloc(instance->event_loop, power_bq25792_otg_watchdog_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
 
     // init bq25792
     instance->bq25792_header = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);
@@ -257,6 +348,7 @@ static Power* power_alloc(void) {
         /* call synchronous implementation to initialize charger */
         power_bq25792_reset_and_load_config(instance);
         furi_bsp_expander_main_attach_bq25792_callback(power_bq25792_event_isr, instance);
+
     } else {
         FURI_LOG_E(TAG, "Failed to initialize BQ25792");
     }
@@ -531,6 +623,30 @@ bool power_bq25792_watchdog_reset(Power* instance) {
     Bq25792Status result;
     POWER_API_CALL(PowerDeviceBq25792, bq25792_watchdog_reset, instance->bq25792_header, result);
     return result == Bq25792StatusOk;
+}
+
+bool power_bq25792_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t current_ma) {
+    furi_check(instance);
+    Bq25792Status result;
+    PowerBq25792OtgParams params = {.voltage_mv = voltage_mv, .current_ma = current_ma};
+    PowerBq25792OtgParams* params_ptr = &params;
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, power_bq25792_set_otg_params_internal, instance, params_ptr, result);
+    return result == Bq25792StatusOk;
+}
+
+bool power_bq25792_otg_enable(Power* instance, bool enable) {
+    furi_check(instance);
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, power_bq25792_otg_enable_internal, instance, enable, result);
+    return result == Bq25792StatusOk;
+}
+
+void power_bq25792_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context) {
+    furi_check(instance);
+    FURI_CRITICAL_ENTER();
+    instance->otg_overcurrent.callback = callback;
+    instance->otg_overcurrent.context = context;
+    FURI_CRITICAL_EXIT();
 }
 
 bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit) {
