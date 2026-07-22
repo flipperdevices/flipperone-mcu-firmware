@@ -219,6 +219,7 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     }
 }
 
+// We will bring this back when we figure out how to catch shutdown event from the CPU
 // void cpu_app_menu_shutdown_click_callback(bool pressed, void* context) {
 //     furi_check(context);
 //     CpuApp* instance = context;
