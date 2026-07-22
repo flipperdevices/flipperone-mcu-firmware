@@ -25,7 +25,7 @@ void rpc_send_and_release(RpcSession* session, Flipper_One_Rpc_RpcMessage* messa
 
 void rpc_add_handler(RpcSession* session, pb_size_t message_tag, RpcHandler* handler);
 
-void rpc_cli_start(PipeSide* pipe, FuriString* args, void* context);
+void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* context);
 
 #ifdef __cplusplus
 }

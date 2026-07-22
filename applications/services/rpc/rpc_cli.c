@@ -25,7 +25,7 @@ static void rpc_cli_session_terminated_callback(void* context) {
     furi_semaphore_release(cli_rpc->terminate_semaphore);
 }
 
-void rpc_cli_start(PipeSide* pipe, FuriString* args, void* context) {
+void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(args);
     furi_assert(pipe);
     furi_assert(context);
@@ -59,8 +59,7 @@ void rpc_cli_start(PipeSide* pipe, FuriString* args, void* context) {
 
     rpc_session_close(rpc_session);
 
-    furi_check(
-        furi_semaphore_acquire(cli_rpc.terminate_semaphore, FuriWaitForever) == FuriStatusOk);
+    furi_check(furi_semaphore_acquire(cli_rpc.terminate_semaphore, FuriWaitForever) == FuriStatusOk);
 
     furi_semaphore_free(cli_rpc.terminate_semaphore);
     free(buffer);

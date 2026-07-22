@@ -5,6 +5,8 @@
 #include <pb_encode.h>
 
 #include <furi.h>
+#include <cli/cli_registry.h>
+#include <cli/cli_commands.h>
 #include <m-dict.h>
 
 #define TAG "RpcSrv"
@@ -50,20 +52,14 @@ void rpc_session_set_send_bytes_callback(RpcSession* session, RpcSendBytesCallba
     furi_mutex_release(session->callbacks_mutex);
 }
 
-void rpc_session_set_terminated_callback(
-    RpcSession* session,
-    RpcSessionTerminatedCallback callback) {
+void rpc_session_set_terminated_callback(RpcSession* session, RpcSessionTerminatedCallback callback) {
     furi_check(session);
     furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
     session->terminated_callback = callback;
     furi_mutex_release(session->callbacks_mutex);
 }
 
-size_t rpc_session_feed(
-    RpcSession* session,
-    const uint8_t* encoded_bytes,
-    size_t size,
-    uint32_t timeout) {
+size_t rpc_session_feed(RpcSession* session, const uint8_t* encoded_bytes, size_t size, uint32_t timeout) {
     furi_check(session);
     furi_check(encoded_bytes);
     if(!size) return 0;
@@ -85,8 +81,7 @@ static bool rpc_pb_stream_read(pb_istream_t* istream, pb_byte_t* buf, size_t cou
     uint32_t flags = 0;
 
     while(1) {
-        bytes_received += furi_stream_buffer_receive(
-            session->stream, buf + bytes_received, count - bytes_received, 0);
+        bytes_received += furi_stream_buffer_receive(session->stream, buf + bytes_received, count - bytes_received, 0);
 
         if(bytes_received == count) break;
 
@@ -121,9 +116,7 @@ static int32_t rpc_session_worker(void* context) {
         };
 
         memset(session->decoded_message, 0, sizeof(*session->decoded_message));
-        bool decode_ok = pb_decode_ex(
-            &istream, &Flipper_One_Rpc_RpcMessage_msg, session->decoded_message,
-            PB_ENCODE_DELIMITED);
+        bool decode_ok = pb_decode_ex(&istream, &Flipper_One_Rpc_RpcMessage_msg, session->decoded_message, PB_ENCODE_DELIMITED);
 
         if(decode_ok) {
             pb_size_t tag = session->decoded_message->which_content;
@@ -175,8 +168,7 @@ static void rpc_session_thread_pending_callback(void* context, uint32_t arg) {
     free(session);
 }
 
-static void
-    rpc_session_thread_state_callback(FuriThread* thread, FuriThreadState state, void* context) {
+static void rpc_session_thread_state_callback(FuriThread* thread, FuriThreadState state, void* context) {
     UNUSED(thread);
     if(state == FuriThreadStateStopped) {
         furi_timer_pending_callback(rpc_session_thread_pending_callback, context, 0);
@@ -196,8 +188,7 @@ RpcSession* rpc_session_open(Rpc* rpc, RpcOwner owner) {
     session->decoded_message = malloc(sizeof(Flipper_One_Rpc_RpcMessage));
     memset(session->decoded_message, 0, sizeof(Flipper_One_Rpc_RpcMessage));
 
-    session->thread = furi_thread_alloc_ex(
-        "RpcSessionWorker", 3072, rpc_session_worker, session);
+    session->thread = furi_thread_alloc_ex("RpcSessionWorker", 3072, rpc_session_worker, session);
     furi_thread_set_state_context(session->thread, session);
     furi_thread_set_state_callback(session->thread, rpc_session_thread_state_callback);
     furi_thread_start(session->thread);
@@ -215,6 +206,11 @@ void rpc_on_system_start(void* p) {
     UNUSED(p);
     Rpc* rpc = malloc(sizeof(Rpc));
     rpc->busy_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+
+    CliRegistry* registry = furi_record_open(RECORD_CLI);
+    cli_registry_add_command(registry, "rpc", CliCommandFlagParallelSafe, rpc_cli_command_start_session, rpc);
+    furi_record_close(RECORD_CLI);
+
     furi_record_create(RECORD_RPC, rpc);
 }
 
@@ -228,8 +224,7 @@ void rpc_send(RpcSession* session, Flipper_One_Rpc_RpcMessage* message) {
     furi_assert(message);
 
     pb_ostream_t ostream = PB_OSTREAM_SIZING;
-    bool result = pb_encode_ex(
-        &ostream, &Flipper_One_Rpc_RpcMessage_msg, message, PB_ENCODE_DELIMITED);
+    bool result = pb_encode_ex(&ostream, &Flipper_One_Rpc_RpcMessage_msg, message, PB_ENCODE_DELIMITED);
     furi_check(result && ostream.bytes_written);
 
     uint8_t* buffer = malloc(ostream.bytes_written);
