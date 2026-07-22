@@ -149,7 +149,6 @@ static void input_cli_command_touch(PipeSide* pipe, FuriString* args) {
 
     FuriPubSub* touch_events = furi_record_open(RECORD_INPUT_TOUCH_EVENTS);
 
-    //InputKey key = InputKeyUp;
     InputTouchType type = InputTouchTypeEnd;
     FuriString* str_tmp = furi_string_alloc();
     int32_t x = 0xFFFF;

@@ -6,8 +6,6 @@
 
 #define TAG "InputTouch"
 
-#define INPUT_TOUCH_DEBUG_ENABLE
-
 #ifdef INPUT_TOUCH_DEBUG_ENABLE
 #define INPUT_TOUCH_DEBUG(...) FURI_LOG_I(TAG, __VA_ARGS__)
 #else
@@ -111,7 +109,6 @@ bool input_touch_is_device_initialized(InputTouch* instance, InputTouchDevice* d
     }
     return initialized;
 }
-
 
 const char* input_touch_get_type_name(InputTouchType type) {
     switch(type) {
