@@ -103,6 +103,9 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_common.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_encode.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_decode.c
+    # RPC service: CLI-based protobuf communication (frame + input)
+    ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc.c
+    ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc_cli.c
 )
 
 # NVM bank size — single source of truth used by both the linker script
@@ -174,6 +177,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/mlib
     ${CMAKE_CURRENT_LIST_DIR}/lib
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb
+    ${CMAKE_BINARY_DIR}/generated/proto
 )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/uart_pio)
