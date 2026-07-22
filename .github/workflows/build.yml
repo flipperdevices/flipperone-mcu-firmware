@@ -40,7 +40,7 @@ jobs:
 
     - name: Install cmake
       run: |
-        sudo apt-get install cmake
+        sudo apt-get install cmake protobuf-compiler
 
     - name: Install ARM GCC {{ env.ARM_NONE_EABI_GCC_VERSION }}
       if: steps.cache.outputs.cache-hit != 'true'
