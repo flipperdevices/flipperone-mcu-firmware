@@ -74,6 +74,8 @@ extern "C" {
 
 #define ANSI_INSERT_MODE_ENABLE  "\e[4h"
 #define ANSI_INSERT_MODE_DISABLE "\e[4l"
+#define ANSI_CURSOR_HIDE         "\e[?25l"
+#define ANSI_CURSOR_SHOW         "\e[?25h"
 
 typedef enum FURI_PACKED {
     CliKeyUnrecognized = 0,
