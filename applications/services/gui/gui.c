@@ -177,15 +177,10 @@ static void gui_redraw(Gui* gui) {
     furi_check(furi_mutex_acquire(gui->callback_mutex, FuriWaitForever) == FuriStatusOk);
     for
         M_EACH(p, gui->gui_callbacks_pair, GuiCallbackArray_t) {
-            p->callback(
-                canvas_get_data(gui->render_canvas),
-                width,
-                height,
-                p->context
-            );
+            p->callback(canvas_get_data(gui->render_canvas), width, height, p->context);
         }
     furi_mutex_release(gui->callback_mutex);
-        
+
     gui_unlock(gui);
 }
 
@@ -394,7 +389,7 @@ static Gui* gui_alloc(void) {
     //Gui callback initialization
     gui->callback_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     GuiCallbackArray_init(gui->gui_callbacks_pair);
-    
+
     // Subscribe to input events
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), gui_input_events_glue, gui->input_queue);
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_TOUCH_EVENTS), gui_input_events_glue, gui->input_touch_queue);
@@ -417,12 +412,12 @@ int32_t gui_srv(void* p) {
     return 0;
 }
 
-ssize_t gui_get_width(Gui* gui) {
+size_t gui_get_width(Gui* gui) {
     furi_check(gui);
     return canvas_get_width(gui->render_canvas);
 }
 
-ssize_t gui_get_height(Gui *gui) {
+size_t gui_get_height(Gui* gui) {
     furi_check(gui);
     return canvas_get_height(gui->render_canvas);
 }
