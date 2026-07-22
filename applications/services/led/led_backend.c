@@ -462,10 +462,8 @@ static void led_backlight_input_key_callback(const void* value, void* context) {
     Led* instance = context;
 
     InputEvent* input_key_event = (InputEvent*)value;
-    if(input_key_event->type == InputTypePress) {
-        const LedMessage msg = {.type = LedMessageTypeBacklightInputToggle};
-        led_send_message(instance, &msg);
-    }
+    const LedMessage msg = {.type = LedMessageTypeBacklightInputToggle};
+    led_send_message(instance, &msg);
 }
 
 static void led_backlight_input_touch_callback(const void* value, void* context) {
@@ -473,10 +471,8 @@ static void led_backlight_input_touch_callback(const void* value, void* context)
     Led* instance = context;
 
     InputTouchEvent* input_touch_event = (InputTouchEvent*)value;
-    if(input_touch_event->type == InputTouchTypeStart) {
-        const LedMessage msg = {.type = LedMessageTypeBacklightInputToggle};
-        led_send_message(instance, &msg);
-    }
+    const LedMessage msg = {.type = LedMessageTypeBacklightInputToggle};
+    led_send_message(instance, &msg);
 }
 
 static Led* led_alloc(void) {
