@@ -224,10 +224,10 @@ static void power_cli_print_bq28z620(Power* power) {
         charging_current_ma,
         design_capacity_mah,
         time_to_empty_min,
+        average_time_to_empty_min,
         average_time_to_full_min,
         standby_current_ma,
         standby_time_to_empty_min,
-        average_time_to_empty_min,
         max_load_current_ma,
         max_load_time_to_empty_min);
     // clang-format on

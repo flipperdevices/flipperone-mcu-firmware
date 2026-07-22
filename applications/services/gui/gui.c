@@ -24,6 +24,10 @@ ARRAY_DEF(ViewHandleArray, ViewHandle, M_POD_OPLIST);
 #define M_OPL_ViewHandleArray_t() ARRAY_OPLIST(ViewHandleArray, M_POD_OPLIST)
 ALGO_DEF(ViewHandleArray, ViewHandleArray_t);
 
+ARRAY_DEF(GuiCallbackArray, GuiCallbackPair, M_POD_OPLIST);
+#define M_OPL_GuiCallbackArray_t() ARRAY_OPLIST(GuiCallbackArray, M_POD_OPLIST)
+ALGO_DEF(GuiCallbackArray, GuiCallbackArray_t);
+
 /** Gui structure */
 struct Gui {
     // Global gui mutex
@@ -47,6 +51,9 @@ struct Gui {
         ViewInputTouchCallback input_touch_callback;
         void* input_touch_context;
     } unhandled;
+
+    FuriMutex* callback_mutex;
+    GuiCallbackArray_t gui_callbacks_pair;
 };
 
 static int gui_view_compare(const ViewHandle* a, const ViewHandle* b) {
@@ -161,6 +168,18 @@ static void gui_redraw(Gui* gui) {
     size_t height = canvas_get_height(gui->render_canvas);
     display_jd9853_qspi_write_buffer(gui->display, canvas_get_data(gui->render_canvas), width * height);
 
+    furi_check(furi_mutex_acquire(gui->callback_mutex, FuriWaitForever) == FuriStatusOk);
+    for
+        M_EACH(p, gui->gui_callbacks_pair, GuiCallbackArray_t) {
+            p->callback(
+                canvas_get_data(gui->render_canvas),
+                width,
+                height,
+                p->context
+            );
+        }
+    furi_mutex_release(gui->callback_mutex);
+        
     gui_unlock(gui);
 }
 
@@ -366,6 +385,10 @@ static Gui* gui_alloc(void) {
     Clay_Initialize(arena, (Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT}, (Clay_ErrorHandler){gui_handle_clay_errors, gui});
     Clay_SetMeasureTextFunction(clay_render_measure_text, NULL);
 
+    //Gui callback initialization
+    gui->callback_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+    GuiCallbackArray_init(gui->gui_callbacks_pair);
+    
     // Subscribe to input events
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_EVENTS), gui_input_events_glue, gui->input_queue);
     furi_pubsub_subscribe(furi_record_open(RECORD_INPUT_TOUCH_EVENTS), gui_input_events_glue, gui->input_touch_queue);
@@ -386,4 +409,40 @@ int32_t gui_srv(void* p) {
     furi_event_loop_run(gui->event_loop);
 
     return 0;
+}
+
+ssize_t gui_get_width(Gui* gui) {
+    furi_check(gui);
+    return canvas_get_width(gui->render_canvas);
+}
+
+ssize_t gui_get_height(Gui *gui) {
+    furi_check(gui);
+    return canvas_get_height(gui->render_canvas);
+}
+
+void gui_add_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, void* context) {
+    furi_check(gui);
+
+    const GuiCallbackPair pair = {.callback = callback, .context = context};
+
+    furi_check(furi_mutex_acquire(gui->callback_mutex, FuriWaitForever) == FuriStatusOk);
+
+    furi_check(!GuiCallbackArray_count(gui->gui_callbacks_pair, pair));
+    GuiCallbackArray_push_back(gui->gui_callbacks_pair, pair);
+
+    furi_mutex_release(gui->callback_mutex);
+}
+
+void gui_remove_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, void* context) {
+    furi_check(gui);
+
+    const GuiCallbackPair pair = {.callback = callback, .context = context};
+
+    furi_check(furi_mutex_acquire(gui->callback_mutex, FuriWaitForever) == FuriStatusOk);
+
+    furi_check(GuiCallbackArray_count(gui->gui_callbacks_pair, pair) == 1);
+    GuiCallbackArray_remove_val(gui->gui_callbacks_pair, pair);
+
+    furi_mutex_release(gui->callback_mutex);
 }
