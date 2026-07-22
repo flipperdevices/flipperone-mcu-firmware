@@ -8,6 +8,7 @@
 #include "cli_command_screen.h"
 #include "cli_command_i2c.h"
 #include "cli_commands_common.h"
+#include "cli_command_device_info.h"
 #include "cli_vcp.h"
 #include "cli_uart.h"
 
@@ -23,6 +24,7 @@ static void cli_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "gpio", CliCommandFlagParallelSafe, cli_command_gpio, NULL);
     cli_registry_add_command(registry, "screen", CliCommandFlagParallelSafe, cli_command_screen, NULL);
     cli_registry_add_command(registry, "nvm", CliCommandFlagParallelSafe, cli_command_nvm, NULL);
+    cli_registry_add_command(registry, "device_info", CliCommandFlagParallelSafe, cli_command_device_info, NULL);
     
     if(!furi_hal_otp_usb_white_label_valid()) {
         cli_registry_add_command(registry, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);

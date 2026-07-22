@@ -303,7 +303,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display_jd9853_hstx_clock_init();
 
     //Gpio init
-    furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputOpenDrain);
+    furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputPushPull);
     furi_hal_gpio_init_simple(&gpio_display_te, GpioModeInput);
     furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionRise, display_jd9853_te_callback, display);
     furi_hal_gpio_disable_int_callback(&gpio_display_te);
@@ -311,9 +311,9 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_hal_gpio_write(&gpio_display_cs, true);
 
     //Reset display
-    furi_hal_gpio_write_open_drain(&gpio_display_reset, false);
+    furi_hal_gpio_write(&gpio_display_reset, false);
     furi_delay_ms(30);
-    furi_hal_gpio_write_open_drain(&gpio_display_reset, true);
+    furi_hal_gpio_write(&gpio_display_reset, true);
     furi_delay_ms(30);
 
     //todo set gpio functions add implement furi hal gpio
