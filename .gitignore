@@ -2,3 +2,4 @@
 build
 assets/python/.venv/*
 .cache
+.vscode
