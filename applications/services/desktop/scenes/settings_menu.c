@@ -62,7 +62,8 @@ static void brightness_state_callback(const void* item, void* context) {
     if(*brightness == 0) {
         furi_string_printf(backlight_text, "Backlight OFF");
     } else {
-        furi_string_printf(backlight_text, "Backlight %lu%%", (uint32_t)*brightness * 100 / 255);
+        uint8_t brightness_pct = lroundf((float)*brightness * 100.f / 255.f);
+        furi_string_printf(backlight_text, "Backlight %u%%", brightness_pct);
     }
     menu_item_sublabel_set(scene_data->menu, scene_data->brightness_item, furi_string_get_cstr(backlight_text));
     furi_string_free(backlight_text);

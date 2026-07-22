@@ -82,7 +82,8 @@ static void display_brightness_selector_callback(MenuItem* item, size_t selector
 
     uint8_t brightness = brightness_values[selector_index];
     display_brightness_selector_update(scene_data, &brightness);
-    led_set_brightness(scene_data->led, LedGroupDisplayBacklight, (uint32_t)brightness * 255 / 100);
+    uint8_t brightness_value = lroundf((float)brightness / 100.f * 255.f);
+    led_set_brightness(scene_data->led, LedGroupDisplayBacklight, brightness_value);
 }
 
 static void display_time_selector_callback(MenuItem* item, size_t selector_index, void* context) {
@@ -97,7 +98,7 @@ static void display_time_selector_callback(MenuItem* item, size_t selector_index
 
 static void display_brightness_state_callback(const void* item, void* context) {
     uint8_t* brightness_temp = (uint8_t*)item;
-    uint8_t brightness = (uint32_t)(*(uint8_t*)item) * 100 / 255;
+    uint8_t brightness = lroundf((float)*(uint8_t*)item * 100.f / 255.f);
     furi_check(context);
     DisplaySettingsData* scene_data = context;
     display_brightness_selector_update(scene_data, &brightness);
