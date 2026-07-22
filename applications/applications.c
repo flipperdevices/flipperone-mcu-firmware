@@ -37,6 +37,7 @@ extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void led_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void uart_echo_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void dmesg_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void input_cli_command(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -277,6 +278,12 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = dmesg_cli,
         .name = "dmesg",
+        .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = input_cli_command,
+        .name = "input",
         .stack_size = 1024 * 2,
         .flags = CliCommandFlagParallelSafe,
     },

@@ -3,6 +3,7 @@
 #include <gui/clay_helper.h>
 #include <m-array.h>
 #include <m-algo.h>
+#include <input_touch/input_touch.h>
 
 #define TAG "TouchpadTest"
 
@@ -177,8 +178,8 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
     bool consumed = false;
     float scale_x = 0.7f;
     float scale_y = 0.6f;
-    const int32_t touch_real_resolution_x = 1024;
-    const int32_t touch_real_resolution_y = 768;
+    const int32_t touch_real_resolution_x = TOUCHPAD_RESOLUTION_X;
+    const int32_t touch_real_resolution_y = TOUCHPAD_RESOLUTION_Y;
     const int32_t touch_resolution_x = touch_real_resolution_x * scale_x;
     const int32_t touch_resolution_y = touch_real_resolution_y * scale_y;
     const int32_t touch_resolution_padding_x = (touch_real_resolution_x - touch_resolution_x) / 2;
@@ -193,7 +194,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
                 model->pressed = true;
                 model->last_x = (event->x - touch_resolution_padding_x) * TOUCHPAD_CANVAS_WIDTH / touch_resolution_x;
                 model->last_y = (event->y - touch_resolution_padding_y) * TOUCHPAD_CANVAS_HEIGHT / touch_resolution_y;
-                model->pressure = event->pressure / (1024.0f * 16.0f);
+                model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
                 touchpad_test_app_update_frame(model);
             },
             true);
@@ -211,7 +212,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
                 }
                 model->last_x = new_x;
                 model->last_y = new_y;
-                model->pressure = event->pressure / (1024.0f * 16.0f);
+                model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
                 touchpad_test_app_update_frame(model);
             },
             true);
@@ -223,7 +224,7 @@ static bool touchpad_test_app_input_touch(InputTouchEvent* event, void* context)
             TouchpadTestModel * model,
             {
                 model->pressed = false;
-                model->pressure = event->pressure / (1024.0f * 16.0f);
+                model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
                 touchpad_test_app_update_frame(model);
             },
             true);
