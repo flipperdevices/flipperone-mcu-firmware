@@ -43,6 +43,12 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     };
     rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_button_event_tag, &input_handler);
 
+    RpcHandler touch_handler = {
+        .message_handler = rpc_touch_handler_callback,
+        .context = NULL,
+    };
+    rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_touch_event_tag, &touch_handler);
+
     CliRpc cli_rpc = {.pipe = pipe, .terminate_semaphore = NULL};
     cli_rpc.terminate_semaphore = furi_semaphore_alloc(1, 0);
     rpc_session_set_context(rpc_session, &cli_rpc);

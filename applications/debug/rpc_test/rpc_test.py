@@ -1,11 +1,12 @@
 """
 RPC test script for Flipper One firmware.
-Sends button events and receives display frames over serial (COM10).
+Sends button/touch events and receives display frames over serial (COM10).
 
 Usage:
-    python rpc_test.py                  # interactive mode
-    python rpc_test.py --button OK      # send a single button press
-    python rpc_test.py --listen 5       # listen for 5 seconds
+    python rpc_test.py                         # interactive mode
+    python rpc_test.py --button OK             # send a single button press
+    python rpc_test.py --touch START 512 384 1000  # send a touch event
+    python rpc_test.py --listen 5              # listen for 5 seconds
 
 Requires: pyserial, protobuf, grpcio-tools
 """
@@ -114,7 +115,7 @@ def _decode_varint(data, offset=0):
 def make_rpc_message(content_oneof=None, **kwargs):
     """Build and return a serialised RpcMessage (with delimited length prefix).
 
-    content_oneof: 'frame' or 'button_event'
+    content_oneof: 'frame', 'button_event' or 'touch_event'
     kwargs: passed to the nested message constructor.
     """
     _ensure_protos()
@@ -126,6 +127,15 @@ def make_rpc_message(content_oneof=None, **kwargs):
         action = getattr(_input_pb2, kwargs.pop("action", "PRESS"))
         evt = _input_pb2.ButtonEvent(button=btn, action=action)
         msg.button_event.CopyFrom(evt)
+    elif content_oneof == "touch_event":
+        ttype = getattr(_input_pb2, kwargs.pop("type", "START"))
+        evt = _input_pb2.TouchEvent(
+            type=ttype,
+            x=kwargs.pop("x", 512),
+            y=kwargs.pop("y", 384),
+            pressure=kwargs.pop("pressure", 1000),
+        )
+        msg.touch_event.CopyFrom(evt)
     elif content_oneof == "frame":
         frame = _frame_pb2.Frame(
             width=kwargs.get("width", 258),
@@ -155,6 +165,12 @@ def parse_rpc_message(data):
         evt = msg.button_event
         result["button"] = _input_pb2.Button.Name(evt.button)
         result["action"] = _input_pb2.ButtonAction.Name(evt.action)
+    elif result["which"] == "touch_event":
+        evt = msg.touch_event
+        result["type"] = _input_pb2.TouchType.Name(evt.type)
+        result["x"] = evt.x
+        result["y"] = evt.y
+        result["pressure"] = evt.pressure
     elif result["which"] == "frame":
         f = msg.frame
         result["width"] = f.width
@@ -247,6 +263,15 @@ def send_button(ser, button="OK", action="PRESS"):
     print(f"Sent: ButtonEvent({button}, {action})  [{len(data)} bytes]")
 
 
+def send_touch(ser, ttype="START", x=512, y=384, pressure=1000):
+    """Send a touch event."""
+    data = make_rpc_message(
+        content_oneof="touch_event", type=ttype, x=x, y=y, pressure=pressure
+    )
+    send_message(ser, data)
+    print(f"Sent: TouchEvent({ttype}, x={x}, y={y}, p={pressure})  [{len(data)} bytes]")
+
+
 def listen_frames(ser, duration_s=5.0):
     """Listen for incoming frames for `duration` seconds."""
     start = time.monotonic()
@@ -270,7 +295,7 @@ def listen_frames(ser, duration_s=5.0):
 # ── CLI ─────────────────────────────────────────────────────────────────────
 def interactive_mode(ser):
     """Simple interactive test loop."""
-    print("\nCommands: button <NAME> [PRESS|RELEASE], listen <N>, quit")
+    print("\nCommands: button <NAME> [PRESS|RELEASE], touch <START|MOVE|END> <x> <y> <p>, listen <N>, quit")
     print("Example: button OK PRESS")
     while True:
         try:
@@ -288,12 +313,19 @@ def interactive_mode(ser):
             btn = parts[1].upper() if len(parts) > 1 else "OK"
             act = parts[2].upper() if len(parts) > 2 else "PRESS"
             send_button(ser, btn, act)
+        elif cmd == "touch":
+            ttype = parts[1].upper() if len(parts) > 1 else "START"
+            x = int(parts[2]) if len(parts) > 2 else 512
+            y = int(parts[3]) if len(parts) > 3 else 384
+            p = int(parts[4]) if len(parts) > 4 else 1000
+            send_touch(ser, ttype, x, y, p)
         elif cmd == "listen":
             duration = float(parts[1]) if len(parts) > 1 else 5.0
             listen_frames(ser, duration)
         elif cmd == "help":
             print("Commands:")
             print("  button <OK|BACK|KEY_1|...> [PRESS|RELEASE]")
+            print("  touch <START|MOVE|END> <x> <y> <pressure>")
             print("  listen <seconds>")
             print("  quit")
         else:
@@ -306,6 +338,8 @@ def main():
     parser.add_argument("--baud", type=int, default=BAUD, help=f"Baud rate (default: {BAUD})")
     parser.add_argument("--button", help="Send one button press and exit")
     parser.add_argument("--action", default="PRESS", help="Button action (PRESS/RELEASE)")
+    parser.add_argument("--touch", nargs=4, metavar=("TYPE", "X", "Y", "P"),
+                        help="Send touch event: TYPE( START|MOVE|END) X Y PRESSURE")
     parser.add_argument("--listen", type=float, default=0, help="Listen for N seconds after sending")
     parser.add_argument("--auto-rpc", action="store_true", default=True,
                         help="Auto-enter RPC mode by sending 'rpc' command (default: on)")
@@ -322,6 +356,10 @@ def main():
 
         if args.button:
             send_button(ser, args.button.upper(), args.action.upper())
+            if args.listen:
+                listen_frames(ser, args.listen)
+        elif args.touch:
+            send_touch(ser, args.touch[0].upper(), int(args.touch[1]), int(args.touch[2]), int(args.touch[3]))
             if args.listen:
                 listen_frames(ser, args.listen)
         else:

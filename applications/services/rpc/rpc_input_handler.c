@@ -1,5 +1,6 @@
 #include "rpc_i.h"
 #include <input/input.h>
+#include <input_touch/input_touch.h>
 
 #define TAG "RpcInput"
 
@@ -59,4 +60,38 @@ void rpc_input_handler_callback(const Flipper_One_Rpc_RpcMessage* message, void*
     FuriPubSub* input_events = furi_record_open(RECORD_INPUT_EVENTS);
     furi_pubsub_publish(input_events, &event);
     furi_record_close(RECORD_INPUT_EVENTS);
+}
+
+/* Map protobuf TouchType → system InputTouchType */
+static const InputTouchType proto_touch_to_inputtype[] = {
+    [Flipper_One_Input_TouchType_START] = InputTouchTypeStart,
+    [Flipper_One_Input_TouchType_MOVE]  = InputTouchTypeMove,
+    [Flipper_One_Input_TouchType_END]   = InputTouchTypeEnd,
+};
+
+void rpc_touch_handler_callback(const Flipper_One_Rpc_RpcMessage* message, void* context) {
+    UNUSED(context);
+    furi_assert(message);
+    furi_assert(message->which_content == Flipper_One_Rpc_RpcMessage_touch_event_tag);
+
+    const Flipper_One_Input_TouchEvent* evt = &message->content.touch_event;
+
+    if(evt->type >= COUNT_OF(proto_touch_to_inputtype)) {
+        FURI_LOG_E(TAG, "Unknown touch type %d", evt->type);
+        return;
+    }
+
+    InputTouchEvent event = {
+        .type = proto_touch_to_inputtype[evt->type],
+        .x = evt->x,
+        .y = evt->y,
+        .pressure = evt->pressure,
+    };
+
+    FURI_LOG_I(TAG, "Injecting touch type=%d x=%ld y=%ld p=%ld",
+        event.type, event.x, event.y, event.pressure);
+
+    FuriPubSub* touch_events = furi_record_open(RECORD_INPUT_TOUCH_EVENTS);
+    furi_pubsub_publish(touch_events, &event);
+    furi_record_close(RECORD_INPUT_TOUCH_EVENTS);
 }

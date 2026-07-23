@@ -26,13 +26,13 @@ import input_pb2 as input__pb2
 import frame_pb2 as frame__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\trpc.proto\x12\x0f\x46lipper_One_Rpc\x1a\x0binput.proto\x1a\x0b\x66rame.proto\"z\n\nRpcMessage\x12)\n\x05\x66rame\x18\x01 \x01(\x0b\x32\x18.Flipper_One_Frame.FrameH\x00\x12\x36\n\x0c\x62utton_event\x18\x02 \x01(\x0b\x32\x1e.Flipper_One_Input.ButtonEventH\x00\x42\t\n\x07\x63ontentb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\trpc.proto\x12\x0f\x46lipper_One_Rpc\x1a\x0binput.proto\x1a\x0b\x66rame.proto\"\xb0\x01\n\nRpcMessage\x12)\n\x05\x66rame\x18\x01 \x01(\x0b\x32\x18.Flipper_One_Frame.FrameH\x00\x12\x36\n\x0c\x62utton_event\x18\x02 \x01(\x0b\x32\x1e.Flipper_One_Input.ButtonEventH\x00\x12\x34\n\x0btouch_event\x18\x03 \x01(\x0b\x32\x1d.Flipper_One_Input.TouchEventH\x00\x42\t\n\x07\x63ontentb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'rpc_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_RPCMESSAGE']._serialized_start=56
-  _globals['_RPCMESSAGE']._serialized_end=178
+  _globals['_RPCMESSAGE']._serialized_start=57
+  _globals['_RPCMESSAGE']._serialized_end=233
 # @@protoc_insertion_point(module_scope)

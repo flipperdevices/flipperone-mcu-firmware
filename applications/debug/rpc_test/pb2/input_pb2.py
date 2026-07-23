@@ -24,17 +24,21 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0binput.proto\x12\x11\x46lipper_One_Input\"i\n\x0b\x42uttonEvent\x12)\n\x06\x62utton\x18\x01 \x01(\x0e\x32\x19.Flipper_One_Input.Button\x12/\n\x06\x61\x63tion\x18\x02 \x01(\x0e\x32\x1f.Flipper_One_Input.ButtonAction*\x89\x01\n\x06\x42utton\x12\x06\n\x02OK\x10\x00\x12\x08\n\x04\x42\x41\x43K\x10\x01\x12\t\n\x05KEY_1\x10\x02\x12\t\n\x05KEY_2\x10\x03\x12\t\n\x05POWER\x10\x04\x12\t\n\x05KEY_4\x10\x05\x12\t\n\x05KEY_5\x10\x06\x12\x06\n\x02SW\x10\x07\x12\x08\n\x04\x44OWN\x10\x08\x12\t\n\x05RIGHT\x10\t\x12\x08\n\x04LEFT\x10\n\x12\x06\n\x02UP\x10\x0b\x12\x07\n\x03PTT\x10\x0c*&\n\x0c\x42uttonAction\x12\t\n\x05PRESS\x10\x00\x12\x0b\n\x07RELEASE\x10\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0binput.proto\x12\x11\x46lipper_One_Input\"i\n\x0b\x42uttonEvent\x12)\n\x06\x62utton\x18\x01 \x01(\x0e\x32\x19.Flipper_One_Input.Button\x12/\n\x06\x61\x63tion\x18\x02 \x01(\x0e\x32\x1f.Flipper_One_Input.ButtonAction\"`\n\nTouchEvent\x12*\n\x04type\x18\x01 \x01(\x0e\x32\x1c.Flipper_One_Input.TouchType\x12\t\n\x01x\x18\x02 \x01(\r\x12\t\n\x01y\x18\x03 \x01(\r\x12\x10\n\x08pressure\x18\x04 \x01(\r*\x89\x01\n\x06\x42utton\x12\x06\n\x02OK\x10\x00\x12\x08\n\x04\x42\x41\x43K\x10\x01\x12\t\n\x05KEY_1\x10\x02\x12\t\n\x05KEY_2\x10\x03\x12\t\n\x05POWER\x10\x04\x12\t\n\x05KEY_4\x10\x05\x12\t\n\x05KEY_5\x10\x06\x12\x06\n\x02SW\x10\x07\x12\x08\n\x04\x44OWN\x10\x08\x12\t\n\x05RIGHT\x10\t\x12\x08\n\x04LEFT\x10\n\x12\x06\n\x02UP\x10\x0b\x12\x07\n\x03PTT\x10\x0c*&\n\x0c\x42uttonAction\x12\t\n\x05PRESS\x10\x00\x12\x0b\n\x07RELEASE\x10\x01*)\n\tTouchType\x12\t\n\x05START\x10\x00\x12\x08\n\x04MOVE\x10\x01\x12\x07\n\x03\x45ND\x10\x02\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'input_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_BUTTON']._serialized_start=142
-  _globals['_BUTTON']._serialized_end=279
-  _globals['_BUTTONACTION']._serialized_start=281
-  _globals['_BUTTONACTION']._serialized_end=319
+  _globals['_BUTTON']._serialized_start=240
+  _globals['_BUTTON']._serialized_end=377
+  _globals['_BUTTONACTION']._serialized_start=379
+  _globals['_BUTTONACTION']._serialized_end=417
+  _globals['_TOUCHTYPE']._serialized_start=419
+  _globals['_TOUCHTYPE']._serialized_end=460
   _globals['_BUTTONEVENT']._serialized_start=34
   _globals['_BUTTONEVENT']._serialized_end=139
+  _globals['_TOUCHEVENT']._serialized_start=141
+  _globals['_TOUCHEVENT']._serialized_end=237
 # @@protoc_insertion_point(module_scope)
