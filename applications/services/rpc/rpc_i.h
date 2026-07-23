@@ -30,6 +30,9 @@ void rpc_add_handler(RpcSession* session, pb_size_t message_tag, RpcHandler* han
 
 void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* context);
 
+/* Message handlers */
+void rpc_input_handler_callback(const Flipper_One_Rpc_RpcMessage* message, void* context);
+
 #ifdef SRV_RPC_DEBUG
 void rpc_debug_print_data(const char* prefix, uint8_t* buffer, size_t size);
 void rpc_debug_print_message(const Flipper_One_Rpc_RpcMessage* message);

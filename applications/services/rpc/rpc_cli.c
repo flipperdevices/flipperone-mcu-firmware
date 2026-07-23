@@ -1,5 +1,4 @@
-#include <furi.h>
-#include <rpc/rpc.h>
+#include "rpc_i.h"
 #include <containers/pipe.h>
 
 #define TAG "RpcCli"
@@ -37,6 +36,13 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
         return;
     }
 
+    /* Register message handlers */
+    RpcHandler input_handler = {
+        .message_handler = rpc_input_handler_callback,
+        .context = NULL,
+    };
+    rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_button_event_tag, &input_handler);
+
     CliRpc cli_rpc = {.pipe = pipe, .terminate_semaphore = NULL};
     cli_rpc.terminate_semaphore = furi_semaphore_alloc(1, 0);
     rpc_session_set_context(rpc_session, &cli_rpc);
@@ -62,21 +68,22 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
 
     FURI_LOG_I(TAG, "Entering pipe read loop");
     while(1) {
-        /* Read at least 1 byte (blocks until data arrives or pipe breaks). */
+        /* Read whatever is available right now.  First call blocks until
+         * at least 1 byte arrives (or pipe breaks).  Subsequent calls
+         * within this batch scoop up any bytes already buffered without
+         * waiting, so a multi-byte message that arrives in separate USB
+         * packets is still accumulated before feeding the session. */
         size_t size_received = pipe_receive(pipe, buffer, 1);
         if(pipe_state(pipe) != PipeStateOpen) break;
 
-        /* Grab any additional bytes already buffered without blocking.
-         * Requesting exactly pipe_bytes_available() avoids the internal
-         * 100 ms timeout in pipe_receive's retry loop. */
-        size_t avail = pipe_bytes_available(pipe);
-        if(avail > 0) {
-            size_t extra = MIN(avail, CLI_READ_BUFFER_SIZE - 1);
-            pipe_receive(pipe, buffer + size_received, extra);
-            size_received += extra;
+        while(size_received < CLI_READ_BUFFER_SIZE) {
+            size_t avail = pipe_bytes_available(pipe);
+            if(avail == 0) break;
+            size_t chunk = MIN(avail, CLI_READ_BUFFER_SIZE - size_received);
+            pipe_receive(pipe, buffer + size_received, chunk);
+            size_received += chunk;
         }
 
-        FURI_LOG_E(TAG, "Feeding %zu bytes from pipe", size_received);
         size_t fed_bytes = rpc_session_feed(rpc_session, buffer, size_received, 3000);
         furi_assert(fed_bytes == size_received);
     }
