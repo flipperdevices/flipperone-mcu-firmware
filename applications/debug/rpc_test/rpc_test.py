@@ -16,6 +16,8 @@ import os
 import struct
 import sys
 import time
+import threading
+import queue
 
 # ── Serial port config ──────────────────────────────────────────────────────
 PORT = "COM10"
@@ -246,9 +248,12 @@ def read_message(ser):
     if length == 0:
         return None
 
-    payload = ser.read(length)
-    if len(payload) < length:
-        return None  # timeout or disconnected
+    payload = b""
+    while len(payload) < length:
+        chunk = ser.read(length - len(payload))
+        if not chunk:
+            return None  # timeout or disconnected
+        payload += chunk
 
     return parse_rpc_message(payload)
 
@@ -296,40 +301,59 @@ def send_stop_virtual_display(ser):
 
 def listen_frames(ser, duration_s=5.0, display=False):
     """Listen for incoming frames for `duration` seconds.
-    If display=True, shows frames in a grayscale image window."""
+    If display=True, shows frames in a movable tkinter window.
+    Serial reading runs on a background thread; tkinter on the main thread."""
     viewer = _FrameViewer() if display else None
+    stop_event = threading.Event()
 
-    start = time.monotonic()
-    count = 0
-    while time.monotonic() - start < duration_s:
-        msg = read_message(ser)
-        if msg is None:
-            continue
-        count += 1
-        if msg["which"] == "frame":
-            info = (
-                f"[{count}] Frame: {msg['width']}x{msg['height']}, "
-                f"enc={msg['encoding']}, fmt={msg['pixel_format']}, "
-                f"data={msg['data_len']} bytes"
-            )
-            print(info)
-            if viewer and msg["data_len"] > 0:
-                viewer.show(msg["data"], msg["width"], msg["height"])
-                # Small delay so the GUI can process events
-                viewer.update()
-                if not viewer.is_open():
-                    print("Window closed, stopping.")
-                    break
-        else:
-            print(f"[{count}] {msg}")
+    def _read_loop():
+        start = time.monotonic()
+        count = 0
+        end_time = start + duration_s
+        while not stop_event.is_set() and time.monotonic() < end_time:
+            msg = read_message(ser)
+            if msg is None:
+                continue
+            count += 1
+            if msg["which"] == "frame":
+                info = (
+                    f"[{count}] Frame: {msg['width']}x{msg['height']}, "
+                    f"enc={msg['encoding']}, fmt={msg['pixel_format']}, "
+                    f"data={msg['data_len']} bytes"
+                )
+                print(info)
+                if viewer and msg["data_len"] > 0:
+                    viewer.show(msg["data"], msg["width"], msg["height"])
+                    if not viewer.is_open():
+                        print("Window closed, stopping.")
+                        stop_event.set()
+                        break
+            else:
+                print(f"[{count}] {msg}")
+        print(f"Received {count} messages in {duration_s}s")
+
+    thread = threading.Thread(target=_read_loop, daemon=True)
+    thread.start()
 
     if viewer:
+        # Auto-close after duration
+        viewer.root.after(int(duration_s * 1000), viewer.close)
+        try:
+            viewer.root.mainloop()
+        except KeyboardInterrupt:
+            pass
+        stop_event.set()
+    else:
+        thread.join(timeout=duration_s + 2.0)
+        stop_event.set()
+
+    thread.join(timeout=2.0)
+    if viewer:
         viewer.close()
-    print(f"Received {count} messages in {duration_s}s")
 
 
 class _FrameViewer:
-    """Display L8 grayscale frames in a window using tkinter + PIL."""
+    """Display L8 grayscale frames (tkinter runs on main thread, queue-based)."""
 
     def __init__(self):
         import tkinter as tk
@@ -339,28 +363,53 @@ class _FrameViewer:
         self.Image = Image
         self.ImageTk = ImageTk
 
+        self._queue = queue.Queue(maxsize=2)
+        self._stop_event = threading.Event()
+
         self.root = tk.Tk()
         self.root.title("Flipper One - Screen Stream")
         self.label = tk.Label(self.root)
         self.label.pack()
-        # Position window in top-right corner
         self.root.geometry("+%d+50" % (self.root.winfo_screenwidth() - 400))
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._poll_queue()
 
-    def show(self, data, width, height):
-        """Update the window with a new L8 frame."""
+    def _on_close(self):
+        self._stop_event.set()
+        self.root.destroy()
+
+    def _poll_queue(self):
+        try:
+            while True:
+                data, width, height = self._queue.get_nowait()
+                self._display(data, width, height)
+        except queue.Empty:
+            pass
+        if not self._stop_event.is_set():
+            self.root.after(30, self._poll_queue)
+
+    def _display(self, data, width, height):
+        # Build grayscale image from L8 framebuffer data
         img = self.Image.new("L", (width, height))
         img.putdata(data)
-        # Scale up for comfortable viewing (2x by default)
+        # Colorize: black → dark brown, white → bright orange
+        from PIL import ImageOps
+        img = ImageOps.colorize(img, black="#1a0800", white="#FF8C00")
+        # Scale up for comfortable viewing
         scale = max(1, min(4, 800 // width))
         if scale > 1:
             img = img.resize((width * scale, height * scale), self.Image.NEAREST)
         photo = self.ImageTk.PhotoImage(img)
         self.label.config(image=photo)
-        self.label.image = photo  # keep a reference
+        self.label.image = photo
         self.root.geometry(f"{width * scale + 20}x{height * scale + 20}")
 
-    def update(self):
-        self.root.update()
+    def show(self, data, width, height):
+        """Enqueue a new frame for display (non-blocking, thread-safe)."""
+        try:
+            self._queue.put_nowait((data, width, height))
+        except queue.Full:
+            pass
 
     def is_open(self):
         try:
@@ -369,6 +418,7 @@ class _FrameViewer:
             return False
 
     def close(self):
+        self._stop_event.set()
         try:
             self.root.destroy()
         except (self.tk.TclError, RuntimeError):
