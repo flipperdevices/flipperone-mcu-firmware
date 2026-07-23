@@ -272,8 +272,33 @@ def send_touch(ser, ttype="START", x=512, y=384, pressure=1000):
     print(f"Sent: TouchEvent({ttype}, x={x}, y={y}, p={pressure})  [{len(data)} bytes]")
 
 
-def listen_frames(ser, duration_s=5.0):
-    """Listen for incoming frames for `duration` seconds."""
+def send_start_virtual_display(ser):
+    """Send start_virtual_display_request."""
+    _ensure_protos()
+    msg = _rpc_pb2.RpcMessage()
+    msg.start_virtual_display_request.SetInParent()
+    payload = msg.SerializeToString()
+    data = _encode_varint(len(payload)) + payload
+    send_message(ser, data)
+    print(f"Sent: StartVirtualDisplayRequest  [{len(data)} bytes]")
+
+
+def send_stop_virtual_display(ser):
+    """Send stop_virtual_display_request."""
+    _ensure_protos()
+    msg = _rpc_pb2.RpcMessage()
+    msg.stop_virtual_display_request.SetInParent()
+    payload = msg.SerializeToString()
+    data = _encode_varint(len(payload)) + payload
+    send_message(ser, data)
+    print(f"Sent: StopVirtualDisplayRequest  [{len(data)} bytes]")
+
+
+def listen_frames(ser, duration_s=5.0, display=False):
+    """Listen for incoming frames for `duration` seconds.
+    If display=True, shows frames in a grayscale image window."""
+    viewer = _FrameViewer() if display else None
+
     start = time.monotonic()
     count = 0
     while time.monotonic() - start < duration_s:
@@ -282,14 +307,86 @@ def listen_frames(ser, duration_s=5.0):
             continue
         count += 1
         if msg["which"] == "frame":
-            print(
+            info = (
                 f"[{count}] Frame: {msg['width']}x{msg['height']}, "
                 f"enc={msg['encoding']}, fmt={msg['pixel_format']}, "
                 f"data={msg['data_len']} bytes"
             )
+            print(info)
+            if viewer and msg["data_len"] > 0:
+                viewer.show(msg["data"], msg["width"], msg["height"])
+                # Small delay so the GUI can process events
+                viewer.update()
+                if not viewer.is_open():
+                    print("Window closed, stopping.")
+                    break
         else:
             print(f"[{count}] {msg}")
+
+    if viewer:
+        viewer.close()
     print(f"Received {count} messages in {duration_s}s")
+
+
+class _FrameViewer:
+    """Display L8 grayscale frames in a window using tkinter + PIL."""
+
+    def __init__(self):
+        import tkinter as tk
+        from PIL import Image, ImageTk
+
+        self.tk = tk
+        self.Image = Image
+        self.ImageTk = ImageTk
+
+        self.root = tk.Tk()
+        self.root.title("Flipper One - Screen Stream")
+        self.label = tk.Label(self.root)
+        self.label.pack()
+        # Position window in top-right corner
+        self.root.geometry("+%d+50" % (self.root.winfo_screenwidth() - 400))
+
+    def show(self, data, width, height):
+        """Update the window with a new L8 frame."""
+        img = self.Image.new("L", (width, height))
+        img.putdata(data)
+        # Scale up for comfortable viewing (2x by default)
+        scale = max(1, min(4, 800 // width))
+        if scale > 1:
+            img = img.resize((width * scale, height * scale), self.Image.NEAREST)
+        photo = self.ImageTk.PhotoImage(img)
+        self.label.config(image=photo)
+        self.label.image = photo  # keep a reference
+        self.root.geometry(f"{width * scale + 20}x{height * scale + 20}")
+
+    def update(self):
+        self.root.update()
+
+    def is_open(self):
+        try:
+            return self.root.winfo_exists()
+        except (self.tk.TclError, RuntimeError):
+            return False
+
+    def close(self):
+        try:
+            self.root.destroy()
+        except (self.tk.TclError, RuntimeError):
+            pass
+
+
+def _display_frame_ascii(data, width, height):
+    """Render an L8 frame as ASCII grayscale art (fallback)."""
+    chars = " .:-=+*#%@"
+    step = max(1, len(data) // (80 * 20))
+    for y in range(0, min(height, 200), step * 2):
+        line = ""
+        for x in range(0, min(width, 80), step):
+            idx = y * width + x
+            if idx < len(data):
+                p = data[idx] / 255.0
+                line += chars[int(p * (len(chars) - 1))]
+        print(line)
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
@@ -342,6 +439,12 @@ def main():
     parser.add_argument("--touch", nargs=4, metavar=("TYPE", "X", "Y", "P"),
                         help="Send touch event: TYPE( START|MOVE|END) X Y PRESSURE")
     parser.add_argument("--listen", type=float, default=0, help="Listen for N seconds after sending")
+    parser.add_argument("--stream", action="store_true",
+                        help="Start virtual display streaming and display frames")
+    parser.add_argument("--display", action="store_true", default=True,
+                        help="Render received frames as ASCII art (default: on)")
+    parser.add_argument("--no-display", action="store_false", dest="display",
+                        help="Skip ASCII rendering")
     parser.add_argument("--auto-rpc", action="store_true", default=True,
                         help="Auto-enter RPC mode by sending 'rpc' command (default: on)")
     parser.add_argument("--no-auto-rpc", action="store_false", dest="auto_rpc",
@@ -358,11 +461,18 @@ def main():
         if args.button:
             send_button(ser, args.button[0].upper(), args.action.upper())
             if args.listen:
-                listen_frames(ser, args.listen)
+                listen_frames(ser, args.listen, args.display)
         elif args.touch:
             send_touch(ser, args.touch[0].upper(), int(args.touch[1]), int(args.touch[2]), int(args.touch[3]))
             if args.listen:
-                listen_frames(ser, args.listen)
+                listen_frames(ser, args.listen, args.display)
+        elif args.stream:
+            send_start_virtual_display(ser)
+            try:
+                listen_frames(ser, args.listen or 10.0, args.display)
+            except KeyboardInterrupt:
+                pass
+            send_stop_virtual_display(ser)
         else:
             interactive_mode(ser)
     finally:

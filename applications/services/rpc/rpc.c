@@ -266,3 +266,14 @@ void rpc_send_and_release(RpcSession* session, Flipper_One_Rpc_RpcMessage* messa
     rpc_send(session, message);
     pb_release(&Flipper_One_Rpc_RpcMessage_msg, message);
 }
+
+void rpc_send_preencoded(RpcSession* session, const uint8_t* bytes, size_t len) {
+    furi_assert(session);
+    furi_assert(bytes);
+    furi_assert(len > 0);
+    furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
+    if(session->send_bytes_callback) {
+        session->send_bytes_callback(session->context, (uint8_t*)bytes, len);
+    }
+    furi_mutex_release(session->callbacks_mutex);
+}

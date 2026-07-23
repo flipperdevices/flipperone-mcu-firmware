@@ -49,6 +49,19 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     };
     rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_touch_event_tag, &touch_handler);
 
+    /* Virtual display stream handlers */
+    RpcHandler start_vd_handler = {
+        .message_handler = rpc_start_virtual_display_handler,
+        .context = rpc_session,
+    };
+    rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_start_virtual_display_request_tag, &start_vd_handler);
+
+    RpcHandler stop_vd_handler = {
+        .message_handler = rpc_stop_virtual_display_handler,
+        .context = rpc_session,
+    };
+    rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_stop_virtual_display_request_tag, &stop_vd_handler);
+
     CliRpc cli_rpc = {.pipe = pipe, .terminate_semaphore = NULL};
     cli_rpc.terminate_semaphore = furi_semaphore_alloc(1, 0);
     rpc_session_set_context(rpc_session, &cli_rpc);
