@@ -324,7 +324,7 @@ def interactive_mode(ser):
             listen_frames(ser, duration)
         elif cmd == "help":
             print("Commands:")
-            print("  button <OK|BACK|KEY_1|...> [PRESS|RELEASE]")
+            print("  button <OK|BACK|KEY_1|KEY_2|POWER|KEY_4|KEY_5|SW|DOWN|RIGHT|LEFT|UP|PTT> [PRESS|RELEASE]")
             print("  touch <START|MOVE|END> <x> <y> <pressure>")
             print("  listen <seconds>")
             print("  quit")
@@ -336,7 +336,8 @@ def main():
     parser = argparse.ArgumentParser(description="Flipper One RPC test over serial")
     parser.add_argument("--port", default=PORT, help=f"Serial port (default: {PORT})")
     parser.add_argument("--baud", type=int, default=BAUD, help=f"Baud rate (default: {BAUD})")
-    parser.add_argument("--button", help="Send one button press and exit")
+    parser.add_argument("--button", nargs=1,
+                        help="Send button event: OK, BACK, KEY_1, KEY_2, POWER, KEY_4, KEY_5, SW, DOWN, RIGHT, LEFT, UP, PTT")
     parser.add_argument("--action", default="PRESS", help="Button action (PRESS/RELEASE)")
     parser.add_argument("--touch", nargs=4, metavar=("TYPE", "X", "Y", "P"),
                         help="Send touch event: TYPE( START|MOVE|END) X Y PRESSURE")
@@ -355,7 +356,7 @@ def main():
             enter_rpc_mode(ser)
 
         if args.button:
-            send_button(ser, args.button.upper(), args.action.upper())
+            send_button(ser, args.button[0].upper(), args.action.upper())
             if args.listen:
                 listen_frames(ser, args.listen)
         elif args.touch:
