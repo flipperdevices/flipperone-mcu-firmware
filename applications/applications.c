@@ -35,10 +35,10 @@ extern int32_t unit_test_app(void* p);
 
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
-extern void power_consumption_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void led_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void uart_echo_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void dmesg_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void input_cli_command(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -272,12 +272,6 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
         .flags = CliCommandFlagParallelSafe,
     },
     {
-        .callback = power_consumption_cli,
-        .name = "power_consumption",
-        .stack_size = 1024,
-        .flags = CliCommandFlagParallelSafe,
-    },
-    {
         .callback = led_cli,
         .name = "led",
         .stack_size = 1024,
@@ -292,6 +286,12 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = dmesg_cli,
         .name = "dmesg",
+        .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = input_cli_command,
+        .name = "input",
         .stack_size = 1024 * 2,
         .flags = CliCommandFlagParallelSafe,
     },

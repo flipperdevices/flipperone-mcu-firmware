@@ -186,6 +186,7 @@ API_WRAPPER_PARAM(bq25792_get_charge_current_limit_ma, Bq25792Status, Bq25792*, 
 API_WRAPPER_PARAM(bq25792_set_charge_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
 API_WRAPPER_PARAM(bq25792_get_ico_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
 API_WRAPPER_PARAM(bq25792_charge_enable, Bq25792Status, Bq25792*, bool);
+API_WRAPPER_PARAM(bq25792_charge_is_enabled, Bq25792Status, Bq25792*, bool*);
 API_WRAPPER_PARAM(bq25792_get_charger_status, Bq25792Status, Bq25792*, Bq25792ChargerStatusReg*);
 API_WRAPPER_PARAM(bq25792_get_charger_fault, Bq25792Status, Bq25792*, Bq25792FaultStatusReg*);
 API_WRAPPER_PARAM(bq25792_get_charger_irq_flags, Bq25792Status, Bq25792*, Bq25792ChargerFlagReg*);
@@ -266,9 +267,24 @@ static Bq25792Status power_bq25792_otg_enable_internal(Power* instance, bool ena
     return res;
 }
 
+static Bq25792Status power_bq25792_is_usb_connected(Power* instance, bool* usb_connected) {
+    furi_assert(instance);
+    furi_assert(usb_connected); 
+    Bq25792Status res = Bq25792StatusUnknown;
+
+    Bq25792ChargerStatusReg status = {0};
+    res = bq25792_get_charger_status(instance->bq25792_header, &status);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to get charger status: %d", res);
+        return res;
+    }
+    *usb_connected = !!status.stat0.vbus_present_stat;
+    return res;
+}
+
 API_WRAPPER_PARAM(power_bq25792_set_otg_params_internal, Bq25792Status, Power*, PowerBq25792OtgParams*);
 API_WRAPPER_PARAM(power_bq25792_otg_enable_internal, Bq25792Status, Power*, bool);
-
+API_WRAPPER_PARAM(power_bq25792_is_usb_connected, Bq25792Status, Power*, bool*);
 // Bq28z620 wrappers
 
 API_WRAPPER_PARAM(bq28z620_get_control_status, Bq28z620Status, Bq28z620*, Bq28z620StdCmdControlStatusRegBits*);
@@ -590,6 +606,13 @@ bool power_bq25792_charge_enable(Power* instance, bool enable) {
     return result == Bq25792StatusOk;
 }
 
+bool power_bq25792_charge_is_enabled(Power* instance, bool* enabled) {
+    furi_check(instance);
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_charge_is_enabled, instance->bq25792_header, enabled, result);
+    return result == Bq25792StatusOk;
+}
+
 bool power_bq25792_get_charger_status(Power* instance, Bq25792ChargerStatusReg* status) {
     furi_check(instance);
     Bq25792Status result;
@@ -653,6 +676,13 @@ bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_curre
     furi_check(instance);
     Bq25792Status result;
     POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_ico_current_limit_ma, instance->bq25792_header, ico_current_limit, result);
+    return result == Bq25792StatusOk;
+}
+
+bool power_bq25792_usb_is_connected(Power* instance, bool* usb_connected) {
+    furi_check(instance);
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, power_bq25792_is_usb_connected, instance, usb_connected, result);
     return result == Bq25792StatusOk;
 }
 
