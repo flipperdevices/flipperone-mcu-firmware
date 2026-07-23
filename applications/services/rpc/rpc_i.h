@@ -39,6 +39,7 @@ void rpc_input_handler_callback(const Flipper_One_Rpc_RpcMessage* message, void*
 void rpc_touch_handler_callback(const Flipper_One_Rpc_RpcMessage* message, void* context);
 void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message, void* context);
 void rpc_stop_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message, void* context);
+void rpc_session_close_handler(const Flipper_One_Rpc_RpcMessage* message, void* context);
 
 #ifdef SRV_RPC_DEBUG
 void rpc_debug_print_data(const char* prefix, uint8_t* buffer, size_t size);

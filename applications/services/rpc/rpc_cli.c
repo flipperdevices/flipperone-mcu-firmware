@@ -21,6 +21,7 @@ static void rpc_cli_send_bytes_callback(void* context, uint8_t* bytes, size_t by
 static void rpc_cli_session_terminated_callback(void* context) {
     furi_check(context);
     CliRpc* cli_rpc = (CliRpc*)context;
+    pipe_close(cli_rpc->pipe);
     furi_semaphore_release(cli_rpc->terminate_semaphore);
 }
 
@@ -62,6 +63,13 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     };
     rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_stop_virtual_display_request_tag, &stop_vd_handler);
 
+    /* Session close handler */
+    RpcHandler close_handler = {
+        .message_handler = rpc_session_close_handler,
+        .context = rpc_session,
+    };
+    rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_rpc_session_close_request_tag, &close_handler);
+
     CliRpc cli_rpc = {.pipe = pipe, .terminate_semaphore = NULL};
     cli_rpc.terminate_semaphore = furi_semaphore_alloc(1, 0);
     rpc_session_set_context(rpc_session, &cli_rpc);
@@ -86,6 +94,11 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     uint8_t* buffer = malloc(CLI_READ_BUFFER_SIZE);
 
     FURI_LOG_I(TAG, "Entering pipe read loop");
+
+    /* Send a ready marker so the host knows RPC mode is active */
+    uint8_t ready = 0xFD;
+    pipe_send(pipe, &ready, 1);
+
     while(1) {
         /* Read whatever is available right now.  First call blocks until
          * at least 1 byte arrives (or pipe breaks).  Subsequent calls
@@ -108,9 +121,16 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     }
 
     FURI_LOG_I(TAG, "Pipe session ended");
-    rpc_session_close(rpc_session);
 
-    furi_check(furi_semaphore_acquire(cli_rpc.terminate_semaphore, FuriWaitForever) == FuriStatusOk);
+    /* If the session was already closed by the close handler, the terminated
+     * callback already released the semaphore and closed the pipe.
+     * Otherwise (pipe broke naturally), close it now. */
+    if(furi_semaphore_acquire(cli_rpc.terminate_semaphore, 0) != FuriStatusOk) {
+        rpc_session_close(rpc_session);
+        furi_check(
+            furi_semaphore_acquire(cli_rpc.terminate_semaphore, FuriWaitForever) ==
+            FuriStatusOk);
+    }
 
     furi_semaphore_free(cli_rpc.terminate_semaphore);
     free(buffer);

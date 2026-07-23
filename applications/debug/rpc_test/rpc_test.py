@@ -21,7 +21,7 @@ import queue
 
 # ── Serial port config ──────────────────────────────────────────────────────
 PORT = "COM10"
-BAUD = 230400
+BAUD = 1500000
 TIMEOUT = 1.0
 
 # ── Proto compilation ───────────────────────────────────────────────────────
@@ -198,27 +198,28 @@ def open_serial(port=PORT, baud=BAUD, timeout=TIMEOUT):
     return ser
 
 
-def enter_rpc_mode(ser, cmd="rpc", wait_s=2.0):
-    """Send CLI command to enter RPC mode.
-
-    The device CLI processes text commands line by line.  We send the
-    command as a text line, then wait for the RPC session to start.
-    After that the serial port switches to raw binary protobuf mode.
-    """
-    full_cmd = (cmd + "\r").encode()  # CLI uses \r (CR) as line terminator
+def enter_rpc_mode(ser, cmd="rpc", timeout_s=5.0):
+    """Send CLI command to enter RPC mode and wait for ready marker (0xFD)."""
+    full_cmd = (cmd + "\r").encode()
     ser.write(full_cmd)
     ser.flush()
-    time.sleep(wait_s)
-    # Drain any echo or prompt that the device might have sent back,
-    # so the next read only sees binary RPC data.
-    ser.timeout = 0.1
-    try:
-        while ser.read(1024):
-            pass
-    except:
-        pass
+
+    # Wait for the 0xFD ready marker (discard everything before it)
+    ser.timeout = 0.5
+    deadline = time.monotonic() + timeout_s
+    drained = 0
+    while time.monotonic() < deadline:
+        byte = ser.read(1)
+        if not byte:
+            continue
+        if byte[0] == 0xFD:
+            ser.timeout = TIMEOUT
+            print(f"Entered RPC mode (sent '{cmd}') [drained {drained} bytes]")
+            return
+        drained += 1
+
     ser.timeout = TIMEOUT
-    print(f"Entered RPC mode (sent '{cmd}')")
+    print(f"WARNING: RPC ready marker not received within {timeout_s}s")
 
 
 def send_message(ser, raw_bytes):
@@ -255,7 +256,10 @@ def read_message(ser):
             return None  # timeout or disconnected
         payload += chunk
 
-    return parse_rpc_message(payload)
+    try:
+        return parse_rpc_message(payload)
+    except Exception:
+        return None
 
 
 # ── Test actions ────────────────────────────────────────────────────────────
@@ -299,6 +303,17 @@ def send_stop_virtual_display(ser):
     print(f"Sent: StopVirtualDisplayRequest  [{len(data)} bytes]")
 
 
+def send_rpc_session_close(ser):
+    """Send rpc_session_close_request."""
+    _ensure_protos()
+    msg = _rpc_pb2.RpcMessage()
+    msg.rpc_session_close_request.SetInParent()
+    payload = msg.SerializeToString()
+    data = _encode_varint(len(payload)) + payload
+    send_message(ser, data)
+    print(f"Sent: RpcSessionCloseRequest  [{len(data)} bytes]")
+
+
 def listen_frames(ser, duration_s=5.0, display=False):
     """Listen for incoming frames for `duration` seconds.
     If display=True, shows frames in a movable tkinter window.
@@ -311,7 +326,12 @@ def listen_frames(ser, duration_s=5.0, display=False):
         count = 0
         end_time = start + duration_s
         while not stop_event.is_set() and time.monotonic() < end_time:
-            msg = read_message(ser)
+            try:
+                msg = read_message(ser)
+            except Exception as e:
+                print(f"Skipping bad data: {e}")
+                ser.reset_input_buffer()
+                msg = None
             if msg is None:
                 continue
             count += 1
@@ -507,6 +527,8 @@ def main():
     try:
         if args.auto_rpc:
             enter_rpc_mode(ser)
+        # Clear any residual data that arrived after the 0xFD marker
+        ser.reset_input_buffer()
 
         if args.button:
             send_button(ser, args.button[0].upper(), args.action.upper())

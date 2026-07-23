@@ -223,3 +223,13 @@ void rpc_stop_virtual_display_handler(
     rpc_screen_stream = NULL;
     FURI_LOG_I(TAG, "Virtual display stopped");
 }
+
+/* ── Handler: close RPC session ─────────────────────────────────────────── */
+void rpc_session_close_handler(
+    const Flipper_One_Rpc_RpcMessage* message, void* context) {
+    UNUSED(message);
+    furi_assert(context);
+    RpcSession* session = (RpcSession*)context;
+    FURI_LOG_I(TAG, "Session close requested");
+    rpc_session_close(session);
+}
