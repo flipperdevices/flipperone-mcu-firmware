@@ -97,6 +97,9 @@ file(GLOB_RECURSE SOURCES
     "targets/${TARGET_HARDWARE}/src/*.c*" 
 )
 
+# Collect RPC source files
+file(GLOB RPC_SOURCES "${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/*.c")
+
 add_executable(${PROJECT_NAME} 
     ${SOURCES}
     # Nanopb Protocol Buffers runtime library
@@ -104,10 +107,7 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_encode.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_decode.c
     # RPC service: CLI-based protobuf communication (frame + input)
-    ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc.c
-    ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc_cli.c
-    ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc_debug.c
-    ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc_input_handler.c
+    ${RPC_SOURCES}
 )
 
 # NVM bank size — single source of truth used by both the linker script
