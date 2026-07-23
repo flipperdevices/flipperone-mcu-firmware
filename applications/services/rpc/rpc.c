@@ -64,7 +64,9 @@ size_t rpc_session_feed(RpcSession* session, const uint8_t* encoded_bytes, size_
     furi_check(encoded_bytes);
     if(!size) return 0;
 
+    FURI_LOG_E(TAG, "feed(%zu) timeout=%lu", size, timeout);
     size_t bytes_sent = furi_stream_buffer_send(session->stream, encoded_bytes, size, timeout);
+    FURI_LOG_E(TAG, "feed sent=%zu, setting flag", bytes_sent);
     furi_thread_flags_set(furi_thread_get_id(session->thread), RpcEvtNewData);
     return bytes_sent;
 }
@@ -95,8 +97,13 @@ static bool rpc_pb_stream_read(pb_istream_t* istream, pb_byte_t* buf, size_t cou
             }
             furi_thread_flags_set(furi_thread_get_id(session->thread), RpcEvtDisconnect);
         }
+        if(flags & RpcEvtNewData) {
+            // Just wake thread up
+        }
     }
-
+#ifdef SRV_RPC_DEBUG
+    rpc_debug_print_data("INPUT", buf, bytes_received);
+#endif
     return count == bytes_received;
 }
 
@@ -120,6 +127,11 @@ static int32_t rpc_session_worker(void* context) {
 
         if(decode_ok) {
             pb_size_t tag = session->decoded_message->which_content;
+
+#ifdef SRV_RPC_DEBUG
+            FURI_LOG_I(TAG, "INPUT:");
+            rpc_debug_print_message(session->decoded_message);
+#endif
             RpcHandler* handler = RpcHandlerDict_get(session->handlers, tag);
 
             if(handler && handler->message_handler) {
@@ -224,12 +236,22 @@ void rpc_send(RpcSession* session, Flipper_One_Rpc_RpcMessage* message) {
     furi_assert(message);
 
     pb_ostream_t ostream = PB_OSTREAM_SIZING;
+
+#ifdef SRV_RPC_DEBUG
+    FURI_LOG_I(TAG, "OUTPUT:");
+    rpc_debug_print_message(message);
+#endif
+
     bool result = pb_encode_ex(&ostream, &Flipper_One_Rpc_RpcMessage_msg, message, PB_ENCODE_DELIMITED);
     furi_check(result && ostream.bytes_written);
 
     uint8_t* buffer = malloc(ostream.bytes_written);
     ostream = pb_ostream_from_buffer(buffer, ostream.bytes_written);
     pb_encode_ex(&ostream, &Flipper_One_Rpc_RpcMessage_msg, message, PB_ENCODE_DELIMITED);
+
+#ifdef SRV_RPC_DEBUG
+    rpc_debug_print_data("OUTPUT", buffer, ostream.bytes_written);
+#endif
 
     furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
     if(session->send_bytes_callback) {

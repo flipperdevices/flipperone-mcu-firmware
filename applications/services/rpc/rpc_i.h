@@ -6,6 +6,9 @@
 #include <rpc.pb.h>
 #include <containers/pipe.h>
 
+
+#define SRV_RPC_DEBUG
+
 /* Forward declarations */
 typedef struct FuriString FuriString;
 #ifdef __cplusplus
@@ -26,6 +29,11 @@ void rpc_send_and_release(RpcSession* session, Flipper_One_Rpc_RpcMessage* messa
 void rpc_add_handler(RpcSession* session, pb_size_t message_tag, RpcHandler* handler);
 
 void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* context);
+
+#ifdef SRV_RPC_DEBUG
+void rpc_debug_print_data(const char* prefix, uint8_t* buffer, size_t size);
+void rpc_debug_print_message(const Flipper_One_Rpc_RpcMessage* message);
+#endif
 
 #ifdef __cplusplus
 }

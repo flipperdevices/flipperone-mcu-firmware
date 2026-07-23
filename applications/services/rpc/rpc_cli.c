@@ -43,20 +43,45 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     rpc_session_set_send_bytes_callback(rpc_session, rpc_cli_send_bytes_callback);
     rpc_session_set_terminated_callback(rpc_session, rpc_cli_session_terminated_callback);
 
-    uint8_t* buffer = malloc(CLI_READ_BUFFER_SIZE);
-
-    while(1) {
-        size_t size_received = pipe_receive(pipe, buffer, CLI_READ_BUFFER_SIZE);
-        if(pipe_state(pipe) != PipeStateOpen) {
-            break;
-        }
-
-        if(size_received) {
-            size_t fed_bytes = rpc_session_feed(rpc_session, buffer, size_received, 3000);
-            furi_assert(fed_bytes == size_received);
+    /* Drain any leftover bytes in the pipe (e.g. trailing \n from the CLI
+     * command that started this session).  Otherwise they get misinterpreted
+     * as the varint length of the first protobuf message. */
+    {
+        uint8_t drain_buf[16];
+        size_t avail = pipe_bytes_available(pipe);
+        while(avail > 0) {
+            size_t chunk = MIN(avail, sizeof(drain_buf));
+            size_t n = pipe_receive(pipe, drain_buf, chunk);
+            if(n == 0) break;
+            FURI_LOG_D(TAG, "Drained %zu leftover byte(s)", n);
+            avail = pipe_bytes_available(pipe);
         }
     }
 
+    uint8_t* buffer = malloc(CLI_READ_BUFFER_SIZE);
+
+    FURI_LOG_I(TAG, "Entering pipe read loop");
+    while(1) {
+        /* Read at least 1 byte (blocks until data arrives or pipe breaks). */
+        size_t size_received = pipe_receive(pipe, buffer, 1);
+        if(pipe_state(pipe) != PipeStateOpen) break;
+
+        /* Grab any additional bytes already buffered without blocking.
+         * Requesting exactly pipe_bytes_available() avoids the internal
+         * 100 ms timeout in pipe_receive's retry loop. */
+        size_t avail = pipe_bytes_available(pipe);
+        if(avail > 0) {
+            size_t extra = MIN(avail, CLI_READ_BUFFER_SIZE - 1);
+            pipe_receive(pipe, buffer + size_received, extra);
+            size_received += extra;
+        }
+
+        FURI_LOG_E(TAG, "Feeding %zu bytes from pipe", size_received);
+        size_t fed_bytes = rpc_session_feed(rpc_session, buffer, size_received, 3000);
+        furi_assert(fed_bytes == size_received);
+    }
+
+    FURI_LOG_I(TAG, "Pipe session ended");
     rpc_session_close(rpc_session);
 
     furi_check(furi_semaphore_acquire(cli_rpc.terminate_semaphore, FuriWaitForever) == FuriStatusOk);

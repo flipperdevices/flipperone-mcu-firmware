@@ -106,6 +106,7 @@ add_executable(${PROJECT_NAME}
     # RPC service: CLI-based protobuf communication (frame + input)
     ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc.c
     ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc_cli.c
+    ${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/rpc_debug.c
 )
 
 # NVM bank size — single source of truth used by both the linker script
