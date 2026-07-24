@@ -32,8 +32,6 @@ void rpc_send_preencoded(RpcSession* session, const uint8_t* bytes, size_t len);
 
 void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* context);
 
-void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* context);
-
 /* Message handlers */
 void rpc_input_handler_callback(const Flipper_One_Rpc_RpcMessage* message, void* context);
 void rpc_touch_handler_callback(const Flipper_One_Rpc_RpcMessage* message, void* context);

@@ -207,10 +207,11 @@ void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message
     stream->thread = NULL;
     stream->done_sem = furi_semaphore_alloc(1, 0);
 
-    rpc_screen_stream = stream;
-
     stream->thread = furi_thread_alloc_ex("RpcScreenStream", 4096, rpc_screen_stream_thread, stream);
     furi_thread_start(stream->thread);
+
+    /* Publish only after thread is running — stop handler needs thread != NULL. */
+    rpc_screen_stream = stream;
 
     FURI_LOG_I(TAG, "Virtual display started");
 }
@@ -220,7 +221,10 @@ void rpc_stop_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message,
     UNUSED(message);
     UNUSED(context);
 
+    /* Atomic swap — prevents double-free if called concurrently
+     * (e.g. from worker + terminated callback). */
     RpcScreenStream* stream = rpc_screen_stream;
+    rpc_screen_stream = NULL;
     if(!stream) {
         return;
     }

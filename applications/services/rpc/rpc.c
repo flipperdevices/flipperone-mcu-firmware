@@ -64,10 +64,15 @@ size_t rpc_session_feed(RpcSession* session, const uint8_t* encoded_bytes, size_
     furi_check(encoded_bytes);
     if(!size) return 0;
 
-    FURI_LOG_E(TAG, "feed(%zu) timeout=%lu", size, timeout);
+    /* Worker may have already exited — do not touch a dead task. */
+    if(session->terminate) return 0;
+
+    FURI_LOG_D(TAG, "feed(%zu) timeout=%lu", size, timeout);
     size_t bytes_sent = furi_stream_buffer_send(session->stream, encoded_bytes, size, timeout);
-    FURI_LOG_E(TAG, "feed sent=%zu, setting flag", bytes_sent);
-    furi_thread_flags_set(furi_thread_get_id(session->thread), RpcEvtNewData);
+    if(bytes_sent > 0) {
+        FURI_LOG_D(TAG, "feed sent=%zu, setting flag", bytes_sent);
+        furi_thread_flags_set(furi_thread_get_id(session->thread), RpcEvtNewData);
+    }
     return bytes_sent;
 }
 
@@ -81,6 +86,7 @@ static bool rpc_pb_stream_read(pb_istream_t* istream, pb_byte_t* buf, size_t cou
 
     size_t bytes_received = 0;
     uint32_t flags = 0;
+    int disconnect_retries = 3; /* drain at most 3 chunks before giving up */
 
     while(1) {
         bytes_received += furi_stream_buffer_receive(session->stream, buf + bytes_received, count - bytes_received, 0);
@@ -89,7 +95,7 @@ static bool rpc_pb_stream_read(pb_istream_t* istream, pb_byte_t* buf, size_t cou
 
         flags = furi_thread_flags_wait(RPC_ALL_EVENTS, FuriFlagWaitAny, FuriWaitForever);
         if(flags & RpcEvtDisconnect) {
-            if(furi_stream_buffer_is_empty(session->stream)) {
+            if(furi_stream_buffer_is_empty(session->stream) || --disconnect_retries <= 0) {
                 session->terminate = true;
                 istream->bytes_left = 0;
                 bytes_received = 0;

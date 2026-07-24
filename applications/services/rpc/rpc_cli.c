@@ -78,26 +78,12 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     };
     rpc_add_handler(rpc_session, Flipper_One_Rpc_RpcMessage_rpc_session_close_request_tag, &close_handler);
 
-    CliRpc cli_rpc = {.pipe = pipe, .terminate_semaphore = NULL};
-    cli_rpc.terminate_semaphore = furi_semaphore_alloc(1, 0);
-    rpc_session_set_context(rpc_session, &cli_rpc);
+    CliRpc* cli_rpc = malloc(sizeof(CliRpc));
+    cli_rpc->pipe = pipe;
+    cli_rpc->terminate_semaphore = furi_semaphore_alloc(1, 0);
+    rpc_session_set_context(rpc_session, cli_rpc);
     rpc_session_set_send_bytes_callback(rpc_session, rpc_cli_send_bytes_callback);
     rpc_session_set_terminated_callback(rpc_session, rpc_cli_session_terminated_callback);
-
-    // /* Drain any leftover bytes in the pipe (e.g. trailing \n from the CLI
-    //  * command that started this session).  Otherwise they get misinterpreted
-    //  * as the varint length of the first protobuf message. */
-    // {
-    //     uint8_t drain_buf[16];
-    //     size_t avail = pipe_bytes_available(pipe);
-    //     while(avail > 0) {
-    //         size_t chunk = MIN(avail, sizeof(drain_buf));
-    //         size_t n = pipe_receive(pipe, drain_buf, chunk);
-    //         if(n == 0) break;
-    //         FURI_LOG_W(TAG, "Drained %zu leftover byte(s)", n);
-    //         avail = pipe_bytes_available(pipe);
-    //     }
-    // }
 
     uint8_t* buffer = malloc(CLI_READ_BUFFER_SIZE);
 
@@ -125,7 +111,9 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
         }
 
         size_t fed_bytes = rpc_session_feed(rpc_session, buffer, size_received, 3000);
-        furi_assert(fed_bytes == size_received);
+        if(fed_bytes < size_received) {
+            FURI_LOG_W(TAG, "feed partial: %zu/%zu (stream full or closed)", fed_bytes, size_received);
+        }
     }
 
     FURI_LOG_I(TAG, "Pipe session ended");
@@ -133,13 +121,14 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     /* If the session was already closed by the close handler, the terminated
      * callback already released the semaphore and closed the pipe.
      * Otherwise (pipe broke naturally), close it now. */
-    if(furi_semaphore_acquire(cli_rpc.terminate_semaphore, 0) != FuriStatusOk) {
+    if(furi_semaphore_acquire(cli_rpc->terminate_semaphore, 0) != FuriStatusOk) {
         rpc_session_close(rpc_session);
         furi_check(
-            furi_semaphore_acquire(cli_rpc.terminate_semaphore, FuriWaitForever) ==
+            furi_semaphore_acquire(cli_rpc->terminate_semaphore, FuriWaitForever) ==
             FuriStatusOk);
     }
 
-    furi_semaphore_free(cli_rpc.terminate_semaphore);
+    furi_semaphore_free(cli_rpc->terminate_semaphore);
+    free(cli_rpc);
     free(buffer);
 }
