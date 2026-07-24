@@ -76,20 +76,20 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
     rpc_session_set_send_bytes_callback(rpc_session, rpc_cli_send_bytes_callback);
     rpc_session_set_terminated_callback(rpc_session, rpc_cli_session_terminated_callback);
 
-    /* Drain any leftover bytes in the pipe (e.g. trailing \n from the CLI
-     * command that started this session).  Otherwise they get misinterpreted
-     * as the varint length of the first protobuf message. */
-    {
-        uint8_t drain_buf[16];
-        size_t avail = pipe_bytes_available(pipe);
-        while(avail > 0) {
-            size_t chunk = MIN(avail, sizeof(drain_buf));
-            size_t n = pipe_receive(pipe, drain_buf, chunk);
-            if(n == 0) break;
-            FURI_LOG_D(TAG, "Drained %zu leftover byte(s)", n);
-            avail = pipe_bytes_available(pipe);
-        }
-    }
+    // /* Drain any leftover bytes in the pipe (e.g. trailing \n from the CLI
+    //  * command that started this session).  Otherwise they get misinterpreted
+    //  * as the varint length of the first protobuf message. */
+    // {
+    //     uint8_t drain_buf[16];
+    //     size_t avail = pipe_bytes_available(pipe);
+    //     while(avail > 0) {
+    //         size_t chunk = MIN(avail, sizeof(drain_buf));
+    //         size_t n = pipe_receive(pipe, drain_buf, chunk);
+    //         if(n == 0) break;
+    //         FURI_LOG_W(TAG, "Drained %zu leftover byte(s)", n);
+    //         avail = pipe_bytes_available(pipe);
+    //     }
+    // }
 
     uint8_t* buffer = malloc(CLI_READ_BUFFER_SIZE);
 
