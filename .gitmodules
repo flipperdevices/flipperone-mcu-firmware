@@ -13,4 +13,4 @@
 	url = https://github.com/SEGGERMicro/RTT.git
 [submodule "lib/corelibs"]
 	path = lib/corelibs
-	url = https://github.com/flipperdevices/fbtng-corelibs.git
+	url = https://github.com/MuratErdimDemir/fbtng-corelibs.git
