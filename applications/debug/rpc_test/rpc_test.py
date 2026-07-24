@@ -569,7 +569,9 @@ def main():
             if args.listen:
                 listen_frames(ser, args.listen, args.display)
         elif args.stream:
+            ser.reset_input_buffer()
             send_start_virtual_display(ser)
+            time.sleep(0.1)  # let device start the stream thread
             try:
                 listen_frames(ser, args.listen or 10.0, args.display)
             except KeyboardInterrupt:
