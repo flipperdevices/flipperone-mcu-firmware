@@ -154,6 +154,10 @@ static int32_t rpc_session_worker(void* context) {
 
         if(session->terminate) {
             FURI_LOG_D(TAG, "Session terminated");
+            /* Reset stream so pending rpc_session_feed calls return
+             * immediately instead of blocking with timeout (which would
+             * stall the CLI pipe-drain loop and deadlock pipe_send). */
+            furi_stream_buffer_reset(session->stream);
             break;
         }
     }
@@ -163,6 +167,8 @@ static int32_t rpc_session_worker(void* context) {
 static void rpc_session_thread_pending_callback(void* context, uint32_t arg) {
     UNUSED(arg);
     RpcSession* session = (RpcSession*)context;
+
+    FURI_LOG_D(TAG, "Pending callback");
 
     free(session->decoded_message);
     RpcHandlerDict_clear(session->handlers);
@@ -253,11 +259,18 @@ void rpc_send(RpcSession* session, Flipper_One_Rpc_RpcMessage* message) {
     rpc_debug_print_data("OUTPUT", buffer, ostream.bytes_written);
 #endif
 
+    /* Snapshot callback under mutex, then release — the callback may block
+     * (e.g. pipe_send) and we must not hold callbacks_mutex across it. */
+    RpcSendBytesCallback cb;
+    void* ctx;
     furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
-    if(session->send_bytes_callback) {
-        session->send_bytes_callback(session->context, buffer, ostream.bytes_written);
-    }
+    cb = session->send_bytes_callback;
+    ctx = session->context;
     furi_mutex_release(session->callbacks_mutex);
+
+    if(cb) {
+        cb(ctx, buffer, ostream.bytes_written);
+    }
 
     free(buffer);
 }
@@ -271,9 +284,19 @@ void rpc_send_preencoded(RpcSession* session, const uint8_t* bytes, size_t len) 
     furi_assert(session);
     furi_assert(bytes);
     furi_assert(len > 0);
+
+    /* Snapshot the callback under the mutex, then release it BEFORE
+     * calling the callback — the callback (e.g. pipe_send) may block,
+     * and holding callbacks_mutex across a blocking call would deadlock
+     * the session termination path (rpc_session_thread_pending_callback). */
+    RpcSendBytesCallback cb;
+    void* ctx;
     furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
-    if(session->send_bytes_callback) {
-        session->send_bytes_callback(session->context, (uint8_t*)bytes, len);
-    }
+    cb = session->send_bytes_callback;
+    ctx = session->context;
     furi_mutex_release(session->callbacks_mutex);
+
+    if(cb) {
+        cb(ctx, (uint8_t*)bytes, len);
+    }
 }

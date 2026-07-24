@@ -21,7 +21,15 @@ static void rpc_cli_send_bytes_callback(void* context, uint8_t* bytes, size_t by
 static void rpc_cli_session_terminated_callback(void* context) {
     furi_check(context);
     CliRpc* cli_rpc = (CliRpc*)context;
+
+    /* Close the pipe FIRST — this unblocks any pipe_send() that the
+     * screen-stream thread may be stuck in.  Only then can the thread
+     * process the Stop flag and exit cleanly. */
     pipe_close(cli_rpc->pipe);
+
+    rpc_stop_virtual_display_handler(NULL, NULL);
+
+    FURI_LOG_I(TAG, "Virtual display stopped");
     furi_semaphore_release(cli_rpc->terminate_semaphore);
 }
 

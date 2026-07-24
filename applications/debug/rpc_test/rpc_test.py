@@ -463,6 +463,7 @@ def _display_frame_ascii(data, width, height):
 def interactive_mode(ser):
     """Simple interactive test loop."""
     print("\nCommands: button <NAME> [PRESS|RELEASE], touch <START|MOVE|END> <x> <y> <p>, listen <N>, quit")
+    print("  start_vd, stop_vd, close, stream [N]")
     print("Example: button OK PRESS")
     while True:
         try:
@@ -489,11 +490,40 @@ def interactive_mode(ser):
         elif cmd == "listen":
             duration = float(parts[1]) if len(parts) > 1 else 5.0
             listen_frames(ser, duration)
+        elif cmd == "start_vd":
+            send_start_virtual_display(ser)
+            ser.reset_input_buffer()  # flush leftover bytes from previous session
+            print("Streaming to window — close window to stop")
+            try:
+                listen_frames(ser, 30.0, display=True)
+            except KeyboardInterrupt:
+                pass
+        elif cmd == "stop_vd":
+            send_stop_virtual_display(ser)
+        elif cmd == "open":
+            ser.close()
+            time.sleep(0.3)
+            ser.open()
+            enter_rpc_mode(ser)
+            ser.reset_input_buffer()
+        elif cmd == "close":
+            send_rpc_session_close(ser)
+        elif cmd == "stream":
+            duration = float(parts[1]) if len(parts) > 1 else 5.0
+            ser.reset_input_buffer()
+            send_start_virtual_display(ser)
+            listen_frames(ser, duration, display=True)
+            send_stop_virtual_display(ser)
         elif cmd == "help":
             print("Commands:")
             print("  button <OK|BACK|KEY_1|KEY_2|POWER|KEY_4|KEY_5|SW|DOWN|RIGHT|LEFT|UP|PTT> [PRESS|RELEASE]")
             print("  touch <START|MOVE|END> <x> <y> <pressure>")
             print("  listen <seconds>")
+            print("  start_vd  — start virtual display streaming")
+            print("  stop_vd   — stop virtual display streaming")
+            print("  stream [N] — start_vd + listen N seconds")
+            print("  open      — enter RPC mode (after close)")
+            print("  close     — close RPC session")
             print("  quit")
         else:
             print(f"Unknown: {cmd}")
@@ -545,9 +575,16 @@ def main():
             except KeyboardInterrupt:
                 pass
             send_stop_virtual_display(ser)
+            send_rpc_session_close(ser)
         else:
             interactive_mode(ser)
+            send_rpc_session_close(ser)
     finally:
+        if args.auto_rpc:
+            try:
+                send_rpc_session_close(ser)
+            except Exception:
+                pass
         ser.close()
         print("Disconnected.")
 

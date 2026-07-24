@@ -34,6 +34,7 @@ typedef struct {
     size_t height;
     FuriMutex* mutex;
     FuriThread* thread;
+    FuriSemaphore* done_sem; /* released when thread exits (replaces join) */
 } RpcScreenStream;
 
 static RpcScreenStream* rpc_screen_stream = NULL;
@@ -48,11 +49,7 @@ static RpcScreenStream* rpc_screen_stream = NULL;
  *
  * Returns the number of header bytes written.
  */
-static size_t rpc_frame_build_wire_header(
-    uint8_t* buf,
-    size_t buf_size,
-    uint16_t width,
-    uint16_t height) {
+static size_t rpc_frame_build_wire_header(uint8_t* buf, size_t buf_size, uint16_t width, uint16_t height) {
     size_t data_len = (size_t)width * height;
 
     /* ── Pass 1: measure all varint sizes ────────────────────────── */
@@ -111,10 +108,9 @@ static size_t rpc_frame_build_wire_header(
 
 /* ── Send one frame (header + pixels already in frame_buffer) ───────────── */
 static void rpc_screen_send_frame(RpcScreenStream* stream) {
-    rpc_send_preencoded(
-        stream->session,
-        stream->frame_buffer,
-        stream->wire_header_size + SCREEN_PIXELS);
+    RpcSession* session = stream->session;
+    if(!stream->active || !session) return;
+    rpc_send_preencoded(session, stream->frame_buffer, stream->wire_header_size + SCREEN_PIXELS);
 }
 
 /* ── Framebuffer callback: runs in GUI thread ───────────────────────────── */
@@ -162,6 +158,9 @@ static int32_t rpc_screen_stream_thread(void* context) {
     gui_remove_framebuffer_callback(stream->gui, rpc_screen_fb_callback, stream);
     furi_record_close(RECORD_GUI);
 
+    /* Signal the stop handler that we are done (replaces furi_thread_join) */
+    furi_semaphore_release(stream->done_sem);
+
     return 0;
 }
 
@@ -180,11 +179,11 @@ void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message
 
     /* Build header once into a stack buffer to measure its size */
     uint8_t header_tmp[128];
-    size_t header_size = rpc_frame_build_wire_header(
-        header_tmp, sizeof(header_tmp), JD9853_WIDTH, JD9853_HEIGHT);
+    size_t header_size = rpc_frame_build_wire_header(header_tmp, sizeof(header_tmp), JD9853_WIDTH, JD9853_HEIGHT);
 
     if(header_size != RPC_EXPECTED_WIRE_HEADER_SIZE) {
-        FURI_LOG_W(TAG,
+        FURI_LOG_W(
+            TAG,
             "Wire header size changed: expected %u, got %u — "
             "check .proto field numbering or nanopb version",
             (unsigned)RPC_EXPECTED_WIRE_HEADER_SIZE,
@@ -206,6 +205,7 @@ void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message
     stream->height = 0;
     stream->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     stream->thread = NULL;
+    stream->done_sem = furi_semaphore_alloc(1, 0);
 
     rpc_screen_stream = stream;
 
@@ -221,8 +221,7 @@ void rpc_stop_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message,
     UNUSED(context);
 
     RpcScreenStream* stream = rpc_screen_stream;
-    if(!stream || !stream->active) {
-        FURI_LOG_W(TAG, "Not active");
+    if(!stream) {
         return;
     }
 
@@ -233,9 +232,14 @@ void rpc_stop_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message,
 
     if(thread) {
         furi_thread_flags_set(furi_thread_get_id(thread), RpcScreenEventTypeStop);
+        /* Wait for the thread to signal completion via semaphore
+         * (avoids furi_thread_join deadlock with timer daemon) */
+        furi_semaphore_acquire(stream->done_sem, FuriWaitForever);
         furi_thread_join(thread);
         furi_thread_free(thread);
     }
+
+    furi_semaphore_free(stream->done_sem);
 
     furi_mutex_free(stream->mutex);
     free(stream); /* single block frees frame_buffer too */
@@ -249,5 +253,17 @@ void rpc_session_close_handler(const Flipper_One_Rpc_RpcMessage* message, void* 
     furi_assert(context);
     RpcSession* session = (RpcSession*)context;
     FURI_LOG_I(TAG, "Session close requested");
+
+    /* Signal the screen stream to stop without blocking.
+     * active + session writes are independent — no mutex needed here;
+     * rpc_screen_send_frame checks both before calling pipe_send. */
+    if(rpc_screen_stream) {
+        rpc_screen_stream->active = false;
+        rpc_screen_stream->session = NULL;
+        furi_thread_flags_set(
+            furi_thread_get_id(rpc_screen_stream->thread),
+            RpcScreenEventTypeStop);
+    }
+
     rpc_session_close(session);
 }
