@@ -15,28 +15,12 @@ typedef enum {
 #define MAX_SCREEN_H  144
 #define SCREEN_PIXELS (MAX_SCREEN_W * MAX_SCREEN_H)
 
-/*
- * Manually-built protobuf wire format for an RpcMessage containing a Frame.
- * Layout (PB_ENCODE_DELIMITED outer prefix + message):
- *
- *   [delim-varint]          outer length
- *   0x0A [varint]           RpcMessage.frame (field 1, wire type 2)
- *     0x08 [varint]         Frame.width    = 258
- *     0x10 [varint]         Frame.height   = 144
- *     0x18 0x00             Frame.encoding = PLAIN
- *     0x20 0x00             Frame.pixel_format = L8
- *     0x2A [varint] [N]     Frame.data
- *
- * Max size ≈ 3 + 1+3 + 1+2 + 1+2 + 1+1 + 1+1 + 1+3 + 37152 = ~37173
- */
-#define ENCODE_BUF_SIZE (SCREEN_PIXELS + 128)
-
 typedef struct {
     RpcSession* session;
     Gui* gui;
     volatile bool active;
-    uint8_t* frame_buffer; /* raw pixels only (37152 bytes) */
-    uint8_t* encode_buffer; /* pre-built protobuf bytes */
+    uint8_t* frame_buffer;  /* pb_size_t prefix + pixel data */
+    uint8_t* encode_buffer; /* pre-allocated for pb_encode_ex (no malloc!) */
     size_t width;
     size_t height;
     FuriMutex* mutex;
@@ -45,69 +29,38 @@ typedef struct {
 
 static RpcScreenStream* rpc_screen_stream = NULL;
 
-/* ── Encode a protobuf varint, return bytes written ─────────────────────── */
-static inline size_t varint_enc(uint8_t* buf, uint32_t v) {
-    size_t n = 0;
-    do {
-        uint8_t b = v & 0x7F;
-        v >>= 7;
-        if(v) b |= 0x80;
-        buf[n++] = b;
-    } while(v);
-    return n;
-}
-
-/* ── Build raw protobuf bytes for one frame, send them ──────────────────── */
+/* ── Build and send one frame using standard nanopb encoding ───────────── */
 static void rpc_screen_send_frame(RpcScreenStream* stream) {
-    uint8_t* buf = stream->encode_buffer;
-    size_t pos = 0;
+    Flipper_One_Rpc_RpcMessage msg = Flipper_One_Rpc_RpcMessage_init_zero;
+    msg.which_content = Flipper_One_Rpc_RpcMessage_frame_tag;
 
-    /* Outer length placeholder (PB_ENCODE_DELIMITED) — 3 bytes max */
-    size_t outer_len_off = pos;
-    pos += 3;
+    Flipper_One_Frame_Frame* frame = &msg.content.frame;
+    frame->width = (uint32_t)stream->width;
+    frame->height = (uint32_t)stream->height;
+    frame->encoding = Flipper_One_Frame_Encoding_PLAIN;
+    frame->pixel_format = Flipper_One_Frame_PixelFormat_L8;
 
-    /* RpcMessage field 1 = Frame (wire type 2: length-delimited) */
-    buf[pos++] = 0x0A;
-    size_t frame_len_off = pos;
-    pos += 3; /* Frame length placeholder */
+    /* Point data to our pre-allocated frame_buffer */
+    pb_bytes_array_t* arr = (pb_bytes_array_t*)stream->frame_buffer;
+    arr->size = (pb_size_t)(stream->width * stream->height);
+    frame->data = arr;
 
-    /* Frame.width  = 1 (tag 0x08, varint) */
-    buf[pos++] = 0x08;
-    pos += varint_enc(buf + pos, (uint32_t)stream->width);
-    /* Frame.height = 2 (tag 0x10, varint) */
-    buf[pos++] = 0x10;
-    pos += varint_enc(buf + pos, (uint32_t)stream->height);
-    /* Frame.encoding = 3 (tag 0x18, varint) = PLAIN (0) */
-    buf[pos++] = 0x18;
-    buf[pos++] = 0x00;
-    /* Frame.pixel_format = 4 (tag 0x20, varint) = L8 (0) */
-    buf[pos++] = 0x20;
-    buf[pos++] = 0x00;
-    /* Frame.data = 5 (tag 0x2A, length-delimited) */
-    buf[pos++] = 0x2A;
-    size_t data_len = stream->width * stream->height;
-    pos += varint_enc(buf + pos, (uint32_t)data_len);
-
-    /* Copy pixel data */
-    memcpy(buf + pos, stream->frame_buffer, data_len);
-    pos += data_len;
-
-    /* Fill in Frame length (bytes from frame_len_off+3 to pos) */
-    size_t frame_len = pos - frame_len_off - 3;
-    varint_enc(buf + frame_len_off, (uint32_t)frame_len);
-
-    /* Fill in outer delimiter (bytes from outer_len_off+3 to pos) */
-    size_t outer_len = pos - outer_len_off - 3;
-    size_t outer_varint = varint_enc(buf + outer_len_off, (uint32_t)outer_len);
-
-    /* Shift everything left if outer varint used fewer than 3 bytes */
-    size_t shift = 3 - outer_varint;
-    if(shift) {
-        memmove(buf + outer_len_off + outer_varint, buf + outer_len_off + 3, pos - outer_len_off - 3);
-        pos -= shift;
+    /* Encode into pre-allocated buffer — no malloc */
+    pb_ostream_t ostream = pb_ostream_from_buffer(
+        stream->encode_buffer, Flipper_One_Rpc_RpcMessage_size);
+    bool ok = pb_encode_ex(
+        &ostream, &Flipper_One_Rpc_RpcMessage_msg, &msg, PB_ENCODE_DELIMITED);
+    if(!ok) {
+        FURI_LOG_E(TAG, "Encode failed");
+        frame->data = NULL;
+        pb_release(&Flipper_One_Rpc_RpcMessage_msg, &msg);
+        return;
     }
 
-    rpc_send_preencoded(stream->session, buf, pos);
+    rpc_send_preencoded(stream->session, stream->encode_buffer, ostream.bytes_written);
+
+    frame->data = NULL;
+    pb_release(&Flipper_One_Rpc_RpcMessage_msg, &msg);
 }
 
 /* ── Framebuffer callback: runs in GUI thread ───────────────────────────── */
@@ -118,7 +71,7 @@ static void rpc_screen_fb_callback(const uint8_t* data, size_t width, size_t hei
     /* Quick copy — non-blocking for the GUI thread */
     if(furi_mutex_acquire(stream->mutex, 0) != FuriStatusOk) return;
 
-    memcpy(stream->frame_buffer, data, width * height);
+    memcpy(stream->frame_buffer + sizeof(pb_size_t), data, width * height);
     stream->width = width;
     stream->height = height;
     furi_mutex_release(stream->mutex);
@@ -169,12 +122,14 @@ void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message
         return;
     }
 
-    /* Single allocation for struct + both buffers — avoids heap fragmentation */
-    size_t alloc_size = sizeof(RpcScreenStream) + SCREEN_PIXELS + ENCODE_BUF_SIZE;
+    /* Single allocation: struct + frame_buf + encode_buf */
+    size_t alloc_size = sizeof(RpcScreenStream)
+        + sizeof(pb_size_t) + SCREEN_PIXELS
+        + Flipper_One_Rpc_RpcMessage_size;
     uint8_t* mem_block = malloc(alloc_size);
     RpcScreenStream* stream = (RpcScreenStream*)mem_block;
     stream->frame_buffer = mem_block + sizeof(RpcScreenStream);
-    stream->encode_buffer = stream->frame_buffer + SCREEN_PIXELS;
+    stream->encode_buffer = stream->frame_buffer + sizeof(pb_size_t) + SCREEN_PIXELS;
 
     stream->session = session;
     stream->active = true;
