@@ -2,6 +2,7 @@
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include <gui/modules/elements.h>
+#include <furi_hal_power.h>
 #include "../scene.h"
 #include "../desktop_i.h"
 
@@ -53,6 +54,8 @@ static bool debug_menu_layout(void* _model) {
         }
     }
 
+    elements_softkey_button_element(4, "DFU", false, false);
+
     return false;
 }
 
@@ -69,6 +72,9 @@ static bool debug_menu_input(InputEvent* event, void* context) {
         consumed = true;
     } else if(event->type == InputTypePress && event->key == InputKeyBack) {
         scene_exit(scene, desktop);
+        consumed = true;
+    } else if(event->type == InputTypePress && event->key == InputKey5) {
+        furi_hal_power_enter_dfu();
         consumed = true;
     } else if((event->type == InputTypePress) || (event->type == InputTypeRepeat)) {
         switch(event->key) {
