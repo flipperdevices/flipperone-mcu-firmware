@@ -28,6 +28,7 @@ TIMEOUT = 1.0
 # ── Session state ───────────────────────────────────────────────────────────
 _rpc_session_open = False
 _ser_handle = None  # stored for atexit cleanup
+_verbose = False  # hex-dump all serial I/O when True
 
 # ── Proto compilation ───────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -194,6 +195,40 @@ def parse_rpc_message(data):
 import serial
 
 
+def _hex_dump(data: bytes, prefix: str = ""):
+    """Print hex + ASCII dump of binary data."""
+    if not data:
+        print(f"{prefix}(empty)")
+        return
+    hex_str = data.hex(" ")
+    # Truncate long dumps
+    if len(data) > 128:
+        print(f"{prefix}HEX[{len(data)}]: {data[:128].hex(' ')} ... ({len(data) - 128} more bytes)")
+    else:
+        print(f"{prefix}HEX[{len(data)}]: {hex_str}")
+    # Show printable ASCII
+    ascii_repr = "".join(chr(b) if 32 <= b < 127 else "." for b in data[:128])
+    if len(data) > 128:
+        ascii_repr += "..."
+    print(f"{prefix}ASC[{len(data)}]: {ascii_repr}")
+
+
+def _ser_write(ser, data: bytes, label: str = "SEND"):
+    """Write to serial with optional hex dump."""
+    if _verbose:
+        _hex_dump(data, f"[{label}] ")
+    ser.write(data)
+    ser.flush()
+
+
+def _ser_read(ser, size: int, label: str = "RECV") -> bytes:
+    """Read from serial with optional hex dump."""
+    data = ser.read(size)
+    if _verbose and data:
+        _hex_dump(data, f"[{label}] ")
+    return data
+
+
 def _cleanup():
     """atexit handler: send RPC session close if serial port is still open."""
     global _rpc_session_open, _ser_handle
@@ -215,16 +250,11 @@ atexit.register(_cleanup)
 
 
 def open_serial(port=PORT, baud=BAUD, timeout=TIMEOUT):
-    """Open serial port."""
+    """Open serial port. Does NOT send any data — wake-up is done in enter_rpc_mode."""
     global _ser_handle
+    if _verbose:
+        print(f"[SERIAL] Opening {port} at {baud} baud, timeout={timeout}")
     ser = serial.Serial(port, baud, timeout=timeout)
-    ser.reset_input_buffer()
-    ser.reset_output_buffer()
-    # Send CRLF to wake up / ensure CLI prompt is ready
-    ser.write(b"\r\n")
-    ser.flush()
-    time.sleep(0.05)
-    ser.reset_input_buffer()
     _ser_handle = ser
     print(f"Connected to {port} at {baud} baud")
     return ser
@@ -234,21 +264,52 @@ def enter_rpc_mode(ser, cmd="rpc", timeout_s=5.0):
     """Send CLI command to enter RPC mode and wait for ready marker (0xFD).
     Returns True if RPC session was successfully opened."""
     global _rpc_session_open
+
+    # ── Wait for device to settle ───────────────────────────────────────
+    if _verbose:
+        print("[RPC] Waiting 300 ms for device to settle...")
+    time.sleep(0.3)
+
+    # ── Drain initial banner ────────────────────────────────────────────
+    # The device sends a greeting banner on its own when the serial
+    # connection is established.  Read and discard it before we send
+    # anything, otherwise our wakeup CRLF and rpc command may interleave
+    # with the banner stream.
+    ser.timeout = 0.3
+    banner_bytes = 0
+    banner_deadline = time.monotonic() + 2.0
+    while time.monotonic() < banner_deadline:
+        chunk = _ser_read(ser, 256, "RECV:banner")
+        if not chunk:
+            break  # no more data for now
+        banner_bytes += len(chunk)
+    if _verbose and banner_bytes:
+        print(f"[RPC] Drained {banner_bytes} bytes of initial banner")
+    ser.timeout = TIMEOUT
+
+    # ── Wake-up sequence ────────────────────────────────────────────────
+    _ser_write(ser, b"\r\n", "SEND:wakeup")
+    time.sleep(0.05)
+    ser.reset_input_buffer()
+    ser.reset_output_buffer()
+
+    # ── Send RPC command ────────────────────────────────────────────────
     full_cmd = (cmd + "\r").encode()
-    ser.write(full_cmd)
-    ser.flush()
+    _ser_write(ser, full_cmd, "SEND:rpc_cmd")
 
     # Wait for the 0xFD ready marker (discard everything before it)
     ser.timeout = 0.5
     deadline = time.monotonic() + timeout_s
     drained = 0
     while time.monotonic() < deadline:
-        byte = ser.read(1)
+        byte = _ser_read(ser, 1, "RECV:drain")
         if not byte:
             continue
         if byte[0] == 0xFD:
             ser.timeout = TIMEOUT
             _rpc_session_open = True
+            if _verbose:
+                print("[RPC] Found 0xFD ready marker")
             print(f"Entered RPC mode (sent '{cmd}') [drained {drained} bytes]")
             return True
         drained += 1
@@ -260,8 +321,7 @@ def enter_rpc_mode(ser, cmd="rpc", timeout_s=5.0):
 
 def send_message(ser, raw_bytes):
     """Write raw bytes to serial."""
-    ser.write(raw_bytes)
-    ser.flush()
+    _ser_write(ser, raw_bytes, "SEND:msg")
 
 
 def read_message(ser):
@@ -271,7 +331,7 @@ def read_message(ser):
     length = 0
     shift = 0
     for _ in range(10):  # max 10 bytes for varint64
-        byte = ser.read(1)
+        byte = _ser_read(ser, 1, "RECV:varint")
         if not byte:
             return None
         b = byte[0]
@@ -285,9 +345,12 @@ def read_message(ser):
     if length == 0:
         return None
 
+    if _verbose:
+        print(f"[RECV] Expecting {length} bytes of payload")
+
     payload = b""
     while len(payload) < length:
-        chunk = ser.read(length - len(payload))
+        chunk = _ser_read(ser, length - len(payload), "RECV:payload")
         if not chunk:
             return None  # timeout or disconnected
         payload += chunk
@@ -541,13 +604,9 @@ def interactive_mode(ser):
         elif cmd == "open":
             global _rpc_session_open
             _rpc_session_open = False
-            ser.close()
-            time.sleep(0.3)
-            ser.open()
-            ser.write(b"\r\n")
-            ser.flush()
-            time.sleep(0.2)
+            # Purge any stale data without closing/reopening (closing would toggle DTR).
             ser.reset_input_buffer()
+            ser.reset_output_buffer()
             enter_rpc_mode(ser)
             ser.reset_input_buffer()
         elif cmd == "close":
@@ -593,7 +652,12 @@ def main():
                         help="Auto-enter RPC mode by sending 'rpc' command (default: on)")
     parser.add_argument("--no-auto-rpc", action="store_false", dest="auto_rpc",
                         help="Skip automatic RPC mode entry")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Hex-dump all serial send/receive traffic")
     args = parser.parse_args()
+
+    global _verbose
+    _verbose = args.verbose
 
     _ensure_protos()
     ser = open_serial(args.port, args.baud)
