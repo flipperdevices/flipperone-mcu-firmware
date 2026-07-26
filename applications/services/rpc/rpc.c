@@ -170,7 +170,11 @@ static int32_t rpc_session_worker(void* context) {
                 FURI_LOG_E(TAG, "No handler for message tag %d", tag);
             }
         } else {
-            FURI_LOG_E(TAG, "Decode failed: %.128s", PB_GET_ERROR(&istream));
+            /* Skip error log when session is already terminating —
+             * decode failure is expected on clean disconnect. */
+            if(!session->terminate) {
+                FURI_LOG_E(TAG, "Decode failed: %.128s", PB_GET_ERROR(&istream));
+            }
             furi_stream_buffer_reset(session->stream);
             session->terminate = true;
         }

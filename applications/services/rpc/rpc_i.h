@@ -6,8 +6,6 @@
 #include <rpc.pb.h>
 #include <containers/pipe.h>
 
-#define SRV_RPC_DEBUG
-
 /* Forward declarations */
 typedef struct FuriString FuriString;
 #ifdef __cplusplus

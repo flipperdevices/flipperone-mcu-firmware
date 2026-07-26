@@ -137,9 +137,9 @@ static int32_t rpc_screen_stream_thread(void* context) {
     stream->gui = furi_record_open(RECORD_GUI);
     gui_add_framebuffer_callback(stream->gui, rpc_screen_fb_callback, stream);
     gui_update(stream->gui);
-
+#ifdef SRV_RPC_DEBUG
     FURI_LOG_I(TAG, "Screen stream started");
-
+#endif 
     while(true) {
         uint32_t flags = furi_thread_flags_wait(RpcScreenEventTypeAll, FuriFlagWaitAny, FuriWaitForever);
         if(flags & RpcScreenEventTypeNewFrame) {
@@ -152,8 +152,9 @@ static int32_t rpc_screen_stream_thread(void* context) {
             break;
         }
     }
-
+#ifdef SRV_RPC_DEBUG
     FURI_LOG_I(TAG, "Screen stream stopped");
+#endif
 
     gui_remove_framebuffer_callback(stream->gui, rpc_screen_fb_callback, stream);
     furi_record_close(RECORD_GUI);
@@ -212,8 +213,9 @@ void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message
 
     /* Publish only after thread is running — stop handler needs thread != NULL. */
     rpc_screen_stream = stream;
-
+#ifdef SRV_RPC_DEBUG
     FURI_LOG_I(TAG, "Virtual display started");
+#endif
 }
 
 /* ── Handler: stop virtual display streaming ────────────────────────────── */
@@ -248,7 +250,9 @@ void rpc_stop_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message,
     furi_mutex_free(stream->mutex);
     free(stream); /* single block frees frame_buffer too */
     rpc_screen_stream = NULL;
+#ifdef SRV_RPC_DEBUG
     FURI_LOG_I(TAG, "Virtual display stopped");
+#endif
 }
 
 /* ── Handler: close RPC session ─────────────────────────────────────────── */
@@ -256,7 +260,9 @@ void rpc_session_close_handler(const Flipper_One_Rpc_RpcMessage* message, void* 
     UNUSED(message);
     furi_assert(context);
     RpcSession* session = (RpcSession*)context;
+#ifdef SRV_RPC_DEBUG
     FURI_LOG_I(TAG, "Session close requested");
+#endif
     /* Stop screen stream and notify CLI loop — the actual
      * rpc_session_close() is called once after the pipe loop exits. */
     rpc_stop_virtual_display_handler(NULL, NULL);
