@@ -177,7 +177,7 @@ static CommandScreen* cli_command_screen_alloc(PipeSide* pipe) {
     pipe_attach_to_event_loop(instance->pipe, instance->event_loop);
     pipe_set_callback_context(instance->pipe, instance);
     pipe_set_data_arrived_callback(instance->pipe, cli_command_screen_click_callback, FuriEventLoopEventFlagEdge);
-    pipe_set_broken_callback(instance->pipe, cli_command_screen_pipe_broken_callback, FuriEventLoopEventFlagOnce);
+    pipe_set_broken_callback(instance->pipe, cli_command_screen_pipe_broken_callback, 0);
 
     furi_event_loop_set_custom_event_callback(instance->event_loop, cli_command_screen_render_callback, instance);
  

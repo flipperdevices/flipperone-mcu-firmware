@@ -238,10 +238,19 @@ void pipe_detach_from_event_loop(PipeSide* pipe) {
     furi_event_loop_maybe_unsubscribe(pipe->event_loop, pipe_get_instance_semaphore(pipe));
 
     pipe->event_loop = NULL;
+
+    // Detach is the full inverse of attach + wiring up callbacks: clear everything a
+    // new owner would otherwise inherit, so the pipe is handed off in a pristine state.
+    pipe->callback_context = NULL;
+    pipe->on_data_arrived = NULL;
+    pipe->on_space_freed = NULL;
+    pipe->on_pipe_broken = NULL;
 }
 
 void pipe_set_callback_context(PipeSide* pipe, void* context) {
     furi_check(pipe);
+    // Must be cleared (NULL) by the current owner before a new one can take over.
+    furi_check(!pipe->callback_context || !context);
     pipe->callback_context = context;
 }
 
@@ -252,6 +261,8 @@ void pipe_set_data_arrived_callback(
     furi_check(pipe);
     furi_check(pipe->event_loop);
     furi_check((event & FuriEventLoopEventMask) == 0);
+    // Must be cleared (NULL) by the current owner before a new one can take over.
+    furi_check(!pipe->on_data_arrived || !callback);
 
     furi_event_loop_maybe_unsubscribe(pipe->event_loop, pipe->receiving);
     pipe->on_data_arrived = callback;
@@ -271,6 +282,8 @@ void pipe_set_space_freed_callback(
     furi_check(pipe);
     furi_check(pipe->event_loop);
     furi_check((event & FuriEventLoopEventMask) == 0);
+    // Must be cleared (NULL) by the current owner before a new one can take over.
+    furi_check(!pipe->on_space_freed || !callback);
 
     furi_event_loop_maybe_unsubscribe(pipe->event_loop, pipe->sending);
     pipe->on_space_freed = callback;
@@ -290,6 +303,8 @@ void pipe_set_broken_callback(
     furi_check(pipe);
     furi_check(pipe->event_loop);
     furi_check((event & FuriEventLoopEventMask) == 0);
+    // Must be cleared (NULL) by the current owner before a new one can take over.
+    furi_check(!pipe->on_pipe_broken || !callback);
 
     FuriSemaphore* semaphore = pipe_get_instance_semaphore(pipe);
     furi_event_loop_maybe_unsubscribe(pipe->event_loop, semaphore);
