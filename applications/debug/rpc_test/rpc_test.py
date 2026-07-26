@@ -12,6 +12,7 @@ Requires: pyserial, protobuf, grpcio-tools
 """
 
 import argparse
+import atexit
 import os
 import struct
 import sys
@@ -23,6 +24,10 @@ import queue
 PORT = "COM10"
 BAUD = 1500000
 TIMEOUT = 1.0
+
+# ── Session state ───────────────────────────────────────────────────────────
+_rpc_session_open = False
+_ser_handle = None  # stored for atexit cleanup
 
 # ── Proto compilation ───────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -189,8 +194,29 @@ def parse_rpc_message(data):
 import serial
 
 
+def _cleanup():
+    """atexit handler: send RPC session close if serial port is still open."""
+    global _rpc_session_open, _ser_handle
+    if _ser_handle is not None and _rpc_session_open:
+        try:
+            send_rpc_session_close(_ser_handle)
+        except BaseException:
+            pass
+    if _ser_handle is not None:
+        try:
+            _ser_handle.close()
+        except BaseException:
+            pass
+        _ser_handle = None
+
+
+# Register cleanup handlers
+atexit.register(_cleanup)
+
+
 def open_serial(port=PORT, baud=BAUD, timeout=TIMEOUT):
     """Open serial port."""
+    global _ser_handle
     ser = serial.Serial(port, baud, timeout=timeout)
     ser.reset_input_buffer()
     ser.reset_output_buffer()
@@ -199,12 +225,15 @@ def open_serial(port=PORT, baud=BAUD, timeout=TIMEOUT):
     ser.flush()
     time.sleep(0.05)
     ser.reset_input_buffer()
+    _ser_handle = ser
     print(f"Connected to {port} at {baud} baud")
     return ser
 
 
 def enter_rpc_mode(ser, cmd="rpc", timeout_s=5.0):
-    """Send CLI command to enter RPC mode and wait for ready marker (0xFD)."""
+    """Send CLI command to enter RPC mode and wait for ready marker (0xFD).
+    Returns True if RPC session was successfully opened."""
+    global _rpc_session_open
     full_cmd = (cmd + "\r").encode()
     ser.write(full_cmd)
     ser.flush()
@@ -219,12 +248,14 @@ def enter_rpc_mode(ser, cmd="rpc", timeout_s=5.0):
             continue
         if byte[0] == 0xFD:
             ser.timeout = TIMEOUT
+            _rpc_session_open = True
             print(f"Entered RPC mode (sent '{cmd}') [drained {drained} bytes]")
-            return
+            return True
         drained += 1
 
     ser.timeout = TIMEOUT
     print(f"WARNING: RPC ready marker not received within {timeout_s}s")
+    return False
 
 
 def send_message(ser, raw_bytes):
@@ -310,12 +341,14 @@ def send_stop_virtual_display(ser):
 
 def send_rpc_session_close(ser):
     """Send rpc_session_close_request."""
+    global _rpc_session_open
     _ensure_protos()
     msg = _rpc_pb2.RpcMessage()
     msg.rpc_session_close_request.SetInParent()
     payload = msg.SerializeToString()
     data = _encode_varint(len(payload)) + payload
     send_message(ser, data)
+    _rpc_session_open = False
     print(f"Sent: RpcSessionCloseRequest  [{len(data)} bytes]")
 
 
@@ -506,6 +539,8 @@ def interactive_mode(ser):
         elif cmd == "stop_vd":
             send_stop_virtual_display(ser)
         elif cmd == "open":
+            global _rpc_session_open
+            _rpc_session_open = False
             ser.close()
             time.sleep(0.3)
             ser.open()
@@ -589,14 +624,21 @@ def main():
             send_rpc_session_close(ser)
         else:
             interactive_mode(ser)
-            send_rpc_session_close(ser)
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
     finally:
-        if args.auto_rpc:
-            try:
+        # Always try to close — even if _rpc_session_open is False,
+        # the device may have a leftover session from a previous unclean exit.
+        try:
+            if _rpc_session_open:
                 send_rpc_session_close(ser)
-            except Exception:
-                pass
-        ser.close()
+        except BaseException:
+            pass
+        _rpc_session_open = False
+        try:
+            ser.close()
+        except BaseException:
+            pass
         print("Disconnected.")
 
 

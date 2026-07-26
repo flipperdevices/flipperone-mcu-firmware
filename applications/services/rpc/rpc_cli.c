@@ -114,6 +114,10 @@ void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* conte
         }
     }
 
+    /* Stop screen streaming if active (handles USB disconnect case;
+     * clean remote close already stops it via rpc_session_close_handler). */
+    rpc_stop_virtual_display_handler(NULL, NULL);
+
     rpc_session_close(rpc_session);
 
     furi_check(
