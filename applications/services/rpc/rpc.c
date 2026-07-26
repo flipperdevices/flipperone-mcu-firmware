@@ -29,6 +29,7 @@ struct RpcSession {
     bool terminate;
     FuriMutex* callbacks_mutex;
     RpcSendBytesCallback send_bytes_callback;
+    RpcSessionCloseCallback close_callback;
     RpcSessionTerminatedCallback terminated_callback;
     RpcOwner owner;
     void* context;
@@ -57,6 +58,24 @@ void rpc_session_set_terminated_callback(RpcSession* session, RpcSessionTerminat
     furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
     session->terminated_callback = callback;
     furi_mutex_release(session->callbacks_mutex);
+}
+
+void rpc_session_set_close_callback(RpcSession* session, RpcSessionCloseCallback callback) {
+    furi_check(session);
+    furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
+    session->close_callback = callback;
+    furi_mutex_release(session->callbacks_mutex);
+}
+
+void rpc_session_trigger_close_callback(RpcSession* session) {
+    furi_check(session);
+    RpcSessionCloseCallback cb;
+    void* ctx;
+    furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
+    cb = session->close_callback;
+    ctx = session->context;
+    furi_mutex_release(session->callbacks_mutex);
+    if(cb) cb(ctx);
 }
 
 size_t rpc_session_feed(RpcSession* session, const uint8_t* encoded_bytes, size_t size, uint32_t timeout) {

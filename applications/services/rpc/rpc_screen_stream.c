@@ -257,17 +257,8 @@ void rpc_session_close_handler(const Flipper_One_Rpc_RpcMessage* message, void* 
     furi_assert(context);
     RpcSession* session = (RpcSession*)context;
     FURI_LOG_I(TAG, "Session close requested");
-
-    /* Signal the screen stream to stop without blocking.
-     * active + session writes are independent — no mutex needed here;
-     * rpc_screen_send_frame checks both before calling pipe_send. */
-    if(rpc_screen_stream) {
-        rpc_screen_stream->active = false;
-        rpc_screen_stream->session = NULL;
-        furi_thread_flags_set(
-            furi_thread_get_id(rpc_screen_stream->thread),
-            RpcScreenEventTypeStop);
-    }
-
-    rpc_session_close(session);
+    /* Stop screen stream and notify CLI loop — the actual
+     * rpc_session_close() is called once after the pipe loop exits. */
+    rpc_stop_virtual_display_handler(NULL, NULL);
+    rpc_session_trigger_close_callback(session);
 }

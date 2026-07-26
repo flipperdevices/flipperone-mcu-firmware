@@ -194,6 +194,11 @@ def open_serial(port=PORT, baud=BAUD, timeout=TIMEOUT):
     ser = serial.Serial(port, baud, timeout=timeout)
     ser.reset_input_buffer()
     ser.reset_output_buffer()
+    # Send CRLF to wake up / ensure CLI prompt is ready
+    ser.write(b"\r\n")
+    ser.flush()
+    time.sleep(0.05)
+    ser.reset_input_buffer()
     print(f"Connected to {port} at {baud} baud")
     return ser
 
@@ -504,6 +509,10 @@ def interactive_mode(ser):
             ser.close()
             time.sleep(0.3)
             ser.open()
+            ser.write(b"\r\n")
+            ser.flush()
+            time.sleep(0.2)
+            ser.reset_input_buffer()
             enter_rpc_mode(ser)
             ser.reset_input_buffer()
         elif cmd == "close":

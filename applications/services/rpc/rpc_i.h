@@ -30,6 +30,9 @@ void rpc_add_handler(RpcSession* session, pb_size_t message_tag, RpcHandler* han
 /** Send pre-encoded bytes via the session output callback (no malloc inside). */
 void rpc_send_preencoded(RpcSession* session, const uint8_t* bytes, size_t len);
 
+/** Trigger the close callback if one is set (used by session close handler). */
+void rpc_session_trigger_close_callback(RpcSession* session);
+
 void rpc_cli_command_start_session(PipeSide* pipe, FuriString* args, void* context);
 
 /* Message handlers */

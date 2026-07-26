@@ -21,6 +21,9 @@ typedef void (*RpcSendBytesCallback)(void* context, uint8_t* bytes, size_t bytes
 /** Callback to notify transport layer that session was closed */
 typedef void (*RpcSessionTerminatedCallback)(void* context);
 
+/** Callback to notify that session close was requested */
+typedef void (*RpcSessionCloseCallback)(void* context);
+
 /** RPC owner */
 typedef enum {
     RpcOwnerCli = 0,
@@ -62,6 +65,15 @@ void rpc_session_set_send_bytes_callback(RpcSession* session, RpcSendBytesCallba
 void rpc_session_set_terminated_callback(
     RpcSession* session,
     RpcSessionTerminatedCallback callback);
+
+/** Set callback to be called when session close is requested
+ *
+ * @param   session     pointer to RpcSession descriptor
+ * @param   callback    callback (can be NULL)
+ */
+void rpc_session_set_close_callback(
+    RpcSession* session,
+    RpcSessionCloseCallback callback);
 
 /** Give bytes to RPC service to decode and process
  *
