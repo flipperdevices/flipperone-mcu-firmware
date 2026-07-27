@@ -2,7 +2,7 @@
 #include <kvstore.h>
 #include <blockdevice/flash.h>
 #include <kvstore_logkvs.h>
-#include <pico/btstack_flash_bank.h>
+#include <hardware/flash.h>
 
 #define TAG "FuriHalNvm"
 
@@ -11,8 +11,12 @@
 
 //#include "kvstore.h"
 
-/* FURI_HAL_NVM_BANK_DEFAULT_SIZE is passed as a compile definition from CMakeLists.txt */
-#define FURI_HAL_NVM_BANK_OFFSET (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)
+/* FURI_HAL_NVM_BANK_OFFSET and FURI_HAL_NVM_BANK_DEFAULT_SIZE are passed as compile
+ * definitions from CMakeLists.txt, which derives the offset from the same variable it
+ * uses for the firmware FLASH region length. */
+#if !defined(FURI_HAL_NVM_BANK_OFFSET) || !defined(FURI_HAL_NVM_BANK_DEFAULT_SIZE)
+#error "NVM bank geometry must be provided by the build system"
+#endif
 
 bool kvs_init(void) {
     FURI_LOG_I(
