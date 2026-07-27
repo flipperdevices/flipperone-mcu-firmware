@@ -180,8 +180,6 @@ static void cli_uart_message_received(FuriEventLoopObject* object, void* context
         furi_record_close(RECORD_CLI);
         cli_uart->registry = NULL;
 
-        pipe_free(cli_uart->own_pipe);
-
         break;
     }
 
