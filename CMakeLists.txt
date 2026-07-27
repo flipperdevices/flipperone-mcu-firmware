@@ -36,6 +36,41 @@ include("lib/sdk/pico_sdk_import.cmake")
 
 project(flipperone-mcu-firmware C CXX ASM)
 
+# Pick the C library the toolchain actually ships. The SDK only guesses: upstream
+# pico-sdk defaults PICO_CLIB to newlib, Debian patches that default to picolibc,
+# and neither looks at the compiler. Guessing wrong makes the SDK build the wrong
+# pico_clib_interface implementation.
+if(NOT PICO_CLIB)
+    set(_saved_try_compile_target_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)  # bare metal: compile, don't link
+    include(CheckCSourceCompiles)
+    check_c_source_compiles("
+        #include <stdint.h>
+        #ifndef __PICOLIBC__
+        #error not picolibc
+        #endif
+        int main(void) { return 0; }" PICO_CLIB_IS_PICOLIBC)
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_saved_try_compile_target_type}")
+    if(PICO_CLIB_IS_PICOLIBC)
+        set(PICO_CLIB picolibc)
+    else()
+        set(PICO_CLIB newlib)
+    endif()
+    message("C library (PICO_CLIB) is '${PICO_CLIB}'")
+endif()
+
+# Per-task C library state for FreeRTOS (errno, stdio, mprec scratch, ...). The
+# kernel glue is libc-specific, so select it from the same answer: newlib keeps
+# that state in a struct _reent, picolibc in a thread-local storage block.
+# FreeRTOSConfig.h checks that one of these reached the compiler.
+if(PICO_CLIB STREQUAL "picolibc")
+    add_compile_definitions(configUSE_PICOLIBC_TLS=1)
+elseif(PICO_CLIB STREQUAL "newlib")
+    add_compile_definitions(configUSE_NEWLIB_REENTRANT=1)
+else()
+    message(FATAL_ERROR "PICO_CLIB '${PICO_CLIB}' has no FreeRTOS per-task C runtime glue")
+endif()
+
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
