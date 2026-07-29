@@ -30,6 +30,11 @@ _rpc_session_open = False
 _ser_handle = None  # stored for atexit cleanup
 _verbose = False  # hex-dump all serial I/O when True
 
+# ── Streaming state ─────────────────────────────────────────────────────────
+_stream_stop = None       # threading.Event — set to stop streaming
+_stream_thread = None     # threading.Thread — background frame reader
+_stream_viewer = None     # _FrameViewer or None
+
 # ── Proto compilation ───────────────────────────────────────────────────────
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROTO_DIR = os.path.normpath(os.path.join(SCRIPT_DIR, "..", "..", "..", "assets", "proto"))
@@ -230,8 +235,9 @@ def _ser_read(ser, size: int, label: str = "RECV") -> bytes:
 
 
 def _cleanup():
-    """atexit handler: send RPC session close if serial port is still open."""
+    """atexit handler: stop streaming, send RPC session close, close serial port."""
     global _rpc_session_open, _ser_handle
+    _stop_streaming()
     if _ser_handle is not None and _rpc_session_open:
         try:
             send_rpc_session_close(_ser_handle)
@@ -415,16 +421,162 @@ def send_rpc_session_close(ser):
     print(f"Sent: RpcSessionCloseRequest  [{len(data)} bytes]")
 
 
+def _stop_streaming():
+    """Stop background streaming if active. Returns immediately — does not join."""
+    global _stream_stop, _stream_thread, _stream_viewer
+    if _stream_stop:
+        _stream_stop.set()
+    v = _stream_viewer
+    if v:
+        v.close()
+    _stream_viewer = None
+    _stream_stop = None
+    _stream_thread = None
+
+
+def _is_streaming():
+    """True if background streaming is currently active."""
+    return _stream_thread is not None and _stream_thread.is_alive()
+
+
+def _stream_reader_thread(ser, stop_event, viewer):
+    """Read frames from serial in a loop; runs in a background thread."""
+    count = 0
+    _fps_timestamps = []  # timestamps of last ~10 frames for FPS calculation
+    while not stop_event.is_set():
+        try:
+            msg = read_message(ser)
+        except Exception as e:
+            print(f"Skipping bad data: {e}")
+            try:
+                ser.reset_input_buffer()
+            except Exception:
+                pass
+            msg = None
+        if msg is None:
+            continue
+        count += 1
+        if msg["which"] == "frame":
+            # ── FPS calculation (rolling window of last 10 frames) ──
+            now = time.monotonic()
+            _fps_timestamps.append(now)
+            if len(_fps_timestamps) > 10:
+                _fps_timestamps.pop(0)
+            fps_str = ""
+            if len(_fps_timestamps) >= 2:
+                elapsed = _fps_timestamps[-1] - _fps_timestamps[0]
+                if elapsed > 0:
+                    fps = (len(_fps_timestamps) - 1) / elapsed
+                    fps_str = f", fps={fps:.1f}"
+            info = (
+                f"[{count}] Frame: {msg['width']}x{msg['height']}, "
+                f"enc={msg['encoding']}, fmt={msg['pixel_format']}, "
+                f"data={msg['data_len']} bytes{fps_str}"
+            )
+            print(info)
+            if viewer and msg["data_len"] > 0:
+                viewer.show(msg["data"], msg["width"], msg["height"])
+                if not viewer.is_open():
+                    print("Window closed, stopping stream.")
+                    stop_event.set()
+                    break
+        else:
+            print(f"[{count}] {msg}")
+
+
 def listen_frames(ser, duration_s=5.0, display=False):
     """Listen for incoming frames for `duration` seconds.
-    If display=True, shows frames in a movable tkinter window.
-    Serial reading runs on a background thread; tkinter on the main thread."""
-    viewer = _FrameViewer() if display else None
+
+    If display=True, starts a background thread + tkinter window and returns
+    immediately — the caller continues accepting commands (button, touch, etc.)
+    while streaming.  Use _stop_streaming() or close the window to stop.
+
+    If display=False, blocks for `duration_s` seconds (original behaviour)."""
+    global _stream_stop, _stream_thread, _stream_viewer
+
+    if display:
+        # ── Background streaming (non-blocking) ─────────────────────
+        _stream_stop = threading.Event()
+
+        # ── Keyboard → ButtonEvent mapping ──────────────────────────
+        _KEY_MAP = {
+            # Arrow keys
+            "Up": "UP", "Down": "DOWN", "Left": "LEFT", "Right": "RIGHT",
+            # WASD
+            "w": "UP", "W": "UP", "s": "DOWN", "S": "DOWN",
+            "a": "LEFT", "A": "LEFT", "d": "RIGHT", "D": "RIGHT",
+            # Back
+            "b": "BACK", "B": "BACK",
+            "Escape": "BACK", "BackSpace": "BACK", "Delete": "BACK",
+            # OK
+            "o": "OK", "O": "OK", "Return": "OK", "space": "OK",
+            # Sw (tab / X)
+            "x": "SW", "X": "SW", "Tab": "SW",
+            # Ptt
+            "p": "PTT", "P": "PTT",
+            # Number keys
+            "1": "KEY_1", "2": "KEY_2", "3": "POWER", "4": "KEY_4", "5": "KEY_5",
+        }
+
+        def _on_key_event(event, action):
+            """Handle keyboard press/release → send ButtonEvent."""
+            key = event.keysym
+            btn = _KEY_MAP.get(key)
+            if btn is None:
+                return  # unmapped key — ignore
+            try:
+                send_button(ser, btn, action)
+            except Exception as e:
+                print(f"Key→button error: {e}")
+
+        # Viewer must be created from the same thread that runs mainloop().
+        viewer_holder = []  # mutable container to pass viewer ref between threads
+
+        def _tk_thread():
+            v = _FrameViewer()
+            viewer_holder.append(v)
+            global _stream_viewer
+            _stream_viewer = v
+
+            # Bind keyboard events to the viewer window
+            v.root.bind("<KeyPress>", lambda e: _on_key_event(e, "PRESS"))
+            v.root.bind("<KeyRelease>", lambda e: _on_key_event(e, "RELEASE"))
+
+            if duration_s > 0:
+                v.root.after(int(duration_s * 1000), _stop_streaming)
+            try:
+                v.root.mainloop()
+            except KeyboardInterrupt:
+                pass
+            _stop_streaming()
+
+        tk_thread = threading.Thread(target=_tk_thread, daemon=True)
+        tk_thread.start()
+
+        # Brief wait for the viewer to be created before starting the reader.
+        deadline = time.monotonic() + 2.0
+        while not viewer_holder and time.monotonic() < deadline:
+            time.sleep(0.01)
+
+        viewer = viewer_holder[0] if viewer_holder else None
+
+        thread = threading.Thread(
+            target=_stream_reader_thread,
+            args=(ser, _stream_stop, viewer),
+            daemon=True,
+        )
+        thread.start()
+        _stream_thread = thread
+        return
+
+    # ── Foreground streaming (blocking, original behaviour) ──────────
+    viewer = _FrameViewer() if display else None  # never reached when display=True
     stop_event = threading.Event()
 
     def _read_loop():
         start = time.monotonic()
         count = 0
+        fps_ts = []  # timestamps of last ~10 frames
         end_time = start + duration_s
         while not stop_event.is_set() and time.monotonic() < end_time:
             try:
@@ -437,10 +589,21 @@ def listen_frames(ser, duration_s=5.0, display=False):
                 continue
             count += 1
             if msg["which"] == "frame":
+                # ── FPS calculation (rolling window of last 10 frames) ──
+                now = time.monotonic()
+                fps_ts.append(now)
+                if len(fps_ts) > 10:
+                    fps_ts.pop(0)
+                fps_str = ""
+                if len(fps_ts) >= 2:
+                    elapsed = fps_ts[-1] - fps_ts[0]
+                    if elapsed > 0:
+                        fps = (len(fps_ts) - 1) / elapsed
+                        fps_str = f", fps={fps:.1f}"
                 info = (
                     f"[{count}] Frame: {msg['width']}x{msg['height']}, "
                     f"enc={msg['encoding']}, fmt={msg['pixel_format']}, "
-                    f"data={msg['data_len']} bytes"
+                    f"data={msg['data_len']} bytes{fps_str}"
                 )
                 print(info)
                 if viewer and msg["data_len"] > 0:
@@ -457,7 +620,6 @@ def listen_frames(ser, duration_s=5.0, display=False):
     thread.start()
 
     if viewer:
-        # Auto-close after duration
         viewer.root.after(int(duration_s * 1000), viewer.close)
         try:
             viewer.root.mainloop()
@@ -565,6 +727,7 @@ def interactive_mode(ser):
     """Simple interactive test loop."""
     print("\nCommands: button <NAME> [PRESS|RELEASE], touch <START|MOVE|END> <x> <y> <p>, listen <N>, quit")
     print("  start_vd, stop_vd, close, stream [N]")
+    print("  (button/touch work while streaming — stream runs in background)")
     print("Example: button OK PRESS")
     while True:
         try:
@@ -577,6 +740,10 @@ def interactive_mode(ser):
         cmd = parts[0].lower()
 
         if cmd == "quit" or cmd == "exit":
+            if _is_streaming():
+                print("Stopping stream...")
+                _stop_streaming()
+                send_stop_virtual_display(ser)
             break
         elif cmd == "button":
             btn = parts[1].upper() if len(parts) > 1 else "OK"
@@ -592,15 +759,18 @@ def interactive_mode(ser):
             duration = float(parts[1]) if len(parts) > 1 else 5.0
             listen_frames(ser, duration)
         elif cmd == "start_vd":
+            if _is_streaming():
+                print("Already streaming — use 'stop_vd' first")
+                continue
+            ser.reset_input_buffer()
             send_start_virtual_display(ser)
-            ser.reset_input_buffer()  # flush leftover bytes from previous session
-            print("Streaming to window — close window to stop")
-            try:
-                listen_frames(ser, 30.0, display=True)
-            except KeyboardInterrupt:
-                pass
+            listen_frames(ser, 0, display=True)  # 0 = no auto-stop timeout
+            print("Streaming started — use 'button'/'touch' commands; 'stop_vd' or close window to stop")
         elif cmd == "stop_vd":
+            if _is_streaming():
+                _stop_streaming()
             send_stop_virtual_display(ser)
+            print("Streaming stopped")
         elif cmd == "open":
             global _rpc_session_open
             _rpc_session_open = False
@@ -610,21 +780,28 @@ def interactive_mode(ser):
             enter_rpc_mode(ser)
             ser.reset_input_buffer()
         elif cmd == "close":
+            if _is_streaming():
+                print("Stopping stream first...")
+                _stop_streaming()
+                send_stop_virtual_display(ser)
             send_rpc_session_close(ser)
         elif cmd == "stream":
-            duration = float(parts[1]) if len(parts) > 1 else 5.0
+            if _is_streaming():
+                print("Already streaming — use 'stop_vd' first")
+                continue
+            duration = float(parts[1]) if len(parts) > 1 else 10.0
             ser.reset_input_buffer()
             send_start_virtual_display(ser)
             listen_frames(ser, duration, display=True)
-            send_stop_virtual_display(ser)
+            print(f"Streaming for {duration}s — use 'button'/'touch' commands; 'stop_vd' or close window to stop early")
         elif cmd == "help":
             print("Commands:")
             print("  button <OK|BACK|KEY_1|KEY_2|POWER|KEY_4|KEY_5|SW|DOWN|RIGHT|LEFT|UP|PTT> [PRESS|RELEASE]")
             print("  touch <START|MOVE|END> <x> <y> <pressure>")
             print("  listen <seconds>")
-            print("  start_vd  — start virtual display streaming")
+            print("  start_vd  — start virtual display streaming (non-blocking)")
             print("  stop_vd   — stop virtual display streaming")
-            print("  stream [N] — start_vd + listen N seconds")
+            print("  stream [N] — start_vd + auto-stop after N seconds (default 10)")
             print("  open      — enter RPC mode (after close)")
             print("  close     — close RPC session")
             print("  quit")
