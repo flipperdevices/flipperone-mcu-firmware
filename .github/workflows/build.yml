@@ -12,10 +12,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-# 'softprops/action-gh-release' needs write access to create releases and upload assets.
-# Builds on 'dev'/PRs never reach the release step, so this is harmless for them.
+# Declaring 'permissions' drops every unlisted scope to 'none', so list everything
+# the workflow needs:
+# - contents: write — 'softprops/action-gh-release' creates releases and uploads assets
+# - issues/pull-requests: write — 'peter-evans/create-or-update-comment' posts the
+#   firmware link comment on PRs (PR comments go through the issues API)
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
