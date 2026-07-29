@@ -5,3 +5,5 @@ pypng
 lz4
 pillow
 protobuf
+# provides bundled protoc for the nanopb generator (no system protoc needed)
+grpcio-tools
