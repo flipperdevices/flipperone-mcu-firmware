@@ -14,15 +14,17 @@ else()
     set(ASSETS_COMMAND "${PYTHON_DIR}/run_venv.sh")
 endif()
 
-# Prepare the venv in a single prerequisite step: run_venv creates .venv and
-# installs packages on first use, which is not safe to do from several
-# generation commands racing in a parallel build.
+# Prepare the venv in a single prerequisite step: creating .venv and installing
+# packages is not safe to do from several generation commands racing in a
+# parallel build. The explicit pip install also updates an existing venv
+# whenever requirements.txt changes.
+set(VENV_REQUIREMENTS "${PYTHON_DIR}/requirements.txt")
 set(VENV_STAMP "${CMAKE_CURRENT_BINARY_DIR}/venv.stamp")
 add_custom_command(
     OUTPUT  ${VENV_STAMP}
-    COMMAND ${ASSETS_COMMAND} --version
+    COMMAND ${ASSETS_COMMAND} -m pip install -r ${VENV_REQUIREMENTS}
     COMMAND ${CMAKE_COMMAND} -E touch ${VENV_STAMP}
-    DEPENDS ${ASSETS_COMMAND}
+    DEPENDS ${ASSETS_COMMAND} ${VENV_REQUIREMENTS}
     WORKING_DIRECTORY ${PYTHON_DIR}
     COMMENT "Preparing Python virtual environment"
 )

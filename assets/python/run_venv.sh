@@ -1,37 +1,22 @@
 #!/bin/bash
 set -e
 
-# check for virtual environment
+# Must be run from this directory (the build sets WORKING_DIRECTORY).
+# Package list lives in requirements.txt; a freshly created venv is populated
+# here, updates on requirements.txt changes are driven by the venv.stamp step
+# in assets/CMakeLists.txt.
 if [ ! -f ".venv/bin/activate" ]; then
     echo "Creating virtual environment..."
     rm -rf .venv
     python3 -m venv --copies .venv # --copies to fix macOS symlink issues
+    FRESH_VENV=1
 fi
 
 source ./.venv/bin/activate
 
-# install pypng if not already installed
-if ! python3 -c "import png" &> /dev/null; then
-    echo "Installing pypng..."
-    pip install pypng
-fi  
-
-# install lz4 if not already installed
-if ! python3 -c "import lz4" &> /dev/null; then
-    echo "Installing lz4..."
-    pip install lz4
-fi
-
-# install Pillow if not already installed
-if ! python3 -c "import PIL" &> /dev/null; then
-    echo "Installing Pillow..."
-    pip install pillow
-fi
-
-# install protobuf (nanopb generator) if not already installed
-if ! python3 -c "import google.protobuf" &> /dev/null; then
-    echo "Installing protobuf..."
-    pip install protobuf
+if [ -n "$FRESH_VENV" ]; then
+    echo "Installing requirements..."
+    pip install -r requirements.txt
 fi
 
 python3 "$@"
