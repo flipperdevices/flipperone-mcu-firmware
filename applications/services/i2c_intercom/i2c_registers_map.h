@@ -58,6 +58,9 @@
 #define I2C_STATUS_REG_ADDRESS   (0x0000)
 #define I2C_STATUS_REG_BIT_INPUT (0)
 
+// CPU state registers
+#define I2C_CPU_STATUS_REG_ADDRESS   (0x0040)
+
 // Intercom version register
 #define I2C_INTERCOM_VERSION_REG_ADDRESS (0x0080)
 #define I2C_INTERCOM_VERSION             (0x0001)
@@ -68,6 +71,7 @@
 #define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS    (0)
 #define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
 #define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
+#define I2C_INPUT_INTERRUPT_REG_BIT_SW_BUTTONS (3)
 
 // Buttons state register
 #define I2C_BUTTONS_STATE_REG_ADDRESS      (0x0200 + 0)
@@ -99,6 +103,10 @@
 #define I2C_HEADPHONES_STATE_REG_BUTTON_C_PRESSED_BIT   (4)
 #define I2C_HEADPHONES_STATE_REG_BUTTON_D_PRESSED_BIT   (5)
 
+// Software buttons state register
+#define I2C_SW_BUTTONS_STATE_REG_ADDRESS                  (0x0200 + 10)
+#define I2C_SW_BUTTONS_STATE_REG_BUTTON_POWER_PRESSED_BIT (0)
+
 // Led brightness registers
 #define I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS      (0x0300 + 0)
 #define I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS     (0x0300 + 2)
@@ -112,10 +120,10 @@
 
 // Haptic registers
 /*
- * 0x0400 + 0: 2 bytes
- * bit 15 - Play effect (1 - play, 0 - stop)
- * bits 14:8 - Effect number (0..123)
- * bits 7:0 - Duration of the effect, ms (0 or 1 - play full effect, 2..255 - play ms)
+* 0x0400 + 0: 2 bytes
+* bit 15 - Play effect (1 - play, 0 - stop)
+* bits 14:8 - Effect number (0..123)
+* bits 7:0 - Duration of the effect, ms (0 or 1 - play full effect, 2..255 - play ms)
 */
 #define I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS (0x0400 + 0)
 #define I2C_HAPTIC_PLAY_EFFECT_BIT         (15)
@@ -123,3 +131,17 @@
 #define I2C_HAPTIC_NUM_EFFECT_SHIFT        (8)
 #define I2C_HAPTIC_DURATION_MASK           (0x00FF)
 #define I2C_HAPTIC_DURATION_SHIFT          (0)
+
+// UCSI registers
+
+#define I2C_UCSI_INTERRUPT_REG_ADDRESS      (0x0100 + 2)
+#define I2C_UCSI_INTERRUPT_MASK_REG_ADDRESS (0x0180 + 2)
+#define I2C_UCSI_INTERRUPT_REG_BIT_UCSI     (0)
+
+#define I2C_UCSI_REG_UCSI             0x0500
+#define I2C_UCSI_REG_UCSI_VERSION     (I2C_UCSI_REG_UCSI + 0x00)
+#define I2C_UCSI_REG_UCSI_CCI         (I2C_UCSI_REG_UCSI + 0x04)
+#define I2C_UCSI_REG_UCSI_CONTROL     (I2C_UCSI_REG_UCSI + 0x08)
+#define I2C_UCSI_REG_UCSI_MESSAGE_IN  0x0600
+#define I2C_UCSI_REG_UCSI_MESSAGE_OUT 0x0700
+#define I2C_UCSI_UCSI_MESSAGE_LEN     256
