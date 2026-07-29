@@ -17,7 +17,7 @@ extern "C" {
 typedef enum {
     InputKey2 = (1 << 0),
     InputKey1 = (1 << 1),
-    InputKey3 = (1 << 2), //,InputKeyPower
+    InputKeyPower = (1 << 2),
     InputKey4 = (1 << 3),
     InputKey5 = (1 << 4),
     InputKeySw = (1 << 5),
@@ -31,6 +31,11 @@ typedef enum {
 
     InputKeyMask = (0x1FFF),
 } InputKey;
+
+typedef enum {
+    SwPowerKey = (1 << 0),
+    SwKeyMask = (0b0000000000000001),
+} SwInputKey;
 
 typedef enum {
     StatusLedPowerLine3 = (1 << 13),

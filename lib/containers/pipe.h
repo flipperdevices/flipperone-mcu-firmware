@@ -235,7 +235,13 @@ void pipe_attach_to_event_loop(PipeSide* pipe, FuriEventLoop* event_loop);
 /**
  * @brief Detaches a `PipeSide` from the `FuriEventLoop` that it was previously
  * attached to.
- * 
+ *
+ * This also clears the callback context and all callbacks set via
+ * `pipe_set_callback_context`, `pipe_set_data_arrived_callback`,
+ * `pipe_set_space_freed_callback` and `pipe_set_broken_callback`, so that the
+ * `PipeSide` is left in a pristine state, ready to be handed off to a new
+ * owner via `pipe_attach_to_event_loop`.
+ *
  * @param [in] pipe Pipe side to detach to the event loop
  */
 void pipe_detach_from_event_loop(PipeSide* pipe);
@@ -267,23 +273,30 @@ typedef void (*PipeSideBrokenCallback)(PipeSide* pipe, void* context);
 
 /**
  * @brief Sets the custom context for all callbacks.
- * 
+ *
  * @param [in]    pipe    Pipe side to set the context of
  * @param [inout] context Custom context that will be passed to callbacks
+ *
+ * @warning The context can only be changed to a non-NULL value while it is
+ * currently NULL. Pass NULL first (or call `pipe_detach_from_event_loop`) to
+ * release it before handing the pipe side off to a new owner.
  */
 void pipe_set_callback_context(PipeSide* pipe, void* context);
 
 /**
  * @brief Sets the callback for when data arrives.
- * 
+ *
  * @param [in] pipe     Pipe side to assign the callback to
  * @param [in] callback Callback to assign to the pipe side. Set to NULL to
  *                      unsubscribe.
  * @param [in] event    Additional event loop flags (e.g. `Edge`, `Once`, etc.).
  *                      Non-flag values of the enum are not allowed.
- * 
+ *
  * @warning Attach the pipe side to an event loop first using
  * `pipe_attach_to_event_loop`.
+ * @warning The callback can only be changed to a non-NULL value while it is
+ * currently NULL. Pass NULL first (or call `pipe_detach_from_event_loop`) to
+ * unsubscribe before handing the pipe side off to a new owner.
  */
 void pipe_set_data_arrived_callback(
     PipeSide* pipe,
@@ -292,15 +305,18 @@ void pipe_set_data_arrived_callback(
 
 /**
  * @brief Sets the callback for when data is read out of the opposite `PipeSide`.
- * 
+ *
  * @param [in] pipe     Pipe side to assign the callback to
  * @param [in] callback Callback to assign to the pipe side. Set to NULL to
  *                      unsubscribe.
  * @param [in] event    Additional event loop flags (e.g. `Edge`, `Once`, etc.).
  *                      Non-flag values of the enum are not allowed.
- * 
+ *
  * @warning Attach the pipe side to an event loop first using
  * `pipe_attach_to_event_loop`.
+ * @warning The callback can only be changed to a non-NULL value while it is
+ * currently NULL. Pass NULL first (or call `pipe_detach_from_event_loop`) to
+ * unsubscribe before handing the pipe side off to a new owner.
  */
 void pipe_set_space_freed_callback(
     PipeSide* pipe,
@@ -310,15 +326,18 @@ void pipe_set_space_freed_callback(
 /**
  * @brief Sets the callback for when the opposite `PipeSide` is freed, making
  * the pipe broken.
- * 
+ *
  * @param [in] pipe     Pipe side to assign the callback to
  * @param [in] callback Callback to assign to the pipe side. Set to NULL to
  *                      unsubscribe.
  * @param [in] event    Additional event loop flags (e.g. `Edge`, `Once`, etc.).
  *                      Non-flag values of the enum are not allowed.
- * 
+ *
  * @warning Attach the pipe side to an event loop first using
  * `pipe_attach_to_event_loop`.
+ * @warning The callback can only be changed to a non-NULL value while it is
+ * currently NULL. Pass NULL first (or call `pipe_detach_from_event_loop`) to
+ * unsubscribe before handing the pipe side off to a new owner.
  */
 void pipe_set_broken_callback(
     PipeSide* pipe,

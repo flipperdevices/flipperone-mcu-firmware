@@ -54,7 +54,7 @@ void furi_hal_log_init(FuriLogLevel level, FuriHalLogOutput output) {
 void furi_hal_log_hardware_init(void) {
     furi_hal_serial_control_init();
     if(furi_hal_log_config.output == FuriHalLogOutputSerial || furi_hal_log_config.output == FuriHalLogOutputAll) {
-        furi_hal_serial_control_set_logging_config(FuriHalSerialIdUartPio, 230400);
+        furi_hal_serial_control_set_logging_config(FuriHalSerialIdUartPio, 1500000UL);
     }
 
     furi_log_puts("\n================================================================\n");

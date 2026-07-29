@@ -12,20 +12,32 @@ typedef struct Gui Gui;
 #define RECORD_GUI "Gui"
 
 typedef enum {
-    GuiViewPriorityDesktop = 0,
+    GuiViewPriorityStatusBar = 0,
+    GuiViewPriorityDesktop = 1,
+
     GuiViewPriorityApplication = 50000,
-    GuiViewPriorityMenu = 100000,
+    GuiViewPriorityPowerMenu = 100000,
 } GuiViewPriority;
 
 void gui_add_view(Gui* gui, View* view, GuiViewPriority priority);
 
 void gui_remove_view(Gui* gui, View* view);
 
-// TODO: This is a temporary API, as backlight should be controlled by a dedicated service
-void gui_set_backlight(Gui* gui, int8_t brightness);
-
 void gui_add_unhandled_input_callback(Gui* gui, ViewInputCallback callback, void* context);
 void gui_add_unhandled_touch_input_callback(Gui* gui, ViewInputTouchCallback callback, void* context);
+
+typedef void (*GuiFramebufferCallback)(const uint8_t* data, size_t width, size_t height, void* context);
+
+typedef struct {
+    GuiFramebufferCallback callback;
+    void* context;
+} GuiCallbackPair;
+
+void gui_add_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, void* context);
+void gui_remove_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, void* context);
+
+size_t gui_get_width(Gui* gui);
+size_t gui_get_height(Gui* gui);
 
 #ifdef __cplusplus
 }

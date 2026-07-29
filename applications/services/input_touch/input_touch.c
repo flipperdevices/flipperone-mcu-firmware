@@ -109,3 +109,16 @@ bool input_touch_is_device_initialized(InputTouch* instance, InputTouchDevice* d
     }
     return initialized;
 }
+
+const char* input_touch_get_type_name(InputTouchType type) {
+    switch(type) {
+    case InputTouchTypeStart:
+        return "Start";
+    case InputTouchTypeMove:
+        return "Move";
+    case InputTouchTypeEnd:
+        return "End";
+    default:
+        return "Unknown";
+    }
+}

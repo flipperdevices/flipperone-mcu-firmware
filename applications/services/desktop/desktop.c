@@ -1,10 +1,16 @@
+#include "desktop.h"
+#include "desktop_i.h"
 #include <applications.h>
+#include <power/power.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
+#include <assets.h>
+#include "scenes/scenes.h"
 
-#define DESKTOP_INPUT_QUEUE_SIZE       16
-#define DESKTOP_INPUT_TOUCH_QUEUE_SIZE 16
-#define DESKTOP_APP_MESSAGE_QUEUE_SIZE 4
+#define DESKTOP_APP_MESSAGE_QUEUE_SIZE         4
+#define DESKTOP_SCENE_EVENT_MESSAGE_QUEUE_SIZE 16
+
+#define DESKTOP_POWER_UPDATE_PERIOD_MS 5000
 
 #define TAG "DesktopSrv"
 
@@ -19,7 +25,12 @@ typedef struct {
     DesktopMessageType type;
     const FlipperInternalApplication* app;
     const char* args;
-} DesktopMessage;
+} DesktopAppMessage;
+
+typedef struct {
+    uint32_t event;
+    void* data;
+} DesktopSceneEventMessage;
 
 typedef struct {
     bool running;
@@ -27,83 +38,26 @@ typedef struct {
     FuriThread* thread;
 } DesktopApp;
 
-typedef struct {
-    uint32_t selected_index;
-} DesktopModel;
-
-typedef struct {
+struct Desktop {
     Gui* gui;
-    View* view;
+
+    Scene* main_scene;
+    Scene* header_scene;
+    Scene* power_menu_scene;
+    Scene* settings_menu_scene;
+    Scene* display_settings_scene;
+    Scene* power_settings_scene;
+    Scene* testing_menu_scene;
+    Scene* leds_menu_scene;
+    Scene* debug_menu_scene;
 
     FuriEventLoop* event_loop;
     DesktopApp app;
     FuriMessageQueue* app_message_queue;
-} Desktop;
+    FuriMessageQueue* scene_event_message_queue;
 
-typedef enum {
-    DesktopEventTypeMax,
-} DesktopEventType;
-
-typedef struct {
-    DesktopEventType type;
-} DesktopEvent;
-
-static bool desktop_layout(void* _model) {
-    DesktopModel* model = _model;
-    furi_check(model);
-
-    CLAY(
-        CLAY_APP_ID("Container"),
-        {
-            .backgroundColor = COLOR_WHITE,
-            .layout =
-                {
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                    .childGap = 4,
-                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                },
-            .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
-        }) {
-        for(uint32_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
-            bool selected = (i == model->selected_index);
-            CLAY(
-                DESKTOP_MENU_ID(i),
-                {
-                    .layout =
-                        {
-                            .sizing = {.width = CLAY_SIZING_FIXED(120), .height = CLAY_SIZING_FIXED(13)},
-                            .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                        },
-                    .backgroundColor = selected ? COLOR_BLACK : COLOR_WHITE,
-                    .cornerRadius = CLAY_CORNER_RADIUS(2),
-                }) {
-                CLAY_TEXT(
-                    clay_helper_string_from_chars(FLIPPER_APPS[i].name),
-                    CLAY_TEXT_CONFIG({
-                        .fontId = FontBody,
-                        .textColor = selected ? COLOR_WHITE : COLOR_BLACK,
-                    }));
-            }
-        }
-    }
-
-    return false;
-}
-
-static bool desktop_post_layout(void* _model) {
-    DesktopModel* model = _model;
-    furi_check(model);
-
-    Clay_ElementId scrollContainerId = CLAY_APP_ID("Container");
-    Clay_ElementId targetChildId = DESKTOP_MENU_ID(model->selected_index);
-
-    if(clay_helper_scroll_to_child(scrollContainerId, targetChildId, 0, 10, 15)) {
-        return true;
-    }
-
-    return false;
-}
+    FuriEventLoopTimer* power_update_timer;
+};
 
 static void desktop_app_thread_state_callback(FuriThread* thread, FuriThreadState thread_state, void* context) {
     UNUSED(thread);
@@ -112,7 +66,7 @@ static void desktop_app_thread_state_callback(FuriThread* thread, FuriThreadStat
     if(thread_state == FuriThreadStateStopped) {
         Desktop* desktop = context;
 
-        DesktopMessage message;
+        DesktopAppMessage message;
         message.type = DesktopMessageTypeAppClosed;
         furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
     }
@@ -145,44 +99,6 @@ static void desktop_start_internal_app(Desktop* desktop, const FlipperInternalAp
     desktop_start_app_thread(desktop);
 }
 
-static bool desktop_input(InputEvent* event, void* context) {
-    furi_check(context);
-    Desktop* desktop = context;
-    bool consumed = false;
-
-    if(event->type == InputTypePress) {
-        switch(event->key) {
-        case InputKeyOk: {
-            uint32_t selected_index;
-            with_view_model(desktop->view, DesktopModel * model, { selected_index = model->selected_index; }, false);
-
-            DesktopMessage message = {
-                .type = DesktopMessageTypeAppStart,
-                .app = &FLIPPER_APPS[selected_index],
-                .args = FLIPPER_APPS[selected_index].args,
-            };
-
-            furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
-            consumed = true;
-            break;
-        }
-        case InputKeyDown:
-            with_view_model(desktop->view, DesktopModel * model, { model->selected_index = (model->selected_index + 1) % FLIPPER_APPS_COUNT; }, true);
-            consumed = true;
-            break;
-        case InputKeyUp:
-            with_view_model(
-                desktop->view, DesktopModel * model, { model->selected_index = (model->selected_index - 1 + FLIPPER_APPS_COUNT) % FLIPPER_APPS_COUNT; }, true);
-            consumed = true;
-            break;
-        default:
-            break;
-        }
-    }
-
-    return consumed;
-}
-
 static void desktop_do_app_closed(Desktop* desktop) {
     furi_assert(desktop->app.thread);
 
@@ -205,7 +121,7 @@ static void desktop_app_message_logic(FuriEventLoopObject* object, void* context
     Desktop* desktop = context;
     furi_check(object == desktop->app_message_queue);
 
-    DesktopMessage message;
+    DesktopAppMessage message;
     furi_check(furi_message_queue_get(desktop->app_message_queue, &message, 0) == FuriStatusOk);
 
     switch(message.type) {
@@ -228,20 +144,128 @@ static void desktop_app_message_logic(FuriEventLoopObject* object, void* context
     }
 }
 
+void desktop_send_scene_event(Desktop* desktop, uint32_t event, void* data) {
+    furi_check(desktop);
+
+    DesktopSceneEventMessage message;
+    message.event = event;
+    message.data = data;
+
+    furi_check(furi_message_queue_put(desktop->scene_event_message_queue, &message, 0) == FuriStatusOk);
+}
+
+bool furi_crash_handler(bool debug) {
+    return false; // Always false for this development stage
+}
+
+static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context) {
+    furi_check(context);
+    Desktop* desktop = context;
+    furi_check(object == desktop->scene_event_message_queue);
+
+    DesktopSceneEventMessage message;
+    furi_check(furi_message_queue_get(desktop->scene_event_message_queue, &message, 0) == FuriStatusOk);
+
+    bool consumed = false;
+
+    // TODO: think about a better way to handle this, maybe a scene stack or something
+    switch(message.event) {
+    case DesktopSceneEventTypeTogglePowerMenu:
+        if(message.data) {
+            scene_exit(desktop->power_menu_scene, desktop);
+        } else {
+            scene_enter(desktop->power_menu_scene, desktop);
+        }
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeReturnToDesktop:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->main_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterSettingsMenu:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->settings_menu_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterDisplaySettings:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->display_settings_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterPowerSettings:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->power_settings_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterTestingMenu:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->testing_menu_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterLedsMenu:
+        if(message.data) scene_exit(message.data, desktop);
+        scene_enter(desktop->leds_menu_scene, desktop);
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeOpenDebugMenu:
+        scene_enter(desktop->debug_menu_scene, desktop);
+        consumed = true;
+        break;
+    }
+
+    if(!consumed) {
+        consumed = scene_event(desktop->header_scene, message.event, message.data);
+    }
+}
+
+static void desktop_power_update_timer_callback(void* context) {
+    furi_check(context);
+    Desktop* desktop = context;
+    desktop_send_scene_event(desktop, DesktopSceneEventTypePowerUpdate, NULL);
+}
+
 static Desktop* desktop_alloc(void) {
     Desktop* desktop = malloc(sizeof(Desktop));
     desktop->gui = furi_record_open(RECORD_GUI);
     desktop->event_loop = furi_event_loop_alloc();
-    desktop->app_message_queue = furi_message_queue_alloc(DESKTOP_APP_MESSAGE_QUEUE_SIZE, sizeof(DesktopMessage));
+    desktop->app_message_queue = furi_message_queue_alloc(DESKTOP_APP_MESSAGE_QUEUE_SIZE, sizeof(DesktopAppMessage));
+    desktop->scene_event_message_queue = furi_message_queue_alloc(DESKTOP_SCENE_EVENT_MESSAGE_QUEUE_SIZE, sizeof(DesktopSceneEventMessage));
+    desktop->power_update_timer =
+        furi_event_loop_timer_alloc(desktop->event_loop, desktop_power_update_timer_callback, FuriEventLoopTimerTypePeriodic, desktop);
 
-    desktop->view = view_alloc();
-    view_allocate_model(desktop->view, ViewModelTypeLockFree, sizeof(DesktopModel));
-    view_set_layout_callback(desktop->view, desktop_layout);
-    view_set_post_layout_callback(desktop->view, desktop_post_layout);
-    view_set_input_callback(desktop->view, desktop_input, desktop);
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
+    furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->scene_event_message_queue, FuriEventLoopEventIn, desktop_scene_event_logic, desktop);
 
-    gui_add_view(desktop->gui, desktop->view, GuiViewPriorityDesktop);
+    desktop->header_scene = scene_alloc(&scene_header_callbacks, desktop);
+    desktop->main_scene = scene_alloc(&scene_desktop_callbacks, desktop);
+    desktop->power_menu_scene = scene_alloc(&scene_power_menu_callbacks, desktop);
+    desktop->settings_menu_scene = scene_alloc(&scene_settings_menu_callbacks, desktop);
+    desktop->display_settings_scene = scene_alloc(&scene_display_settings_callbacks, desktop);
+    desktop->power_settings_scene = scene_alloc(&scene_power_settings_callbacks, desktop);
+    desktop->testing_menu_scene = scene_alloc(&scene_testing_menu_callbacks, desktop);
+    desktop->leds_menu_scene = scene_alloc(&scene_leds_menu_callbacks, desktop);
+    desktop->debug_menu_scene = scene_alloc(&scene_debug_menu_callbacks, desktop);
+
+    gui_add_view(desktop->gui, scene_get_view(desktop->header_scene), GuiViewPriorityStatusBar);
+
+    gui_add_view(desktop->gui, scene_get_view(desktop->main_scene), GuiViewPriorityDesktop);
+
+    gui_add_view(desktop->gui, scene_get_view(desktop->settings_menu_scene), GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, scene_get_view(desktop->display_settings_scene), GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, scene_get_view(desktop->power_settings_scene), GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, scene_get_view(desktop->testing_menu_scene), GuiViewPriorityDesktop);
+    gui_add_view(desktop->gui, scene_get_view(desktop->leds_menu_scene), GuiViewPriorityDesktop);
+
+    gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication - 1);
+    gui_add_view(desktop->gui, scene_get_view(desktop->power_menu_scene), GuiViewPriorityPowerMenu);
+
+    scene_enter(desktop->header_scene, desktop);
+    scene_enter(desktop->main_scene, desktop);
+
+    furi_record_create(RECORD_DESKTOP, desktop);
+
+    furi_event_loop_timer_start(desktop->power_update_timer, DESKTOP_POWER_UPDATE_PERIOD_MS);
 
     return desktop;
 }
@@ -251,4 +275,50 @@ int32_t desktop_srv(void* p) {
     Desktop* desktop = desktop_alloc();
     furi_event_loop_run(desktop->event_loop);
     return 0;
+}
+
+bool desktop_start_app(const FlipperInternalApplication* app) {
+    furi_assert(app);
+
+    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+    DesktopAppMessage message = {
+        .type = DesktopMessageTypeAppStart,
+        .app = app,
+        .args = app->args,
+    };
+
+    furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
+    furi_record_close(RECORD_DESKTOP);
+
+    return true;
+}
+
+extern int32_t cpu_app(void* p);
+
+static const FlipperInternalApplication cpu_app_start = {
+    .app = cpu_app,
+    .name = "CPU App",
+    .appid = "cpu",
+    .stack_size = 1024 * 4,
+    .flags = FlipperInternalApplicationFlagDefault,
+    .args = "start",
+};
+
+static const FlipperInternalApplication cpu_app_maskrom = {
+    .app = cpu_app,
+    .name = "CPU App",
+    .appid = "cpu",
+    .stack_size = 1024 * 4,
+    .flags = FlipperInternalApplicationFlagDefault,
+    .args = "maskrom",
+};
+
+void desktop_start_cpu(bool to_maskrom) {
+    desktop_start_app(to_maskrom ? &cpu_app_maskrom : &cpu_app_start);
+}
+
+void desktop_power_off(void) {
+    Power* power_off = furi_record_open(RECORD_POWER);
+    power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
+    furi_record_close(RECORD_POWER);
 }

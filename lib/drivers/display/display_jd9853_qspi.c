@@ -3,7 +3,6 @@
 
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
-#include <furi_hal_pwm.h>
 #include <drivers/tps62868x/tps62868x.h>
 #include <furi_hal_i2c_config.h>
 
@@ -19,8 +18,6 @@
 
 #define FIRST_HSTX_PIN                             12
 #define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        5 //5us
-#define DISPLAY_JD9853_BACKLIGHT_BIT               8 //8-bit PWM for backlight
-#define DISPLAY_JD9853_BACKLIGHT_FREQ_HZ           40000 //25kHz PWM for backlight
 #define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS 1000
 
 typedef struct {
@@ -31,9 +28,7 @@ typedef struct {
 struct DisplayJd9853QSPI {
     FuriSemaphore* busy;
     uint32_t dma_tx_channel;
-    FuriHalPwm* backlight_pwm;
     Tps62868x* power_supply;
-    uint8_t backlight;
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
 };
@@ -153,6 +148,14 @@ void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* confi
     display_jd9853_hstx_init_4_line(display);
 }
 
+static void display_jd9853_enable(DisplayJd9853QSPI* display, bool enable) {
+    display_jd9853_hstx_init_1_line(display);
+
+    display_jd9853_write_reg(display, enable ? dispon : dispoff);
+
+    display_jd9853_hstx_init_4_line(display);
+}
+
 static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853QSPI* display, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     uint8_t caset_data[4] = {(uint8_t)(x0 >> 8), (uint8_t)(x0 & 0xFF), (uint8_t)(x1 >> 8), (uint8_t)(x1 & 0xFF)};
     uint8_t paset_data[4] = {(uint8_t)(y0 >> 8), (uint8_t)(y0 & 0xFF), (uint8_t)(y1 >> 8), (uint8_t)(y1 & 0xFF)};
@@ -200,6 +203,25 @@ void display_jd9853_qspi_fill(DisplayJd9853QSPI* display, uint8_t color) {
     free(data);
 }
 
+static void display_jd9853_qspi_clear(DisplayJd9853QSPI* display) {
+    furi_assert(display);
+    if(!display->display_is_connected) {
+        return; // Don't attempt to write if display is not connected
+    }
+
+    memset(display->buffer_header.data, 0xFF, JD9853_WIDTH * JD9853_HEIGHT);
+
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
+
+    // Don't wait for TE, send the buffer instantly
+    furi_hal_gpio_write(&gpio_display_cs, false);
+    display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
+
+    while(furi_semaphore_get_space(display->busy)) {
+        furi_thread_yield();
+    };
+}
+
 static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
     DisplayJd9853QSPI* display = (DisplayJd9853QSPI*)ctx;
     furi_hal_gpio_write(&gpio_display_cs, false);
@@ -231,41 +253,6 @@ void display_jd9853_qspi_on_sleep_exit(void) {
     display_jd9853_hstx_clock_init();
 }
 
-void display_jd9853_qspi_set_brightness(DisplayJd9853QSPI* display, int8_t brightness) {
-    furi_check(display);
-    if(brightness > 100) brightness = 100;
-    if(brightness < 0) brightness = 0;
-    display->backlight = (uint8_t)brightness;
-    if(!display->backlight) {
-        if(display->backlight_pwm) {
-            furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 0);
-            furi_hal_pwm_deinit(display->backlight_pwm);
-            display->backlight_pwm = NULL;
-        }
-    } else {
-        uint32_t max_value = (1 << DISPLAY_JD9853_BACKLIGHT_BIT) - 1;
-        uint32_t duty_cycle = (brightness * max_value) / 100;
-        if(!display->backlight_pwm) {
-            //To enable the device, the CTRL signal must be high for 500 µs.
-            // The PWM signal can then be applied with a pulse width (tp)
-            // greater or smaller than tON. To force the device into shutdown mode,
-            // the CTRL signal must be low for at least 32 ms.
-            // Requiring the CTRL pin to be low for 32 mS before the device enters
-            // shutdown allows for PWM dimming frequencies as low as 100 Hz.
-            // The device is enabled again when a CTRL signal is high for a period of 500 µs minimum.
-            display->backlight_pwm = furi_hal_pwm_init(&gpio_display_ctrl, DISPLAY_JD9853_BACKLIGHT_BIT, DISPLAY_JD9853_BACKLIGHT_FREQ_HZ, false);
-            furi_hal_pwm_set_duty_cycle(display->backlight_pwm, 140);
-            furi_delay_us(2400);
-        }
-        furi_hal_pwm_set_duty_cycle(display->backlight_pwm, duty_cycle);
-    }
-}
-
-int8_t display_jd9853_qspi_get_brightness(DisplayJd9853QSPI* display) {
-    furi_check(display);
-    return (int8_t)display->backlight;
-}
-
 bool display_jd9853_qspi_check_connection(DisplayJd9853QSPI* display, uint32_t timeout_ms) {
     furi_check(display);
     int64_t start_time = furi_get_tick();
@@ -284,7 +271,6 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     DisplayJd9853QSPI* display = malloc(sizeof(DisplayJd9853QSPI));
     display_instance = display;
     display->busy = furi_semaphore_alloc(1, 1);
-    display->backlight = 0;
 
     display->buffer_header.cmd[0] = JD9853_QSPI_CMD_4_LINE_MODE;
     display->buffer_header.cmd[1] = 0;
@@ -317,7 +303,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display_jd9853_hstx_clock_init();
 
     //Gpio init
-    furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputOpenDrain);
+    furi_hal_gpio_init_simple(&gpio_display_reset, GpioModeOutputPushPull);
     furi_hal_gpio_init_simple(&gpio_display_te, GpioModeInput);
     furi_hal_gpio_add_int_callback(&gpio_display_te, GpioConditionRise, display_jd9853_te_callback, display);
     furi_hal_gpio_disable_int_callback(&gpio_display_te);
@@ -325,9 +311,9 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_hal_gpio_write(&gpio_display_cs, true);
 
     //Reset display
-    furi_hal_gpio_write_open_drain(&gpio_display_reset, false);
+    furi_hal_gpio_write(&gpio_display_reset, false);
     furi_delay_ms(30);
-    furi_hal_gpio_write_open_drain(&gpio_display_reset, true);
+    furi_hal_gpio_write(&gpio_display_reset, true);
     furi_delay_ms(30);
 
     //todo set gpio functions add implement furi hal gpio
@@ -346,9 +332,10 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
         FURI_LOG_E(TAG, "Display not connected");
     }
 
-    display_jd9853_qspi_fill(display, 0); // Fill black
+    // Clear display before enable to avoid garbage on screen
+    display_jd9853_qspi_clear(display);
 
-    display_jd9853_qspi_set_brightness(display, 2); // Set backlight to 2%
+    display_jd9853_enable(display, true);
 
     return display;
 }
