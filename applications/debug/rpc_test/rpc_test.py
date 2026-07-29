@@ -478,95 +478,71 @@ def _stream_reader_thread(ser, stop_event, viewer):
                 viewer.show(msg["data"], msg["width"], msg["height"])
                 if not viewer.is_open():
                     print("Window closed, stopping stream.")
-                    stop_event.set()
+                    _stop_streaming()
                     break
         else:
             print(f"[{count}] {msg}")
 
 
-def listen_frames(ser, duration_s=5.0, display=False):
+def listen_frames(ser, duration_s=5.0, display=False, master=None):
     """Listen for incoming frames for `duration` seconds.
 
-    If display=True, starts a background thread + tkinter window and returns
-    immediately — the caller continues accepting commands (button, touch, etc.)
-    while streaming.  Use _stop_streaming() or close the window to stop.
+    If display=True with master=None: creates a standalone Tk window (blocks).
+    If display=True with master=<Tk>: creates a Toplevel in the existing
+    event loop (non-blocking — the caller's mainloop handles events).
 
     If display=False, blocks for `duration_s` seconds (original behaviour)."""
     global _stream_stop, _stream_thread, _stream_viewer
 
     if display:
-        # ── Background streaming (non-blocking) ─────────────────────
         _stream_stop = threading.Event()
+        v = _FrameViewer(master=master)
+        _stream_viewer = v
 
         # ── Keyboard → ButtonEvent mapping ──────────────────────────
         _KEY_MAP = {
-            # Arrow keys
             "Up": "UP", "Down": "DOWN", "Left": "LEFT", "Right": "RIGHT",
-            # WASD
             "w": "UP", "W": "UP", "s": "DOWN", "S": "DOWN",
             "a": "LEFT", "A": "LEFT", "d": "RIGHT", "D": "RIGHT",
-            # Back
             "b": "BACK", "B": "BACK",
             "Escape": "BACK", "BackSpace": "BACK", "Delete": "BACK",
-            # OK
             "o": "OK", "O": "OK", "Return": "OK", "space": "OK",
-            # Sw (tab / X)
             "x": "SW", "X": "SW", "Tab": "SW",
-            # Ptt
             "p": "PTT", "P": "PTT",
-            # Number keys
             "1": "KEY_1", "2": "KEY_2", "3": "POWER", "4": "KEY_4", "5": "KEY_5",
         }
 
         def _on_key_event(event, action):
-            """Handle keyboard press/release → send ButtonEvent."""
             key = event.keysym
             btn = _KEY_MAP.get(key)
             if btn is None:
-                return  # unmapped key — ignore
+                return
             try:
                 send_button(ser, btn, action)
             except Exception as e:
                 print(f"Key→button error: {e}")
 
-        # Viewer must be created from the same thread that runs mainloop().
-        viewer_holder = []  # mutable container to pass viewer ref between threads
+        v.root.bind("<KeyPress>", lambda e: _on_key_event(e, "PRESS"))
+        v.root.bind("<KeyRelease>", lambda e: _on_key_event(e, "RELEASE"))
 
-        def _tk_thread():
-            v = _FrameViewer()
-            viewer_holder.append(v)
-            global _stream_viewer
-            _stream_viewer = v
+        if duration_s > 0:
+            v.root.after(int(duration_s * 1000), _stop_streaming)
 
-            # Bind keyboard events to the viewer window
-            v.root.bind("<KeyPress>", lambda e: _on_key_event(e, "PRESS"))
-            v.root.bind("<KeyRelease>", lambda e: _on_key_event(e, "RELEASE"))
+        thread = threading.Thread(
+            target=_stream_reader_thread,
+            args=(ser, _stream_stop, v),
+            daemon=True,
+        )
+        thread.start()
+        _stream_thread = thread
 
-            if duration_s > 0:
-                v.root.after(int(duration_s * 1000), _stop_streaming)
+        # If standalone (no master), run our own mainloop.
+        if master is None:
             try:
                 v.root.mainloop()
             except KeyboardInterrupt:
                 pass
             _stop_streaming()
-
-        tk_thread = threading.Thread(target=_tk_thread, daemon=True)
-        tk_thread.start()
-
-        # Brief wait for the viewer to be created before starting the reader.
-        deadline = time.monotonic() + 2.0
-        while not viewer_holder and time.monotonic() < deadline:
-            time.sleep(0.01)
-
-        viewer = viewer_holder[0] if viewer_holder else None
-
-        thread = threading.Thread(
-            target=_stream_reader_thread,
-            args=(ser, _stream_stop, viewer),
-            daemon=True,
-        )
-        thread.start()
-        _stream_thread = thread
         return
 
     # ── Foreground streaming (blocking, original behaviour) ──────────
@@ -638,7 +614,7 @@ def listen_frames(ser, duration_s=5.0, display=False):
 class _FrameViewer:
     """Display L8 grayscale frames (tkinter runs on main thread, queue-based)."""
 
-    def __init__(self):
+    def __init__(self, master=None):
         import tkinter as tk
         from PIL import Image, ImageTk
 
@@ -649,11 +625,18 @@ class _FrameViewer:
         self._queue = queue.Queue(maxsize=2)
         self._stop_event = threading.Event()
 
-        self.root = tk.Tk()
-        self.root.title("Flipper One - Screen Stream")
-        self.label = tk.Label(self.root)
-        self.label.pack()
-        self.root.geometry("+%d+50" % (self.root.winfo_screenwidth() - 400))
+        if master is not None:
+            self.root = tk.Toplevel(master)
+            self.root.title("Flipper One - Screen Stream")
+            self.label = tk.Label(self.root)
+            self.label.pack()
+            self.root.geometry("+%d+50" % (self.root.winfo_screenwidth() - 400))
+        else:
+            self.root = tk.Tk()
+            self.root.title("Flipper One - Screen Stream")
+            self.label = tk.Label(self.root)
+            self.label.pack()
+            self.root.geometry("+%d+50" % (self.root.winfo_screenwidth() - 400))
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._poll_queue()
 
@@ -665,7 +648,10 @@ class _FrameViewer:
         try:
             while True:
                 data, width, height = self._queue.get_nowait()
-                self._display(data, width, height)
+                try:
+                    self._display(data, width, height)
+                except Exception as e:
+                    print(f"Frame display error: {e}")
         except queue.Empty:
             pass
         if not self._stop_event.is_set():
@@ -724,48 +710,53 @@ def _display_frame_ascii(data, width, height):
 
 # ── CLI ─────────────────────────────────────────────────────────────────────
 def interactive_mode(ser):
-    """Simple interactive test loop."""
+    """Interactive test loop — uses a hidden tkinter root + mainloop() so that
+    keyboard events in the stream viewer work correctly on all platforms.
+    Console input runs in a background thread; commands are dispatched via
+    root.after() on the main thread."""
+    import tkinter as tk
+
     print("\nCommands: button <NAME> [PRESS|RELEASE], touch <START|MOVE|END> <x> <y> <p>, listen <N>, quit")
     print("  start_vd, stop_vd, close, stream [N]")
-    print("  (button/touch work while streaming — stream runs in background)")
+    print("  (click the stream window to use keyboard: WASD/arrows/Enter/etc.)")
     print("Example: button OK PRESS")
-    while True:
-        try:
-            line = input("> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            break
-        if not line:
-            continue
-        parts = line.split()
-        cmd = parts[0].lower()
 
+    cmd_queue = queue.Queue()
+
+    # Hidden root — provides the event loop for tkinter on the main thread.
+    root = tk.Tk()
+    root.withdraw()
+
+    # ── Command dispatcher (runs on main thread via after()) ─────────
+    def _dispatch(cmd, args):
+        nonlocal ser
         if cmd == "quit" or cmd == "exit":
             if _is_streaming():
                 print("Stopping stream...")
                 _stop_streaming()
                 send_stop_virtual_display(ser)
-            break
+            root.quit()
         elif cmd == "button":
-            btn = parts[1].upper() if len(parts) > 1 else "OK"
-            act = parts[2].upper() if len(parts) > 2 else "PRESS"
+            btn = args[0].upper() if args else "OK"
+            act = args[1].upper() if len(args) > 1 else "PRESS"
             send_button(ser, btn, act)
         elif cmd == "touch":
-            ttype = parts[1].upper() if len(parts) > 1 else "START"
-            x = int(parts[2]) if len(parts) > 2 else 512
-            y = int(parts[3]) if len(parts) > 3 else 384
-            p = int(parts[4]) if len(parts) > 4 else 1000
+            ttype = args[0].upper() if args else "START"
+            x = int(args[1]) if len(args) > 1 else 512
+            y = int(args[2]) if len(args) > 2 else 384
+            p = int(args[3]) if len(args) > 3 else 1000
             send_touch(ser, ttype, x, y, p)
         elif cmd == "listen":
-            duration = float(parts[1]) if len(parts) > 1 else 5.0
+            duration = float(args[0]) if args else 5.0
             listen_frames(ser, duration)
         elif cmd == "start_vd":
             if _is_streaming():
                 print("Already streaming — use 'stop_vd' first")
-                continue
+                return
             ser.reset_input_buffer()
             send_start_virtual_display(ser)
-            listen_frames(ser, 0, display=True)  # 0 = no auto-stop timeout
-            print("Streaming started — use 'button'/'touch' commands; 'stop_vd' or close window to stop")
+            listen_frames(ser, 0, display=True, master=root)
+            print("Streaming started — click stream window for keyboard; 'stop_vd' to stop")
         elif cmd == "stop_vd":
             if _is_streaming():
                 _stop_streaming()
@@ -774,7 +765,6 @@ def interactive_mode(ser):
         elif cmd == "open":
             global _rpc_session_open
             _rpc_session_open = False
-            # Purge any stale data without closing/reopening (closing would toggle DTR).
             ser.reset_input_buffer()
             ser.reset_output_buffer()
             enter_rpc_mode(ser)
@@ -788,12 +778,12 @@ def interactive_mode(ser):
         elif cmd == "stream":
             if _is_streaming():
                 print("Already streaming — use 'stop_vd' first")
-                continue
-            duration = float(parts[1]) if len(parts) > 1 else 10.0
+                return
+            duration = float(args[0]) if args else 10.0
             ser.reset_input_buffer()
             send_start_virtual_display(ser)
-            listen_frames(ser, duration, display=True)
-            print(f"Streaming for {duration}s — use 'button'/'touch' commands; 'stop_vd' or close window to stop early")
+            listen_frames(ser, duration, display=True, master=root)
+            print(f"Streaming for {duration}s — click stream window for keyboard; 'stop_vd' to stop early")
         elif cmd == "help":
             print("Commands:")
             print("  button <OK|BACK|KEY_1|KEY_2|POWER|KEY_4|KEY_5|SW|DOWN|RIGHT|LEFT|UP|PTT> [PRESS|RELEASE]")
@@ -807,6 +797,47 @@ def interactive_mode(ser):
             print("  quit")
         else:
             print(f"Unknown: {cmd}")
+
+    def _poll_commands():
+        """Called periodically by tkinter's event loop on the main thread."""
+        try:
+            while True:
+                cmd, args = cmd_queue.get_nowait()
+                _dispatch(cmd, args)
+        except queue.Empty:
+            pass
+        root.after(50, _poll_commands)
+
+    # ── Console input thread ─────────────────────────────────────────
+    def _console_thread():
+        while True:
+            try:
+                # Use sys.stdin.readline() instead of input() because
+                # input() triggers Python's tkinter EventHook which calls
+                # Tcl_DoOneEvent — illegal on a non-main thread on macOS.
+                sys.stdout.write("> ")
+                sys.stdout.flush()
+                line = sys.stdin.readline()
+                if not line:
+                    # EOF
+                    cmd_queue.put(("quit", []))
+                    break
+                line = line.strip()
+            except (EOFError, KeyboardInterrupt):
+                cmd_queue.put(("quit", []))
+                break
+            if not line:
+                continue
+            parts = line.split()
+            cmd_queue.put((parts[0].lower(), parts[1:]))
+
+    console = threading.Thread(target=_console_thread, daemon=True)
+    console.start()
+
+    # ── Run ──────────────────────────────────────────────────────────
+    root.after(50, _poll_commands)
+    root.mainloop()
+    console.join(timeout=1.0)
 
 
 def main():
