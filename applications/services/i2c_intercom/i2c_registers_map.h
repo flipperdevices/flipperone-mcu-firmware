@@ -122,10 +122,6 @@
 #define I2C_HEADPHONES_STATE_REG_BUTTON_C_PRESSED_BIT   (4)
 #define I2C_HEADPHONES_STATE_REG_BUTTON_D_PRESSED_BIT   (5)
 
-// Software buttons state register
-#define I2C_SW_BUTTONS_STATE_REG_ADDRESS                  (0x0200 + 10)
-#define I2C_SW_BUTTONS_STATE_REG_BUTTON_POWER_PRESSED_BIT (0)
-
 // Led brightness registers
 /* 
  * 0x0300+0 Link LED group brightness      (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.

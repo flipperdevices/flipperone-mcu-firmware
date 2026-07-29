@@ -31,7 +31,6 @@ extern int32_t unit_test_app(void* p);
 extern int32_t font_test_app(void* p);
 extern int32_t cli_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
-extern int32_t unit_test_app(void* p);
 
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
@@ -221,13 +220,6 @@ const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
         .app = self_check_app,
         .name = "Self Check",
         .appid = "self_check",
-        .stack_size = 2048,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
-    {
-        .app = unit_test_app,
-        .name = "Unit Test",
-        .appid = "unit_test",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
