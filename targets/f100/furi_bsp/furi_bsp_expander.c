@@ -14,6 +14,10 @@ typedef struct {
 typedef struct {
     FuriCallback callback;
     void* context;
+    // Serializes invocation against attach/detach: the worker thread holds
+    // the mutex while inside the callback, so a detaching thread blocks
+    // until an in-flight invocation has returned.
+    FuriMutex* mutex;
 } ExpanderCallbackStorage;
 
 typedef struct {
@@ -53,11 +57,27 @@ static void furi_bsp_show_error_message_control_expander(void) {
     FURI_LOG_E(TAG, "Not initialized Control Expander");
 }
 
+static void furi_bsp_callback_storage_init(ExpanderCallbackStorage* storage) {
+    storage->callback = NULL;
+    storage->context = NULL;
+    storage->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
+}
+
 static void furi_bsp_set_callback(ExpanderCallbackStorage* storage, FuriCallback callback, void* context) {
-    FURI_CRITICAL_ENTER();
+    furi_check(furi_mutex_acquire(storage->mutex, FuriWaitForever) == FuriStatusOk);
     storage->callback = callback;
     storage->context = context;
-    FURI_CRITICAL_EXIT();
+    furi_check(furi_mutex_release(storage->mutex) == FuriStatusOk);
+}
+
+// Invoked on the expander worker thread. The mutex is held for the whole
+// invocation — see ExpanderCallbackStorage.
+static void furi_bsp_invoke_callback(ExpanderCallbackStorage* storage) {
+    furi_check(furi_mutex_acquire(storage->mutex, FuriWaitForever) == FuriStatusOk);
+    if(storage->callback) {
+        storage->callback(storage->context);
+    }
+    furi_check(furi_mutex_release(storage->mutex) == FuriStatusOk);
 }
 
 static void furi_bsp_expander_control_init(void) {
@@ -93,51 +113,35 @@ static int32_t furi_bsp_expander_callback_thread(void* context) {
 
         if(changed & InputExpMainGpio5v0Flt) {
             EXPANDER_DEBUG("GPIO 5V0 Fault Detected");
-            if(instance->gpio_5v0_flt.callback) {
-                instance->gpio_5v0_flt.callback(instance->gpio_5v0_flt.context);
-            }
+            furi_bsp_invoke_callback(&instance->gpio_5v0_flt);
         }
         if(changed & InputExpMainGpio3v3Flt) {
             EXPANDER_DEBUG("GPIO 3V3 Fault Detected");
-            if(instance->gpio_3v3_flt.callback) {
-                instance->gpio_3v3_flt.callback(instance->gpio_3v3_flt.context);
-            }
+            furi_bsp_invoke_callback(&instance->gpio_3v3_flt);
         }
         if(changed & InputExpMainBq25792Int) {
             EXPANDER_DEBUG("BQ25792 Interrupt Detected");
-            if(instance->bq25792.callback) {
-                instance->bq25792.callback(instance->bq25792.context);
-            }
+            furi_bsp_invoke_callback(&instance->bq25792);
         }
         if(changed & InputExpMainFusb302Int) {
             EXPANDER_DEBUG("FUSB302 Interrupt Detected");
-            if(instance->fusb302.callback) {
-                instance->fusb302.callback(instance->fusb302.context);
-            }
+            furi_bsp_invoke_callback(&instance->fusb302);
         }
         if(changed & InputExpMainMuxVconnFault) {
             EXPANDER_DEBUG("MUX VCON Fault Detected");
-            if(instance->mux_vconn_fault.callback) {
-                instance->mux_vconn_fault.callback(instance->mux_vconn_fault.context);
-            }
+            furi_bsp_invoke_callback(&instance->mux_vconn_fault);
         }
         if(changed & InputExpMainTypeCUpSwPg) {
             EXPANDER_DEBUG("Type-C Up SW PG Detected");
-            if(instance->type_c_up_sw_pg.callback) {
-                instance->type_c_up_sw_pg.callback(instance->type_c_up_sw_pg.context);
-            }
+            furi_bsp_invoke_callback(&instance->type_c_up_sw_pg);
         }
         if(changed & InputExpMainTypeAUpSwPg) {
             EXPANDER_DEBUG("Type-A Up SW PG Detected");
-            if(instance->type_a_up_sw_pg.callback) {
-                instance->type_a_up_sw_pg.callback(instance->type_a_up_sw_pg.context);
-            }
+            furi_bsp_invoke_callback(&instance->type_a_up_sw_pg);
         }
         if(changed & InputExpMainExpander7) {
             EXPANDER_DEBUG("Expander 7 Interrupt Detected");
-            if(instance->expander7.callback) {
-                instance->expander7.callback(instance->expander7.context);
-            }
+            furi_bsp_invoke_callback(&instance->expander7);
         }
     }
     furi_crash();
@@ -148,6 +152,14 @@ static void furi_bsp_expander_main_init(void) {
     furi_check(expander_main == NULL);
 
     expander_main = malloc(sizeof(ExpanderMain));
+    furi_bsp_callback_storage_init(&expander_main->gpio_5v0_flt);
+    furi_bsp_callback_storage_init(&expander_main->gpio_3v3_flt);
+    furi_bsp_callback_storage_init(&expander_main->bq25792);
+    furi_bsp_callback_storage_init(&expander_main->fusb302);
+    furi_bsp_callback_storage_init(&expander_main->mux_vconn_fault);
+    furi_bsp_callback_storage_init(&expander_main->type_c_up_sw_pg);
+    furi_bsp_callback_storage_init(&expander_main->type_a_up_sw_pg);
+    furi_bsp_callback_storage_init(&expander_main->expander7);
     expander_main->handle = pcal6416_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, PCAL6416_ADDRESS_A0);
 
     if(expander_main->handle) {
@@ -340,6 +352,20 @@ void furi_bsp_expander_main_attach_fusb302_callback(FuriCallback callback, void*
     } else {
         furi_bsp_show_error_message_main_expander();
     }
+}
+
+void furi_bsp_expander_main_detach_fusb302_callback(void) {
+    furi_check(expander_main != NULL);
+    if(!expander_main->handle) {
+        furi_bsp_show_error_message_main_expander();
+        return;
+    }
+    furi_check(expander_main->fusb302.callback != NULL);
+    // Taking the storage mutex inside set_callback blocks until an
+    // in-flight invocation on the worker thread has returned, so the
+    // caller can free the callback context right after this returns.
+    // Must not be called from the callback itself (mutex is not recursive).
+    furi_bsp_set_callback(&expander_main->fusb302, NULL, NULL);
 }
 
 void furi_bsp_expander_main_attach_mux_vconn_fault_callback(FuriCallback callback, void* context) {

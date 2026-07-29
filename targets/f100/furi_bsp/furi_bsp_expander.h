@@ -95,6 +95,14 @@ void furi_bsp_expander_main_attach_bq25792_callback(FuriCallback callback, void*
  */
 void furi_bsp_expander_main_attach_fusb302_callback(FuriCallback callback, void* context);
 
+/** Detach the FUSB302 interrupt callback previously attached with
+ * furi_bsp_expander_main_attach_fusb302_callback. Blocks until a possibly
+ * in-flight invocation on the expander worker thread has returned, so the
+ * callback context can be freed safely right after this call. Must not be
+ * called from the expander worker thread (i.e. from the callback itself).
+ */
+void furi_bsp_expander_main_detach_fusb302_callback(void);
+
 /** Attach callbacks for main expander input events
  * @param callback - function to call on MUX VCONN fault events
  * @param context - context to pass to the callback
