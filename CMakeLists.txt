@@ -75,6 +75,7 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/bq28z620/*.c*"
     "lib/drivers/fusb302/*.c*"
     "lib/usb/src/*.c*"
+    "lib/usb_v2/src/*.c*"
     "lib/drivers/hd3ss3220/*.c*"
     "lib/drivers/i2c_slave/*.c*"
     "lib/drivers/headphones/*.c*"
@@ -151,6 +152,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
     ${CMAKE_CURRENT_LIST_DIR}/lib/usb/include
     ${CMAKE_CURRENT_LIST_DIR}/lib/usb/src
+    ${CMAKE_CURRENT_LIST_DIR}/lib/usb_v2/include
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/src
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_hal
     ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_bsp

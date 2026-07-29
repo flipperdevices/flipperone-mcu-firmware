@@ -36,6 +36,22 @@ UcsiPpmStatus ucsi_ppm_reset(UcsiPpm* ppm);
 
 UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm);
 
+// No state-machine deadline is currently armed; see ucsi_ppm_next_timeout_ms.
+#define UCSI_PPM_NO_TIMEOUT UINT32_MAX
+
+// Returns the delay in milliseconds until the next state-machine deadline
+// (Type-C debounce, PE protocol timers), or UCSI_PPM_NO_TIMEOUT when no
+// timer is armed. 0 means a deadline is already due — call ucsi_ppm_tick.
+//
+// This is the event-driven alternative to periodic polling: call it after
+// init and after every ucsi_ppm_tick / notify_* / register_write, and arm a
+// one-shot host timer for the returned delay. External changes (CC events,
+// PD messages, VBUS) arrive through the FUSB302 IRQ and must trigger
+// notify_fusb302_irq + tick as usual; the deadline only covers time-based
+// transitions. The returned value may shrink after any activity, so always
+// re-arm with the latest value.
+uint32_t ucsi_ppm_next_timeout_ms(const UcsiPpm* ppm);
+
 UcsiPpmStatus ucsi_ppm_notify_fusb302_irq(UcsiPpm* ppm);
 
 UcsiPpmStatus ucsi_ppm_notify_power_supply_ready(UcsiPpm* ppm);

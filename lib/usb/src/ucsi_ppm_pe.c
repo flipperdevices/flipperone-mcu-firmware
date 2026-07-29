@@ -81,6 +81,11 @@
 // bring-up doesn't recur.
 #define UCSI_PPM_PE_PR_SWAP_SRC_SETTLE_MS 50u
 
+// PrSwapSnkSourceOn is the one PE state that has to poll the chip (VBUSOK
+// over I2C — see ucsi_ppm_pe_tick for why the IRQ can't be trusted there),
+// so next_timeout_ms asks the host to wake us this often while in it.
+#define UCSI_PPM_PE_SOURCE_ON_POLL_MS 10u
+
 // --- helpers ---------------------------------------------------------------
 
 static uint16_t pe_build_header(uint8_t msg_type, uint8_t num_objects, bool power_role_src, bool data_role_dfp) {
@@ -123,6 +128,12 @@ static void pe_arm_timer(UcsiPpm* ppm) {
 static bool pe_timer_expired(const UcsiPpm* ppm, uint32_t timeout_ms) {
     const uint32_t now = ppm->config.time_ms(ppm->config.hal_ctx);
     return (uint32_t)(now - ppm->pe_timer_start_ms) >= timeout_ms;
+}
+
+static uint32_t pe_timer_remaining_ms(const UcsiPpm* ppm, uint32_t timeout_ms) {
+    const uint32_t now = ppm->config.time_ms(ppm->config.hal_ctx);
+    const uint32_t elapsed = (uint32_t)(now - ppm->pe_timer_start_ms);
+    return elapsed >= timeout_ms ? 0u : timeout_ms - elapsed;
 }
 
 // --- state-machine actions -------------------------------------------------
@@ -761,5 +772,37 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
         break;
     default:
         break;
+    }
+}
+
+// Mirrors the ucsi_ppm_pe_tick switch: every state that checks a timer there
+// reports the remaining time here. Keep the two in sync when adding states.
+uint32_t ucsi_ppm_pe_next_timeout_ms(const UcsiPpm* ppm) {
+    switch(ppm->pe_state) {
+    case(int)UcsiPpmPeSnkWaitForCapabilities:
+        return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_SINK_WAIT_CAP_MS);
+    case(int)UcsiPpmPeSnkWaitForAccept:
+    case(int)UcsiPpmPeWaitForSoftResetAccept:
+    case(int)UcsiPpmPeWaitForDrSwapResponse:
+    case(int)UcsiPpmPePrSwapSnkSendSwap:
+        return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS);
+    case(int)UcsiPpmPePrSwapSnkWaitForSourceOff:
+        return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_PS_SOURCE_OFF_MS);
+    case(int)UcsiPpmPePrSwapSnkSourceOn: {
+        // tick polls VBUSOK over I2C in this state, so request short wakeups:
+        // first until the settle window closes, then every SOURCE_ON_POLL
+        // interval, never sleeping past the PSSourceOnTimer give-up.
+        const uint32_t settle = pe_timer_remaining_ms(ppm, UCSI_PPM_PE_PR_SWAP_SRC_SETTLE_MS);
+        const uint32_t give_up = pe_timer_remaining_ms(ppm, UCSI_PPM_PE_PS_SOURCE_ON_MS);
+        const uint32_t next = settle ? settle : UCSI_PPM_PE_SOURCE_ON_POLL_MS;
+        return next < give_up ? next : give_up;
+    }
+    case(int)UcsiPpmPeSnkWaitForPsRdy:
+    case(int)UcsiPpmPeSrcTransitionSupply:
+        return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_PS_TRANSITION_MS);
+    case(int)UcsiPpmPeSrcSendCapabilities:
+        return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_SOURCE_CAP_MS);
+    default:
+        return UCSI_PPM_NO_TIMEOUT;
     }
 }

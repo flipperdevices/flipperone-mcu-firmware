@@ -90,6 +90,11 @@ void ucsi_ppm_pe_handle_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg);
 // SenderResponseTimer / PSTransitionTimer / SinkWaitCapTimer expiry.
 void ucsi_ppm_pe_tick(UcsiPpm* ppm);
 
+// Milliseconds until the next PE protocol-timer deadline for the current
+// state, or UCSI_PPM_NO_TIMEOUT when the state has no timed transition.
+// Backend for ucsi_ppm_next_timeout_ms.
+uint32_t ucsi_ppm_pe_next_timeout_ms(const UcsiPpm* ppm);
+
 #ifdef __cplusplus
 }
 #endif

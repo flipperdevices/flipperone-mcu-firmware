@@ -50,6 +50,11 @@ void ucsi_ppm_tc_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event);
 // `ucsi_ppm_tick` after the PHY pump.
 void ucsi_ppm_tc_tick(UcsiPpm* ppm);
 
+// Milliseconds until the next TC deadline (CCDebounce expiry or the
+// AttachWait give-up timeout), or UCSI_PPM_NO_TIMEOUT when the current
+// state has no timed transition. Backend for ucsi_ppm_next_timeout_ms.
+uint32_t ucsi_ppm_tc_next_timeout_ms(const UcsiPpm* ppm);
+
 #ifdef __cplusplus
 }
 #endif

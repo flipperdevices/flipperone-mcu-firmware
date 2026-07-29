@@ -355,6 +355,22 @@ void ucsi_ppm_tc_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     }
 }
 
+uint32_t ucsi_ppm_tc_next_timeout_ms(const UcsiPpm* ppm) {
+    if(ppm->tc_state != (int)UcsiPpmTcStateAttachWait) return UCSI_PPM_NO_TIMEOUT;
+
+    const uint32_t now = ppm->config.time_ms(ppm->config.hal_ctx);
+    const uint32_t elapsed = (uint32_t)(now - ppm->tc_attach_wait_start_ms);
+    if(elapsed < UCSI_PPM_TC_CC_DEBOUNCE_MS) {
+        return UCSI_PPM_TC_CC_DEBOUNCE_MS - elapsed;
+    }
+    // Past debounce the commit waits for VBUS, which arrives via the
+    // I_VBUSOK interrupt — the only remaining deadline is the give-up.
+    if(elapsed < UCSI_PPM_TC_ATTACH_WAIT_TIMEOUT_MS) {
+        return UCSI_PPM_TC_ATTACH_WAIT_TIMEOUT_MS - elapsed;
+    }
+    return 0u;
+}
+
 void ucsi_ppm_tc_tick(UcsiPpm* ppm) {
     if(ppm->tc_state == (int)UcsiPpmTcStateAttachWait) {
         // First try the normal commit path — debounce expired + VBUS seen.

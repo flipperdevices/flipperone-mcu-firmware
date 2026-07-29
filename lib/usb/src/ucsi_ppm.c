@@ -244,6 +244,18 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     return UcsiPpmStatusOk;
 }
 
+uint32_t ucsi_ppm_next_timeout_ms(const UcsiPpm* ppm) {
+    if(!ppm) return UCSI_PPM_NO_TIMEOUT;
+    if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UCSI_PPM_NO_TIMEOUT;
+
+    // Unconsumed notify_* flags mean work is already due.
+    if(ppm->pending_flags) return 0u;
+
+    const uint32_t tc = ucsi_ppm_tc_next_timeout_ms(ppm);
+    const uint32_t pe = ucsi_ppm_pe_next_timeout_ms(ppm);
+    return tc < pe ? tc : pe;
+}
+
 UcsiPpmStatus ucsi_ppm_notify_fusb302_irq(UcsiPpm* ppm) {
     if(!ppm) return UcsiPpmStatusInvalidArg;
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
