@@ -26,6 +26,12 @@ if errorlevel 1 (
     pip install pillow
 )
 
+py -c "import google.protobuf" 2>NUL
+if errorlevel 1 (
+    echo Installing protobuf...
+    pip install protobuf
+)
+
 py %*
 
 popd

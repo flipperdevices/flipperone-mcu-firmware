@@ -28,4 +28,10 @@ if ! python3 -c "import PIL" &> /dev/null; then
     pip install pillow
 fi
 
+# install protobuf (nanopb generator) if not already installed
+if ! python3 -c "import google.protobuf" &> /dev/null; then
+    echo "Installing protobuf..."
+    pip install protobuf
+fi
+
 python3 "$@"
