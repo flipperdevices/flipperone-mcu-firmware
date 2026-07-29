@@ -36,8 +36,8 @@ void furi_hal_info_get(PropertyValueCallback out, char sep, void* context) {
     const Version* firmware_version = version_get();
     if(firmware_version) {
         if(sep == '.') {
-            property_value_out(&property_context, NULL, 4, FURI_HAL_MCU_INFO_NAME "firmware", "commit", "hash", version_get_githash(firmware_version));
-            property_value_out(&property_context, NULL, 5, FURI_HAL_MCU_INFO_NAME, "firmware", "branch", "name", version_get_gitbranch(firmware_version));
+            property_value_out(&property_context, NULL, 4, FURI_HAL_MCU_INFO_NAME, "firmware", "commit", "hash", version_get_githash(firmware_version));
+            property_value_out(&property_context, NULL, 4, FURI_HAL_MCU_INFO_NAME, "firmware", "branch", "name", version_get_gitbranch(firmware_version));
         } else {
             property_value_out(&property_context, NULL, 3, FURI_HAL_MCU_INFO_NAME, "firmware", "commit", version_get_githash(firmware_version));
             property_value_out(&property_context, NULL, 3, FURI_HAL_MCU_INFO_NAME, "firmware", "branch", version_get_gitbranch(firmware_version));

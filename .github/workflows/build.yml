@@ -5,12 +5,22 @@ on:
     branches:
       - dev
     tags:
-      - '*'
+      - '[0-9]+.[0-9]+.[0-9]+'
   pull_request:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Declaring 'permissions' drops every unlisted scope to 'none', so list everything
+# the workflow needs:
+# - contents: write — 'softprops/action-gh-release' creates releases and uploads assets
+# - issues/pull-requests: write — 'peter-evans/create-or-update-comment' posts the
+#   firmware link comment on PRs (PR comments go through the issues API)
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
 
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
@@ -186,3 +196,14 @@ jobs:
           **Compiled firmware for commit `${{steps.names.outputs.commit_sha}}`:**
           - [🍓 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{steps.names.outputs.branch_name}}/flipper-one-mcu-f100-firmware-${{steps.names.outputs.suffix}}.uf2)
         edit-mode: replace
+
+    - name: 'Create GitHub Release'
+      # Only on version-tag pushes (e.g. 1.4.3). Creates the release for the tag and
+      # attaches the .uf2 built above. action-gh-release uses the built-in
+      # GITHUB_TOKEN by default, so no secret needs to be configured.
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v3
+      with:
+        files: artifacts/*.uf2
+        generate_release_notes: true
+        fail_on_unmatched_files: true

@@ -72,6 +72,19 @@ else()
     set(ASSETS_COMMAND "${PYTHON_DIR}/run_venv.sh")
 endif()
 
+# Prepare the venv in a single prerequisite step: run_venv creates .venv and
+# installs packages on first use, which is not safe to do from several image
+# conversions racing in a parallel build.
+set(VENV_STAMP "${CMAKE_CURRENT_BINARY_DIR}/venv.stamp")
+add_custom_command(
+    OUTPUT  ${VENV_STAMP}
+    COMMAND ${ASSETS_COMMAND} --version
+    COMMAND ${CMAKE_COMMAND} -E touch ${VENV_STAMP}
+    DEPENDS ${ASSETS_COMMAND}
+    WORKING_DIRECTORY ${PYTHON_DIR}
+    COMMENT "Preparing Python virtual environment"
+)
+
 # Generate a C source file for each image
 foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
     get_filename_component(IMAGE_NAME ${IMAGE_SOURCE} NAME_WE)
@@ -84,6 +97,7 @@ foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
             ${IMAGE_SOURCE}
             ${ASSETS_COMMAND}
             ${ASSETS_SCRIPT}
+            ${VENV_STAMP}
         WORKING_DIRECTORY ${PYTHON_DIR}
         COMMENT "Generating ${IMAGE_NAME}.c"
     )

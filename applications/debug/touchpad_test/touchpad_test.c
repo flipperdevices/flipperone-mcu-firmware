@@ -105,11 +105,14 @@ static bool touchpad_test_app_layout(void* _model) {
 void touchpad_test_app_update_frame(TouchpadTestModel* model) {
     canvas_clear(model->canvas, 0xFF);
 
+    ColorA color_gray = {.color = 220, .alpha = 255};
+    ColorA color_black = {.color = 0x00, .alpha = 255};
+
     // grid
-    render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH / 2, 1, TOUCHPAD_CANVAS_WIDTH / 2, TOUCHPAD_CANVAS_HEIGHT - 1, 220);
-    render_draw_line(model->canvas, 60, 1, 60, TOUCHPAD_CANVAS_HEIGHT - 1, 220);
-    render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH - 60, 1, TOUCHPAD_CANVAS_WIDTH - 60, TOUCHPAD_CANVAS_HEIGHT - 1, 220);
-    render_draw_line(model->canvas, 1, TOUCHPAD_CANVAS_HEIGHT / 2, TOUCHPAD_CANVAS_WIDTH - 1, TOUCHPAD_CANVAS_HEIGHT / 2, 220);
+    render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH / 2, 1, TOUCHPAD_CANVAS_WIDTH / 2, TOUCHPAD_CANVAS_HEIGHT - 1, color_gray);
+    render_draw_line(model->canvas, 60, 1, 60, TOUCHPAD_CANVAS_HEIGHT - 1, color_gray);
+    render_draw_line(model->canvas, TOUCHPAD_CANVAS_WIDTH - 60, 1, TOUCHPAD_CANVAS_WIDTH - 60, TOUCHPAD_CANVAS_HEIGHT - 1, color_gray);
+    render_draw_line(model->canvas, 1, TOUCHPAD_CANVAS_HEIGHT / 2, TOUCHPAD_CANVAS_WIDTH - 1, TOUCHPAD_CANVAS_HEIGHT / 2, color_gray);
 
     // ellipses
     for(int i = 0; i < TOUCHPAD_ELLIPSE_COUNT; i++) {
@@ -118,23 +121,23 @@ void touchpad_test_app_update_frame(TouchpadTestModel* model) {
         int32_t w = TOUCHPAD_CANVAS_WIDTH - 2 * margin_x - 2;
         int32_t h = TOUCHPAD_CANVAS_HEIGHT - 2 * margin_y - 2;
         int32_t r = h / 2;
-        uint8_t color = (i == 0) ? 0x00 : 220;
+        ColorA color = {.color = (i == 0) ? 0x00 : 220, .alpha = 255};
         render_draw_round_rectangle(model->canvas, margin_x + 1, margin_y + 1, w, h, r, 1, color);
     }
 
     // touch lines
     for(size_t i = 0; i < TouchpadTestLineArray_size(model->lines); i++) {
         TouchpadTestLine* line = TouchpadTestLineArray_get(model->lines, i);
-        render_draw_line(model->canvas, line->x0, line->y0, line->x1, line->y1, 0x00);
+        render_draw_line(model->canvas, line->x0, line->y0, line->x1, line->y1, color_black);
     }
 
     // touch point
     const int32_t min_radius = 3;
     const int32_t radius = min_radius + (int32_t)(model->pressure * 20);
     if(model->pressed) {
-        render_fill_round_rectangle(model->canvas, model->last_x - radius, model->last_y - radius, 2 * radius, 2 * radius, radius, 0x00);
+        render_fill_round_rectangle(model->canvas, model->last_x - radius, model->last_y - radius, 2 * radius, 2 * radius, radius, color_black);
     } else {
-        render_draw_round_rectangle(model->canvas, model->last_x - radius, model->last_y - radius, 2 * radius, 2 * radius, radius, 1, 0x00);
+        render_draw_round_rectangle(model->canvas, model->last_x - radius, model->last_y - radius, 2 * radius, 2 * radius, radius, 1, color_black);
     }
 }
 

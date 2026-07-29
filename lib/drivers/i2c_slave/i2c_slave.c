@@ -100,7 +100,8 @@ void i2c_slave_deinit(i2c_inst_t* i2c) {
     i2c_hw_t* hw = i2c_get_hw(i2c);
     hw->intr_mask = I2C_IC_INTR_MASK_RESET;
 
-    i2c_set_slave_mode(i2c, false, 0);
+    // Dummy address: must be in valid 7-bit range 0x08-0x77
+    i2c_set_slave_mode(i2c, false, 0x77);
 }
 
 void i2c_slave_reset(i2c_inst_t* i2c) {

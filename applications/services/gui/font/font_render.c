@@ -162,9 +162,13 @@ void font_render_glyph(U8G2FontRender* font, U8G2FontGlyph* glyph, int32_t x, in
         for(; repeat >= 0; repeat--) {
             for(uint8_t i = 0; i < zeros + ones; i++) {
                 if(i <= zeros - 1) {
-                    font->draw_pixel_bg(x_pos, y_pos, context);
+                    if(font->draw_pixel_bg) {
+                        font->draw_pixel_bg(x_pos, y_pos, context);
+                    }
                 } else {
-                    font->draw_pixel_fg(x_pos, y_pos, context);
+                    if(font->draw_pixel_fg) {
+                        font->draw_pixel_fg(x_pos, y_pos, context);
+                    }
                 }
                 x_pos++;
 
