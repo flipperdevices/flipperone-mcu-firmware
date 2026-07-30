@@ -1,12 +1,7 @@
-#pragma once
-#include <stdbool.h>
-
-#ifdef __cplusplus
-extern "C" {
+#ifdef TEST_FUNCTION_DECLS
+extern int run_circular_buffer_test(void);
 #endif
 
-bool circular_buffer_test_run(void);
-
-#ifdef __cplusplus
-}
+#ifdef TEST_FUNCTION_REFS
+run_circular_buffer_test,
 #endif
