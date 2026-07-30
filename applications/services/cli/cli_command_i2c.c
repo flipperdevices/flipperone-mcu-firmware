@@ -136,6 +136,10 @@ static bool cli_command_i2c_write(PipeSide* pipe, FuriString* args) {
         }
 
         data = malloc(data_length + 1); // +1 for device register
+        if (!data) {
+            printf(ANSI_FG_RED "Failed" ANSI_RESET " to allocate memory\r\n");
+            break;
+        }
         data[0] = device_register;
         if(!args_read_hex_bytes(data_write, data + 1, data_length)) {
             printf(ANSI_FG_RED "Failed" ANSI_RESET " to read hex data\r\n");
@@ -204,7 +208,10 @@ static bool cli_command_i2c_read(PipeSide* pipe, FuriString* args) {
 
         {
             uint8_t* buffer = malloc(length);
-
+            if (!buffer) {
+                printf(ANSI_FG_RED "Failed" ANSI_RESET " to allocate memory\r\n");
+                break;
+            }
             furi_hal_i2c_acquire(bus_info->handle);
             int success = furi_hal_i2c_master_trx_blocking(bus_info->handle, device_address, &device_register, 1, buffer, length, FURI_HAL_I2C_TIMEOUT_US);
             furi_hal_i2c_release(bus_info->handle);
