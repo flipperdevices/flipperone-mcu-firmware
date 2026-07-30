@@ -4,7 +4,6 @@ const char* FLIPPER_AUTORUN_APP_NAME = "";
 
 // services
 extern int32_t haptic_srv(void* p);
-extern int32_t test_peref_srv(void* p);
 extern int32_t input_srv(void* p);
 extern int32_t input_touch_srv(void* p);
 extern int32_t i2c_intercom_srv(void* p);
@@ -95,13 +94,6 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    // {
-    //     .app = test_peref_srv,
-    //     .name = "TestPerefSrv",
-    //     .appid = "test_peref_srv",
-    //     .stack_size = 1024,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
     {
         .app = gui_srv,
         .name = "GuiSrv",
