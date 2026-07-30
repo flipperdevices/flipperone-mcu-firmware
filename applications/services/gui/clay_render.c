@@ -1,4 +1,5 @@
 #include <furi.h>
+#include <string.h>
 #include "clay_render.h"
 #include "font/font_render.h"
 #include "font/fonts.h"
@@ -474,10 +475,39 @@ static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderD
     const uint8_t* data = image->data;
     switch(image->format) {
     case ImageFormatRawGray8: {
-        for(uint32_t y = 0; y < MIN(image->height, bb->height); y++) {
-            for(uint32_t x = 0; x < MIN(image->width, bb->width); x++) {
-                uint8_t pixel = data[y * image->width + x];
-                render_set_pixel(canvas, bb->x + x, bb->y + y, (ColorA){.color = pixel, .alpha = 255});
+        // Clip source dimensions to the target bounding box
+        int32_t src_w = (int32_t)MIN(image->width, bb->width);
+        int32_t src_h = (int32_t)MIN(image->height, bb->height);
+        int32_t dst_x0 = (int32_t)bb->x;
+        int32_t dst_y0 = (int32_t)bb->y;
+
+        /*
+         * Fast path (no scissor clipping needed):
+         *
+         * The source image is grayscale (1 byte/pixel) and fully opaque
+         * (alpha = 255).  Since no alpha blending is required we can
+         * memcpy entire rows at once — much faster than calling
+         * render_set_pixel() once per pixel (which does bounds checks
+         * and blending math even for opaque pixels).
+         *
+         * Slow path (with scissor clipping):
+         * Fall back to pixel-by-pixel rendering which respects the
+         * scissor rectangle.
+         */
+        if(dst_x0 >= canvas->scissors_x0 && dst_y0 >= canvas->scissors_y0 &&
+           dst_x0 + src_w <= canvas->scissors_x1 && dst_y0 + src_h <= canvas->scissors_y1) {
+            for(int32_t y = 0; y < src_h; y++) {
+                memcpy(
+                    &canvas->data[(dst_y0 + y) * canvas->width + dst_x0],
+                    &data[y * image->width],
+                    src_w);
+            }
+        } else {
+            for(int32_t y = 0; y < src_h; y++) {
+                for(int32_t x = 0; x < src_w; x++) {
+                    uint8_t pixel = data[y * image->width + x];
+                    render_set_pixel(canvas, dst_x0 + x, dst_y0 + y, (ColorA){.color = pixel, .alpha = 255});
+                }
             }
         }
         break;
