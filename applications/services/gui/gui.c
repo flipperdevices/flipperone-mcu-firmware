@@ -16,6 +16,9 @@
 
 #define GUI_EVENT_FLAG_REDRAW (1U << 0)
 
+#define CLAY_MAX_ELEMENT_COUNT           128
+#define CLAY_MAX_MEASURE_TEXT_CACHE_WORDS 256
+
 typedef struct {
     View* view;
     GuiViewPriority priority;
@@ -360,6 +363,7 @@ static Gui* gui_alloc(void) {
     canvas_init();
 
     Gui* gui = malloc(sizeof(Gui));
+    FURI_LOG_I(TAG, "Gui struct: %zu bytes", sizeof(Gui));
 
     // Allocate mutex
     gui->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
@@ -368,21 +372,33 @@ static Gui* gui_alloc(void) {
     gui->event_loop = furi_event_loop_alloc();
     gui->redraw_flag = furi_event_flag_alloc();
     gui->input_queue = furi_message_queue_alloc(GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent));
+    FURI_LOG_I(TAG, "InputEvent: %zu bytes x %u → queue ~%zu bytes",
+               sizeof(InputEvent), GUI_INPUT_EVENT_QUEUE_SIZE,
+               sizeof(InputEvent) * GUI_INPUT_EVENT_QUEUE_SIZE);
     gui->input_touch_queue = furi_message_queue_alloc(GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE, sizeof(InputTouchEvent));
+    FURI_LOG_I(TAG, "InputTouchEvent: %zu bytes x %u → queue ~%zu bytes",
+               sizeof(InputTouchEvent), GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE,
+               sizeof(InputTouchEvent) * GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE);
 
     // View ports
     ViewHandleArray_init(gui->views);
 
     // Display and buffer
     gui->display = display_jd9853_qspi_init();
+    size_t canvas_buf_size = canvas_get_required_buffer_size(JD9853_WIDTH, JD9853_HEIGHT);
     gui->render_canvas = canvas_alloc(JD9853_WIDTH, JD9853_HEIGHT);
+    FURI_LOG_I(TAG, "Canvas %ux%u: %zu bytes (framebuffer %zu bytes)",
+               JD9853_WIDTH, JD9853_HEIGHT, canvas_buf_size,
+               (size_t)JD9853_WIDTH * JD9853_HEIGHT);
 
     // Clay initialization
-    Clay_SetMaxElementCount(256);
-    Clay_SetMaxMeasureTextCacheWordCount(512);
-    uint64_t totalMemorySize = Clay_MinMemorySize();
-    FURI_LOG_I(TAG, "Clay allocation: %lluk", totalMemorySize / 1024);
-    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
+    Clay_SetMaxElementCount(CLAY_MAX_ELEMENT_COUNT);
+    Clay_SetMaxMeasureTextCacheWordCount(CLAY_MAX_MEASURE_TEXT_CACHE_WORDS);
+    uint64_t clay_memory = Clay_MinMemorySize();
+    FURI_LOG_I(TAG, "Clay arena: %llu bytes (~%llu KiB), elements=%u, text_cache=%u words",
+               clay_memory, clay_memory / 1024,
+               CLAY_MAX_ELEMENT_COUNT, CLAY_MAX_MEASURE_TEXT_CACHE_WORDS);
+    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(clay_memory, malloc(clay_memory));
     Clay_Initialize(arena, (Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT}, (Clay_ErrorHandler){gui_handle_clay_errors, gui});
     Clay_SetMeasureTextFunction(clay_render_measure_text, NULL);
 

@@ -97,6 +97,49 @@ void debug_task_stack_usage(void)
     vPortFree(task_array);
 }
 
+static void test_peref_top(FuriThreadList* thread_list) {
+    furi_thread_enumerate(thread_list);
+
+    uint32_t tick = furi_get_tick();
+    uint32_t uptime = tick / furi_kernel_get_tick_frequency();
+
+    FURI_LOG_I(
+        TAG,
+        "Uptime: %luh%lum%lus | Threads: %zu | ISR: %.2f%%",
+        uptime / 3600,
+        (uptime / 60) % 60,
+        uptime % 60,
+        furi_thread_list_size(thread_list),
+        (double)furi_thread_list_get_isr_time(thread_list));
+
+    FURI_LOG_I(
+        TAG,
+        "Heap: total=%zu (%zu KiB)  free=%zu (%zu KiB)  min_free=%zu (%zu KiB)  max_block=%zu",
+        memmgr_get_total_heap(),
+        memmgr_get_total_heap() / 1024,
+        memmgr_get_free_heap(),
+        memmgr_get_free_heap() / 1024,
+        memmgr_get_minimum_free_heap(),
+        memmgr_get_minimum_free_heap() / 1024,
+        memmgr_heap_get_max_free_block());
+
+    FURI_LOG_I(TAG, "%-18s %-5s %-10s %6s %6s %7s %5s",
+               "Name", "Prio", "State", "Stack", "MinStk", "Heap", "%%CPU");
+
+    for(size_t i = 0; i < furi_thread_list_size(thread_list); i++) {
+        const FuriThreadListItem* item = furi_thread_list_get_at(thread_list, i);
+        FURI_LOG_I(TAG, "%-18s %5d %-10s %6lu %6lu %7zu %4.1f",
+                   item->name,
+                   item->priority,
+                   item->state,
+                   item->stack_size,
+                   item->stack_min_free,
+                   item->heap,
+                   (double)item->cpu);
+    }
+
+    }
+
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
 
@@ -115,9 +158,13 @@ int32_t test_peref_srv(void* p) {
     //Power* power = furi_record_open(RECORD_POWER);
     furi_delay_ms(2000);
 
+    FuriThreadList* thread_list = furi_thread_list_alloc();
+
     while(true) {
-       // debug_task_stack_usage();
-        furi_delay_ms(500);
+        test_peref_top(thread_list);
+        furi_delay_ms(1000);
     }
+
+    furi_thread_list_free(thread_list);
     furi_crash();
 }
