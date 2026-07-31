@@ -179,11 +179,89 @@ static inline void render_draw_circle_filled(Canvas* canvas, int32_t xc, int32_t
     }
 }
 
-static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, float deg_start, float deg_stop, ColorA color) {
+/*
+ * Fast-path helpers for 90-degree quadrant arcs (used by rounded rectangles).
+ *
+ * The original implementation computed atan2f()/fmodf() for every pixel/point,
+ * which is very expensive on the MCU (soft-libm calls, ~200-500 cycles each).
+ * Since all rounded-rectangle arcs are exact 90-degree quadrants, we can draw
+ * them with integer midpoint arithmetic (draw outline) or per-row sqrtf
+ * (fill) — producing byte-identical output but at a fraction of the cost.
+ */
+
+/** Detect an exact 90-degree quadrant arc. Returns false for any other arc. */
+static inline bool render_arc_is_quadrant(float deg_start, float deg_stop, int32_t* quad_out) {
+    // Must align to 90-degree boundaries and span exactly 90 degrees
+    if(fabsf(fmodf(deg_start, 90.0f)) > 0.001f) return false;
+    if(fabsf(fmodf(deg_stop, 90.0f)) > 0.001f) return false;
+    float span = fmodf(deg_stop - deg_start + 360.0f, 360.0f);
+    if(fabsf(span - 90.0f) > 0.001f) return false;
+    // Quadrant: 0=BR (0-90), 1=BL (90-180), 2=TL (180-270), 3=TR (270-360)
+    *quad_out = ((int32_t)(deg_start / 90.0f + 0.5f)) % 4;
+    return true;
+}
+
+/** Draw an arc outline using midpoint circle + direct quadrant point selection. */
+static inline void render_draw_arc_quadrant(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, int32_t quad, ColorA color) {
     int32_t x = 0;
     int32_t y = r;
     int32_t d = 3 - 2 * r;
+    while(x <= y) {
+        switch(quad) {
+        case 0: /* BR 0-90 */
+            render_set_pixel(canvas, xc + x, yc + y, color);
+            render_set_pixel(canvas, xc + y, yc + x, color);
+            break;
+        case 1: /* BL 90-180 */
+            render_set_pixel(canvas, xc - x, yc + y, color);
+            render_set_pixel(canvas, xc - y, yc + x, color);
+            break;
+        case 2: /* TL 180-270 */
+            render_set_pixel(canvas, xc - x, yc - y, color);
+            render_set_pixel(canvas, xc - y, yc - x, color);
+            break;
+        default: /* TR 270-360 */
+            render_set_pixel(canvas, xc + x, yc - y, color);
+            render_set_pixel(canvas, xc + y, yc - x, color);
+            break;
+        }
+        if(d < 0) {
+            d = d + 4 * x + 6;
+        } else {
+            d = d + 4 * (x - y) + 10;
+            y--;
+        }
+        x++;
+    }
+}
 
+/** Fill a 90-degree quadrant sector using per-row sqrtf (no trig). */
+static inline void render_fill_arc_quadrant(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, int32_t quad, ColorA color) {
+    const int32_t r2 = r * r;
+    for(int32_t y = 0; y <= r; y++) {
+        int32_t x_ext = (int32_t)sqrtf((float)(r2 - y * y));
+        switch(quad) {
+        case 0: /* BR 0-90: x>=0, y>=0 */
+            for(int32_t x = 0; x <= x_ext; x++)
+                render_set_pixel(canvas, xc + x, yc + y, color);
+            break;
+        case 1: /* BL 90-180: x<=0, y>=0 */
+            for(int32_t x = 0; x <= x_ext; x++)
+                render_set_pixel(canvas, xc - x, yc + y, color);
+            break;
+        case 2: /* TL 180-270: x<=0, y<=0 */
+            for(int32_t x = 0; x <= x_ext; x++)
+                render_set_pixel(canvas, xc - x, yc - y, color);
+            break;
+        default: /* TR 270-360: x>=0, y<=0 */
+            for(int32_t x = 0; x <= x_ext; x++)
+                render_set_pixel(canvas, xc + x, yc - y, color);
+            break;
+        }
+    }
+}
+
+static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, float deg_start, float deg_stop, ColorA color) {
     // Normalize angles to [0, 360)
     while(deg_start < 0)
         deg_start += 360.0f;
@@ -192,6 +270,16 @@ static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32
     deg_start = fmodf(deg_start, 360.0f);
     deg_stop = fmodf(deg_stop, 360.0f);
 
+    int32_t quad;
+    if(render_arc_is_quadrant(deg_start, deg_stop, &quad)) {
+        render_draw_arc_quadrant(canvas, xc, yc, r, quad, color);
+        return;
+    }
+
+    // General path (arbitrary angles) — kept for full functionality
+    int32_t x = 0;
+    int32_t y = r;
+    int32_t d = 3 - 2 * r;
     while(x <= y) {
         // 8 octant points
         int32_t points[8][2] = {
@@ -240,6 +328,13 @@ static inline void render_fill_arc(Canvas* canvas, int32_t xc, int32_t yc, int32
     deg_start = fmodf(deg_start, 360.0f);
     deg_stop = fmodf(deg_stop, 360.0f);
 
+    int32_t quad;
+    if(render_arc_is_quadrant(deg_start, deg_stop, &quad)) {
+        render_fill_arc_quadrant(canvas, xc, yc, r, quad, color);
+        return;
+    }
+
+    // General path (arbitrary angles) — kept for full functionality
     for(int32_t y = -r; y <= r; y++) {
         for(int32_t x = -r; x <= r; x++) {
             int32_t dx = x;
