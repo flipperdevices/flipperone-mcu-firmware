@@ -56,7 +56,7 @@
  * 0x0200+0 Buttons state register      (read)
  *          Bit 0: InputKey2 state
  *          Bit 1: InputKey1 state
- *          Bit 2: InputKey3 state
+ *          Bit 2: InputKeyPower state
  *          Bit 3: InputKey4 state
  *          Bit 4: InputKey5 state
  *          Bit 5: InputKeySw state
