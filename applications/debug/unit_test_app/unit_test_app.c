@@ -18,9 +18,6 @@ static const size_t test_count = COUNT_OF(tests);
 int32_t unit_test_app(void* p) {
     UNUSED(p);
 
-    FURI_LOG_RAW_W ("\r\n");
-    FURI_LOG_W(TAG, "Unit Test App started");
-
     unsigned failed = 0;
     for(size_t i = 0; i < test_count; ++i) {
         if(!tests[i].fn()) {
@@ -34,8 +31,6 @@ int32_t unit_test_app(void* p) {
     } else {
         FURI_LOG_E(TAG, "%u tests failed", failed);
     }
-
-    FURI_LOG_W(TAG, "Unit Test App finished\r\n");
 
     return failed == 0 ? 0 : -1;
 }

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # check for virtual environment
 if [ ! -f ".venv/bin/activate" ]; then
@@ -27,4 +28,4 @@ if ! python3 -c "import PIL" &> /dev/null; then
     pip install pillow
 fi
 
-python3 $@
+python3 "$@"

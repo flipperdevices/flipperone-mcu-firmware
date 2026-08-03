@@ -25,11 +25,13 @@ struct Canvas {
     int32_t scissors_y0;
     int32_t scissors_x1;
     int32_t scissors_y1;
+
+    bool allocated_by_malloc;
 };
 
 typedef struct {
     Canvas* canvas;
-    Color color;
+    ColorA color;
 } RenderTextContext;
 
 static U8G2FontRender render_font_renderers[FontMax];
@@ -44,26 +46,42 @@ static const void* render_get_font_by_id(Font font_id) {
         return u8g2_font_profont11_mr;
     case FontBusy9:
         return u8g2_font_busy9_tr;
+    case FontBig:
+        return u8g2_font_born2bsporty2_tn;
     default:
         return u8g2_font_haxrcorp4089_tr;
     }
 }
 
-static inline Color render_color(Clay_Color color) {
-    return color.r;
+static inline ColorA render_color(Clay_Color color) {
+    return (ColorA){.color = color.r, .alpha = color.a};
 }
 
-static inline Color render_color_darken(Color color, Color tint) {
-    int32_t c = (int32_t)color - (int32_t)tint;
-    if(c < 0) c = 0;
-    return (Color)c;
+static inline void render_set_pixel_unsafe(Canvas* canvas, int32_t x, int32_t y, ColorA color) {
+    uint32_t dst = canvas->data[y * canvas->width + x];
+    uint32_t src = color.color;
+    uint8_t alpha = color.alpha;
+    uint8_t inv_alpha = 255 - alpha;
+
+    uint32_t blended = src * alpha + dst * inv_alpha + 128;
+    canvas->data[y * canvas->width + x] = (blended + (blended >> 8)) >> 8;
 }
 
-static inline void render_set_pixel(Canvas* canvas, int32_t x, int32_t y, Color color) {
+static inline void render_set_pixel(Canvas* canvas, int32_t x, int32_t y, ColorA color) {
     if(x < canvas->scissors_x0 || x >= canvas->scissors_x1 || y < canvas->scissors_y0 || y >= canvas->scissors_y1) {
         return;
     }
-    canvas->data[y * canvas->width + x] = color;
+
+    switch(color.alpha) {
+    case 0:
+        break;
+    case 255:
+        canvas->data[y * canvas->width + x] = color.color;
+        break;
+    default:
+        render_set_pixel_unsafe(canvas, x, y, color);
+        break;
+    }
 }
 
 static void render_draw_pixel_fg(int32_t x, int32_t y, void* context) {
@@ -71,13 +89,7 @@ static void render_draw_pixel_fg(int32_t x, int32_t y, void* context) {
     render_set_pixel(ctx->canvas, x, y, ctx->color);
 }
 
-static void render_draw_pixel_bg(int32_t x, int32_t y, void* context) {
-    UNUSED(context);
-    UNUSED(x);
-    UNUSED(y);
-}
-
-static inline void render_draw_hline(Canvas* canvas, int32_t x0, int32_t y, int32_t x1, Color color) {
+static inline void render_draw_hline(Canvas* canvas, int32_t x0, int32_t y, int32_t x1, ColorA color) {
     if(y < canvas->scissors_y0 || y >= canvas->scissors_y1) return;
     if(x0 < canvas->scissors_x0 && x1 < canvas->scissors_x0) return;
     if(x0 >= canvas->scissors_x1 && x1 >= canvas->scissors_x1) return;
@@ -87,10 +99,20 @@ static inline void render_draw_hline(Canvas* canvas, int32_t x0, int32_t y, int3
     if(x1 > canvas->scissors_x1) x1 = canvas->scissors_x1;
     if(x0 > x1) M_SWAP(int32_t, x0, x1);
 
-    memset(&canvas->data[y * canvas->width + x0], color, x1 - x0);
+    switch(color.alpha) {
+    case 0:
+        break;
+    case 255:
+        memset(&canvas->data[y * canvas->width + x0], color.color, x1 - x0);
+        break;
+    default:
+        for(int32_t x = x0; x < x1; x++) {
+            render_set_pixel_unsafe(canvas, x, y, color);
+        }
+    }
 }
 
-static inline void render_draw_vline(Canvas* canvas, int32_t x, int32_t y0, int32_t y1, Color color) {
+static inline void render_draw_vline(Canvas* canvas, int32_t x, int32_t y0, int32_t y1, ColorA color) {
     if(x < canvas->scissors_x0 || x >= canvas->scissors_x1) return;
     if(y0 < canvas->scissors_y0 && y1 < canvas->scissors_y0) return;
     if(y0 >= canvas->scissors_y1 && y1 >= canvas->scissors_y1) return;
@@ -101,11 +123,20 @@ static inline void render_draw_vline(Canvas* canvas, int32_t x, int32_t y0, int3
     if(y0 > y1) M_SWAP(int32_t, y0, y1);
 
     for(int32_t y = y0; y < y1; y++) {
-        canvas->data[y * canvas->width + x] = color;
+        switch(color.alpha) {
+        case 0:
+            break;
+        case 255:
+            canvas->data[y * canvas->width + x] = color.color;
+            break;
+        default:
+            render_set_pixel_unsafe(canvas, x, y, color);
+            break;
+        }
     }
 }
 
-static inline void render_draw_circle(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, Color color) {
+static inline void render_draw_circle(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, ColorA color) {
     int32_t x = 0;
     int32_t y = r;
     int32_t d = 3 - 2 * r;
@@ -128,7 +159,7 @@ static inline void render_draw_circle(Canvas* canvas, int32_t xc, int32_t yc, in
     }
 }
 
-static inline void render_draw_circle_filled(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, Color color) {
+static inline void render_draw_circle_filled(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, ColorA color) {
     int32_t x = 0;
     int32_t y = r;
     int32_t d = 3 - 2 * r;
@@ -147,7 +178,7 @@ static inline void render_draw_circle_filled(Canvas* canvas, int32_t xc, int32_t
     }
 }
 
-static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, float deg_start, float deg_stop, Color color) {
+static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, float deg_start, float deg_stop, ColorA color) {
     int32_t x = 0;
     int32_t y = r;
     int32_t d = 3 - 2 * r;
@@ -200,7 +231,7 @@ static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32
     }
 }
 
-static inline void render_fill_arc(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, float deg_start, float deg_stop, Color color) {
+static inline void render_fill_arc(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, float deg_start, float deg_stop, ColorA color) {
     while(deg_start < 0)
         deg_start += 360.0f;
     while(deg_stop < 0)
@@ -232,14 +263,14 @@ static inline void render_fill_arc(Canvas* canvas, int32_t xc, int32_t yc, int32
     }
 }
 
-static inline void render_draw_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, Color color) {
+static inline void render_draw_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, ColorA color) {
     render_draw_hline(canvas, x, y, x + width, color);
     render_draw_hline(canvas, x, y + height - 1, x + width, color);
     render_draw_vline(canvas, x, y, y + height, color);
     render_draw_vline(canvas, x + width - 1, y, y + height, color);
 }
 
-static inline void render_fill_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, Color color) {
+static inline void render_fill_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, ColorA color) {
     for(int32_t j = y; j < y + height; j++) {
         render_draw_hline(canvas, x, j, x + width, color);
     }
@@ -267,7 +298,7 @@ static float render_clamp_corner_radius(float y_size, float radius) {
     return CLAY__MAX(2, radius);
 }
 
-void render_draw_line(Canvas* canvas, int32_t x0, int32_t y0, int32_t x1, int32_t y1, Color color) {
+void render_draw_line(Canvas* canvas, int32_t x0, int32_t y0, int32_t x1, int32_t y1, ColorA color) {
     // classic bresenham's line algorithm
     int32_t dx = abs(x1 - x0);
     int32_t dy = abs(y1 - y0);
@@ -290,7 +321,7 @@ void render_draw_line(Canvas* canvas, int32_t x0, int32_t y0, int32_t x1, int32_
     }
 }
 
-void render_fill_round_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, int32_t radius, Color color) {
+void render_fill_round_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, int32_t radius, ColorA color) {
     render_fill_round_rectangle_ext(canvas, x, y, width, height, radius, radius, radius, radius, color);
 }
 
@@ -304,7 +335,11 @@ void render_fill_round_rectangle_ext(
     int32_t radius_top_right,
     int32_t radius_bottom_right,
     int32_t radius_bottom_left,
-    Color color) {
+    ColorA color) {
+    if(color.alpha == 0) {
+        return;
+    }
+
     uint32_t r_top_left = render_clamp_corner_radius(height, radius_top_left);
     uint32_t r_top_right = render_clamp_corner_radius(height, radius_top_right);
     uint32_t r_bottom_right = render_clamp_corner_radius(height, radius_bottom_right);
@@ -346,7 +381,7 @@ void render_fill_round_rectangle_ext(
     }
 }
 
-void render_draw_round_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, int32_t radius, int32_t border_width, Color color) {
+void render_draw_round_rectangle(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, int32_t radius, int32_t border_width, ColorA color) {
     render_draw_round_rectangle_ext(canvas, x, y, width, height, radius, radius, radius, radius, border_width, border_width, border_width, border_width, color);
 }
 
@@ -364,7 +399,11 @@ void render_draw_round_rectangle_ext(
     int32_t border_width_right,
     int32_t border_width_bottom,
     int32_t border_width_left,
-    Color color) {
+    ColorA color) {
+    if(color.alpha == 0) {
+        return;
+    }
+
     uint32_t r_top_left = render_clamp_corner_radius(height, radius_top_left);
     uint32_t r_top_right = render_clamp_corner_radius(height, radius_top_right);
     uint32_t r_bottom_right = render_clamp_corner_radius(height, radius_bottom_right);
@@ -401,12 +440,14 @@ static void render_text(Canvas* canvas, Clay_BoundingBox* bb, Clay_TextRenderDat
     RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(text_data->textColor));
     RENDER_DEBUG(TAG, "    i[d: %d, size: %d, spacing: %d, line: %d]", text_data->fontId, text_data->fontSize, text_data->letterSpacing, text_data->lineHeight);
 
-    Color color = render_color(text_data->textColor);
-
     RenderTextContext ctx = {
         .canvas = canvas,
-        .color = color,
+        .color = render_color(text_data->textColor),
     };
+
+    if(ctx.color.alpha == 0) {
+        return;
+    }
 
     furi_check(text_data->fontId < FontMax);
 
@@ -435,8 +476,8 @@ static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderD
     case ImageFormatRawGray8: {
         for(uint32_t y = 0; y < MIN(image->height, bb->height); y++) {
             for(uint32_t x = 0; x < MIN(image->width, bb->width); x++) {
-                uint8_t pixel = render_color_darken(data[y * image->width + x], image_data->backgroundColor.r);
-                render_set_pixel(canvas, bb->x + x, bb->y + y, pixel);
+                uint8_t pixel = data[y * image->width + x];
+                render_set_pixel(canvas, bb->x + x, bb->y + y, (ColorA){.color = pixel, .alpha = 255});
             }
         }
         break;
@@ -545,27 +586,45 @@ Clay_Dimensions clay_render_measure_text(Clay_StringSlice text, Clay_TextElement
 void canvas_init(void) {
     for(int i = 0; i < FontMax; i++) {
         const void* font = render_get_font_by_id(i);
-        render_font_renderers[i] = u8g2_font_render_init(font, render_draw_pixel_fg, render_draw_pixel_bg);
+        render_font_renderers[i] = u8g2_font_render_init(font, render_draw_pixel_fg, NULL);
     }
 }
 
-Canvas* canvas_alloc(size_t width, size_t height) {
-    Canvas* canvas = malloc(sizeof(Canvas));
-    canvas->canary_pre = malloc(sizeof(uint32_t) + sizeof(Color) * width * height + sizeof(uint32_t));
+static Canvas* canvas_alloc_in_place_internal(void* buffer, size_t width, size_t height, bool allocated_by_malloc) {
+    Canvas* canvas = buffer;
+    canvas->canary_pre = (uint32_t*)((uint8_t*)buffer + sizeof(Canvas));
     canvas->data = (Color*)(canvas->canary_pre + 1);
+    memset(canvas->data, 0xFF, sizeof(Color) * width * height);
     canvas->canary_post = (uint32_t*)(canvas->data + width * height);
     *(canvas->canary_pre) = CANARY_VALUE;
     *(canvas->canary_post) = CANARY_VALUE;
     canvas->width = width;
     canvas->height = height;
     render_scissor_reset(canvas);
+    canvas->allocated_by_malloc = allocated_by_malloc;
 
     return canvas;
 }
 
+Canvas* canvas_alloc(size_t width, size_t height) {
+    void* buffer = malloc(canvas_get_required_buffer_size(width, height));
+    return canvas_alloc_in_place_internal(buffer, width, height, true);
+}
+
+Canvas* canvas_alloc_in_place(void* buffer, size_t width, size_t height) {
+    return canvas_alloc_in_place_internal(buffer, width, height, false);
+}
+
+size_t canvas_get_required_buffer_size(size_t width, size_t height) {
+    // Canvas + canary_pre + data + canary_post
+    size_t total_size = sizeof(Canvas) + sizeof(uint32_t) + sizeof(Color) * width * height + sizeof(uint32_t);
+    return total_size;
+}
+
 void canvas_free(Canvas* canvas) {
-    free(canvas->canary_pre);
-    free(canvas);
+    if(canvas->allocated_by_malloc) {
+        free(canvas);
+    }
 }
 
 Color* canvas_get_data(Canvas* canvas) {

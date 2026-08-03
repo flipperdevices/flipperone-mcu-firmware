@@ -13,6 +13,8 @@ extern "C" {
 
 void furi_hal_power_reset(void);
 
+void furi_hal_power_enter_dfu(void);
+
 /** Get current insomnia level
  *
  * @return     insomnia level: 0 - no insomnia, >0 - insomnia, bearer count.
