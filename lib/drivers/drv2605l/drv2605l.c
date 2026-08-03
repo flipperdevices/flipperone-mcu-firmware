@@ -110,7 +110,10 @@ bool drv2605l_auto_calibration(Drv2605l* instance) {
     uint32_t timeout = furi_get_tick() + 2000;
     while(furi_get_tick() < timeout) {
         uint8_t go_status = 0;
-        drv2605l_read_reg(instance, Drv2605lRegGo, &go_status);
+        if(drv2605l_read_reg(instance, Drv2605lRegGo, &go_status) < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to read Go register during auto-calibration");
+            return false;
+        }
         Drv2605lGo* go_reg_status = (Drv2605lGo*)&go_status;
         if(go_reg_status->go_bit == 0) {
             break;
@@ -119,7 +122,10 @@ bool drv2605l_auto_calibration(Drv2605l* instance) {
     }
 
     uint8_t status = 0;
-    drv2605l_read_reg(instance, Drv2605lRegStatus, &status);
+    if(drv2605l_read_reg(instance, Drv2605lRegStatus, &status) < PICO_OK) {
+        FURI_LOG_E(TAG, "Failed to read Status register after auto-calibration");
+        return false;
+    }
     Drv2605lStatus* status_reg = (Drv2605lStatus*)&status;
 
     if(status_reg->diagnostic_result) {

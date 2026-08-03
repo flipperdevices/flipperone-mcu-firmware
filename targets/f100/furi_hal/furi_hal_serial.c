@@ -216,9 +216,10 @@ void furi_hal_serial_deinit(FuriHalSerialHandle* handle) {
 
     FuriHalSerialId serial_id = handle->id;
     FuriHalSerial* serial = furi_hal_serial[serial_id];
-    uart_inst_t* periph = serial->periph_ptr;
     // TODO: deinit() should NOT be called before init()
     if(serial == NULL) return;
+
+    uart_inst_t* periph = serial->periph_ptr;
 
     if(serial_id == FuriHalSerialIdUartPio) {
         free(serial);
