@@ -135,7 +135,7 @@ static bool keypad_test_app_layout(void* _model) {
             CLAY_AUTO_ID({.layout = layout_row}) {
                 keypad_test_app_create_keypad_button(CLAY_STRING("1"), model->key_state & InputKey1);
                 keypad_test_app_create_keypad_button(CLAY_STRING("2"), model->key_state & InputKey2);
-                keypad_test_app_create_keypad_button(CLAY_STRING("P"), model->key_state & InputKey3);
+                keypad_test_app_create_keypad_button(CLAY_STRING("P"), model->key_state & InputKeyPower);
                 keypad_test_app_create_keypad_button(CLAY_STRING("4"), model->key_state & InputKey4);
                 keypad_test_app_create_keypad_button(CLAY_STRING("5"), model->key_state & InputKey5);
             }

@@ -4,6 +4,7 @@
 #include <hardware/clocks.h>
 #include <hardware/pll.h>
 #include <pico/platform/cpu_regs.h>
+#include <pico/bootrom.h>
 #include <furi_hal_clock.h>
 
 #define TAG "FuriHalPower"
@@ -19,7 +20,11 @@ static volatile FuriHalPower furi_hal_power = {
 static volatile int wakeup_alarm_irq_num;
 
 void furi_hal_power_reset(void) {
-    watchdog_reboot(0, 0, 10);
+    watchdog_reboot(0, 0, 0);
+}
+
+void furi_hal_power_enter_dfu(void) {
+    reset_usb_boot(0, 0);
 }
 
 uint16_t furi_hal_power_insomnia_level(void) {
@@ -131,7 +136,7 @@ static void furi_hal_power_goto_sleep(uint32_t delay_ms, hardware_alarm_callback
 }
 
 // To be called after waking up from sleep/dormant mode to restore system clocks properly
-static void furi_hal_power_wokeup(void) {
+static void furi_hal_power_wakeup(void) {
     // Re-enable the ring oscillator, which will essentially kickstart the proc
     furi_hal_clock_rosc_enable();
 
@@ -157,8 +162,8 @@ uint32_t furi_hal_power_deep_sleep(uint32_t expected_idle_ticks) {
     // Going to sleep
     furi_hal_power_goto_sleep(calc_tick_to_ms, &furi_hal_power_alarm_sleep_callback);
 
-    // Woke up
-    furi_hal_power_wokeup();
+    // Wake up
+    furi_hal_power_wakeup();
 
     return (uint32_t)((time_us_64() - time_start) / 1000) * 1000 / furi_kernel_get_tick_frequency();
 }

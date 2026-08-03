@@ -17,6 +17,7 @@ static const char* font_test_names[] = {
     [FontButton] = "FontButton   helvB08",
     [FontKeyboard] = "FontKeyboard profont11",
     [FontBusy9] = "FontBusy9    busy9_9px",
+    [FontBig] = "FontBig    Born2bSportyV2",
 };
 
 typedef struct {
