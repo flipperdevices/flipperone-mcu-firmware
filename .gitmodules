@@ -19,4 +19,4 @@
 	url = https://github.com/nanopb/nanopb.git
 [submodule "assets/proto"]
 	path = assets/proto
-	url = https://github.com/flipperdevices/flipperone_protobuf.git
+	url = https://github.com/flipperdevices/flipperone-mcu-protobuf.git
