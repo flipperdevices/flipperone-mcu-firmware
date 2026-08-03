@@ -97,7 +97,7 @@ void debug_task_stack_usage(void)
     vPortFree(task_array);
 }
 
-static void test_peref_top(FuriThreadList* thread_list) {
+void test_peref_top(FuriThreadList* thread_list) {
     furi_thread_enumerate(thread_list);
 
     uint32_t tick = furi_get_tick();
@@ -143,7 +143,7 @@ static void test_peref_top(FuriThreadList* thread_list) {
 int32_t test_peref_srv(void* p) {
     UNUSED(p);
 
-    furi_log_set_level(FuriLogLevelDebug);
+    furi_log_set_level(FuriLogLevelTrace);
     FURI_LOG_T("tag", "Trace");
     FURI_LOG_D("tag", "Debug");
     FURI_LOG_I("tag", "Info");
@@ -161,7 +161,7 @@ int32_t test_peref_srv(void* p) {
     FuriThreadList* thread_list = furi_thread_list_alloc();
 
     while(true) {
-        test_peref_top(thread_list);
+       // test_peref_top(thread_list);
         furi_delay_ms(1000);
     }
 

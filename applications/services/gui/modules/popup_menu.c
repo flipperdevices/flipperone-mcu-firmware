@@ -365,6 +365,13 @@ void popup_menu_set_visible(PopupMenu* menu, bool visible) {
         true);
 }
 
+bool popup_menu_is_visible(PopupMenu* menu) {
+    furi_check(menu);
+    bool visible = false;
+    with_view_model(menu->view, PopupMenuViewModel * model, { visible = model->visible; }, false);
+    return visible;
+}
+
 void popup_menu_set_callback(PopupMenu* menu, PopupMenuCallback callback, void* context) {
     furi_check(menu);
     menu->callback = callback;

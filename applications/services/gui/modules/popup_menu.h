@@ -20,6 +20,8 @@ void popup_menu_set_position(PopupMenu* menu, size_t item_id);
 
 void popup_menu_set_visible(PopupMenu* menu, bool visible);
 
+bool popup_menu_is_visible(PopupMenu* menu);
+
 void popup_menu_set_callback(PopupMenu* menu, PopupMenuCallback callback, void* context);
 
 void popup_menu_add_item(PopupMenu* menu, const char* label, size_t id);

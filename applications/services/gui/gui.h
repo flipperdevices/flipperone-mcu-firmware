@@ -39,6 +39,16 @@ void gui_remove_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, 
 size_t gui_get_width(Gui* gui);
 size_t gui_get_height(Gui* gui);
 
+/**
+ * Blit a full-screen frame to the display, bypassing Clay entirely.
+ *
+ * The frame must be in the exact canvas/display format (8-bit grayscale,
+ * width*height bytes, full screen). The data is copied into the render canvas
+ * and pushed to the display; framebuffer callbacks (e.g. RPC screen streaming)
+ * are invoked so consumers still see every frame.
+ */
+void gui_display_frame(Gui* gui, const uint8_t* data);
+
 #ifdef __cplusplus
 }
 #endif

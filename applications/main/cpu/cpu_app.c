@@ -151,6 +151,22 @@ static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
     return true;
 }
 
+/* Update the model to the latest frame WITHOUT triggering a redraw.
+ * Used by the fast path (frame blitted directly to the display, bypassing
+ * Clay) so that if a redraw is forced later (e.g. menu opens) it composites
+ * the latest frame instead of a stale one. */
+static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
+    with_view_model(
+        instance->display_view,
+        CpuAppModel * model,
+        {
+            model->frame.data = data;
+            model->frame.width = JD9853_WIDTH;
+            model->frame.height = JD9853_HEIGHT;
+        },
+        false);
+}
+
 static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* model, void* context), void* context) {
     bool update;
     with_view_model(instance->display_view, CpuAppModel * model, { update = callback(model, context); }, update);
@@ -168,7 +184,10 @@ static void __isr __not_in_flash_func(cpu_app_spi_get_frame_isr)(uint8_t* data, 
             },
     };
 
-    furi_check(furi_message_queue_put(instance->app_queue, &message, 0) == FuriStatusOk);
+    //furi_check(furi_message_queue_put(instance->app_queue, &message, 0) == FuriStatusOk);
+    if(furi_message_queue_put(instance->app_queue, &message, 0) != FuriStatusOk) {
+        FURI_LOG_E(TAG, "cpu_app_spi_get_frame_isr message = %ld", furi_message_queue_get_count(instance->app_queue));
+    }
 }
 
 static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
@@ -208,7 +227,16 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
         case CpuAppMessageTypeNewFrame:
             if(instance->skip_frames > 0) {
                 instance->skip_frames--;
+            } else if(!popup_menu_is_visible(instance->menu)) {
+                /* Nothing is drawn on top of the received frame — blit it
+                 * straight to the display, bypassing Clay entirely. The model
+                 * is still updated (without redraw) so a later Clay redraw
+                 * composites the latest frame. */
+                cpu_app_model_set_frame(instance, message.as.new_frame.data);
+                gui_display_frame(instance->gui, message.as.new_frame.data);
             } else {
+                /* Menu is drawn on top: fall back to the normal GUI path so
+                 * Clay composites the menu over the frame. */
                 cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
             }
             break;
