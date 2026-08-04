@@ -144,17 +144,10 @@ static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     return true;
 }
 
-static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
-    model->frame.data = context;
-    model->frame.width = JD9853_WIDTH;
-    model->frame.height = JD9853_HEIGHT;
-    return true;
-}
-
-/* Update the model to the latest frame WITHOUT triggering a redraw.
- * Used by the fast path (frame blitted directly to the display, bypassing
- * Clay) so that if a redraw is forced later (e.g. menu opens) it composites
- * the latest frame instead of a stale one. */
+/* Update the model to the latest frame WITHOUT triggering a redraw. The GUI
+ * service decides how to present the frame (direct blit or Clay composite);
+ * keeping the model in sync ensures a Clay redraw always uses the latest
+ * frame, e.g. when the menu is opened over it. */
 static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
     with_view_model(
         instance->display_view,
@@ -227,17 +220,13 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
         case CpuAppMessageTypeNewFrame:
             if(instance->skip_frames > 0) {
                 instance->skip_frames--;
-            } else if(!popup_menu_is_visible(instance->menu)) {
-                /* Nothing is drawn on top of the received frame — blit it
-                 * straight to the display, bypassing Clay entirely. The model
-                 * is still updated (without redraw) so a later Clay redraw
-                 * composites the latest frame. */
-                cpu_app_model_set_frame(instance, message.as.new_frame.data);
-                gui_display_frame(instance->gui, message.as.new_frame.data);
             } else {
-                /* Menu is drawn on top: fall back to the normal GUI path so
-                 * Clay composites the menu over the frame. */
-                cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
+                /* Always keep the model in sync (no redraw) and hand the frame
+                 * to the GUI: it decides internally whether to blit it directly
+                 * to the display (menu hidden) or composite it via Clay (menu
+                 * drawn on top). */
+                cpu_app_model_set_frame(instance, message.as.new_frame.data);
+                gui_push_frame(instance->gui, message.as.new_frame.data);
             }
             break;
         default:
@@ -292,11 +281,13 @@ static CpuApp* cpu_app_alloc(void) {
     popup_menu_add_item(instance->menu, "Reboot", CpuMenuItemReboot);
 
     gui_add_view(instance->gui, instance->menu_view, GuiViewPriorityPowerMenu);
+    gui_set_menu(instance->gui, instance->menu);
 
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
+    gui_set_menu(instance->gui, NULL);
     gui_remove_view(instance->gui, instance->display_view);
     gui_remove_view(instance->gui, instance->menu_view);
     popup_menu_free(instance->menu);

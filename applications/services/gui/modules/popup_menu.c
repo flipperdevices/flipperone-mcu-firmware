@@ -2,6 +2,7 @@
 #include <m-array.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
+#include <gui/gui_i.h>
 #include <gui/modules/elements.h>
 #include <assets.h>
 

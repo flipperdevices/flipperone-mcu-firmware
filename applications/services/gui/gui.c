@@ -59,6 +59,12 @@ struct Gui {
 
     FuriMutex* callback_mutex;
     GuiCallbackArray_t gui_callbacks_pair;
+
+    // Fast frame path: latest full-screen frame pushed via gui_push_frame(),
+    // plus the popup menu overlay used to decide between the fast (direct
+    // blit, menu hidden) and the Clay-composited (menu on top) render paths.
+    const uint8_t* pending_frame;
+    PopupMenu* menu;
 };
 
 static int gui_view_compare(const ViewHandle* a, const ViewHandle* b) {
@@ -133,46 +139,61 @@ static void gui_redraw(Gui* gui) {
     furi_assert(gui);
     gui_lock(gui);
 
-    Clay_ResetMeasureTextCache();
-    Clay_BeginLayout();
+    /* A full-screen frame pushed via gui_push_frame() is blitted straight into
+     * the canvas, bypassing Clay, when nothing (e.g. the power menu) needs to
+     * be drawn on top of it. */
+    const uint8_t* frame = gui->pending_frame;
+    gui->pending_frame = NULL;
+    const bool fast_frame =
+        (frame != NULL && (gui->menu == NULL || !popup_menu_is_visible(gui->menu)));
 
-    ViewHandleArray_it_t it;
+    if(fast_frame) {
+        size_t size = canvas_get_width(gui->render_canvas) * canvas_get_height(gui->render_canvas);
+        memcpy(canvas_get_data(gui->render_canvas), frame, size);
+    } else {
+        Clay_ResetMeasureTextCache();
+        Clay_BeginLayout();
 
-    CLAY(
-        CLAY_ID("GUI"),
-        {
-            .layout =
-                {
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                    // workaround for the pixel shift bug
-                    .padding = {.left = 1, .top = 0, .right = 1, .bottom = 0},
-                },
-        }) {
+        ViewHandleArray_it_t it;
+
+        CLAY(
+            CLAY_ID("GUI"),
+            {
+                .layout =
+                    {
+                        .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                        // workaround for the pixel shift bug
+                        .padding = {.left = 1, .top = 0, .right = 1, .bottom = 0},
+                    },
+            }) {
+            if(gui_view_find_opaque_from_top(gui->views, &it)) {
+                do {
+                    ViewHandle* handle = ViewHandleArray_ref(it);
+                    View* view = gui_view_from_it(&it);
+                    if(view_is_enabled(view)) {
+                        view_layout(view);
+                    }
+                    ViewHandleArray_next(it);
+                } while(!ViewHandleArray_end_p(it));
+            }
+        }
+
+        Clay_RenderCommandArray renderCommands = Clay_EndLayout();
+
+        clay_render_do_render(gui->render_canvas, &renderCommands);
+
         if(gui_view_find_opaque_from_top(gui->views, &it)) {
             do {
                 ViewHandle* handle = ViewHandleArray_ref(it);
                 View* view = gui_view_from_it(&it);
-                if(view_is_enabled(view)) {
-                    view_layout(view);
-                }
+                if(view_is_enabled(view)) view_post_layout(view);
                 ViewHandleArray_next(it);
             } while(!ViewHandleArray_end_p(it));
         }
     }
 
-    Clay_RenderCommandArray renderCommands = Clay_EndLayout();
-
-    clay_render_do_render(gui->render_canvas, &renderCommands);
-
-    if(gui_view_find_opaque_from_top(gui->views, &it)) {
-        do {
-            ViewHandle* handle = ViewHandleArray_ref(it);
-            View* view = gui_view_from_it(&it);
-            if(view_is_enabled(view)) view_post_layout(view);
-            ViewHandleArray_next(it);
-        } while(!ViewHandleArray_end_p(it));
-    }
+    /* Shared: push the canvas to the display and notify framebuffer consumers. */
 
     size_t width = canvas_get_width(gui->render_canvas);
     size_t height = canvas_get_height(gui->render_canvas);
@@ -443,30 +464,22 @@ size_t gui_get_height(Gui* gui) {
     return canvas_get_height(gui->render_canvas);
 }
 
-void gui_display_frame(Gui* gui, const uint8_t* data) {
+void gui_push_frame(Gui* gui, const uint8_t* data) {
     furi_check(gui);
     furi_check(data);
 
     gui_lock(gui);
+    gui->pending_frame = data;
+    gui_unlock(gui);
 
-    size_t width = canvas_get_width(gui->render_canvas);
-    size_t height = canvas_get_height(gui->render_canvas);
-    size_t size = width * height;
+    gui_update(gui);
+}
 
-    /* Fast path: the incoming frame already matches the canvas/display format
-     * (8-bit grayscale, full screen). Blit it into the canvas and push it to
-     * the display without running Clay. Framebuffer callbacks (e.g. RPC screen
-     * streaming) still get every frame because they read the same canvas. */
-    memcpy(canvas_get_data(gui->render_canvas), data, size);
-    display_jd9853_qspi_write_buffer(gui->display, canvas_get_data(gui->render_canvas), size);
+void gui_set_menu(Gui* gui, PopupMenu* menu) {
+    furi_check(gui);
 
-    furi_check(furi_mutex_acquire(gui->callback_mutex, FuriWaitForever) == FuriStatusOk);
-    for
-        M_EACH(p, gui->gui_callbacks_pair, GuiCallbackArray_t) {
-            p->callback(canvas_get_data(gui->render_canvas), width, height, p->context);
-        }
-    furi_mutex_release(gui->callback_mutex);
-
+    gui_lock(gui);
+    gui->menu = menu;
     gui_unlock(gui);
 }
 
