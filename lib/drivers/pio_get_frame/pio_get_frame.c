@@ -20,7 +20,7 @@
  *   2: in pins, 1
  *   3: wait 0 gpio <sck>
  *   4: jmp pin frame_done   <- loop end (wrap)
- *   5: frame_done: nop
+ *   5: frame_done: jmp 5    (self-loop, parks until SM disabled)
  */
 #define PIO_GET_FRAME_PROGRAM_LEN 6
 #define PIO_GET_FRAME_LOOP_START  1
@@ -76,7 +76,11 @@ static void __isr __not_in_flash_func(pio_get_frame_cs_isr)(void* context) {
         }
     }
 
-    if(instance->callback_rx && received > 0) {
+    /* Deliver only complete, aligned frames. A partial frame (received <
+     * PIO_GET_FRAME_SIZE) means capture started mid-frame (e.g. the driver was
+     * brought up while a frame was already in flight) or a CS glitch — drop it
+     * and rely on the next CS-low for a clean frame boundary. */
+    if(instance->callback_rx && received == PIO_GET_FRAME_SIZE) {
         instance->callback_rx(
             instance->frame_buffers[instance->current_frame].data, received, instance->callback_context);
     }
@@ -112,7 +116,7 @@ PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck,
     instructions[2] = pio_encode_in(pio_pins, 1);
     instructions[3] = pio_encode_wait_gpio(false, gpio_sck->pin);
     instructions[4] = pio_encode_jmp_pin(5); /* -> frame_done */
-    instructions[5] = pio_encode_nop();       /* frame_done */
+    instructions[5] = pio_encode_jmp(5);     /* frame_done: self-loop, parks until SM disabled */
 
     const pio_program_t program = {
         .instructions = instructions,
