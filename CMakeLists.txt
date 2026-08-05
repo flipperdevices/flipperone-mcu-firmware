@@ -161,6 +161,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/uart_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/ws2812)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/pio_get_frame)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
@@ -187,6 +188,7 @@ target_link_libraries(${PROJECT_NAME}
     cli
     containers
     ws2812
+    pio_get_frame
     pio_i2c
     freertos
     assets
