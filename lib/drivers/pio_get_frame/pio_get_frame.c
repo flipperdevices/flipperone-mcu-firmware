@@ -263,9 +263,11 @@ PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck,
      * PIO1's base is 16 (set by the debug UART on pin 41), so absolute pins
      * would address the wrong GPIOs. Bypass SCK, CS and DATA all together so
      * the fast external clock is not delayed by the 2-cycle synchronizers and
-     * all three inputs stay aligned with zero skew. */
+     * all three inputs stay aligned with zero skew.
+     * Use read-modify-write so other drivers on the same PIO (e.g. i2c) keep
+     * their own bypass configuration. */
     const uint gpio_base = pio_get_gpio_base(instance->pio);
-    instance->pio->input_sync_bypass =
+    instance->pio->input_sync_bypass |=
         (1u << (gpio_sck->pin - gpio_base)) |
         (1u << (gpio_cs->pin - gpio_base)) |
         (1u << (gpio_data->pin - gpio_base));
@@ -323,6 +325,11 @@ void pio_get_frame_deinit(PioGetFrame* instance) {
 
     furi_hal_gpio_remove_int_callback(instance->gpio_cs);
     pio_sm_set_enabled(instance->pio, instance->sm, false);
+
+    /* Abort DMA before unclaim — the channel may still be armed (EN=1) even
+     * though the SM is stopped. Without abort, the channel stays enabled in
+     * hardware and continues to burn an arbitration slot on the bus. */
+    dma_channel_abort(instance->dma_rx_channel);
     dma_channel_unclaim(instance->dma_rx_channel);
 
     /* Only .length is used to free the instruction space */
@@ -332,6 +339,17 @@ void pio_get_frame_deinit(PioGetFrame* instance) {
         .origin = -1,
     };
     pio_remove_program_and_unclaim_sm(&program, instance->pio, instance->sm, instance->offset);
+
+    /* Clear input_sync_bypass for the pins we owned, so that any other driver
+     * (e.g. i2c_master_pio) on the same PIO block does not inherit bypassed
+     * synchronizers on unrelated pins. Without this, a subsequent driver sees
+     * leftover bypass bits from this driver's init, which can corrupt I2C
+     * SDA/SCL sampling. */
+    const uint gpio_base = pio_get_gpio_base(instance->pio);
+    instance->pio->input_sync_bypass &=
+        ~((1u << (instance->gpio_sck->pin - gpio_base)) |
+          (1u << (instance->gpio_cs->pin - gpio_base)) |
+          (1u << (instance->gpio_data->pin - gpio_base)));
 
     /* Deinitialize GPIOs */
     furi_hal_gpio_init_ex(instance->gpio_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
