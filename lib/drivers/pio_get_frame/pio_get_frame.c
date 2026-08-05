@@ -190,7 +190,6 @@ static void __isr __not_in_flash_func(pio_get_frame_cs_isr)(void* context) {
 PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck, const GpioPin* gpio_data) {
     furi_check(pio_get_frame_instance == NULL); // Only one instance allowed
     PioGetFrame* instance = (PioGetFrame*)malloc(sizeof(PioGetFrame));
-    furi_check(instance);
     pio_get_frame_instance = instance;
     instance->gpio_cs = gpio_cs;
     instance->gpio_sck = gpio_sck;
@@ -253,6 +252,10 @@ PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck,
     sm_config_set_in_pin_count(&c, 32);
     sm_config_set_in_shift(&c, false, true, 8); /* shift left, autopush 8 -> MSB-first byte */
     sm_config_set_clkdiv(&c, 1.0f);
+    /* TX FIFO is unused (no OUT instructions): join it to RX for a free 8-word
+     * deep RX FIFO instead of 4, giving DMA more slack before an RXSTALL if the
+     * bus/DMA is briefly busy elsewhere. Pure hardware config, zero CPU cost. */
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
     pio_sm_init(instance->pio, instance->sm, instance->offset, &c);
     pio_sm_set_enabled(instance->pio, instance->sm, false);
 
@@ -275,6 +278,12 @@ PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck,
     channel_config_set_read_increment(&dc, false);
     channel_config_set_write_increment(&dc, true);
     channel_config_set_dreq(&dc, pio_get_dreq(instance->pio, instance->sm, false));
+    /* High DMA bus-arbitration priority: this channel must never lose a bus
+     * cycle to another DMA channel (e.g. the display TX DMA). The PIO's RX
+     * FIFO is only 8 entries deep (after RX/TX join) at full bus-clock rate,
+     * so any arbitration delay risks an RXSTALL and dropped samples. Pure
+     * register configuration, zero recurring CPU cost. */
+    channel_config_set_high_priority(&dc, true);
     dma_channel_configure(
         instance->dma_rx_channel,
         &dc,
