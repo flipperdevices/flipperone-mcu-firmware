@@ -1,12 +1,11 @@
 #include "pio_get_frame.h"
-#include "pio_get_frame.pio.h"
 
 #include <furi.h>
 #include <furi_hal_gpio.h>
-#include <furi_hal_resources.h>
 #include <drivers/display/display_jd9853_reg.h>
 
 #include <hardware/pio.h>
+#include <hardware/pio_instructions.h>
 #include <hardware/dma.h>
 
 #define TAG "PioGetFrame"
@@ -14,11 +13,27 @@
 #define PIO_GET_FRAME_SIZE  (JD9853_WIDTH * JD9853_HEIGHT)
 #define PIO_GET_FRAME_COUNT 2
 
+/* Runtime-assembled program layout (pins are passed via init, so the PIO
+ * program is built at runtime with the actual GPIO numbers):
+ *   0: wait 0 gpio <cs>     (frame start)
+ *   1: wait 1 gpio <sck>    <- loop start (wrap target)
+ *   2: in pins, 1
+ *   3: wait 0 gpio <sck>
+ *   4: jmp pin frame_done   <- loop end (wrap)
+ *   5: frame_done: nop
+ */
+#define PIO_GET_FRAME_PROGRAM_LEN 6
+#define PIO_GET_FRAME_LOOP_START  1
+#define PIO_GET_FRAME_LOOP_END    4
+
 typedef struct {
     uint8_t data[PIO_GET_FRAME_SIZE];
 } PioGetFrameBuffer;
 
 struct PioGetFrame {
+    const GpioPin* gpio_cs;
+    const GpioPin* gpio_sck;
+    const GpioPin* gpio_data;
     PIO pio;
     uint sm;
     uint offset;
@@ -76,23 +91,38 @@ static void __isr __not_in_flash_func(pio_get_frame_cs_isr)(void* context) {
     pio_sm_set_enabled(instance->pio, instance->sm, true); /* waits for CS low */
 }
 
-PioGetFrame* pio_get_frame_init(void) {
+PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck, const GpioPin* gpio_data) {
     furi_check(pio_get_frame_instance == NULL); // Only one instance allowed
     PioGetFrame* instance = (PioGetFrame*)malloc(sizeof(PioGetFrame));
     furi_check(instance);
     pio_get_frame_instance = instance;
+    instance->gpio_cs = gpio_cs;
+    instance->gpio_sck = gpio_sck;
+    instance->gpio_data = gpio_data;
     instance->current_frame = 0;
     instance->callback_rx = NULL;
     instance->callback_context = NULL;
 
-    /* "cpu spi" bus pins */
-    const GpioPin* gpio_cs = &gpio_cpu_spi_cs;
-    const GpioPin* gpio_sck = &gpio_cpu_spi_sck;
-    const GpioPin* gpio_data = &gpio_cpu_spi_mosi;
+    /* Build the program at runtime with the actual GPIO numbers. The bus pins
+     * are not contiguous, so a static .pio cannot be pin-agnostic; the SDK
+     * relocates the jmp target automatically when the program is installed. */
+    uint16_t instructions[PIO_GET_FRAME_PROGRAM_LEN];
+    instructions[0] = pio_encode_wait_gpio(false, gpio_cs->pin);
+    instructions[1] = pio_encode_wait_gpio(true, gpio_sck->pin);
+    instructions[2] = pio_encode_in(pio_pins, 1);
+    instructions[3] = pio_encode_wait_gpio(false, gpio_sck->pin);
+    instructions[4] = pio_encode_jmp_pin(5); /* -> frame_done */
+    instructions[5] = pio_encode_nop();       /* frame_done */
+
+    const pio_program_t program = {
+        .instructions = instructions,
+        .length = PIO_GET_FRAME_PROGRAM_LEN,
+        .origin = -1,
+    };
 
     /* Claim a free state machine + add the program on a PIO covering the pins */
     bool success = pio_claim_free_sm_and_add_program_for_gpio_range(
-        &pio_get_frame_program,
+        &program,
         &instance->pio,
         &instance->sm,
         &instance->offset,
@@ -108,7 +138,11 @@ PioGetFrame* pio_get_frame_init(void) {
     furi_hal_gpio_init_ex(gpio_data, GpioModeInput, GpioPullUp, GpioSpeedLow, alt_fn);
 
     /* State machine configuration */
-    pio_sm_config c = pio_get_frame_program_get_default_config(instance->offset);
+    pio_sm_config c = pio_get_default_sm_config();
+    sm_config_set_wrap(
+        &c,
+        instance->offset + PIO_GET_FRAME_LOOP_START,
+        instance->offset + PIO_GET_FRAME_LOOP_END);
     sm_config_set_in_pins(&c, gpio_data->pin);
     sm_config_set_jmp_pin(&c, gpio_cs->pin);
     sm_config_set_in_shift(&c, false, true, 8); /* shift left, autopush 8 -> MSB-first byte */
@@ -162,15 +196,22 @@ PioGetFrame* pio_get_frame_init(void) {
 void pio_get_frame_deinit(PioGetFrame* instance) {
     furi_check(instance);
 
-    furi_hal_gpio_remove_int_callback(&gpio_cpu_spi_cs);
+    furi_hal_gpio_remove_int_callback(instance->gpio_cs);
     pio_sm_set_enabled(instance->pio, instance->sm, false);
     dma_channel_unclaim(instance->dma_rx_channel);
-    pio_remove_program_and_unclaim_sm(&pio_get_frame_program, instance->pio, instance->sm, instance->offset);
+
+    /* Only .length is used to free the instruction space */
+    const pio_program_t program = {
+        .instructions = NULL,
+        .length = PIO_GET_FRAME_PROGRAM_LEN,
+        .origin = -1,
+    };
+    pio_remove_program_and_unclaim_sm(&program, instance->pio, instance->sm, instance->offset);
 
     /* Deinitialize GPIOs */
-    furi_hal_gpio_init_ex(&gpio_cpu_spi_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
-    furi_hal_gpio_init_ex(&gpio_cpu_spi_sck, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
-    furi_hal_gpio_init_ex(&gpio_cpu_spi_mosi, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    furi_hal_gpio_init_ex(instance->gpio_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    furi_hal_gpio_init_ex(instance->gpio_sck, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
+    furi_hal_gpio_init_ex(instance->gpio_data, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
 
     free(instance);
     pio_get_frame_instance = NULL;

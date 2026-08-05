@@ -2,8 +2,6 @@ project("pio_get_frame")
 
 add_library(${PROJECT_NAME} INTERFACE)
 
-pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/pio_get_frame.pio)
-
 set(INCLUDES
     ${CMAKE_CURRENT_SOURCE_DIR}
 )

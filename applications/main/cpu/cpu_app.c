@@ -1,6 +1,7 @@
 #include "cpu_app.h"
 #include <furi.h>
 #include <furi_bsp.h>
+#include <furi_hal_resources.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include <gui/modules/popup_menu.h>
@@ -244,7 +245,7 @@ static CpuApp* cpu_app_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->app_queue = furi_message_queue_alloc(CPU_APP_MESSAGE_QUEUE_SIZE, sizeof(CpuAppMessage));
 
-    instance->pio_get_frame = pio_get_frame_init();
+    instance->pio_get_frame = pio_get_frame_init(&gpio_cpu_spi_cs, &gpio_cpu_spi_sck, &gpio_cpu_spi_mosi);
     pio_get_frame_set_callback_rx(instance->pio_get_frame, cpu_app_pio_get_frame_isr, instance);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->app_queue, FuriEventLoopEventIn, cpu_app_message_logic, instance);
