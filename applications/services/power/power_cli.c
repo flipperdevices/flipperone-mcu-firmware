@@ -225,8 +225,8 @@ static const PowerCmd power_cmds[] = {
     {"off", "", "Power off the device, WARNING: Powers on only when connected via USB.", power_cli_off},
     {"ship", "", "Enter ship mode", power_cli_ship_mode},
     {"reboot", "", "Reboot the device", power_cli_reboot},
-    {"boot", "", "Reboot to bootloader", power_cli_boot},
-    {"maskrom", "", "Reboot to maskrom", power_cli_maskrom},
+    {"boot", "", "Boot MCU to bootloader", power_cli_boot},
+    {"maskrom", "", "Boot CPU to maskrom", power_cli_maskrom},
 };
 
 static void power_cli_print_usage(void) {
