@@ -13,24 +13,18 @@
 #define USB_PD_DEFAULT_FUSB302_ADDR 0x22u
 #define USB_PD_DEFAULT_PHY_POLL_MS  250u
 #define USB_PD_DEFAULT_STACK_SIZE   2048u
-#define USB_PD_UCSI_WRITE_QUEUE_LEN 4u
 #define USB_PD_LOG_LINE_MAX         160u
 
 /* Custom event bits delivered to the worker event loop. */
 typedef enum {
     UsbPdLoopEventPhyIrq = (1u << 0),
     UsbPdLoopEventPowerReady = (1u << 1),
-    UsbPdLoopEventStop = (1u << 2),
+    UsbPdLoopEventUcsiControl = (1u << 2),
+    UsbPdLoopEventStop = (1u << 3),
 } UsbPdLoopEvent;
 
 /* Init handshake bits on init_flag. */
 #define USB_PD_INIT_FLAG_DONE (1u << 0)
-
-typedef struct {
-    uint16_t offset;
-    uint16_t length;
-    uint8_t data[USB_PD_UCSI_WRITE_MAX];
-} UsbPdUcsiWriteMessage;
 
 struct UsbPd {
     UsbPdConfig config; /* Copy with defaults resolved. */
@@ -46,9 +40,16 @@ struct UsbPd {
      * ucsi_ppm_next_timeout_ms; re-armed in the worker epilogue. */
     FuriEventLoopTimer* sm_timer;
     FuriEventLoopTimer* phy_poll_timer;
-    FuriMessageQueue* ucsi_write_queue;
 
     UcsiPpm* ppm;
+
+    /* OPM-written shadow of the register file. usb_pd_ucsi_write stores
+     * bytes here from any context (under a critical section, any
+     * granularity); the worker pushes CONTROL + MESSAGE_OUT into the core
+     * when the doorbell — the last CONTROL byte — has been written. */
+    uint8_t ucsi_shadow[USB_PD_UCSI_REGFILE_SIZE];
+    /* Worker-only bounce buffer for pushing MESSAGE_OUT into the core. */
+    uint8_t ucsi_staging[USB_PD_UCSI_SIZE_MESSAGE_OUT];
 
     /* Set by the PPM alert callback, consumed in the worker epilogue. */
     bool alert_pending;
@@ -64,6 +65,8 @@ struct UsbPd {
 
     FuriPubSub* pubsub;
 };
+
+static void usb_pd_worker_ucsi_control(UsbPd* instance);
 
 /* Runs on the BSP expander worker thread (not ISR context). The detach in
  * the worker teardown waits for an in-flight invocation, so `instance` is
@@ -88,8 +91,7 @@ static void usb_pd_hal_alert(void* context) {
 static UcsiPpmStatus usb_pd_hal_i2c_write(void* context, uint8_t addr, const uint8_t* data, size_t len) {
     UsbPd* instance = context;
     furi_hal_i2c_acquire(instance->config.i2c_bus);
-    const int rc = furi_hal_i2c_master_tx_blocking(
-        instance->config.i2c_bus, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
+    const int rc = furi_hal_i2c_master_tx_blocking(instance->config.i2c_bus, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->config.i2c_bus);
     if(rc < 0) {
         FURI_LOG_W(TAG, "i2c write failed: addr=0x%02X len=%u rc=%d", addr, (unsigned)len, rc);
@@ -101,8 +103,7 @@ static UcsiPpmStatus usb_pd_hal_i2c_write(void* context, uint8_t addr, const uin
 static UcsiPpmStatus usb_pd_hal_i2c_read(void* context, uint8_t addr, uint8_t* data, size_t len) {
     UsbPd* instance = context;
     furi_hal_i2c_acquire(instance->config.i2c_bus);
-    const int rc = furi_hal_i2c_master_rx_blocking(
-        instance->config.i2c_bus, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
+    const int rc = furi_hal_i2c_master_rx_blocking(instance->config.i2c_bus, addr, data, len, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->config.i2c_bus);
     if(rc < 0) {
         FURI_LOG_W(TAG, "i2c read failed: addr=0x%02X len=%u rc=%d", addr, (unsigned)len, rc);
@@ -111,26 +112,13 @@ static UcsiPpmStatus usb_pd_hal_i2c_read(void* context, uint8_t addr, uint8_t* d
     return UcsiPpmStatusOk;
 }
 
-static UcsiPpmStatus usb_pd_hal_i2c_write_read(
-    void* context,
-    uint8_t addr,
-    const uint8_t* tx,
-    size_t tx_len,
-    uint8_t* rx,
-    size_t rx_len) {
+static UcsiPpmStatus usb_pd_hal_i2c_write_read(void* context, uint8_t addr, const uint8_t* tx, size_t tx_len, uint8_t* rx, size_t rx_len) {
     UsbPd* instance = context;
     furi_hal_i2c_acquire(instance->config.i2c_bus);
-    const int rc = furi_hal_i2c_master_trx_blocking(
-        instance->config.i2c_bus, addr, tx, tx_len, rx, rx_len, FURI_HAL_I2C_TIMEOUT_US);
+    const int rc = furi_hal_i2c_master_trx_blocking(instance->config.i2c_bus, addr, tx, tx_len, rx, rx_len, FURI_HAL_I2C_TIMEOUT_US);
     furi_hal_i2c_release(instance->config.i2c_bus);
     if(rc < 0) {
-        FURI_LOG_W(
-            TAG,
-            "i2c trx failed: addr=0x%02X tx=%u rx=%u rc=%d",
-            addr,
-            (unsigned)tx_len,
-            (unsigned)rx_len,
-            rc);
+        FURI_LOG_W(TAG, "i2c trx failed: addr=0x%02X tx=%u rx=%u rc=%d", addr, (unsigned)tx_len, (unsigned)rx_len, rc);
         return UcsiPpmStatusHalError;
     }
     return UcsiPpmStatusOk;
@@ -143,8 +131,7 @@ static void usb_pd_hal_vbus_source(void* context, bool enable) {
 
 static UcsiPpmStatus usb_pd_hal_power_supply_set(void* context, uint16_t voltage_mv, uint16_t current_limit_ma) {
     UsbPd* instance = context;
-    if(!instance->config.power_supply_set(
-           instance->config.callback_context, voltage_mv, current_limit_ma)) {
+    if(!instance->config.power_supply_set(instance->config.callback_context, voltage_mv, current_limit_ma)) {
         return UcsiPpmStatusHalError;
     }
     if(!instance->config.power_supply_ready_async) {
@@ -160,12 +147,7 @@ static bool usb_pd_hal_has_alt_power(void* context) {
     return instance->config.has_alt_power(instance->config.callback_context);
 }
 
-static void usb_pd_hal_log(
-    void* context,
-    UcsiPpmLogLevel level,
-    const char* module,
-    const char* fmt,
-    va_list args) {
+static void usb_pd_hal_log(void* context, UcsiPpmLogLevel level, const char* module, const char* fmt, va_list args) {
     UNUSED(context);
     char buf[USB_PD_LOG_LINE_MAX];
     vsnprintf(buf, sizeof(buf), fmt, args);
@@ -263,8 +245,7 @@ static void usb_pd_worker_epilogue(UsbPd* instance) {
     }
 
     const bool state_changed = state != instance->state_snapshot;
-    const bool contract_changed =
-        memcmp(&contract, &instance->contract_snapshot, sizeof(contract)) != 0;
+    const bool contract_changed = memcmp(&contract, &instance->contract_snapshot, sizeof(contract)) != 0;
 
     if(state_changed || contract_changed) {
         FURI_CRITICAL_ENTER();
@@ -330,29 +311,32 @@ static void usb_pd_worker_custom_event_callback(uint32_t events, void* context) 
     if(events & UsbPdLoopEventPowerReady) {
         ucsi_ppm_notify_power_supply_ready(instance->ppm);
     }
+    if(events & UsbPdLoopEventUcsiControl) {
+        usb_pd_worker_ucsi_control(instance);
+    }
     ucsi_ppm_tick(instance->ppm);
     usb_pd_worker_epilogue(instance);
 }
 
-static void usb_pd_worker_ucsi_write_callback(FuriEventLoopObject* object, void* context) {
-    UsbPd* instance = context;
-    furi_assert(object == instance->ucsi_write_queue);
+/* UCSI doorbell: the OPM has finished writing CONTROL. Push the staged image
+ * into the core — MESSAGE_OUT first so command parameters are in place when
+ * the CONTROL write triggers dispatch. */
+static void usb_pd_worker_ucsi_control(UsbPd* instance) {
+    uint8_t control[USB_PD_UCSI_SIZE_CONTROL];
 
-    UsbPdUcsiWriteMessage msg;
-    furi_check(
-        furi_message_queue_get(instance->ucsi_write_queue, &msg, 0) == FuriStatusOk);
+    FURI_CRITICAL_ENTER();
+    memcpy(control, &instance->ucsi_shadow[USB_PD_UCSI_OFFSET_CONTROL], sizeof(control));
+    memcpy(instance->ucsi_staging, &instance->ucsi_shadow[USB_PD_UCSI_OFFSET_MESSAGE_OUT], USB_PD_UCSI_SIZE_MESSAGE_OUT);
+    FURI_CRITICAL_EXIT();
 
-    const UcsiPpmStatus status =
-        ucsi_ppm_register_write(instance->ppm, msg.offset, msg.length, msg.data);
+    UcsiPpmStatus status = ucsi_ppm_register_write(instance->ppm, USB_PD_UCSI_OFFSET_MESSAGE_OUT, USB_PD_UCSI_SIZE_MESSAGE_OUT, instance->ucsi_staging);
     if(status != UcsiPpmStatusOk) {
-        FURI_LOG_W(
-            TAG,
-            "ucsi write rejected: offset=%u len=%u status=%d",
-            msg.offset,
-            msg.length,
-            (int)status);
+        FURI_LOG_W(TAG, "ucsi MESSAGE_OUT write rejected: %d", (int)status);
     }
-    usb_pd_worker_epilogue(instance);
+    status = ucsi_ppm_register_write(instance->ppm, USB_PD_UCSI_OFFSET_CONTROL, USB_PD_UCSI_SIZE_CONTROL, control);
+    if(status != UcsiPpmStatusOk) {
+        FURI_LOG_W(TAG, "ucsi CONTROL write rejected: %d", (int)status);
+    }
 }
 
 static int32_t usb_pd_worker(void* context) {
@@ -378,24 +362,12 @@ static int32_t usb_pd_worker(void* context) {
         return -1;
     }
 
-    furi_event_loop_subscribe_message_queue(
-        instance->event_loop,
-        instance->ucsi_write_queue,
-        FuriEventLoopEventIn,
-        usb_pd_worker_ucsi_write_callback,
-        instance);
-    furi_event_loop_set_custom_event_callback(
-        instance->event_loop, usb_pd_worker_custom_event_callback, instance);
+    furi_event_loop_set_custom_event_callback(instance->event_loop, usb_pd_worker_custom_event_callback, instance);
 
-    instance->sm_timer = furi_event_loop_timer_alloc(
-        instance->event_loop, usb_pd_worker_sm_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    instance->sm_timer = furi_event_loop_timer_alloc(instance->event_loop, usb_pd_worker_sm_timer_callback, FuriEventLoopTimerTypeOnce, instance);
 
     if(instance->config.phy_poll_period_ms) {
-        instance->phy_poll_timer = furi_event_loop_timer_alloc(
-            instance->event_loop,
-            usb_pd_worker_phy_poll_callback,
-            FuriEventLoopTimerTypePeriodic,
-            instance);
+        instance->phy_poll_timer = furi_event_loop_timer_alloc(instance->event_loop, usb_pd_worker_phy_poll_callback, FuriEventLoopTimerTypePeriodic, instance);
         furi_event_loop_timer_start(instance->phy_poll_timer, instance->config.phy_poll_period_ms);
     }
 
@@ -427,7 +399,6 @@ static int32_t usb_pd_worker(void* context) {
         furi_event_loop_timer_free(instance->phy_poll_timer);
         instance->phy_poll_timer = NULL;
     }
-    furi_event_loop_unsubscribe(instance->event_loop, instance->ucsi_write_queue);
 
     ucsi_ppm_deinit(instance->ppm);
     ucsi_ppm_free(instance->ppm);
@@ -453,11 +424,9 @@ void usb_pd_config_init_default(UsbPdConfig* config) {
     config->cc_operation_mode = UcsiPpmCcModeDrp;
     config->source_rp_current = UcsiPpmRpCurrent1A5;
 
-    config->source_caps.pdos[0] =
-        ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    config->source_caps.pdos[0] = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
     config->source_caps.count = 1;
-    config->sink_caps.pdos[0] =
-        ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true);
+    config->sink_caps.pdos[0] = ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true);
     config->sink_caps.count = 1;
 
     config->supports_usb_pd = true;
@@ -472,7 +441,6 @@ UsbPd* usb_pd_alloc(const UsbPdConfig* config) {
     furi_check(config->use_phy_irq || config->phy_poll_period_ms);
 
     UsbPd* instance = malloc(sizeof(UsbPd));
-    memset(instance, 0, sizeof(*instance));
 
     instance->config = *config;
     if(!instance->config.i2c_bus) instance->config.i2c_bus = &furi_hal_i2c_handle_main;
@@ -483,24 +451,19 @@ UsbPd* usb_pd_alloc(const UsbPdConfig* config) {
         instance->config.thread_stack_size = USB_PD_DEFAULT_STACK_SIZE;
     }
 
-    instance->ucsi_write_queue =
-        furi_message_queue_alloc(USB_PD_UCSI_WRITE_QUEUE_LEN, sizeof(UsbPdUcsiWriteMessage));
     instance->pubsub = furi_pubsub_alloc();
     instance->init_flag = furi_event_flag_alloc();
 
-    instance->thread = furi_thread_alloc_ex(
-        "UsbPd", instance->config.thread_stack_size, usb_pd_worker, instance);
+    instance->thread = furi_thread_alloc_ex("UsbPd", instance->config.thread_stack_size, usb_pd_worker, instance);
     furi_thread_start(instance->thread);
 
-    furi_event_flag_wait(
-        instance->init_flag, USB_PD_INIT_FLAG_DONE, FuriFlagWaitAny, FuriWaitForever);
+    furi_event_flag_wait(instance->init_flag, USB_PD_INIT_FLAG_DONE, FuriFlagWaitAny, FuriWaitForever);
 
     if(!instance->init_ok) {
         furi_thread_join(instance->thread);
         furi_thread_free(instance->thread);
         furi_event_flag_free(instance->init_flag);
         furi_pubsub_free(instance->pubsub);
-        furi_message_queue_free(instance->ucsi_write_queue);
         free(instance);
         return NULL;
     }
@@ -517,7 +480,6 @@ void usb_pd_free(UsbPd* instance) {
 
     furi_event_flag_free(instance->init_flag);
     furi_pubsub_free(instance->pubsub);
-    furi_message_queue_free(instance->ucsi_write_queue);
     free(instance);
 }
 
@@ -555,16 +517,21 @@ bool usb_pd_ucsi_read(UsbPd* instance, uint16_t offset, uint16_t length, uint8_t
 bool usb_pd_ucsi_write(UsbPd* instance, uint16_t offset, uint16_t length, const uint8_t* data) {
     furi_check(instance);
     furi_check(data);
-    if(length == 0 || length > USB_PD_UCSI_WRITE_MAX) return false;
     if((uint32_t)offset + (uint32_t)length > USB_PD_UCSI_REGFILE_SIZE) return false;
+    if(length == 0) return true;
 
-    UsbPdUcsiWriteMessage msg = {
-        .offset = offset,
-        .length = length,
-    };
-    memcpy(msg.data, data, length);
+    FURI_CRITICAL_ENTER();
+    memcpy(&instance->ucsi_shadow[offset], data, length);
+    FURI_CRITICAL_EXIT();
 
-    return furi_message_queue_put(instance->ucsi_write_queue, &msg, 0) == FuriStatusOk;
+    /* UCSI doorbell: dispatch is gated on the LAST byte of CONTROL, so
+     * byte-at-a-time hosts don't trigger a half-written command when the
+     * opcode byte (CONTROL[0]) lands first. */
+    const uint32_t control_end = USB_PD_UCSI_OFFSET_CONTROL + USB_PD_UCSI_SIZE_CONTROL;
+    if(offset < control_end && (uint32_t)offset + length >= control_end) {
+        furi_event_loop_set_custom_event(instance->event_loop, UsbPdLoopEventUcsiControl);
+    }
+    return true;
 }
 
 void usb_pd_notify_power_supply_ready(UsbPd* instance) {

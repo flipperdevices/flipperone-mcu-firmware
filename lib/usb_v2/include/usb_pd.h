@@ -26,10 +26,12 @@
  * usb_pd_ucsi_read() / usb_pd_ucsi_write() implement the UCSI register
  * interface (VERSION / CCI / CONTROL / MESSAGE_IN / MESSAGE_OUT) for an
  * external OPM (e.g. the host CPU behind i2c_intercom). Both calls are
- * ISR-safe:
+ * ISR-safe and accept any write granularity — single bytes included:
  * - reads are served from a mirror of the register file which is kept
  *   coherent by the worker thread;
- * - writes are queued and applied on the worker thread in order.
+ * - writes are staged into a shadow register file; the command is handed
+ *   to the worker only when the last byte of CONTROL has been written
+ *   (the UCSI doorbell), so partially written commands never dispatch.
  * When the PPM raises a UCSI alert (command completed / connector change),
  * the `ucsi_alert` callback fires from the worker thread AFTER the mirror
  * has been refreshed, so the OPM glue can immediately serve CCI reads.
@@ -67,12 +69,7 @@ extern "C" {
 
 /** OPM-readable window: VERSION..MESSAGE_IN inclusive. Reads beyond this
  * offset are rejected (MESSAGE_OUT is write-only from the OPM side). */
-#define USB_PD_UCSI_OPM_READ_SIZE \
-    (USB_PD_UCSI_OFFSET_MESSAGE_IN + USB_PD_UCSI_SIZE_MESSAGE_IN)
-
-/** Maximum length of a single usb_pd_ucsi_write() chunk. Covers the largest
- * meaningful OPM write (MESSAGE_OUT, 255 bytes). */
-#define USB_PD_UCSI_WRITE_MAX 256u
+#define USB_PD_UCSI_OPM_READ_SIZE (USB_PD_UCSI_OFFSET_MESSAGE_IN + USB_PD_UCSI_SIZE_MESSAGE_IN)
 
 typedef struct UsbPd UsbPd;
 
@@ -101,10 +98,7 @@ typedef void (*UsbPdVbusSourceFn)(void* context, bool enable);
  * rail settles synchronously and signals PS_RDY readiness right away.
  * If true, the integrator must call usb_pd_notify_power_supply_ready()
  * once the rail has actually settled. */
-typedef bool (*UsbPdPowerSupplySetFn)(
-    void* context,
-    uint16_t voltage_mv,
-    uint16_t current_limit_ma);
+typedef bool (*UsbPdPowerSupplySetFn)(void* context, uint16_t voltage_mv, uint16_t current_limit_ma);
 
 /** Whether the device currently has a power source other than VBUS
  * (battery, DC jack). Optional; NULL means "no". Worker thread context. */
@@ -208,11 +202,14 @@ bool usb_pd_get_contract(UsbPd* instance, UcsiPpmContractInfo* out);
  * @return false if [offset, offset+length) is out of the readable window. */
 bool usb_pd_ucsi_read(UsbPd* instance, uint16_t offset, uint16_t length, uint8_t* data);
 
-/** Queue an OPM write to the UCSI register file (CONTROL / MESSAGE_OUT).
- * ISR-safe, non-blocking: the write is applied asynchronously on the worker
- * thread, in submission order. A write touching CONTROL[0] triggers UCSI
- * command dispatch, exactly like in the UCSI spec.
- * @return false if arguments are out of range or the queue is full. */
+/** Store an OPM write to the UCSI register file (CONTROL / MESSAGE_OUT).
+ * ISR-safe, non-blocking, any granularity — writing register space byte by
+ * byte is fine: data is staged into a shadow register file, and the command
+ * is dispatched on the worker thread only once the LAST byte of CONTROL
+ * (offset 15) has been written — that write is the UCSI doorbell. Per the
+ * UCSI flow the OPM must not start a new command until CCI reports the
+ * previous one completed.
+ * @return false if [offset, offset+length) is outside the register file. */
 bool usb_pd_ucsi_write(UsbPd* instance, uint16_t offset, uint16_t length, const uint8_t* data);
 
 /** Signal that the source supply rail has settled after power_supply_set().

@@ -25,7 +25,7 @@ extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
-extern int32_t pd_ucsi_app(void* p);
+// extern int32_t pd_ucsi_app(void* p);
 
 extern int32_t unit_test_app(void* p);
 extern int32_t font_test_app(void* p);
@@ -61,13 +61,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
-    // {
-    //     .app = pd_srv,
-    //     .name = "PdSrv",
-    //     .appid = "pd_srv",
-    //     .stack_size = 1024,
-    //     .flags = FlipperInternalApplicationFlagDefault,
-    // },
+    {
+        .app = pd_srv,
+        .name = "PdSrv",
+        .appid = "pd_srv",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
     // {
     //     .app = uart_echo_app,
     //     .name = "UartEcho",
@@ -189,13 +189,6 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .name = "Haptic Test",
         .appid = "haptic_test",
         .stack_size = 2048,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
-    {
-        .app = pd_ucsi_app,
-        .name = "PD UCSI",
-        .appid = "pd_ucsi",
-        .stack_size = 4096,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {

@@ -68,20 +68,24 @@ void example(void) {
 ## OPM (UCSI-over-intercom) glue
 
 Both calls are ISR-safe and non-blocking, so they can be used directly from
-the `i2c_intercom` slave callbacks:
+the `i2c_intercom` slave callbacks. Write granularity does not matter — the
+glue can forward every byte as it lands in the intercom register space:
 
 ```c
 // Host reads VERSION / CCI / MESSAGE_IN:
 usb_pd_ucsi_read(pd, USB_PD_UCSI_OFFSET_CCI, USB_PD_UCSI_SIZE_CCI, buf);
 
-// Host writes MESSAGE_OUT, then CONTROL (the CONTROL write dispatches the command):
-usb_pd_ucsi_write(pd, USB_PD_UCSI_OFFSET_MESSAGE_OUT, len, msg_out);
-usb_pd_ucsi_write(pd, USB_PD_UCSI_OFFSET_CONTROL, USB_PD_UCSI_SIZE_CONTROL, control);
+// Host writes MESSAGE_OUT and CONTROL in any chunks, e.g. byte by byte:
+usb_pd_ucsi_write(pd, offset, 1, &byte);
 ```
 
-Reads are served from a mirror refreshed by the worker; writes are queued
-and applied in order on the worker thread. `ucsi_alert` fires after the
-mirror is refreshed, so CCI is always coherent by the time the host reacts.
+Writes land in a shadow register file (plain memory, no queue — nothing to
+overflow). The command is dispatched only when the **last byte of CONTROL**
+(offset 15) is written: that write is the UCSI doorbell, and it is the only
+one that wakes the worker. Writing the opcode byte first therefore does not
+trigger a half-written command. Reads are served from a mirror refreshed by
+the worker; `ucsi_alert` fires after the mirror refresh, so CCI is always
+coherent by the time the host reacts.
 
 ## Notes
 

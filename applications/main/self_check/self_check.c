@@ -141,13 +141,11 @@ static bool self_check_process(FuriString* status_str) {
 
     // check pd
     PdDevice pd_device = 0;
-    if(furi_record_exists(RECORD_PD)) {
-        Pd* pd = furi_record_open(RECORD_PD);
-        check_ok = pd_is_device_initialized(pd, &pd_device);
-        furi_record_close(RECORD_PD);
-        if(all_ok) {
-            all_ok = check_ok;
-        }
+    Pd* pd = furi_record_open(RECORD_PD);
+    check_ok = pd_is_device_initialized(pd, &pd_device);
+    furi_record_close(RECORD_PD);
+    if(all_ok) {
+        all_ok = check_ok;
     }
 
     // check usb mux
