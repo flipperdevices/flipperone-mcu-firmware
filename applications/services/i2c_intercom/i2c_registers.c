@@ -44,6 +44,18 @@ DICT_DEF2(I2CInterruptCallbackMap, uint16_t, M_DEFAULT_OPLIST, I2CRegisterCallba
 #define REG16_CLR_LO(v)    ((v) &= 0xFF00)
 #define REG16_CLR_HI(v)    ((v) &= 0x00FF)
 
+// A byte-addressed window backed by an external owner, see
+// i2c_register_add_region. Kept in a plain array rather than a dict: it is
+// looked up on every single byte from the I2C slave ISR, so the lookup must
+// be allocation-free and cheaper than hashing.
+typedef struct {
+    uint16_t base;
+    uint16_t length;
+    I2CRegionReadFn read;
+    I2CRegionWriteFn write;
+    void* context;
+} I2CRegion;
+
 typedef struct {
     // hashmap of registers, key is register address, value is register struct
     I2CRegMap_t map;
@@ -53,6 +65,9 @@ typedef struct {
     I2CInterruptCallbackMap_t interrupt_callback_map;
     // status register pointer
     I2CReg* status_register;
+    // byte-addressed regions, matched before the register map
+    I2CRegion regions[I2C_REGISTERS_MAX_REGIONS];
+    size_t region_count;
 } I2CRegisters;
 
 static I2CRegisters i2c;
@@ -89,6 +104,16 @@ static void i2c_interrupt_info_set_at(uint16_t address, I2CInterruptInfo info) {
     I2CInterruptInfoMap_set_at(i2c.interrupt_info_map, address, info);
 }
 
+static I2CRegion* i2c_region_find(uint16_t address) {
+    for(size_t i = 0; i < i2c.region_count; ++i) {
+        I2CRegion* region = &i2c.regions[i];
+        if(address >= region->base && (uint32_t)address < (uint32_t)region->base + region->length) {
+            return region;
+        }
+    }
+    return NULL;
+}
+
 static I2CRegisterCallbackWithContext* i2c_interrupt_callback_get(uint16_t address) {
     return I2CInterruptCallbackMap_get(i2c.interrupt_callback_map, address);
 }
@@ -103,6 +128,7 @@ void i2c_registers_init(void) {
     I2CRegMap_init(i2c.map);
     I2CInterruptInfoMap_init(i2c.interrupt_info_map);
     I2CInterruptCallbackMap_init(i2c.interrupt_callback_map);
+    i2c.region_count = 0;
     i2c_register_add_readable(I2C_STATUS_REG_ADDRESS, 0);
     i2c.status_register = i2c_register_get(I2C_STATUS_REG_ADDRESS);
     furi_check(i2c.status_register);
@@ -111,9 +137,51 @@ void i2c_registers_init(void) {
 static void i2c_register_add_internal(uint16_t address, uint16_t default_value, uint32_t flags) {
     furi_check(address % 2 == 0); // only even addresses are valid
     furi_check(i2c_register_get(address) == NULL); // address must not exist
+    // Regions win the lookup, so a register inside one would never be reached
+    furi_check(i2c_region_find(address) == NULL);
+    furi_check(i2c_region_find(address + 1) == NULL);
 
     I2CReg reg = {.value = default_value, .flags = flags};
     i2c_register_set_at(address, reg);
+}
+
+void i2c_register_add_region(uint16_t base, uint16_t length, I2CRegionReadFn read, I2CRegionWriteFn write, void* context) {
+    furi_check(length > 0);
+    furi_check(base % 2 == 0); // only even base addresses are valid
+    furi_check((uint32_t)base + length <= 0x10000); // must not wrap the address space
+    furi_check(i2c.region_count < I2C_REGISTERS_MAX_REGIONS);
+
+    // Validation runs outside the critical section: it walks the whole
+    // region and would keep interrupts off for too long. Registration only
+    // ever happens at startup, single-threaded, before the I2C slave is
+    // enabled — the critical section below just guards the array append.
+
+    // Must not overlap another region...
+    for(size_t i = 0; i < i2c.region_count; ++i) {
+        const I2CRegion* other = &i2c.regions[i];
+        const bool disjoint = (uint32_t)base + length <= other->base || base >= (uint32_t)other->base + other->length;
+        furi_check(disjoint);
+    }
+    // ...nor shadow an already registered register. Probing the map beats
+    // iterating it: this relies only on the lookup used everywhere else in
+    // this file. Base is even and the step is 2, so every probed address is
+    // the even address a register would be keyed by.
+    for(uint32_t address = base; address < (uint32_t)base + length; address += 2) {
+        furi_check(i2c_register_get((uint16_t)address) == NULL);
+    }
+
+    I2CRegion region = {
+        .base = base,
+        .length = length,
+        .read = read,
+        .write = write,
+        .context = context,
+    };
+
+    FURI_CRITICAL_ENTER();
+    i2c.regions[i2c.region_count] = region;
+    i2c.region_count++;
+    FURI_CRITICAL_EXIT();
 }
 
 void i2c_register_add_readable(uint16_t address, uint16_t default_value) {
@@ -140,6 +208,11 @@ void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t
 }
 
 bool i2c_register_read_start(uint16_t address, uint8_t* value) {
+    const I2CRegion* region = i2c_region_find(address);
+    if(region) {
+        return region->read ? region->read(region->context, address - region->base, value) : false;
+    }
+
     bool result = false;
     bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
@@ -160,6 +233,10 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value) {
 }
 
 bool i2c_register_read_commit(uint16_t address) {
+    // Regions have no read-to-clear semantics — nothing to commit. Bailing
+    // out here keeps the per-byte cost of a region read down to one lookup.
+    if(i2c_region_find(address)) return false;
+
     bool result = false;
     bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
@@ -190,6 +267,11 @@ bool i2c_register_read_commit(uint16_t address) {
 }
 
 bool i2c_register_write(uint16_t address, uint8_t value) {
+    const I2CRegion* region = i2c_region_find(address);
+    if(region) {
+        return region->write ? region->write(region->context, address - region->base, value) : false;
+    }
+
     bool result = false;
     bool is_hi_byte = address & 1;
     uint16_t even_address = address & 0xFFFE;
