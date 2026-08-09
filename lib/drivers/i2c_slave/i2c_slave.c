@@ -19,6 +19,7 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
 
     uint32_t intr_stat = hw->intr_stat;
     if(intr_stat == 0) {
+        FURI_CRITICAL_EXIT();
         return;
     }
     bool do_finish_transfer = false;
