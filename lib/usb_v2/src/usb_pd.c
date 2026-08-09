@@ -20,7 +20,8 @@ typedef enum {
     UsbPdLoopEventPhyIrq = (1u << 0),
     UsbPdLoopEventPowerReady = (1u << 1),
     UsbPdLoopEventUcsiControl = (1u << 2),
-    UsbPdLoopEventStop = (1u << 3),
+    UsbPdLoopEventReset = (1u << 3),
+    UsbPdLoopEventStop = (1u << 4),
 } UsbPdLoopEvent;
 
 /* Init handshake bits on init_flag. */
@@ -321,6 +322,12 @@ static void usb_pd_worker_custom_event_callback(uint32_t events, void* context) 
     if(events & UsbPdLoopEventPowerReady) {
         ucsi_ppm_notify_power_supply_ready(instance->ppm);
     }
+    if(events & UsbPdLoopEventReset) {
+        const UcsiPpmStatus status = ucsi_ppm_reset(instance->ppm);
+        if(status != UcsiPpmStatusOk) {
+            FURI_LOG_E(TAG, "reset failed: %d", (int)status);
+        }
+    }
     if(events & UsbPdLoopEventUcsiControl) {
         usb_pd_worker_ucsi_control(instance);
     }
@@ -557,6 +564,11 @@ bool usb_pd_ucsi_write(UsbPd* instance, uint16_t offset, uint16_t length, const 
         furi_event_loop_set_custom_event(instance->event_loop, UsbPdLoopEventUcsiControl);
     }
     return true;
+}
+
+void usb_pd_reset(UsbPd* instance) {
+    furi_check(instance);
+    furi_event_loop_set_custom_event(instance->event_loop, UsbPdLoopEventReset);
 }
 
 void usb_pd_notify_power_supply_ready(UsbPd* instance) {

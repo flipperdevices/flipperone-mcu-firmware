@@ -1,3 +1,5 @@
+#include <assert.h>
+
 #include <furi.h>
 #include <gui/gui.h>
 #include <headphones/headphones.h>
@@ -6,6 +8,7 @@
 #include <i2c_intercom/i2c_registers_map.h>
 #include <led/led.h>
 #include <haptic/haptic.h>
+#include <pd/pd.h>
 #include <drivers/drv2605l/drv2605l.h>
 
 #define TAG "I2CNegotiator"
@@ -19,6 +22,7 @@ typedef struct {
     I2CIntercom* intercom;
     Led* led;
     Haptic* haptic;
+    Pd* pd;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -249,12 +253,40 @@ static void i2c_negotiator_backlight_timeout_callback(const void* item, void* co
     with_i2c_register({ i2c_register_update(I2C_BACKLIGHT_TIMEOUT, *timeout / 100, 0xFFFF); });
 }
 
+// The intercom map and the PD stack must agree on the size of the window the
+// region maps between them.
+static_assert(I2C_UCSI_REG_UCSI_LENGTH == USB_PD_UCSI_REGFILE_SIZE, "UCSI window size mismatch");
+
+// UCSI transport. The register file is served straight out of the PD stack
+// rather than mirrored into the register map: usb_pd_ucsi_read/write are
+// ISR-safe and byte-granular, which is exactly what a region needs, and it
+// keeps a single copy of the 528-byte space.
+static bool i2c_negotiator_ucsi_read(void* context, uint16_t offset, uint8_t* value) {
+    UsbPd* usb_pd = context;
+    return usb_pd_ucsi_read(usb_pd, offset, 1, value);
+}
+
+static bool i2c_negotiator_ucsi_write(void* context, uint16_t offset, uint8_t value) {
+    UsbPd* usb_pd = context;
+    return usb_pd_ucsi_write(usb_pd, offset, 1, &value);
+}
+
+// The PPM has news for the host (CCI updated). Runs on the PD worker thread
+// after the register file image is refreshed, so the host is free to read CCI
+// the moment the line drops.
+static void i2c_negotiator_ucsi_alert(void* context) {
+    UNUSED(context);
+    with_i2c_register(
+        { i2c_register_set_interrupt(I2C_UCSI_INTERRUPT_REG_ADDRESS, 1 << I2C_UCSI_INTERRUPT_REG_BIT_UCSI); });
+}
+
 I2CNegotiator* i2c_negotiator_alloc() {
     I2CNegotiator* instance = malloc(sizeof(I2CNegotiator));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->intercom = furi_record_open(RECORD_I2C_INTERCOM);
     instance->led = furi_record_open(RECORD_LEDS);
     instance->haptic = furi_record_open(RECORD_HAPTIC);
+    instance->pd = furi_record_open(RECORD_PD);
     instance->event_loop = furi_event_loop_alloc();
 
     instance->negotiator_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
@@ -308,6 +340,19 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
         // Haptic
         i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
+
+        // UCSI. Skipped entirely if the PD stack failed to come up: with no
+        // region mapped the host reads VERSION as 0, which is how a UCSI
+        // driver detects the absence of a PPM.
+        UsbPd* usb_pd = pd_get_usb_pd(instance->pd);
+        if(usb_pd) {
+            i2c_register_add_interrupt(I2C_UCSI_INTERRUPT_REG_ADDRESS, I2C_UCSI_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_UCSI);
+            i2c_register_add_region(
+                I2C_UCSI_REG_UCSI, I2C_UCSI_REG_UCSI_LENGTH, i2c_negotiator_ucsi_read, i2c_negotiator_ucsi_write, usb_pd);
+            pd_set_ucsi_alert_callback(instance->pd, i2c_negotiator_ucsi_alert, NULL);
+        } else {
+            FURI_LOG_W(TAG, "PD stack is down, UCSI not exposed");
+        }
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);

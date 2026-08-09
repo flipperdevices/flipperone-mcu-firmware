@@ -176,11 +176,21 @@
 #define I2C_HAPTIC_DURATION_MASK           (0x00FF)
 #define I2C_HAPTIC_DURATION_SHIFT          (0)
 
-// UCSI registers
-#define I2C_UCSI_REG_UCSI             0x0500
-#define I2C_UCSI_REG_UCSI_VERSION     (I2C_UCSI_REG_UCSI + 0x00) // 3 bytes + 1 reserved
-#define I2C_UCSI_REG_UCSI_CCI         (I2C_UCSI_REG_UCSI + 0x04) // 4 bytes
-#define I2C_UCSI_REG_UCSI_CONTROL     (I2C_UCSI_REG_UCSI + 0x08) // 8 bytes
-#define I2C_UCSI_REG_UCSI_MESSAGE_IN  (I2C_UCSI_REG_UCSI + 0x10) // 255 bytes + 1 reserved
-#define I2C_UCSI_REG_UCSI_MESSAGE_OUT (I2C_UCSI_REG_UCSI + 0x110) // 255 bytes + 1 reserved
-#define I2C_UCSI_REG_UCSI_LENGTH      (528)
+// UCSI register file
+/*
+ * 0x0500   UCSI register file, 528 bytes (read, write)
+ *          Byte-addressed, unlike the 16-bit registers above. The layout
+ *          inside the window is UCSI 3.0 Table 4-1 and is deliberately not
+ *          redefined here — take the offsets from the spec:
+ *              +0x000 VERSION     3 bytes + 1 reserved   (read)
+ *              +0x004 CCI         4 bytes                (read)
+ *              +0x008 CONTROL     8 bytes                (write)
+ *              +0x010 MESSAGE_IN  255 bytes + 1 reserved (read)
+ *              +0x110 MESSAGE_OUT 255 bytes + 1 reserved (write)
+ *          Writing the LAST byte of CONTROL (0x050F) dispatches the command;
+ *          write the parameters and MESSAGE_OUT before it. Completion is
+ *          reported through CCI and the UCSI interrupt below.
+ *          VERSION reads back as 0 when the PD stack is unavailable.
+*/
+#define I2C_UCSI_REG_UCSI        (0x0500)
+#define I2C_UCSI_REG_UCSI_LENGTH (528)

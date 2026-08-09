@@ -211,6 +211,15 @@ bool usb_pd_ucsi_read(UsbPd* instance, uint16_t offset, uint16_t length, uint8_t
  *         or MESSAGE_OUT — the only OPM-writable fields. */
 bool usb_pd_ucsi_write(UsbPd* instance, uint16_t offset, uint16_t length, const uint8_t* data);
 
+/** Reset the PPM: drop any contract, re-init the FUSB302 and return the
+ * register file to its post-boot state. Non-blocking — the reset runs on the
+ * worker thread; watch CCI or the pubsub for completion.
+ *
+ * This is the out-of-band equivalent of the OPM issuing PPM_RESET, and going
+ * through it rather than writing the opcode into CONTROL keeps local resets
+ * from colliding with a host command already in flight. */
+void usb_pd_reset(UsbPd* instance);
+
 /** Signal that the source supply rail has settled after power_supply_set().
  * Only needed when power_supply_ready_async is true. ISR-safe. */
 void usb_pd_notify_power_supply_ready(UsbPd* instance);
