@@ -43,21 +43,24 @@ struct UsbPd {
 
     UcsiPpm* ppm;
 
-    /* OPM-written shadow of the register file. usb_pd_ucsi_write stores
-     * bytes here from any context (under a critical section, any
-     * granularity); the worker pushes CONTROL + MESSAGE_OUT into the core
-     * when the doorbell — the last CONTROL byte — has been written. */
-    uint8_t ucsi_shadow[USB_PD_UCSI_REGFILE_SIZE];
-    /* Worker-only bounce buffer for pushing MESSAGE_OUT into the core. */
+    /* OPM-facing image of the register file, laid out 1:1 with the UCSI
+     * spec. Which side writes a byte follows field ownership, and the two
+     * sets never overlap:
+     *  - PPM-owned (VERSION, RESERVED1, CCI, MESSAGE_IN) — refreshed from
+     *    the core by the worker epilogue;
+     *  - OPM-owned (CONTROL, MESSAGE_OUT) — written by usb_pd_ucsi_write
+     *    from any context, handed to the core on the doorbell.
+     * So one buffer serves both directions and a read is a single memcpy.
+     * Note the core zeroes MESSAGE_OUT on PPM_RESET and that is not
+     * reflected here — harmless, the OPM owns that field and rewrites it
+     * before every command. */
+    uint8_t ucsi_regfile[USB_PD_UCSI_REGFILE_SIZE];
+    /* Worker-only bounce buffer: MESSAGE_OUT is snapshotted here under a
+     * critical section, then pushed into the core outside of it. */
     uint8_t ucsi_staging[USB_PD_UCSI_SIZE_MESSAGE_OUT];
 
     /* Set by the PPM alert callback, consumed in the worker epilogue. */
     bool alert_pending;
-
-    /* OPM-visible mirror of the register file head (VERSION..MESSAGE_IN).
-     * Written by the worker under a critical section, read by
-     * usb_pd_ucsi_read from any context. */
-    uint8_t opm_mirror[USB_PD_UCSI_OPM_READ_SIZE];
 
     /* Snapshots guarded by critical sections for cross-thread getters. */
     UcsiPpmConnectorState state_snapshot;
@@ -222,14 +225,21 @@ static void usb_pd_fill_ppm_config(UsbPd* instance, UcsiPpmConfig* out) {
 /* --- Worker internals ----------------------------------------------------- */
 
 /* Runs after every piece of PPM activity (tick, IRQ pump, UCSI write):
- * refreshes the OPM read mirror, delivers the pending UCSI alert, publishes
- * state/contract changes and re-arms the deadline timer. */
+ * refreshes the OPM-facing register file image, delivers the pending UCSI
+ * alert, publishes state/contract changes and re-arms the deadline timer. */
 static void usb_pd_worker_epilogue(UsbPd* instance) {
+    /* Refresh the PPM-owned fields only — CONTROL and MESSAGE_OUT belong to
+     * the OPM and would be clobbered mid-write otherwise. */
     FURI_CRITICAL_ENTER();
-    ucsi_ppm_register_read(instance->ppm, 0, USB_PD_UCSI_OPM_READ_SIZE, instance->opm_mirror);
+    ucsi_ppm_register_read(instance->ppm, 0, USB_PD_UCSI_OFFSET_CONTROL, instance->ucsi_regfile);
+    ucsi_ppm_register_read(
+        instance->ppm,
+        USB_PD_UCSI_OFFSET_MESSAGE_IN,
+        USB_PD_UCSI_SIZE_MESSAGE_IN,
+        &instance->ucsi_regfile[USB_PD_UCSI_OFFSET_MESSAGE_IN]);
     FURI_CRITICAL_EXIT();
 
-    /* Alert strictly after the mirror refresh, so the OPM glue can serve a
+    /* Alert strictly after the image refresh, so the OPM glue can serve a
      * coherent CCI read from within the callback. */
     if(instance->alert_pending) {
         instance->alert_pending = false;
@@ -325,8 +335,8 @@ static void usb_pd_worker_ucsi_control(UsbPd* instance) {
     uint8_t control[USB_PD_UCSI_SIZE_CONTROL];
 
     FURI_CRITICAL_ENTER();
-    memcpy(control, &instance->ucsi_shadow[USB_PD_UCSI_OFFSET_CONTROL], sizeof(control));
-    memcpy(instance->ucsi_staging, &instance->ucsi_shadow[USB_PD_UCSI_OFFSET_MESSAGE_OUT], USB_PD_UCSI_SIZE_MESSAGE_OUT);
+    memcpy(control, &instance->ucsi_regfile[USB_PD_UCSI_OFFSET_CONTROL], sizeof(control));
+    memcpy(instance->ucsi_staging, &instance->ucsi_regfile[USB_PD_UCSI_OFFSET_MESSAGE_OUT], USB_PD_UCSI_SIZE_MESSAGE_OUT);
     FURI_CRITICAL_EXIT();
 
     UcsiPpmStatus status = ucsi_ppm_register_write(instance->ppm, USB_PD_UCSI_OFFSET_MESSAGE_OUT, USB_PD_UCSI_SIZE_MESSAGE_OUT, instance->ucsi_staging);
@@ -371,7 +381,7 @@ static int32_t usb_pd_worker(void* context) {
         furi_event_loop_timer_start(instance->phy_poll_timer, instance->config.phy_poll_period_ms);
     }
 
-    /* Populate the mirror and snapshots and arm the first deadline before
+    /* Populate the register file image and snapshots and arm the first deadline before
      * anyone can observe us. */
     usb_pd_worker_epilogue(instance);
 
@@ -505,23 +515,38 @@ bool usb_pd_get_contract(UsbPd* instance, UcsiPpmContractInfo* out) {
 bool usb_pd_ucsi_read(UsbPd* instance, uint16_t offset, uint16_t length, uint8_t* data) {
     furi_check(instance);
     furi_check(data);
-    if((uint32_t)offset + (uint32_t)length > USB_PD_UCSI_OPM_READ_SIZE) return false;
+    if((uint32_t)offset + (uint32_t)length > USB_PD_UCSI_REGFILE_SIZE) return false;
     if(length == 0) return true;
 
     FURI_CRITICAL_ENTER();
-    memcpy(data, &instance->opm_mirror[offset], length);
+    memcpy(data, &instance->ucsi_regfile[offset], length);
     FURI_CRITICAL_EXIT();
     return true;
+}
+
+/* UCSI makes only CONTROL and MESSAGE_OUT writable by the OPM; VERSION, CCI
+ * and MESSAGE_IN belong to the PPM. A write must fall entirely inside one of
+ * the two writable fields — they are not adjacent, so nothing legal spans
+ * them. */
+static bool usb_pd_ucsi_is_opm_writable(uint32_t offset, uint32_t length) {
+    const uint32_t end = offset + length;
+    if(offset >= USB_PD_UCSI_OFFSET_CONTROL && end <= USB_PD_UCSI_OFFSET_CONTROL + USB_PD_UCSI_SIZE_CONTROL) {
+        return true;
+    }
+    if(offset >= USB_PD_UCSI_OFFSET_MESSAGE_OUT && end <= USB_PD_UCSI_OFFSET_MESSAGE_OUT + USB_PD_UCSI_SIZE_MESSAGE_OUT) {
+        return true;
+    }
+    return false;
 }
 
 bool usb_pd_ucsi_write(UsbPd* instance, uint16_t offset, uint16_t length, const uint8_t* data) {
     furi_check(instance);
     furi_check(data);
-    if((uint32_t)offset + (uint32_t)length > USB_PD_UCSI_REGFILE_SIZE) return false;
     if(length == 0) return true;
+    if(!usb_pd_ucsi_is_opm_writable(offset, length)) return false;
 
     FURI_CRITICAL_ENTER();
-    memcpy(&instance->ucsi_shadow[offset], data, length);
+    memcpy(&instance->ucsi_regfile[offset], data, length);
     FURI_CRITICAL_EXIT();
 
     /* UCSI doorbell: dispatch is gated on the LAST byte of CONTROL, so

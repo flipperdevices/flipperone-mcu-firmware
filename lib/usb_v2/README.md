@@ -79,13 +79,19 @@ usb_pd_ucsi_read(pd, USB_PD_UCSI_OFFSET_CCI, USB_PD_UCSI_SIZE_CCI, buf);
 usb_pd_ucsi_write(pd, offset, 1, &byte);
 ```
 
-Writes land in a shadow register file (plain memory, no queue — nothing to
-overflow). The command is dispatched only when the **last byte of CONTROL**
-(offset 15) is written: that write is the UCSI doorbell, and it is the only
-one that wakes the worker. Writing the opcode byte first therefore does not
-trigger a half-written command. Reads are served from a mirror refreshed by
-the worker; `ucsi_alert` fires after the mirror refresh, so CCI is always
-coherent by the time the host reacts.
+Both directions share one 528-byte image of the register file (plain memory,
+no queue — nothing to overflow), split by field ownership: the worker
+refreshes the PPM-owned fields (VERSION, CCI, MESSAGE_IN) from the core, and
+the OPM writes the OPM-owned ones (CONTROL, MESSAGE_OUT). The two sets never
+overlap, so a read is a single memcpy over the whole space and MESSAGE_OUT
+reads back exactly what the host wrote. Writes outside CONTROL / MESSAGE_OUT
+are rejected, matching UCSI.
+
+The command is dispatched only when the **last byte of CONTROL** (offset 15)
+is written: that write is the UCSI doorbell, and it is the only one that
+wakes the worker. Writing the opcode byte first therefore does not trigger a
+half-written command. `ucsi_alert` fires after the image refresh, so CCI is
+always coherent by the time the host reacts.
 
 ## Notes
 

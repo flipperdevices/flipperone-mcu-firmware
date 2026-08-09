@@ -26,14 +26,15 @@
  * usb_pd_ucsi_read() / usb_pd_ucsi_write() implement the UCSI register
  * interface (VERSION / CCI / CONTROL / MESSAGE_IN / MESSAGE_OUT) for an
  * external OPM (e.g. the host CPU behind i2c_intercom). Both calls are
- * ISR-safe and accept any write granularity — single bytes included:
- * - reads are served from a mirror of the register file which is kept
- *   coherent by the worker thread;
- * - writes are staged into a shadow register file; the command is handed
- *   to the worker only when the last byte of CONTROL has been written
- *   (the UCSI doorbell), so partially written commands never dispatch.
+ * ISR-safe and accept any granularity — single bytes included:
+ * - the whole 528-byte space is readable, served from an image of the
+ *   register file kept coherent by the worker thread;
+ * - writes are accepted for CONTROL and MESSAGE_OUT (the OPM-owned fields)
+ *   and staged in that same image; the command is handed to the worker only
+ *   when the last byte of CONTROL has been written (the UCSI doorbell), so
+ *   partially written commands never dispatch.
  * When the PPM raises a UCSI alert (command completed / connector change),
- * the `ucsi_alert` callback fires from the worker thread AFTER the mirror
+ * the `ucsi_alert` callback fires from the worker thread AFTER the image
  * has been refreshed, so the OPM glue can immediately serve CCI reads.
  *
  * @warning Do not run this library together with another FUSB302 user
@@ -66,10 +67,6 @@ extern "C" {
 #define USB_PD_UCSI_OFFSET_MESSAGE_OUT 272u
 #define USB_PD_UCSI_SIZE_MESSAGE_OUT   255u
 #define USB_PD_UCSI_REGFILE_SIZE       528u
-
-/** OPM-readable window: VERSION..MESSAGE_IN inclusive. Reads beyond this
- * offset are rejected (MESSAGE_OUT is write-only from the OPM side). */
-#define USB_PD_UCSI_OPM_READ_SIZE (USB_PD_UCSI_OFFSET_MESSAGE_IN + USB_PD_UCSI_SIZE_MESSAGE_IN)
 
 typedef struct UsbPd UsbPd;
 
@@ -105,8 +102,8 @@ typedef bool (*UsbPdPowerSupplySetFn)(void* context, uint16_t voltage_mv, uint16
 typedef bool (*UsbPdHasAltPowerFn)(void* context);
 
 /** UCSI alert towards the OPM: CCI has news (command completed or connector
- * change). Fired from the worker thread after the read mirror is refreshed —
- * typically used to raise the intercom interrupt line. */
+ * change). Fired from the worker thread after the register file image is
+ * refreshed — typically used to raise the intercom interrupt line. */
 typedef void (*UsbPdUcsiAlertFn)(void* context);
 
 typedef struct {
@@ -196,20 +193,22 @@ UcsiPpmConnectorState usb_pd_get_connector_state(UsbPd* instance);
  * @return true if an explicit PD contract is in place. */
 bool usb_pd_get_contract(UsbPd* instance, UcsiPpmContractInfo* out);
 
-/** Read from the OPM-visible UCSI register window (VERSION / CCI /
- * CONTROL / MESSAGE_IN). ISR-safe, non-blocking: data comes from a mirror
- * maintained by the worker thread.
- * @return false if [offset, offset+length) is out of the readable window. */
+/** Read from the UCSI register file. The whole 528-byte space is readable:
+ * PPM-owned fields (VERSION / CCI / MESSAGE_IN) come from the core, and the
+ * OPM-owned ones (CONTROL / MESSAGE_OUT) read back what the OPM wrote.
+ * ISR-safe, non-blocking, any granularity — served from an image maintained
+ * by the worker thread.
+ * @return false if [offset, offset+length) is outside the register file. */
 bool usb_pd_ucsi_read(UsbPd* instance, uint16_t offset, uint16_t length, uint8_t* data);
 
-/** Store an OPM write to the UCSI register file (CONTROL / MESSAGE_OUT).
- * ISR-safe, non-blocking, any granularity — writing register space byte by
- * byte is fine: data is staged into a shadow register file, and the command
- * is dispatched on the worker thread only once the LAST byte of CONTROL
- * (offset 15) has been written — that write is the UCSI doorbell. Per the
- * UCSI flow the OPM must not start a new command until CCI reports the
- * previous one completed.
- * @return false if [offset, offset+length) is outside the register file. */
+/** Store an OPM write to the UCSI register file. ISR-safe, non-blocking, any
+ * granularity — writing register space byte by byte is fine: data is staged
+ * into the register file image, and the command is dispatched on the worker
+ * thread only once the LAST byte of CONTROL (offset 15) has been written —
+ * that write is the UCSI doorbell. Per the UCSI flow the OPM must not start
+ * a new command until CCI reports the previous one completed.
+ * @return false unless [offset, offset+length) lies entirely within CONTROL
+ *         or MESSAGE_OUT — the only OPM-writable fields. */
 bool usb_pd_ucsi_write(UsbPd* instance, uint16_t offset, uint16_t length, const uint8_t* data);
 
 /** Signal that the source supply rail has settled after power_supply_set().
