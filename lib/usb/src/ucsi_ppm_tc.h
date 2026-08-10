@@ -50,6 +50,13 @@ void ucsi_ppm_tc_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event);
 // `ucsi_ppm_tick` after the PHY pump.
 void ucsi_ppm_tc_tick(UcsiPpm* ppm);
 
+// Recomputes how much current we may draw as a sink — from the PD contract
+// if there is one, otherwise from the source's Type-C Rp advertisement — and
+// reports it through config.sink_current_limit when it changed. Cheap: the
+// Rp reading is cached, so this touches no I2C. Called at the end of every
+// ucsi_ppm_tick, which is what makes it pick up TC and PE changes alike.
+void ucsi_ppm_tc_update_sink_current_limit(UcsiPpm* ppm);
+
 // Milliseconds until the next TC deadline (CCDebounce expiry or the
 // AttachWait give-up timeout), or UCSI_PPM_NO_TIMEOUT when the current
 // state has no timed transition. Backend for ucsi_ppm_next_timeout_ms.

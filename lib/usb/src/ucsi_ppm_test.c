@@ -990,10 +990,17 @@ static bool test_cmd_ack_cc_ci_clears_cci(void) {
     uint8_t ack_op = UCSI_PPM_OPCODE_ACK_CC_CI;
     ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &ack_op);
 
-    TEST_ASSERT(read_cci(ppm) == 0u);
+    // The acknowledged indicators are gone, but Table 4-3 bit 29 reports
+    // completion of the ACK itself and is always notified — an OPM that waits
+    // for a notification instead of polling blocks on it.
+    TEST_ASSERT(read_cci(ppm) == UCSI_PPM_CCI_ACK_COMMAND);
     TEST_ASSERT(ppm->cmd_state == UcsiPpmCmdStateIdle);
-    // ACK clears CCI to zero — no alert is raised for "nothing to read".
-    TEST_ASSERT(g_alert_count == 0);
+    TEST_ASSERT(g_alert_count == 1);
+
+    // The next command clears the indicator again.
+    uint8_t getcap2 = UCSI_PPM_OPCODE_GET_CAPABILITY;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &getcap2);
+    TEST_ASSERT((read_cci(ppm) & UCSI_PPM_CCI_ACK_COMMAND) == 0u);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1012,9 +1019,11 @@ static bool test_cmd_ack_cc_ci_in_idle_ignored(void) {
     uint8_t ack_op = UCSI_PPM_OPCODE_ACK_CC_CI;
     ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &ack_op);
 
-    TEST_ASSERT(read_cci(ppm) == 0u);
+    // Nothing was pending, so no indicator gets cleared — but the ACK itself
+    // still completes and is reported, exactly as when something was.
+    TEST_ASSERT(read_cci(ppm) == UCSI_PPM_CCI_ACK_COMMAND);
     TEST_ASSERT(ppm->cmd_state == UcsiPpmCmdStateIdle);
-    TEST_ASSERT(g_alert_count == 0);
+    TEST_ASSERT(g_alert_count == 1);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -1745,7 +1754,8 @@ static bool test_phy_pump_multiple_events(void) {
     for(size_t i = 0; i < c.count; ++i) {
         if(c.events[i].kind == UcsiPpmPhyEventBcLvlChanged) {
             saw_bc = true;
-            TEST_ASSERT(c.events[i].u.bc_lvl == 0b10u);
+            TEST_ASSERT(c.events[i].u.bc_lvl.level == 0b10u);
+            TEST_ASSERT(c.events[i].u.bc_lvl.cc_busy == false);
         }
         if(c.events[i].kind == UcsiPpmPhyEventVbusChanged) {
             saw_vbus = true;
@@ -3098,7 +3108,8 @@ static bool test_tc_snk_detach_on_vbus_lost(void) {
     TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
     mock_i2c_reset();
 
-    // Partner drops VBUS — we should fall back to Unattached and re-arm toggle.
+    // Cable pulled: VBUS and the source's Rp go together, so both detach
+    // signals agree and there is nothing to wait for.
     g_mock_time_ms = 200;
     simulate_vbus_changed(ppm, false);
 
@@ -3111,6 +3122,85 @@ static bool test_tc_snk_detach_on_vbus_lost(void) {
     const uint8_t sw1 = g_mock_regs[Fusb302RegSwitches1];
     const Fusb302Switches1RegBits sw1_bits = *((const Fusb302Switches1RegBits*)&sw1);
     TEST_ASSERT(sw1_bits.auto_crc == 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// Brings the mock to Attached.SNK with the source advertising 1.5 A Rp, so
+// the CC level says "partner still terminating" — the state a Hard Reset
+// happens in, as opposed to an unplug.
+// mock_attach leaves the clock at 150 ms, so everything here moves forward.
+static UcsiPpm* mock_attach_snk_with_rp(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    g_mock_time_ms = 200;
+    simulate_bc_lvl_changed(ppm, 0b10u);
+    g_mock_time_ms = 250; // past tPDDebounce
+    ucsi_ppm_tick(ppm);
+    mock_i2c_reset();
+    return ppm;
+}
+
+static bool test_tc_snk_vbus_returns_within_recover_no_detach(void) {
+    // The VBUS dip a Hard Reset causes must not cost us the connection.
+    UcsiPpm* ppm = mock_attach_snk_with_rp();
+
+    g_mock_time_ms = 300;
+    simulate_vbus_changed(ppm, false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+
+    g_mock_time_ms = 800; // still inside tSrcRecover
+    simulate_vbus_changed(ppm, true);
+
+    g_mock_time_ms = 4000; // well past it — the deadline was cancelled
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_snk_detach_when_vbus_never_returns(void) {
+    // Rp still present, so we wait rather than detach — but not forever.
+    UcsiPpm* ppm = mock_attach_snk_with_rp();
+
+    g_mock_time_ms = 300;
+    simulate_vbus_changed(ppm, false);
+    g_mock_time_ms = 1000; // inside tSrcRecover
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+
+    g_mock_time_ms = 1400; // past it
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_snk_cc_busy_reading_ignored(void) {
+    // BC_LVL is only defined while the CC line is idle (FUSB302 datasheet,
+    // STATUS0.BC_LVL). A mid-frame sample reads as "no Rp", and taking it at
+    // face value turned every Hard Reset into an immediate detach.
+    UcsiPpm* ppm = mock_attach_snk_with_rp();
+
+    g_mock_time_ms = 300;
+    simulate_vbus_changed(ppm, false);
+
+    // "No Rp" arrives, but with CC activity flagged — must not be believed.
+    g_mock_time_ms = 350;
+    g_mock_regs[Fusb302RegInterruptA] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptRegBits intr = {.i_bc_lvl = 1};
+    g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
+    const Fusb302Status0RegBits s0 = {.bc_lvl = 0b00, .activity = 1};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+
+    g_mock_time_ms = 600; // long past tPDDebounce, still inside tSrcRecover
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -4128,8 +4218,27 @@ static bool test_pe_hard_reset_rx_restarts_without_counter_bump(void) {
     return true;
 }
 
-static bool test_pe_hard_reset_counter_caps_at_max(void) {
-    // Two attempts allowed; the third escalates to permanent Error.
+// Spends the sink's whole Hard Reset budget waiting for Source_Capabilities
+// that never arrive — what attaching to a Type-C-only source looks like.
+static UcsiPpm* mock_snk_exhaust_hard_resets(void) {
+    UcsiPpm* ppm = mock_attach(false);
+
+    for(int i = 0; i < 2; ++i) {
+        g_mock_time_ms += 600;
+        ucsi_ppm_tick(ppm);
+        simulate_hard_reset_sent(ppm);
+    }
+    g_mock_time_ms += 600;
+    ucsi_ppm_tick(ppm);
+    return ppm;
+}
+
+static bool test_pe_snk_no_pd_partner_settles_on_typec(void) {
+    // A plain USB host never sends Source_Capabilities. Two Hard Resets are
+    // spent finding that out; after that the sink settles for Type-C power
+    // instead of escalating (PD R3.0 §8.3.3.4.1). Error would be wrong — a
+    // dumb hub is a perfectly good power source — and further Hard Resets
+    // would only cost the partner VBUS cycles it cannot answer for.
     UcsiPpm* ppm = mock_attach(false);
 
     for(int i = 0; i < 2; ++i) {
@@ -4141,10 +4250,34 @@ static bool test_pe_hard_reset_counter_caps_at_max(void) {
     }
     TEST_ASSERT(ppm->pe_hard_reset_counter == 2u);
 
-    // Third timeout — counter would go to 3, but cap rejects → Error.
     g_mock_time_ms += 600;
     ucsi_ppm_tick(ppm);
-    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateError);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    TEST_ASSERT(ppm->pe_typec_only);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachedSnk);
+
+    // Settled for good: no armed timer, no further attempts.
+    TEST_ASSERT(ucsi_ppm_next_timeout_ms(ppm) == UCSI_PPM_NO_TIMEOUT);
+    g_mock_time_ms += 5000;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 2u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_snk_typec_only_recovers_when_pd_arrives(void) {
+    // Giving up on PD is not permanent: a partner that starts talking later
+    // must find us running the protocol again.
+    UcsiPpm* ppm = mock_snk_exhaust_hard_resets();
+    TEST_ASSERT(ppm->pe_typec_only);
+
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+
+    TEST_ASSERT(!ppm->pe_typec_only);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -4370,6 +4503,130 @@ static UcsiPpm* mock_snk_ready(void) {
     simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
     simulate_pd_message(ppm, 0x06u /* PS_RDY */, NULL, 0);
     return ppm;
+}
+
+// PD R3.0 §6.3.17 — anything we do not implement owes the partner a
+// Not_Supported. Staying silent stalls the partner's SenderResponseTimer and
+// it escalates to Soft_Reset and then Hard Reset, collapsing the connection.
+
+static bool test_pe_unsupported_control_gets_not_supported(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+
+    simulate_pd_message(ppm, 0x18u /* Get_Revision */, NULL, 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u /* Not_Supported */) >= 0);
+    // Answering must not disturb the contract.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_unsupported_data_gets_not_supported(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+
+    const uint32_t vdo = 0u;
+    simulate_pd_message(ppm, 0x0Fu /* Vendor_Defined */, &vdo, 1);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u) >= 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_responses_do_not_draw_not_supported(void) {
+    // Replying to a reply would ping-pong forever. Ping likewise needs no
+    // answer at all (PD R3.0 §6.3.6).
+    const uint8_t quiet[] = {
+        0x01u /* GoodCRC */,
+        0x03u /* Accept */,
+        0x04u /* Reject */,
+        0x05u /* Ping */,
+        0x0Cu /* Wait */,
+        0x10u /* Not_Supported */,
+    };
+
+    for(size_t i = 0; i < sizeof(quiet); ++i) {
+        UcsiPpm* ppm = mock_snk_ready();
+        mock_i2c_reset();
+        simulate_pd_message(ppm, quiet[i], NULL, 0);
+        TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u) < 0);
+        ucsi_ppm_free(ppm);
+    }
+
+    return true;
+}
+
+// PD R3.0 §6.4.1.3 — capability queries are not optional for the side that
+// owns the answer, and as a DRP we own both (PE_DR_SNK_Give_Source_Cap).
+// Refusing them leaves the partner unable to finish discovery.
+
+static bool test_pe_get_sink_cap_answered_with_sink_caps(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+
+    simulate_pd_message(ppm, 0x08u /* Get_Sink_Cap */, NULL, 0);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u /* Not_Supported */) < 0);
+    const int idx = find_fifo_burst_by_msg_type(0x04u /* Sink_Capabilities */);
+    TEST_ASSERT(idx >= 0);
+
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == ppm->config.sink_caps.count);
+    const uint32_t pdo0 = (uint32_t)t->data[8] | ((uint32_t)t->data[9] << 8) |
+                          ((uint32_t)t->data[10] << 16) | ((uint32_t)t->data[11] << 24);
+    TEST_ASSERT(pdo0 == ppm->config.sink_caps.pdos[0]);
+    // Answering must not disturb the contract.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_get_source_cap_answered_while_sink(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+
+    simulate_pd_message(ppm, 0x07u /* Get_Source_Cap */, NULL, 0);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u) < 0);
+    const int idx = find_fifo_burst_by_msg_type(0x01u /* Source_Capabilities */);
+    TEST_ASSERT(idx >= 0);
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+    // Sent with our present roles, so the power role bit still reads Sink.
+    TEST_ASSERT((hdr & (1u << 8)) == 0u);
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == ppm->config.source_caps.count);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// A Source may re-advertise at any time; PD R3.0 §8.3.3.3 sends that through
+// PE_SNK_Evaluate_Capability from SnkReady just as from WaitForCapabilities.
+static bool test_pe_snk_ready_recv_source_caps_renegotiates(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 2000, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u) < 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+
+    const int idx = find_fifo_burst_by_msg_type(0x02u /* Request */);
+    TEST_ASSERT(idx >= 0);
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint32_t rdo = (uint32_t)t->data[8] | ((uint32_t)t->data[9] << 8) |
+                         ((uint32_t)t->data[10] << 16) | ((uint32_t)t->data[11] << 24);
+    // Asks for the newly advertised 2000 mA, not the 3000 mA of the old contract.
+    TEST_ASSERT(((rdo >> 10) & 0x3FFu) == 200u);
+
+    ucsi_ppm_free(ppm);
+    return true;
 }
 
 // --- Public contract API + commit-current regressions ----------------------
@@ -5060,6 +5317,54 @@ static bool test_ppm_reset_alert_fires_with_zero_mask(void) {
     return true;
 }
 
+// A SET_NOTIFICATION_ENABLE decides the fate of *later* commands, never its
+// own completion: an OPM that waits for the notification instead of polling
+// would otherwise hang on the very command that changed the mask. Both
+// directions of the change are checked below.
+
+static bool test_cmd_enabling_notifications_alerts_itself(void) {
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = counting_alert;
+    ucsi_ppm_init(ppm, &cfg);
+    TEST_ASSERT(ppm->notification_mask == 0u);
+    g_alert_count = 0;
+
+    uint8_t ctrl[8] = {0};
+    ctrl[0] = UCSI_PPM_OPCODE_SET_NOTIFICATION_ENABLE;
+    ctrl[2] = (uint8_t)UCSI_PPM_NOTIF_CMD_COMPLETED;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 8, ctrl);
+
+    TEST_ASSERT(ppm->notification_mask == UCSI_PPM_NOTIF_CMD_COMPLETED);
+    TEST_ASSERT(read_cci(ppm) & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(g_alert_count == 1);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cmd_disabling_notifications_alerts_itself(void) {
+    UcsiPpm* ppm = ucsi_ppm_alloc();
+    UcsiPpmConfig cfg;
+    make_valid_config(&cfg);
+    cfg.alert = counting_alert;
+    ucsi_ppm_init(ppm, &cfg);
+    ppm->notification_mask = UCSI_PPM_NOTIF_CMD_COMPLETED;
+    g_alert_count = 0;
+
+    uint8_t ctrl[8] = {0}; // all-zero payload → mask cleared
+    ctrl[0] = UCSI_PPM_OPCODE_SET_NOTIFICATION_ENABLE;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 8, ctrl);
+
+    TEST_ASSERT(ppm->notification_mask == 0u);
+    TEST_ASSERT(read_cci(ppm) & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(g_alert_count == 1);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_notify_mask_set_via_command_takes_effect(void) {
     // SET_NOTIFICATION_ENABLE writes the mask; subsequent notify_connector_change
     // honours the new value.
@@ -5262,6 +5567,9 @@ static const TestEntry k_tests[] = {
 
     // L3 Type-C SM 1c (Detach + AttachWait timeout).
     TEST_ENTRY(test_tc_snk_detach_on_vbus_lost),
+    TEST_ENTRY(test_tc_snk_vbus_returns_within_recover_no_detach),
+    TEST_ENTRY(test_tc_snk_detach_when_vbus_never_returns),
+    TEST_ENTRY(test_tc_snk_cc_busy_reading_ignored),
     TEST_ENTRY(test_tc_src_detach_on_bc_lvl_high),
     TEST_ENTRY(test_tc_src_bc_lvl_rd_present_no_detach),
     TEST_ENTRY(test_tc_snk_bc_lvl_changes_no_detach),
@@ -5328,15 +5636,24 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_cmd_complete_alert_gated_by_mask_bit0),
     TEST_ENTRY(test_cmd_complete_alert_fires_with_mask_bit0),
     TEST_ENTRY(test_ppm_reset_alert_fires_with_zero_mask),
+    TEST_ENTRY(test_cmd_enabling_notifications_alerts_itself),
+    TEST_ENTRY(test_cmd_disabling_notifications_alerts_itself),
 
     // L3 PE Hard Reset orchestration.
     TEST_ENTRY(test_pe_snk_hard_reset_sent_returns_to_wait_caps),
     TEST_ENTRY(test_pe_src_hard_reset_sent_returns_to_send_caps),
     TEST_ENTRY(test_pe_hard_reset_rx_restarts_without_counter_bump),
-    TEST_ENTRY(test_pe_hard_reset_counter_caps_at_max),
+    TEST_ENTRY(test_pe_snk_no_pd_partner_settles_on_typec),
+    TEST_ENTRY(test_pe_snk_typec_only_recovers_when_pd_arrives),
     TEST_ENTRY(test_pe_hard_reset_counter_resets_on_ready),
 
     // Public contract API + commit-current (regressions from bring-up).
+    TEST_ENTRY(test_pe_unsupported_control_gets_not_supported),
+    TEST_ENTRY(test_pe_unsupported_data_gets_not_supported),
+    TEST_ENTRY(test_pe_responses_do_not_draw_not_supported),
+    TEST_ENTRY(test_pe_get_sink_cap_answered_with_sink_caps),
+    TEST_ENTRY(test_pe_get_source_cap_answered_while_sink),
+    TEST_ENTRY(test_pe_snk_ready_recv_source_caps_renegotiates),
     TEST_ENTRY(test_get_contract_reports_none_when_no_contract),
     TEST_ENTRY(test_get_contract_populates_in_snk_ready),
     TEST_ENTRY(test_contract_current_reflects_renegotiated_op_current),

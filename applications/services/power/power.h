@@ -38,12 +38,21 @@ bool power_bq25792_get_vsys_mv(Power* instance, uint16_t* vsys);
 bool power_bq25792_get_charger_temperature(Power* instance, float* temperature);
 bool power_bq25792_get_temperature_battery_celsius(Power* instance, float* temperature);
 bool power_bq25792_get_input_current_limit_ma(Power* instance, uint16_t* input_current_limit);
+
+/** VINDPM read-back, see bq25792_get_input_voltage_limit_mv(). */
+bool power_bq25792_get_input_voltage_limit_mv(Power* instance, uint16_t* input_voltage_limit);
 bool power_bq25792_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit);
 bool power_bq25792_get_charge_voltage_limit_ma(Power* instance, uint16_t* charge_voltage_limit);
 bool power_bq25792_set_charge_voltage_limit_ma(Power* instance, uint16_t charge_voltage_limit);
 bool power_bq25792_get_charge_current_limit_ma(Power* instance, uint16_t* charge_current_limit);
 bool power_bq25792_set_charge_current_limit_ma(Power* instance, uint16_t charge_current_limit);
 bool power_bq25792_charge_enable(Power* instance, bool enable);
+
+/** Input Current Optimization, see bq25792_ico_enable(). Enable it only for a
+ * source whose real capability we cannot know — with a PD contract or a
+ * Type-C Rp advertisement the limit is already exact and probing past it
+ * browns the source out. */
+bool power_bq25792_ico_enable(Power* instance, bool enable);
 bool power_bq25792_charge_is_enabled(Power* instance, bool* enabled);
 bool power_bq25792_get_charger_status(Power* instance, Bq25792ChargerStatusReg* status);
 bool power_bq25792_get_charger_fault(Power* instance, Bq25792FaultStatusReg* fault);

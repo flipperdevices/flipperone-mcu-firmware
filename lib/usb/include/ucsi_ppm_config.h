@@ -64,6 +64,7 @@ typedef struct {
     UcsiPpmGpioWriteFn gpio_write_vbus_source;
     UcsiPpmPowerSupplySetFn power_supply_set;
     UcsiPpmHasAltPowerFn has_alt_power;
+    UcsiPpmSinkCurrentLimitFn sink_current_limit; // optional; see ucsi_ppm_hal.h
 
     UcsiPpmGpioReadFn gpio_read_fusb302_int;
     UcsiPpmGpioWriteFn gpio_write_vbus_discharge;

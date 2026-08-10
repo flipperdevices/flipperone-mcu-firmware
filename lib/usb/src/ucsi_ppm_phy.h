@@ -58,12 +58,21 @@ typedef enum {
     UcsiPpmPhyEventHardResetSent, // I_HARDSENT
 } UcsiPpmPhyEventKind;
 
+// BC_LVL is a level measured on the active CC pin, so it is only meaningful
+// while the line is idle — during BMC traffic CC swings across the whole
+// range and the reading is noise. STATUS0.ACTIVITY says which of the two we
+// sampled, and consumers must discard the reading when it is set.
+typedef struct {
+    uint8_t level; // 2-bit STATUS0.BC_LVL
+    bool cc_busy; // STATUS0.ACTIVITY — reading is not trustworthy
+} UcsiPpmPhyBcLvl;
+
 typedef struct {
     UcsiPpmPhyEventKind kind;
     union {
         UcsiPpmPhyTogss togss; // ToggleDone
         bool vbus_ok; // VbusChanged
-        uint8_t bc_lvl; // BcLvlChanged (2-bit STATUS0.BC_LVL)
+        UcsiPpmPhyBcLvl bc_lvl; // BcLvlChanged
         bool comp_above; // CompChanged (STATUS0.COMP)
     } u;
 } UcsiPpmPhyEvent;
@@ -157,6 +166,10 @@ UcsiPpmStatus ucsi_ppm_phy_enable_pd(UcsiPpm* ppm, uint8_t n_retries);
 
 // Disables AUTO_CRC. Used when partner detaches.
 UcsiPpmStatus ucsi_ppm_phy_disable_pd(UcsiPpm* ppm);
+
+// Logs the registers that govern PD receive and GoodCRC transmit, tagged with
+// `when`. Costs five I2C reads, so call it at transitions, not per event.
+void ucsi_ppm_phy_log_config(UcsiPpm* ppm, const char* when);
 
 // Triggers Hard Reset BMC pattern (CONTROL3.SEND_HARD_RESET = 1).
 // Self-clearing in hardware; emits HARD_RESET_SENT event on completion.

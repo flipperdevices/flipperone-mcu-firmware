@@ -5,7 +5,7 @@ pure state machine; this library owns the runtime around it:
 
 - a dedicated worker thread with a `FuriEventLoop`;
 - FUSB302 I2C traffic (bus acquire/release included);
-- the FUSB302 interrupt, attached through the BSP expander;
+- the FUSB302 interrupt, on a GPIO supplied by the caller;
 - all state machine timers;
 - an ISR-safe UCSI register channel for an external OPM (host CPU behind
   `i2c_intercom`).
@@ -98,9 +98,10 @@ always coherent by the time the host reacts.
 - Do not run together with another FUSB302 user (the legacy `pd` service in
   `applications/services/pd`) — they will race on the chip registers, and
   the BSP allows only one attached FUSB302 callback at a time.
-- The FUSB302 interrupt callback is attached on start and detached on
-  `usb_pd_free()` (`furi_bsp_expander_main_detach_fusb302_callback` waits
-  for an in-flight invocation), so alloc/free cycles are fully symmetric.
+- `irq_gpio` is the FUSB302 INT_N line, taken directly rather than through
+  the main expander: no I2C round trip to find out who interrupted, and no
+  dependency on the expander's own interrupt configuration. It is claimed on
+  start and released on `usb_pd_free()`, so alloc/free cycles are symmetric.
 - If `power_supply_ready_async` is set, call
   `usb_pd_notify_power_supply_ready()` once the programmed rail settles;
   otherwise readiness is signaled synchronously after `power_supply_set`.

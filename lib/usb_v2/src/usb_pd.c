@@ -1,9 +1,9 @@
 #include "usb_pd.h"
 
 #include <furi.h>
+#include <furi_hal_gpio.h>
 #include <furi_hal_i2c.h>
 #include <furi_hal_i2c_config.h>
-#include <furi_bsp.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -72,10 +72,12 @@ struct UsbPd {
 
 static void usb_pd_worker_ucsi_control(UsbPd* instance);
 
-/* Runs on the BSP expander worker thread (not ISR context). The detach in
- * the worker teardown waits for an in-flight invocation, so `instance` is
- * always valid here. */
-static void usb_pd_fusb302_callback(void* context) {
+/* FUSB302 INT_N falling edge, real ISR context. The chip holds the line low
+ * until its interrupt registers read back clear, so an event raised while the
+ * worker is mid-pump yields no second edge and this never fires again. The
+ * worker closes that gap by re-reading the pin (gpio_read_fusb302_int) rather
+ * than trusting one edge to mean one event. */
+static void __isr __not_in_flash_func(usb_pd_fusb302_isr)(void* context) {
     UsbPd* instance = context;
     furi_event_loop_set_custom_event(instance->event_loop, UsbPdLoopEventPhyIrq);
 }
@@ -85,6 +87,12 @@ static void usb_pd_fusb302_callback(void* context) {
 static uint32_t usb_pd_hal_time_ms(void* context) {
     UNUSED(context);
     return furi_get_tick();
+}
+
+/* INT_N is active low, so a high level means the chip has nothing pending. */
+static bool usb_pd_hal_read_irq_pin(void* context) {
+    UsbPd* instance = context;
+    return furi_hal_gpio_read(instance->config.irq_gpio);
 }
 
 static void usb_pd_hal_alert(void* context) {
@@ -145,6 +153,12 @@ static UcsiPpmStatus usb_pd_hal_power_supply_set(void* context, uint16_t voltage
     return UcsiPpmStatusOk;
 }
 
+static void usb_pd_hal_sink_current_limit(void* context, uint16_t current_ma, UcsiPpmSinkLimitSource source) {
+    UsbPd* instance = context;
+    if(!instance->config.sink_current_limit_set) return;
+    instance->config.sink_current_limit_set(instance->config.callback_context, current_ma, source);
+}
+
 static bool usb_pd_hal_has_alt_power(void* context) {
     UsbPd* instance = context;
     if(!instance->config.has_alt_power) return false;
@@ -187,6 +201,11 @@ static void usb_pd_fill_ppm_config(UsbPd* instance, UcsiPpmConfig* out) {
     out->gpio_write_vbus_source = usb_pd_hal_vbus_source;
     out->power_supply_set = usb_pd_hal_power_supply_set;
     out->has_alt_power = usb_pd_hal_has_alt_power;
+    out->sink_current_limit = usb_pd_hal_sink_current_limit;
+    /* Lets the core keep pumping while INT_N is still held low. Without it a
+     * flag raised mid-pump would wait for the fallback poll, because a level
+     * that never releases produces no second edge for our ISR. */
+    if(cfg->irq_gpio) out->gpio_read_fusb302_int = usb_pd_hal_read_irq_pin;
     out->log = usb_pd_hal_log;
     out->fusb302_i2c_addr = cfg->fusb302_i2c_addr;
 
@@ -392,8 +411,9 @@ static int32_t usb_pd_worker(void* context) {
      * anyone can observe us. */
     usb_pd_worker_epilogue(instance);
 
-    if(instance->config.use_phy_irq) {
-        furi_bsp_expander_main_attach_fusb302_callback(usb_pd_fusb302_callback, instance);
+    if(instance->config.irq_gpio) {
+        furi_hal_gpio_init(instance->config.irq_gpio, GpioModeInput, GpioPullUp, GpioSpeedLow);
+        furi_hal_gpio_add_int_callback(instance->config.irq_gpio, GpioConditionFall, usb_pd_fusb302_isr, instance);
     }
 
     FURI_LOG_I(TAG, "up: FUSB302 @ 0x%02X", instance->config.fusb302_i2c_addr);
@@ -403,11 +423,11 @@ static int32_t usb_pd_worker(void* context) {
 
     furi_event_loop_run(instance->event_loop);
 
-    /* Teardown. Detach first: it blocks until an in-flight callback has
-     * returned, so nothing references the event loop after this point (a
-     * last-moment custom event on the stopped loop is harmless). */
-    if(instance->config.use_phy_irq) {
-        furi_bsp_expander_main_detach_fusb302_callback();
+    /* Teardown. Drop the interrupt first so nothing can post to the event
+     * loop from here on (a last-moment event on the stopped loop would be
+     * harmless anyway, but the loop is freed below). */
+    if(instance->config.irq_gpio) {
+        furi_hal_gpio_remove_int_callback(instance->config.irq_gpio);
     }
 
     furi_event_loop_timer_free(instance->sm_timer);
@@ -434,7 +454,7 @@ void usb_pd_config_init_default(UsbPdConfig* config) {
     memset(config, 0, sizeof(*config));
 
     config->fusb302_i2c_addr = USB_PD_DEFAULT_FUSB302_ADDR;
-    config->use_phy_irq = true;
+    // irq_gpio is board wiring — the caller has to supply it.
     config->phy_poll_period_ms = USB_PD_DEFAULT_PHY_POLL_MS;
     config->thread_stack_size = USB_PD_DEFAULT_STACK_SIZE;
 
@@ -455,7 +475,7 @@ UsbPd* usb_pd_alloc(const UsbPdConfig* config) {
     furi_check(config);
     furi_check(config->vbus_source_set);
     furi_check(config->power_supply_set);
-    furi_check(config->use_phy_irq || config->phy_poll_period_ms);
+    furi_check(config->irq_gpio || config->phy_poll_period_ms);
 
     UsbPd* instance = malloc(sizeof(UsbPd));
 

@@ -2,15 +2,7 @@
 #include "ucsi_ppm_prl.h"
 #include "ucsi_ppm_pe.h"
 
-// #define UCSI_PRL_DEBUG_ENABLED
-
 #define TAG "UcsiPrl"
-
-#ifdef UCSI_PRL_DEBUG_ENABLED
-#define UCSI_PRL_DEBUG(...) FURI_LOG_I(TAG, __VA_ARGS__)
-#else
-#define UCSI_PRL_DEBUG(...)
-#endif
 
 // PD R3.0 Message Header — MessageID field, bits 11:9.
 #define MSG_HDR_MSG_ID_SHIFT 9u
@@ -21,6 +13,7 @@
 #define MSG_HDR_MSG_TYPE_MASK  0x001Fu
 #define MSG_HDR_NUM_OBJ_SHIFT  12u
 #define MSG_HDR_NUM_OBJ_MASK   ((uint16_t)(0x07u << MSG_HDR_NUM_OBJ_SHIFT))
+#define PD_MSG_TYPE_GOODCRC    0x01u
 #define PD_MSG_TYPE_SOFT_RESET 0x0Du
 
 // MessageIDCounter wraps after 0..7 (PD R3.0 §6.8.1 nMessageIDCount = 7).
@@ -45,11 +38,12 @@ UcsiPpmStatus ucsi_ppm_prl_send_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* msg) {
     // (msg type, NDO etc) are left alone — PE owns them.
     msg->header = (uint16_t)((msg->header & ~MSG_HDR_MSG_ID_MASK) | ((uint16_t)(ppm->prl_next_tx_msg_id & 0x07u) << MSG_HDR_MSG_ID_SHIFT));
 
-    UCSI_PRL_DEBUG(
+    UCSI_LOG_I(
+        ppm,
         "tx type=0x%02X ndo=%u id=%u", (unsigned)(msg->header & 0x1Fu), (unsigned)((msg->header >> 12) & 0x07u), (unsigned)(ppm->prl_next_tx_msg_id & 0x07u));
     const UcsiPpmStatus s = ucsi_ppm_phy_send_message(ppm, msg);
     if(s != UcsiPpmStatusOk) {
-        FURI_LOG_W(TAG, "tx phy_send failed: %d", (int)s);
+        UCSI_LOG_W(ppm, "tx phy_send failed: %d", (int)s);
         return s;
     }
 
@@ -68,13 +62,34 @@ static void prl_drain_rx_fifo(UcsiPpm* ppm) {
         UcsiPpmPhyPdMsg msg = {0};
         bool received = false;
         const UcsiPpmStatus s = ucsi_ppm_phy_recv_message(ppm, &msg, &received);
-        if(s != UcsiPpmStatusOk || !received) break;
+        if(s != UcsiPpmStatusOk) {
+            // The PHY resynchronizes the FIFO itself where it can; say so
+            // either way, because a silent failure here looks exactly like
+            // "nothing arrived" and hides a stalled receiver.
+            UCSI_LOG_W(ppm, "rx failed: %d", (int)s);
+            break;
+        }
+        if(!received) break;
 
         // Soft_Reset frames reset PRL state before dedup (PD R3.0 §6.8.1.2).
         // The partner's MessageIDCounter has just rolled back to 0, so our
         // stored last_rx_msg_id would otherwise dedup the legitimate frame.
         const uint8_t msg_type = (uint8_t)(msg.header & MSG_HDR_MSG_TYPE_MASK);
         const uint8_t num_obj = (uint8_t)((msg.header & MSG_HDR_NUM_OBJ_MASK) >> MSG_HDR_NUM_OBJ_SHIFT);
+
+        // GoodCRC belongs to the protocol layer and never reaches PE (PD R3.0
+        // §6.3.1). The chip answers incoming frames itself via AUTO_CRC, so a
+        // copy landing in the FIFO is a stray we drop before dedup — its
+        // MessageID mirrors the frame being acked and would poison
+        // prl_last_rx_msg_id for the next real message.
+        //
+        // Logged rather than dropped silently: an acknowledged transmission
+        // and a stalled receiver look identical in a trace otherwise.
+        if(msg_type == PD_MSG_TYPE_GOODCRC && num_obj == 0u) {
+            UCSI_LOG_D(ppm, "rx goodcrc id=%u", (unsigned)((msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u));
+            continue;
+        }
+
         const bool is_soft_reset = (msg_type == PD_MSG_TYPE_SOFT_RESET && num_obj == 0u);
         if(is_soft_reset && msg.sop_type == UcsiPpmPhySopTypeSop) {
             ppm->prl_next_tx_msg_id = 0u;
@@ -95,8 +110,9 @@ static void prl_drain_rx_fifo(UcsiPpm* ppm) {
         }
 
         // Deliver to PE for state-machine processing.
-        UCSI_PRL_DEBUG(
-            "rx type=0x%02X ndo=%u id=%u sop=%u", msg_type, num_obj, (unsigned)((msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u), (unsigned)msg.sop_type);
+        UCSI_LOG_I(
+        ppm,
+            "rx type=0x%02X ndo=%u id=%u sop=%u", (unsigned)msg_type, (unsigned)num_obj, (unsigned)((msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u), (unsigned)msg.sop_type);
         ucsi_ppm_pe_handle_message(ppm, &msg);
         ppm->prl_messages_delivered++;
     }
@@ -109,7 +125,18 @@ void ucsi_ppm_prl_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         break;
     case UcsiPpmPhyEventHardResetRx:
     case UcsiPpmPhyEventHardResetSent:
-        // PD R3.0 §6.8.2: Hard Reset clears MessageIDCounter on both ends.
+        // PD R3.0 §6.8.2: a Hard Reset resets the protocol layer on both ends
+        // and discards everything in flight. Clearing our MessageID counters
+        // is only half of that — the chip's FIFOs still hold frames from
+        // before the reset. Delivering one afterwards makes PE answer a
+        // partner that has already torn the session down, which then times
+        // out waiting for a reply that can never come.
+        //
+        // Safe to do here: the pump emits HardResetRx (INTERRUPTA) before
+        // MessageRx (INTERRUPTB), so the stale frame is gone before we drain.
+        (void)ucsi_ppm_phy_flush_rx(ppm);
+        (void)ucsi_ppm_phy_flush_tx(ppm);
+        UCSI_LOG_I(ppm, "hard reset: fifos flushed, msg ids cleared");
         // PE coordination (state machine effects) lives elsewhere.
         (void)ucsi_ppm_prl_reset(ppm);
         break;

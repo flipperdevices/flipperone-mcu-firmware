@@ -354,20 +354,6 @@ void furi_bsp_expander_main_attach_fusb302_callback(FuriCallback callback, void*
     }
 }
 
-void furi_bsp_expander_main_detach_fusb302_callback(void) {
-    furi_check(expander_main != NULL);
-    if(!expander_main->handle) {
-        furi_bsp_show_error_message_main_expander();
-        return;
-    }
-    furi_check(expander_main->fusb302.callback != NULL);
-    // Taking the storage mutex inside set_callback blocks until an
-    // in-flight invocation on the worker thread has returned, so the
-    // caller can free the callback context right after this returns.
-    // Must not be called from the callback itself (mutex is not recursive).
-    furi_bsp_set_callback(&expander_main->fusb302, NULL, NULL);
-}
-
 void furi_bsp_expander_main_attach_mux_vconn_fault_callback(FuriCallback callback, void* context) {
     furi_check(callback != NULL);
     furi_check(expander_main != NULL);

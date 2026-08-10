@@ -2,6 +2,8 @@
 
 #include "drivers/fusb302/fusb302_reg.h"
 
+#define TAG "UcsiPhy"
+
 // All POWER blocks on (bandgap, receiver/refs, measure, oscillator).
 // plan/fusb302.md §6 — full power for PD communication.
 #define PHY_POWER_ALL_ON 0x0Fu
@@ -274,6 +276,13 @@ UcsiPpmStatus ucsi_ppm_phy_enable_pd(UcsiPpm* ppm, uint8_t n_retries) {
     s = ucsi_ppm_phy_pd_reset(ppm);
     if(s != UcsiPpmStatusOk) return s;
 
+    // Start the attached session with empty FIFOs. Between the toggle
+    // settling and this call the partner may already have transmitted, and
+    // with AUTO_CRC still off those frames were never acknowledged — they are
+    // stale by definition and must not be the first thing PRL sees.
+    (void)ucsi_ppm_phy_flush_rx(ppm);
+    (void)ucsi_ppm_phy_flush_tx(ppm);
+
     // SWITCHES1.AUTO_CRC = 1.
     s = phy_rmw_reg(ppm, Fusb302RegSwitches1, 1u << 2, 1u << 2);
     if(s != UcsiPpmStatusOk) return s;
@@ -285,6 +294,31 @@ UcsiPpmStatus ucsi_ppm_phy_enable_pd(UcsiPpm* ppm, uint8_t n_retries) {
     const uint8_t mask = (uint8_t)((1u << 0 /* AUTO_RETRY */) | (3u << 1 /* N_RETRIES */) | (1u << 3 /* AUTO_SOFTRESET */) | (1u << 4 /* AUTO_HARDRESET */));
     const uint8_t val = (uint8_t)((1u << 0) | ((uint32_t)n_retries << 1));
     return phy_rmw_reg(ppm, Fusb302RegControl3, mask, val);
+}
+
+void ucsi_ppm_phy_log_config(UcsiPpm* ppm, const char* when) {
+    // The registers that decide whether the chip can receive a PD frame and
+    // answer it with GoodCRC. Read individually — they are not contiguous.
+    static const uint8_t regs[] = {
+        Fusb302RegSwitches0,
+        Fusb302RegSwitches1,
+        Fusb302RegControl2,
+        Fusb302RegControl3,
+        Fusb302RegPower,
+    };
+    uint8_t v[sizeof(regs)] = {0};
+    for(size_t i = 0; i < sizeof(regs); ++i) {
+        if(phy_read_reg(ppm, regs[i], &v[i]) != UcsiPpmStatusOk) v[i] = 0xFFu;
+    }
+    UCSI_LOG_I(
+        ppm,
+        "%s: sw0=%02X sw1=%02X ctl2=%02X ctl3=%02X pwr=%02X",
+        when,
+        (unsigned)v[0],
+        (unsigned)v[1],
+        (unsigned)v[2],
+        (unsigned)v[3],
+        (unsigned)v[4]);
 }
 
 UcsiPpmStatus ucsi_ppm_phy_disable_pd(UcsiPpm* ppm) {
@@ -423,8 +457,17 @@ UcsiPpmStatus ucsi_ppm_phy_recv_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* out, bool
         break;
     default:
         // SOP'_DEBUG / SOP''_DEBUG aren't in our v1 enum. We also never
-        // enable ENSOP1/ENSOP2 in CONTROL1, so seeing those tokens means
-        // the chip drifted from our expected configuration.
+        // enable ENSOP1/ENSOP2 in CONTROL1, so seeing those tokens means the
+        // FIFO is out of sync with us.
+        //
+        // We have already consumed a token and two header bytes and cannot
+        // know how many more belong to this frame, so there is no way to skip
+        // forward safely. Returning without draining would leave the FIFO
+        // permanently misaligned and permanently non-empty — every later read
+        // would land mid-frame and fail the same way, killing reception for
+        // good. Dropping everything is the only recovery available.
+        UCSI_LOG_W(ppm, "rx token %02X unrecognized, flushing fifo", (unsigned)head[0]);
+        (void)ucsi_ppm_phy_flush_rx(ppm);
         return UcsiPpmStatusInternal;
     }
 
@@ -511,6 +554,14 @@ UcsiPpmStatus ucsi_ppm_phy_pump(UcsiPpm* ppm, UcsiPpmPhyEventSink sink, void* si
     // Read the three interrupt registers in one burst. They are adjacent
     // (INTERRUPTA = 0x3E, INTERRUPTB = 0x3F, INTERRUPT = 0x42) but not
     // contiguous, so we issue two reads: A+B together, then INTERRUPT.
+    // Sampled before the reads clear anything, so it says whether the chip was
+    // actually asking for service. A pump that finds flags set while the pin
+    // reads high means the edge was lost between chip and CPU; flags with the
+    // pin low mean we simply did not come when called.
+    const bool int_asserted = ppm->config.gpio_read_fusb302_int ?
+                                  !ppm->config.gpio_read_fusb302_int(ppm->config.hal_ctx) :
+                                  false;
+
     uint8_t inta_intb[2];
     UcsiPpmStatus s = phy_read_regs(ppm, Fusb302RegInterruptA, inta_intb, 2);
     if(s != UcsiPpmStatusOk) return s;
@@ -521,6 +572,22 @@ UcsiPpmStatus ucsi_ppm_phy_pump(UcsiPpm* ppm, UcsiPpmPhyEventSink sink, void* si
     s = phy_read_reg(ppm, Fusb302RegInterrupt, &intr);
     if(s != UcsiPpmStatusOk) return s;
 
+    // Ground truth for anything the chip tells us. Also dump STATUS0 —
+    // several handlers below re-read it and act on the level, so seeing the
+    // level next to the edge that reported it is what makes traces readable.
+    if(intr || inta || intb) {
+        uint8_t status0 = 0xFFu;
+        (void)phy_read_reg(ppm, Fusb302RegStatus0, &status0);
+        UCSI_LOG_D(
+            ppm,
+            "irq int=%02X a=%02X b=%02X sts0=%02X n=%u",
+            (unsigned)intr,
+            (unsigned)inta,
+            (unsigned)intb,
+            (unsigned)status0,
+            (unsigned)int_asserted);
+    }
+
     // INTERRUPT bits (datasheet Fusb302InterruptRegBits but unused — we go
     // by raw bit positions per fusb302.md §4.1).
     if(intr & (1u << 0)) { // I_BC_LVL
@@ -528,7 +595,11 @@ UcsiPpmStatus ucsi_ppm_phy_pump(UcsiPpm* ppm, UcsiPpmPhyEventSink sink, void* si
         if(phy_read_reg(ppm, Fusb302RegStatus0, &status0) == UcsiPpmStatusOk) {
             UcsiPpmPhyEvent ev = {
                 .kind = UcsiPpmPhyEventBcLvlChanged,
-                .u.bc_lvl = (uint8_t)(status0 & 0x03u),
+                .u.bc_lvl =
+                    {
+                        .level = (uint8_t)(status0 & 0x03u),
+                        .cc_busy = (status0 & (1u << 6)) != 0u, // STATUS0.ACTIVITY
+                    },
             };
             sink(sink_ctx, &ev);
         }
@@ -574,7 +645,25 @@ UcsiPpmStatus ucsi_ppm_phy_pump(UcsiPpm* ppm, UcsiPpmPhyEventSink sink, void* si
 
     // INTERRUPTB bit 0 == I_GCRCSENT — auto-GoodCRC fired in response to a
     // good incoming packet. Treat as "RX has a message" so PRL pulls it.
-    if(intb & (1u << 0)) {
+    bool rx_pending = (intb & (1u << 0)) != 0u;
+
+    // GCRCSENT is not the only way a frame reaches the FIFO: anything that
+    // landed while AUTO_CRC was still off (the window between attach and
+    // enable_pd) is sitting there with no interrupt to announce it. Draining
+    // only on the interrupt leaves it at the head of the FIFO forever, where
+    // it shadows every later message. Ask the chip directly instead.
+    if(!rx_pending) {
+        uint8_t status1;
+        if(phy_read_reg(ppm, Fusb302RegStatus1, &status1) == UcsiPpmStatusOk) {
+            const bool rx_empty = (status1 & (1u << 5)) != 0u; // STATUS1.RX_EMPTY
+            if(!rx_empty) {
+                UCSI_LOG_D(ppm, "rx fifo not empty without gcrcsent (sts1=%02X)", (unsigned)status1);
+                rx_pending = true;
+            }
+        }
+    }
+
+    if(rx_pending) {
         emit(sink, sink_ctx, UcsiPpmPhyEventMessageRx);
     }
 

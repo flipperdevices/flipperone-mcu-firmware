@@ -5,8 +5,24 @@
 #include "ucsi_ppm_prl.h"
 #include "ucsi_ppm_pe.h"
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+
+#define TAG "UcsiPpm"
+
+// Bound on the level-drain loop in ucsi_ppm_tick. Only a pin wedged low can
+// reach it — real back-to-back traffic settles in two or three passes — so it
+// exists to keep a hardware fault from hanging the worker, not to ration work.
+#define UCSI_PPM_PHY_IRQ_DRAIN_LIMIT 8u
+
+void ucsi_ppm_log(const UcsiPpm* ppm, UcsiPpmLogLevel level, const char* module, const char* fmt, ...) {
+    if(!ppm || !ppm->config.log) return;
+    va_list args;
+    va_start(args, fmt);
+    ppm->config.log(ppm->config.hal_ctx, level, module, fmt, args);
+    va_end(args);
+}
 
 // Two byte ranges [a_begin, a_end) and [b_begin, b_end) overlap
 // iff a_begin < b_end && b_begin < a_end.
@@ -222,10 +238,25 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     if(ppm->lifecycle != UcsiPpmLifecycleInitialized) return UcsiPpmStatusNotInitialized;
 
     // Drain FUSB302 IRQ if the ISR-context caller flagged one.
+    //
+    // INT_N is a level, not a pulse: the chip holds it low until every
+    // interrupt register reads back clear. A flag that gets set while we are
+    // mid-pump therefore never produces a second falling edge, and an
+    // edge-triggered caller goes deaf until its next fallback poll — long
+    // enough for a chatty partner's Soft_Reset to time out and escalate to
+    // Hard Reset. So keep pumping while the pin says there is more.
     uint32_t flags = ppm->pending_flags;
     if(flags & UCSI_PPM_PENDING_PHY_IRQ) {
         ppm->pending_flags = flags & ~UCSI_PPM_PENDING_PHY_IRQ;
-        (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_to_l3, ppm);
+        bool drained = false;
+        for(uint32_t i = 0u; i < UCSI_PPM_PHY_IRQ_DRAIN_LIMIT && !drained; i++) {
+            (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_to_l3, ppm);
+            // No pin to read: the caller polls, one pump is all we can do.
+            if(!ppm->config.gpio_read_fusb302_int) drained = true;
+            // Active low — true means deasserted, nothing left to service.
+            else if(ppm->config.gpio_read_fusb302_int(ppm->config.hal_ctx)) drained = true;
+        }
+        if(!drained) UCSI_LOG_W(ppm, "int still asserted after %u pumps", (unsigned)UCSI_PPM_PHY_IRQ_DRAIN_LIMIT);
     }
     // Power-supply settled signal from caller — drives PE source-side
     // PS_RDY emission. Re-read pending_flags in case pump cleared/set it.
@@ -238,6 +269,10 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     // Advance time-dependent TC state (AttachWait debounce expiry today).
     ucsi_ppm_tc_tick(ppm);
     ucsi_ppm_pe_tick(ppm);
+
+    // After both state machines have settled, so a contract that just came up
+    // is reported instead of the Rp advertisement it replaces.
+    ucsi_ppm_tc_update_sink_current_limit(ppm);
 
     // TODO: power_supply_ready handling, CCI event delivery (api.md §5.3).
 

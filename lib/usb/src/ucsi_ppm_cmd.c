@@ -588,18 +588,34 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
     const uint8_t opcode = ppm->regfile[UCSI_PPM_OFFSET_CONTROL_COMMAND];
     if(opcode == 0u) return;
 
+    // Snapshot before the handler runs: SET_NOTIFICATION_ENABLE changes the
+    // very mask that gates the alert at the bottom of this function.
+    const uint32_t notification_mask_before = ppm->notification_mask;
+
     // ACK_CC_CI is special: it consumes CCI bits rather than producing them,
     // and is allowed in *any* state. The Connector Change Acknowledge in
     // particular arrives without a preceding UCSI command (it acks an async
-    // event raised by L3 via ucsi_ppm_notify_connector_change). No alert is
-    // raised on the ACK path — CCI only goes down here.
+    // event raised by L3 via ucsi_ppm_notify_connector_change).
     if(opcode == UCSI_PPM_OPCODE_ACK_CC_CI) {
-        const uint32_t new_cci = handle_ack_cc_ci(ppm);
+        // Table 4-3 bit 29: the PPM reports completion of ACK_CC_CI itself
+        // through the Acknowledge Command Indicator, which stays set until
+        // the next command clears CCI. An OPM that waits on a notification
+        // rather than polling blocks here until it sees the bit — Linux
+        // ucsi_sync_control_common does exactly that for every ACK.
+        const uint32_t new_cci = handle_ack_cc_ci(ppm) | UCSI_PPM_CCI_ACK_COMMAND;
         cci_store(ppm, new_cci);
-        // Drop back to Idle only when CCI has fully cleared *and* we were
-        // waiting on a command response (otherwise we were already Idle).
-        if(ppm->cmd_state == UcsiPpmCmdStateWaitForAck && new_cci == 0u) {
+        // Drop back to Idle once every *acknowledged* indicator is gone and
+        // we were waiting on a command response (otherwise we were already
+        // Idle). The indicator raised just above does not keep us waiting.
+        if(ppm->cmd_state == UcsiPpmCmdStateWaitForAck && (new_cci & ~UCSI_PPM_CCI_ACK_COMMAND) == 0u) {
             ppm->cmd_state = UcsiPpmCmdStateIdle;
+        }
+        // Deliberately ungated: Table 6-25 bit 0 enables *Command Completed*
+        // notifications (CCI bit 31), and this is a different indicator. It
+        // must also survive an OPM turning notifications off, since the ACK
+        // that confirms the disabling command is itself sent this way.
+        if(ppm->config.alert) {
+            ppm->config.alert(ppm->config.hal_ctx);
         }
         return;
     }
@@ -660,9 +676,15 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
     // Notification Enable, commands.md §2.5 Table 6-25). Reset Completed is
     // exempt — PPM_RESET clears notification_mask back to 0, so without
     // this carve-out OPM would never see the reset acknowledged.
+    //
+    // The mask is taken from both before and after the handler ran, because
+    // SET_NOTIFICATION_ENABLE changes it: a command must never be able to
+    // silence its own completion, or an OPM that waits for the notification
+    // hangs on the very command that flipped the mask.
     if(result_cci != 0u && ppm->config.alert) {
         const bool reset_completed = (result_cci & UCSI_PPM_CCI_RESET_COMPLETED) != 0u;
-        const bool cmd_alert_enabled = (ppm->notification_mask & UCSI_PPM_NOTIF_CMD_COMPLETED) != 0u;
+        const uint32_t mask = notification_mask_before | ppm->notification_mask;
+        const bool cmd_alert_enabled = (mask & UCSI_PPM_NOTIF_CMD_COMPLETED) != 0u;
         if(reset_completed || cmd_alert_enabled) {
             ppm->config.alert(ppm->config.hal_ctx);
         }

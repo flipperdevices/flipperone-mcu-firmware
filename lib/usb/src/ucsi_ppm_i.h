@@ -154,6 +154,28 @@ struct UcsiPpm {
     bool tc_role_is_src;
     uint32_t tc_attach_wait_start_ms;
     bool tc_vbus_seen;
+    // Debounced STATUS0.BC_LVL on the active CC pin. Cached so the sink
+    // current limit can be recomputed without another I2C round trip.
+    // `pending` holds a candidate that has not sat still for tPDDebounce yet:
+    // a raw reading is only trustworthy while the line is idle, and CC
+    // changes must be debounced before acting on them (Type-C R2.0 §4.5.2.2).
+    uint8_t tc_last_bc_lvl;
+    uint8_t tc_bc_lvl_pending;
+    uint32_t tc_bc_lvl_pending_ms;
+    bool tc_bc_lvl_pending_valid;
+
+    // Sink-side VBUS loss. A Hard Reset drops VBUS on purpose and brings it
+    // back within tSrcRecover, so a loss only becomes a detach if it fails to
+    // return in time. Zero timestamp when VBUS is present.
+    uint32_t tc_vbus_lost_at_ms;
+    bool tc_vbus_lost;
+
+    // Last value handed to config.sink_current_limit, so the callback only
+    // fires on real changes. `valid` separates "never reported" from
+    // "reported 0 mA".
+    uint16_t sink_current_limit_ma;
+    UcsiPpmSinkLimitSource sink_current_limit_source;
+    bool sink_current_limit_valid;
 
     // L3 PRL (Protocol Layer) state, ucsi_ppm_prl.c.
     //   prl_next_tx_msg_id      — MessageID stamped into the next outgoing
@@ -196,6 +218,11 @@ struct UcsiPpm {
     // Bounded retry count for self-initiated Hard Resets. PD R3.0 caps it at
     // nHardResetCount = 2 (Table 7.12). Reset on entry to *Ready.
     uint8_t pe_hard_reset_counter;
+    // Set once a sink has spent its whole Hard Reset budget waiting for
+    // Source_Capabilities that never came: the partner is Type-C only, so we
+    // stop asking and live on the Rp advertisement (PD R3.0 §8.3.3.4.1).
+    // Cleared by any PD message from the partner, and on attach / reset.
+    bool pe_typec_only;
     // Current data role. Initialised from tc_role_is_src at attach (sink=UFP,
     // source=DFP) and updated independently by DR_Swap (PD R3.0 §6.3.10).
     // Drives the Data Role bit in outgoing PD headers and Partner Type
@@ -232,6 +259,22 @@ struct UcsiPpm {
 // to call multiple times in a single tick — bits OR together and the alert
 // fires once per call when gated through.
 void ucsi_ppm_notify_connector_change(UcsiPpm* ppm, uint16_t change_bits);
+
+// Route a message to the host through config.log. No-op when the integrator
+// did not provide a log callback, so log sites are free to be verbose.
+// Defined in ucsi_ppm.c.
+void ucsi_ppm_log(
+    const UcsiPpm* ppm,
+    UcsiPpmLogLevel level,
+    const char* module,
+    const char* fmt,
+    ...) __attribute__((format(printf, 4, 5)));
+
+// Each .c defines TAG before using these.
+#define UCSI_LOG_E(ppm, ...) ucsi_ppm_log((ppm), UcsiPpmLogLevelError, TAG, __VA_ARGS__)
+#define UCSI_LOG_W(ppm, ...) ucsi_ppm_log((ppm), UcsiPpmLogLevelWarn, TAG, __VA_ARGS__)
+#define UCSI_LOG_I(ppm, ...) ucsi_ppm_log((ppm), UcsiPpmLogLevelInfo, TAG, __VA_ARGS__)
+#define UCSI_LOG_D(ppm, ...) ucsi_ppm_log((ppm), UcsiPpmLogLevelDebug, TAG, __VA_ARGS__)
 
 // pending_flags bits.
 #define UCSI_PPM_PENDING_PHY_IRQ           (1u << 0)

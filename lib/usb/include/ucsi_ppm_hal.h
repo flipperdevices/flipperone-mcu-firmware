@@ -52,6 +52,33 @@ typedef UcsiPpmStatus (*UcsiPpmPowerSupplySetFn)(
 
 typedef bool (*UcsiPpmHasAltPowerFn)(void* ctx);
 
+// Where the sink current limit came from. The distinction matters to anyone
+// deciding how much to trust the number: only TypeCOnly means "this is all we
+// will ever learn about this partner".
+typedef enum {
+    // Nothing to draw: detached, sourcing, or no Rp on CC.
+    UcsiPpmSinkLimitNone,
+    // The source's Type-C Rp advertisement, with PD negotiation still
+    // possible or in flight. Treat as a hard ceiling — exceeding it now is
+    // what browns a source out mid-negotiation and gets us Hard Reset.
+    UcsiPpmSinkLimitTypeC,
+    // Same advertisement, but the partner has been shown not to speak PD, so
+    // no better number is coming. Safe to probe for the real capability here
+    // if the hardware can — nobody is negotiating any more.
+    UcsiPpmSinkLimitTypeCOnly,
+    // An explicit PD contract. Exact, and the partner is holding itself to
+    // it: do not exceed it and do not go looking for more.
+    UcsiPpmSinkLimitPdContract,
+} UcsiPpmSinkLimitSource;
+
+// How much current we are allowed to draw from the partner while attached as
+// a sink. Called whenever the answer changes, and only then.
+//
+// Type-C R2.0 §4.6.2 forbids a sink from exceeding the Rp advertisement
+// before a contract exists, so the integrator must apply the lower number
+// promptly.
+typedef void (*UcsiPpmSinkCurrentLimitFn)(void* ctx, uint16_t current_ma, UcsiPpmSinkLimitSource source);
+
 typedef enum {
     UcsiPpmLogLevelTrace,
     UcsiPpmLogLevelDebug,

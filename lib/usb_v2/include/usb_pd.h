@@ -6,7 +6,7 @@
  * Unlike the bare UcsiPpm core, this library owns its own runtime:
  * - a dedicated worker thread running a FuriEventLoop;
  * - the FUSB302 I2C traffic (bus acquire/release included);
- * - the FUSB302 interrupt (attached through the BSP expander);
+ * - the FUSB302 interrupt (a GPIO supplied by the caller);
  * - all state machine timers.
  *
  * The runtime is event-driven, not polled: the worker sleeps until either
@@ -46,6 +46,7 @@
 #include <stdbool.h>
 
 #include <furi.h>
+#include <furi_hal_gpio.h>
 #include <furi_hal_i2c_types.h>
 
 #include <ucsi_ppm.h>
@@ -101,6 +102,17 @@ typedef bool (*UsbPdPowerSupplySetFn)(void* context, uint16_t voltage_mv, uint16
  * (battery, DC jack). Optional; NULL means "no". Worker thread context. */
 typedef bool (*UsbPdHasAltPowerFn)(void* context);
 
+/** How much current we may draw from the partner while attached as a sink,
+ * and how much the number can be trusted — see UcsiPpmSinkLimitSource.
+ * Called from the worker thread whenever the answer changes, and only then.
+ *
+ * Apply it to the input current limit of whatever charges from VBUS. Type-C
+ * forbids exceeding the Rp advertisement before a contract exists, and a
+ * charger left at its own maximum will brown the source out mid-negotiation
+ * and get the connection Hard Reset. */
+typedef void (
+    *UsbPdSinkCurrentLimitFn)(void* context, uint16_t current_ma, UcsiPpmSinkLimitSource source);
+
 /** UCSI alert towards the OPM: CCI has news (command completed or connector
  * change). Fired from the worker thread after the register file image is
  * refreshed — typically used to raise the intercom interrupt line. */
@@ -110,12 +122,15 @@ typedef struct {
     /* --- Hardware --- */
     const FuriHalI2cBusHandle* i2c_bus; /**< NULL — main bus. */
     uint8_t fusb302_i2c_addr; /**< 0 — 0x22. */
-    bool use_phy_irq; /**< Attach the FUSB302 IRQ via the BSP expander. */
+    /** FUSB302 INT_N line. Active-low open-drain, so it is configured as an
+     * input with a pull-up and triggers on the falling edge. NULL falls back
+     * to polling only, which needs phy_poll_period_ms set. */
+    const GpioPin* irq_gpio;
 
     /* --- Timing --- */
     /** Lost-IRQ safety net: additionally poll FUSB302 interrupt registers
-     * this often. 0 disables polling (pure IRQ-driven). If use_phy_irq is
-     * false this becomes the only PHY event source and must be non-zero. */
+     * this often. 0 disables polling (pure IRQ-driven). Without irq_gpio this
+     * becomes the only PHY event source and must be non-zero. */
     uint32_t phy_poll_period_ms;
     uint32_t thread_stack_size; /**< 0 — 2048 bytes. */
 
@@ -124,6 +139,7 @@ typedef struct {
     UsbPdVbusSourceFn vbus_source_set; /**< Required. */
     UsbPdPowerSupplySetFn power_supply_set; /**< Required. */
     UsbPdHasAltPowerFn has_alt_power; /**< Optional. */
+    UsbPdSinkCurrentLimitFn sink_current_limit_set; /**< Optional but strongly advised. */
     bool power_supply_ready_async; /**< See UsbPdPowerSupplySetFn. */
 
     /* --- OPM link --- */
@@ -166,8 +182,8 @@ typedef struct {
 
 /** Fill a config with sane device defaults: DRP with 1.5 A Rp, single
  * 5 V / 3 A source and sink PDO, USB PD supported, VBUS-powered, USB2
- * capable, IRQ-driven with a 250 ms poll safety net. The caller still has
- * to provide the power path callbacks. */
+ * capable, 250 ms lost-IRQ poll. The caller still has to provide the power
+ * path callbacks and the board's irq_gpio. */
 void usb_pd_config_init_default(UsbPdConfig* config);
 
 /** Allocate and start the PD service: spawns the worker thread, brings up

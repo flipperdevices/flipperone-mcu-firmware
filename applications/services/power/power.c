@@ -20,7 +20,14 @@
 
 #define BQ25792_BAT_MAX_CHARGE_VOLTAGE 8650
 #define BQ25792_BAT_MAX_CHARGE_CURRENT 3000
-#define BQ25792_BAT_MAX_INPUT_CURRENT  3000
+
+// Startup input limit only. What the port actually allows is decided by the
+// Type-C Rp advertisement and then by the PD contract, and the pd service
+// applies both through power_bq25792_set_input_current_limit_ma(). Booting at
+// the hardware maximum instead would let the charger ramp past what the
+// source permits during the ~190 ms it takes PD to negotiate, browning out
+// the source and getting the connection Hard Reset.
+#define BQ25792_BAT_STARTUP_INPUT_CURRENT 500
 
 #define BQ25792_OTG_WATCHDOG_TIME      Bq25792WatchdogTime0_5s
 #define BQ25792_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
@@ -64,7 +71,7 @@ static Bq25792Status power_bq25792_reset_and_load_config(Power* instance) {
             FURI_LOG_E(TAG, "Failed to set BQ25792 charge current limit: %d", res);
             break;
         }
-        res = bq25792_set_input_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_INPUT_CURRENT);
+        res = bq25792_set_input_current_limit_ma(instance->bq25792_header, BQ25792_BAT_STARTUP_INPUT_CURRENT);
         if(res != Bq25792StatusOk) {
             FURI_LOG_E(TAG, "Failed to set BQ25792 input current limit: %d", res);
             break;
@@ -179,6 +186,7 @@ API_WRAPPER_PARAM(bq25792_get_vsys_mv, Bq25792Status, Bq25792*, uint16_t*);
 API_WRAPPER_PARAM(bq25792_get_charger_temperature, Bq25792Status, Bq25792*, float*);
 API_WRAPPER_PARAM(bq25792_get_temperature_battery_celsius, Bq25792Status, Bq25792*, float*);
 API_WRAPPER_PARAM(bq25792_get_input_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_get_input_voltage_limit_mv, Bq25792Status, Bq25792*, uint16_t*);
 API_WRAPPER_PARAM(bq25792_set_input_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
 API_WRAPPER_PARAM(bq25792_get_charge_voltage_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
 API_WRAPPER_PARAM(bq25792_set_charge_voltage_limit_ma, Bq25792Status, Bq25792*, uint16_t);
@@ -186,6 +194,7 @@ API_WRAPPER_PARAM(bq25792_get_charge_current_limit_ma, Bq25792Status, Bq25792*, 
 API_WRAPPER_PARAM(bq25792_set_charge_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
 API_WRAPPER_PARAM(bq25792_get_ico_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
 API_WRAPPER_PARAM(bq25792_charge_enable, Bq25792Status, Bq25792*, bool);
+API_WRAPPER_PARAM(bq25792_ico_enable, Bq25792Status, Bq25792*, bool);
 API_WRAPPER_PARAM(bq25792_charge_is_enabled, Bq25792Status, Bq25792*, bool*);
 API_WRAPPER_PARAM(bq25792_get_charger_status, Bq25792Status, Bq25792*, Bq25792ChargerStatusReg*);
 API_WRAPPER_PARAM(bq25792_get_charger_fault, Bq25792Status, Bq25792*, Bq25792FaultStatusReg*);
@@ -564,6 +573,13 @@ bool power_bq25792_get_input_current_limit_ma(Power* instance, uint16_t* input_c
     return result == Bq25792StatusOk;
 }
 
+bool power_bq25792_get_input_voltage_limit_mv(Power* instance, uint16_t* input_voltage_limit) {
+    furi_check(instance);
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_input_voltage_limit_mv, instance->bq25792_header, input_voltage_limit, result);
+    return result == Bq25792StatusOk;
+}
+
 bool power_bq25792_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit) {
     furi_check(instance);
     Bq25792Status result;
@@ -603,6 +619,13 @@ bool power_bq25792_charge_enable(Power* instance, bool enable) {
     furi_check(instance);
     Bq25792Status result;
     POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_charge_enable, instance->bq25792_header, enable, result);
+    return result == Bq25792StatusOk;
+}
+
+bool power_bq25792_ico_enable(Power* instance, bool enable) {
+    furi_check(instance);
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_ico_enable, instance->bq25792_header, enable, result);
     return result == Bq25792StatusOk;
 }
 
