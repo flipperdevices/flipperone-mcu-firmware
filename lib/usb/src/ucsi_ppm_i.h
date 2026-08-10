@@ -6,6 +6,27 @@
 extern "C" {
 #endif
 
+// --- PD messages -----------------------------------------------------------
+
+// Maximum number of Data Objects in a PD message (spec: 7).
+#define UCSI_PPM_PHY_MAX_OBJECTS 7
+
+// SOP* destination for outgoing / incoming PD messages.
+// v1 only originates SOP (port partner); SOP'/SOP'' are reserved for future
+// cable communication and are accepted by the encoder for forward compat.
+typedef enum {
+    UcsiPpmPhySopTypeSop, // SOP — port partner
+    UcsiPpmPhySopTypeSopPrime, // SOP' — first cable plug
+    UcsiPpmPhySopTypeSopDoublePrime, // SOP'' — second cable plug
+} UcsiPpmPhySopType;
+
+typedef struct {
+    UcsiPpmPhySopType sop_type;
+    uint16_t header;
+    uint32_t objects[UCSI_PPM_PHY_MAX_OBJECTS];
+    uint8_t object_count; // 0..7; control messages use 0
+} UcsiPpmPhyPdMsg;
+
 // PD Message Header Specification Revision, bits 7:6 (PD R3.0 §6.2.1.1.5).
 // 00b is R1.0 (deprecated) and 11b is reserved; neither is ever sent, and an
 // incoming 00b is read as R2.0 per prl-sm.md §8.
@@ -199,10 +220,17 @@ struct UcsiPpm {
     //                             R3.0 and only ever drops (PD R3.0 §6.2.1.1.5:
     //                             a port must not operate above its partner's
     //                             revision). Reset on detach / Hard Reset.
+    //   prl_tx_pending / prl_tx_msg
+    //                           — one deferred outgoing message. PE answers from
+    //                             inside the RX drain and the PHY is half
+    //                             duplex, so the answer waits here until the
+    //                             receive FIFO is empty.
     uint8_t prl_next_tx_msg_id;
     uint8_t prl_last_rx_msg_id;
     bool prl_last_rx_valid;
     uint8_t prl_our_spec_rev;
+    bool prl_tx_pending;
+    UcsiPpmPhyPdMsg prl_tx_msg;
     uint32_t prl_messages_delivered;
 
     // L3 PE (Policy Engine) — ucsi_ppm_pe.c.

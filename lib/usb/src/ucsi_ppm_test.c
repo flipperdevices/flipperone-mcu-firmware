@@ -120,8 +120,20 @@ static void mock_fifo_load(const uint8_t* bytes, size_t n) {
 // per simulated message so PRL dedup doesn't drop legitimate replies.
 static uint8_t g_test_partner_msg_id = 0;
 
-static void mock_i2c_reset(void) {
+// Clears only the transaction log, so a test can isolate what it triggered from
+// what setup left behind.
+//
+// Use this and not mock_i2c_reset() once a PPM exists: that one also rewinds
+// g_mock_time_ms to 0, and a PE timer armed at t=150 then reads `now - start`
+// as an enormous unsigned number, fires as long expired, and drags the state
+// machine into a Hard Reset the test never asked for. It also wipes the
+// register file, taking VBUSOK with it.
+static void mock_txns_reset(void) {
     g_mock_txn_count = 0;
+}
+
+static void mock_i2c_reset(void) {
+    mock_txns_reset();
     memset(g_mock_regs, 0, sizeof(g_mock_regs));
     g_mock_fifo_len = 0;
     g_mock_fifo_pos = 0;
@@ -3341,12 +3353,21 @@ static uint8_t tx_msg_id_from_last_burst(void) {
     return (uint8_t)((header >> 9) & 0x07u);
 }
 
+// PRL defers transmission until the receive FIFO is drained (see
+// ucsi_ppm_prl_send_message). The tests below exercise the send path on its own,
+// with no drain in sight, so they flush by hand.
+static UcsiPpmStatus prl_send_and_flush(UcsiPpm* ppm, UcsiPpmPhyPdMsg* msg) {
+    const UcsiPpmStatus s = ucsi_ppm_prl_send_message(ppm, msg);
+    ucsi_ppm_prl_flush_tx(ppm);
+    return s;
+}
+
 static bool test_prl_send_stamps_msg_id_zero(void) {
     UcsiPpm* ppm = mock_make_ppm();
     mock_i2c_reset();
 
     UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0x0003u};
-    TEST_ASSERT(ucsi_ppm_prl_send_message(ppm, &msg) == UcsiPpmStatusOk);
+    TEST_ASSERT(prl_send_and_flush(ppm, &msg) == UcsiPpmStatusOk);
     TEST_ASSERT(tx_msg_id_from_last_burst() == 0u);
 
     ucsi_ppm_free(ppm);
@@ -3358,17 +3379,17 @@ static bool test_prl_send_increments_counter(void) {
     mock_i2c_reset();
 
     UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0x0003u};
-    ucsi_ppm_prl_send_message(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
     TEST_ASSERT(tx_msg_id_from_last_burst() == 0u);
 
     mock_i2c_reset();
     msg.header = 0x0003u;
-    ucsi_ppm_prl_send_message(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
     TEST_ASSERT(tx_msg_id_from_last_burst() == 1u);
 
     mock_i2c_reset();
     msg.header = 0x0003u;
-    ucsi_ppm_prl_send_message(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
     TEST_ASSERT(tx_msg_id_from_last_burst() == 2u);
 
     ucsi_ppm_free(ppm);
@@ -3381,13 +3402,13 @@ static bool test_prl_send_wraps_after_seven(void) {
     for(uint8_t i = 0; i < 8; ++i) {
         mock_i2c_reset();
         UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0x0003u};
-        ucsi_ppm_prl_send_message(ppm, &msg);
+        prl_send_and_flush(ppm, &msg);
         TEST_ASSERT(tx_msg_id_from_last_burst() == i);
     }
     // 9th send wraps to 0.
     mock_i2c_reset();
     UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0x0003u};
-    ucsi_ppm_prl_send_message(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
     TEST_ASSERT(tx_msg_id_from_last_burst() == 0u);
 
     ucsi_ppm_free(ppm);
@@ -3399,14 +3420,14 @@ static bool test_prl_send_preserves_other_header_bits(void) {
     // Advance counter once so we stamp a non-zero MsgID and can see the
     // other bits surviving alongside it.
     UcsiPpmPhyPdMsg pad = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0u};
-    ucsi_ppm_prl_send_message(ppm, &pad); // counter → 1
+    prl_send_and_flush(ppm, &pad); // counter → 1
 
     mock_i2c_reset();
     // Header with port-data-role (bit 5), spec-rev (bits 7:6), msg type
     // (bits 4:0) set; MsgID bits 11:9 must be replaced.
     const uint16_t base = (uint16_t)((1u << 5) | (0b10u << 6) | 0x07u);
     UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = base};
-    ucsi_ppm_prl_send_message(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
 
     const int idx = mock_find_fifo_burst();
     const uint8_t* fifo = &g_mock_txns[idx].data[1];
@@ -3485,8 +3506,8 @@ static bool test_prl_recv_different_ids_all_delivered(void) {
 static bool test_prl_reset_clears_state(void) {
     UcsiPpm* ppm = mock_make_ppm();
     UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0u};
-    ucsi_ppm_prl_send_message(ppm, &msg);
-    ucsi_ppm_prl_send_message(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
     TEST_ASSERT(ppm->prl_next_tx_msg_id == 2u);
 
     TEST_ASSERT(ucsi_ppm_prl_reset(ppm) == UcsiPpmStatusOk);
@@ -3500,7 +3521,7 @@ static bool test_prl_reset_clears_state(void) {
 static bool test_prl_hard_reset_event_resets_counter(void) {
     UcsiPpm* ppm = mock_make_ppm();
     UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0u};
-    ucsi_ppm_prl_send_message(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
     TEST_ASSERT(ppm->prl_next_tx_msg_id == 1u);
 
     // Simulate HardResetRx via PHY pump.
@@ -3602,6 +3623,302 @@ static bool test_pe_snk_recv_source_caps_sends_request(void) {
     TEST_ASSERT(((rdo >> 28) & 0x07u) == 1u); // PDO #1 selected
     // Operating current matches the advertised max (1500 mA / 10 = 150 units).
     TEST_ASSERT(((rdo >> 10) & 0x3FFu) == 150u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// Scans recorded I²C transactions for a FIFO burst whose PD message header
+// has the given msg_type (header LE at bytes 6..7 of the burst payload).
+// Returns transaction index, or -1.
+static int find_fifo_burst_by_msg_type(uint8_t want_type) {
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len > 7u && t->data[0] == Fusb302RegFifos) {
+            const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+            if((hdr & 0x1Fu) == (uint16_t)want_type) return (int)i;
+        }
+    }
+    return -1;
+}
+
+// --- Sink PDO selection (PD R3.0 §8.3.3.3.2 PE_SNK_Evaluate_Capability) ----
+
+// The default mock config publishes 5 V only, so selection would have nothing
+// to choose between. Widens us to what pd_srv actually configures.
+static void mock_widen_sink_caps(UcsiPpm* ppm) {
+    ppm->config.sink_caps.pdos[0] =
+        ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true);
+    ppm->config.sink_caps.pdos[1] =
+        ucsi_ppm_pdo_fixed_sink(9000, 3000, true, false, false, true, true);
+    ppm->config.sink_caps.pdos[2] =
+        ucsi_ppm_pdo_fixed_sink(12000, 3000, true, false, false, true, true);
+    ppm->config.sink_caps.count = 3;
+}
+
+// Object position and operating current out of the Request we transmitted.
+static uint32_t sent_request_rdo(void) {
+    const int idx = find_fifo_burst_by_msg_type(0x02u /* Request */);
+    if(idx < 0) return 0u;
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    return (uint32_t)t->data[8] | ((uint32_t)t->data[9] << 8) |
+           ((uint32_t)t->data[10] << 16) | ((uint32_t)t->data[11] << 24);
+}
+
+static bool test_pe_snk_selects_highest_power_pdo(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    mock_widen_sink_caps(ppm);
+
+    // The power bank from bring-up: 12 W, 19.98 W, 20.04 W. Taking position 1
+    // unconditionally, as we used to, left 8 W on the table.
+    const uint32_t pdos[3] = {
+        ucsi_ppm_pdo_fixed_source(5000, 2400, true, false, true, true),
+        ucsi_ppm_pdo_fixed_source(9000, 2220, true, false, true, true),
+        ucsi_ppm_pdo_fixed_source(12000, 1670, true, false, true, true),
+    };
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, pdos, 3);
+
+    TEST_ASSERT(ppm->pe_requested_pdo_index == 3u);
+    const uint32_t rdo = sent_request_rdo();
+    TEST_ASSERT(((rdo >> 28) & 0x07u) == 3u);
+    TEST_ASSERT(((rdo >> 10) & 0x3FFu) == 167u); // 1670 mA
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_snk_ignores_voltage_absent_from_our_sink_caps(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    mock_widen_sink_caps(ppm); // 5 / 9 / 12 V only
+
+    // 20 V is by far the most power on offer, and we never published that we
+    // can take it. Asking anyway would contradict our own Sink_Capabilities —
+    // and hand the charger an input voltage nobody signed off on.
+    const uint32_t pdos[2] = {
+        ucsi_ppm_pdo_fixed_source(5000, 1000, true, false, true, true),
+        ucsi_ppm_pdo_fixed_source(20000, 5000, true, false, true, true),
+    };
+    simulate_pd_message(ppm, 0x01u, pdos, 2);
+
+    TEST_ASSERT(ppm->pe_requested_pdo_index == 1u);
+    TEST_ASSERT(((sent_request_rdo() >> 28) & 0x07u) == 1u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_snk_clamps_request_to_our_sink_capability(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    ppm->config.sink_caps.pdos[0] =
+        ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true);
+    ppm->config.sink_caps.pdos[1] =
+        ucsi_ppm_pdo_fixed_sink(9000, 2000, true, false, false, true, true);
+    ppm->config.sink_caps.count = 2;
+
+    // Source is generous at 9 V; we promised to draw at most 2 A there.
+    // 9 V × 2 A = 18 W still beats 5 V × 3 A = 15 W, so position 2 wins — but
+    // on our number, not the source's.
+    const uint32_t pdos[2] = {
+        ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true),
+        ucsi_ppm_pdo_fixed_source(9000, 5000, true, false, true, true),
+    };
+    simulate_pd_message(ppm, 0x01u, pdos, 2);
+
+    TEST_ASSERT(ppm->pe_requested_pdo_index == 2u);
+    const uint32_t rdo = sent_request_rdo();
+    TEST_ASSERT(((rdo >> 28) & 0x07u) == 2u);
+    TEST_ASSERT(((rdo >> 10) & 0x3FFu) == 200u); // 2000 mA, not 5000
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_snk_skips_non_fixed_pdos(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    mock_widen_sink_caps(ppm);
+
+    // Position 2 is an Augmented (PPS) PDO — type bits 31:30 = 11b. It may well
+    // be the best power on offer, but a PPS contract needs a different RDO and
+    // a periodic re-Request we do not implement.
+    const uint32_t pdos[2] = {
+        ucsi_ppm_pdo_fixed_source(5000, 2000, true, false, true, true),
+        0xC0DC2128u, // the APDO the bring-up power bank advertised
+    };
+    simulate_pd_message(ppm, 0x01u, pdos, 2);
+
+    TEST_ASSERT(ppm->pe_requested_pdo_index == 1u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// --- Extended messages (PD R3.0 §6.5) --------------------------------------
+
+static void simulate_pd_message_extended(
+    UcsiPpm* ppm,
+    uint8_t ext_type,
+    const uint32_t* objects,
+    uint8_t obj_count) {
+    uint16_t header =
+        make_partner_header_rev(ext_type, obj_count, g_test_partner_msg_id, UCSI_PPM_SPEC_REV_3_0);
+    header |= (uint16_t)(1u << 15); // Extended
+    g_test_partner_msg_id = (uint8_t)((g_test_partner_msg_id + 1u) & 0x07u);
+    uint8_t stream[64];
+    const size_t n = build_rx_stream(stream, FUSB302_RX_TOKEN_SOP, header, objects, obj_count);
+    mock_fifo_load(stream, n);
+    simulate_message_rx_event(ppm);
+}
+
+static bool test_pe_extended_message_refused_not_misparsed(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    mock_txns_reset();
+
+    // Extended type 0x01 is Source_Capabilities_Extended. The same number in
+    // the Data namespace is Source_Capabilities, so without the bit-15 check
+    // this payload would be read as a 5 V / 3 A PDO and answered with a
+    // Request — a contract built out of somebody's serial number.
+    const uint32_t payload = 0x0001912Cu;
+    simulate_pd_message_extended(ppm, 0x01u, &payload, 1);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x02u /* Request */) < 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u /* Not_Supported */) >= 0);
+    // Nothing was absorbed as capability, and we are still waiting for real ones.
+    TEST_ASSERT(ppm->pe_received_pdo_count == 0u);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// Finds a transmitted burst by Extended message type. Message Type alone is not
+// enough to pick one out: a GoodCRC is Control type 0x01 and
+// Source_Capabilities_Extended is Extended type 0x01, and one received frame now
+// produces both. Matches on the Extended bit as well.
+static int find_extended_fifo_burst(uint8_t ext_type) {
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(!t->is_write || t->len <= 7u || t->data[0] != Fusb302RegFifos) continue;
+        const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+        if(!(hdr & (1u << 15))) continue;
+        if((hdr & 0x1Fu) == (uint16_t)ext_type) return (int)i;
+    }
+    return -1;
+}
+
+// Reassembles the byte stream of an extended message we transmitted: header at
+// data[6..7], then the objects little-endian from data[8].
+static bool extended_tx_payload(uint8_t ext_type, uint8_t* out, size_t out_len, uint16_t* out_size) {
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(!t->is_write || t->len <= 7u || t->data[0] != Fusb302RegFifos) continue;
+        const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+        if(!(hdr & (1u << 15))) continue; // not Extended
+        if((hdr & 0x1Fu) != ext_type) continue;
+
+        const uint16_t ext_hdr = (uint16_t)(t->data[8] | ((uint16_t)t->data[9] << 8));
+        if(!(ext_hdr & (1u << 15))) return false; // Chunked must be set
+        if(ext_hdr & (1u << 10)) return false; // Request Chunk must be clear
+        if(((ext_hdr >> 11) & 0x0Fu) != 0u) return false; // chunk 0
+        *out_size = (uint16_t)(ext_hdr & 0x01FFu);
+        if(*out_size > out_len) return false;
+        // Number of Data Objects must cover extended header + payload, padded.
+        const uint8_t ndo = (uint8_t)((hdr >> 12) & 0x07u);
+        if(ndo != (uint8_t)((2u + *out_size + 3u) / 4u)) return false;
+        for(uint16_t j = 0; j < *out_size; ++j) {
+            out[j] = t->data[10u + j];
+        }
+        return true;
+    }
+    return false;
+}
+
+static bool test_pe_get_source_cap_extended_answered(void) {
+    // No contract needed: capability queries are answered from any state, and
+    // mock_snk_ready is defined further down this file.
+    UcsiPpm* ppm = mock_attach(false);
+    mock_txns_reset();
+
+    simulate_pd_message(ppm, 0x11u /* Get_Source_Cap_Extended */, NULL, 0);
+
+    // A refusal here is what made partners re-ask forever.
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u /* Not_Supported */) < 0);
+
+    uint8_t scedb[32] = {0};
+    uint16_t size = 0;
+    TEST_ASSERT(extended_tx_payload(0x01u /* ext Source_Capabilities_Extended */, scedb, sizeof(scedb), &size));
+    // r3.0 block ends at byte 23; byte 24 belongs to r3.1 and must not appear
+    // while we negotiate 3.0.
+    TEST_ASSERT(size == 24u);
+
+    // Bytes 0..3: VID then PID, little-endian.
+    TEST_ASSERT((uint16_t)(scedb[0] | (scedb[1] << 8)) == 0x37C1u);
+    TEST_ASSERT((uint16_t)(scedb[2] | (scedb[3] << 8)) == 0xF101u);
+    // Byte 21 Source Inputs: internal battery, nothing external behind it.
+    TEST_ASSERT(scedb[21] == 0x04u);
+    // Byte 22: one fixed battery, no hot-swap slots.
+    TEST_ASSERT(scedb[22] == 0x01u);
+    // Byte 23 SPR PDP tracks source_caps — the mock advertises 5 V / 3 A = 15 W.
+    TEST_ASSERT(scedb[23] == 15u);
+    // Answering must not disturb the state machine.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// Status is the short extended message: 2 byte header + 6 byte block = 8, an
+// exact 2-object fit with no padding. Same Extended and Chunked framing as
+// SCEDB, so if a partner takes one and refuses the other the difference is
+// length, not framing.
+static bool test_pe_get_status_answered(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    mock_txns_reset();
+
+    simulate_pd_message(ppm, 0x12u /* Get_Status */, NULL, 0);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u /* Not_Supported */) < 0);
+
+    uint8_t sdb[16] = {0};
+    uint16_t size = 0;
+    TEST_ASSERT(extended_tx_payload(0x02u /* ext Status */, sdb, sizeof(sdb), &size));
+    // r3.0 block ends at byte 5; byte 6 belongs to r3.1.
+    TEST_ASSERT(size == 6u);
+
+    // No contract yet, so we are carried by the cell, not by partner VBUS.
+    TEST_ASSERT(sdb[1] == (1u << 3)); // Present Input: internal power, battery
+    TEST_ASSERT(sdb[2] == (1u << 0)); // Fixed Battery 0 is the one supplying
+    TEST_ASSERT(sdb[3] == 0u); // no OCP / OTP / OVP latched
+    TEST_ASSERT(sdb[5] == 0u); // Power Status: a Sink Shall report 0
+
+    // 8 bytes is exactly two objects — nothing to pad.
+    const int idx = find_fifo_burst_by_msg_type(0x02u);
+    TEST_ASSERT(idx >= 0);
+    const uint16_t hdr = (uint16_t)(g_mock_txns[idx].data[6] | ((uint16_t)g_mock_txns[idx].data[7] << 8));
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == 2u);
+    TEST_ASSERT((hdr & (1u << 15)) != 0u); // Extended
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_extended_tx_pads_to_object_boundary(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    mock_txns_reset();
+
+    simulate_pd_message(ppm, 0x11u, NULL, 0);
+
+    // 2 byte extended header + 24 byte block = 26, padded to 28 = 7 objects,
+    // which is also the most the 3-bit Number of Data Objects field can hold.
+    const int idx = find_extended_fifo_burst(0x01u);
+    TEST_ASSERT(idx >= 0);
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == 7u);
+    TEST_ASSERT((hdr & (1u << 15)) != 0u); // Extended
+    // Both pad bytes after the 24-byte block are zero, not stack rubbish.
+    TEST_ASSERT(t->data[10u + 24u] == 0x00u);
+    TEST_ASSERT(t->data[10u + 25u] == 0x00u);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -3717,20 +4034,6 @@ static bool test_pe_snk_ready_ignores_late_accept(void) {
 
     ucsi_ppm_free(ppm);
     return true;
-}
-
-// Scans recorded I²C transactions for a FIFO burst whose PD message header
-// has the given msg_type (header LE at bytes 6..7 of the burst payload).
-// Returns transaction index, or -1.
-static int find_fifo_burst_by_msg_type(uint8_t want_type) {
-    for(size_t i = 0; i < g_mock_txn_count; ++i) {
-        const MockI2cTxn* t = &g_mock_txns[i];
-        if(t->is_write && t->len > 7u && t->data[0] == Fusb302RegFifos) {
-            const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
-            if((hdr & 0x1Fu) == (uint16_t)want_type) return (int)i;
-        }
-    }
-    return -1;
 }
 
 static int count_fifo_bursts(void) {
@@ -4597,6 +4900,84 @@ static UcsiPpm* mock_snk_ready_rev(uint8_t rev) {
     return ppm;
 }
 
+// The chip's AUTO_CRC only acknowledges Message Types up to 0x0D; PRL finishes
+// the job in software for the rest. Verified on a PD analyser — see
+// PRL_HW_GOODCRC_MAX_MSG_TYPE.
+
+static bool test_prl_software_goodcrc_for_type_the_chip_skips(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    mock_txns_reset();
+
+    // Get_Source_Cap_Extended, the type that went unacknowledged on the wire.
+    g_test_partner_msg_id = 5;
+    simulate_pd_message(ppm, 0x11u, NULL, 0);
+
+    const int idx = find_fifo_burst_by_msg_type(0x01u /* GoodCRC */);
+    TEST_ASSERT(idx >= 0);
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+    // Carries the MessageID of the frame being acknowledged, not ours.
+    TEST_ASSERT(((hdr >> 9) & 0x07u) == 5u);
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == 0u); // NDO = 0
+    TEST_ASSERT((hdr & (1u << 15)) == 0u); // not Extended
+    // R2.0, matching the acknowledgements the chip builds for every other frame.
+    TEST_ASSERT(((hdr >> 6) & 0x3u) == UCSI_PPM_SPEC_REV_2_0);
+    // Our roles: sink, UFP.
+    TEST_ASSERT((hdr & (1u << 8)) == 0u);
+    TEST_ASSERT((hdr & (1u << 5)) == 0u);
+    // The counter advanced exactly once, and that once belongs to the SCEDB this
+    // request also produced — an acknowledgement never consumes one.
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == 1u);
+    TEST_ASSERT(find_extended_fifo_burst(0x01u) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_no_software_goodcrc_when_chip_acks(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    mock_txns_reset();
+
+    // Get_Sink_Cap is 0x08 — well inside what AUTO_CRC handles. Acknowledging it
+    // again in software would put two GoodCRCs on the wire for one frame.
+    simulate_pd_message(ppm, 0x08u, NULL, 0);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x01u /* GoodCRC */) < 0);
+    // The real answer still goes out.
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x04u /* Sink_Capabilities */) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_software_goodcrc_precedes_the_answer(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    mock_txns_reset();
+
+    simulate_pd_message(ppm, 0x11u, NULL, 0);
+
+    // Both the acknowledgement and the answer carry Message Type 0x01 — GoodCRC
+    // as a Control message, Source_Capabilities_Extended as an Extended one — so
+    // walk the bursts in order and check which came first. Order is the whole
+    // point: the acknowledgement is on a 1.1 ms clock, the answer is not.
+    int seen = 0;
+    bool ack_first = false;
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(!t->is_write || t->len <= 7u || t->data[0] != Fusb302RegFifos) continue;
+        const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+        if((hdr & 0x1Fu) != 0x01u) continue;
+        const bool is_ack = ((hdr & (1u << 15)) == 0u) && (((hdr >> 12) & 0x07u) == 0u);
+        if(seen == 0) ack_first = is_ack;
+        seen++;
+    }
+    TEST_ASSERT(seen == 2); // the acknowledgement and the SCEDB
+    TEST_ASSERT(ack_first);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_prl_spec_rev_defaults_to_pd3(void) {
     UcsiPpm* ppm = mock_attach(false);
     const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
@@ -4606,9 +4987,10 @@ static bool test_prl_spec_rev_defaults_to_pd3(void) {
     const int idx = find_fifo_burst_by_msg_type(0x02u /* Request */);
     TEST_ASSERT(idx >= 0);
     TEST_ASSERT(fifo_burst_spec_rev(idx) == UCSI_PPM_SPEC_REV_3_0);
-    // The chip's auto-GoodCRC must agree with what we stamp ourselves; its
-    // reset value is R2.0, so this only holds because enable_pd writes it.
-    TEST_ASSERT(((g_mock_regs[Fusb302RegSwitches1] >> 5) & 0x3u) == UCSI_PPM_SPEC_REV_3_0);
+    // SWITCHES1.SPEC_REV must NOT follow us up to R3.0. The field's encoding
+    // stops at R2.0, and programming 10b there was measured to make the chip
+    // stop sending GoodCRC for whole message types.
+    TEST_ASSERT(((g_mock_regs[Fusb302RegSwitches1] >> 5) & 0x3u) == UCSI_PPM_SPEC_REV_2_0);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -4645,6 +5027,8 @@ static bool test_prl_spec_rev_drops_to_match_pd2_partner(void) {
     const int idx = find_fifo_burst_by_msg_type(0x02u);
     TEST_ASSERT(idx >= 0);
     TEST_ASSERT(fifo_burst_spec_rev(idx) == UCSI_PPM_SPEC_REV_2_0);
+    // Stepping down changes only the headers PE builds — the chip's field was
+    // already pinned to R2.0 and stays there.
     TEST_ASSERT(((g_mock_regs[Fusb302RegSwitches1] >> 5) & 0x3u) == UCSI_PPM_SPEC_REV_2_0);
 
     ucsi_ppm_free(ppm);
@@ -4678,7 +5062,7 @@ static bool test_prl_spec_rev_does_not_climb_back(void) {
 
 static bool test_pe_unsupported_drawn_as_reject_on_pd2(void) {
     UcsiPpm* ppm = mock_snk_ready_rev(UCSI_PPM_SPEC_REV_2_0);
-    g_mock_txn_count = 0;
+    mock_txns_reset();
 
     simulate_pd_message_rev(ppm, 0x18u, NULL, 0, UCSI_PPM_SPEC_REV_2_0);
 
@@ -4976,7 +5360,7 @@ static bool test_pe_src_retry_fail_retries_caps_instead_of_resetting(void) {
     g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
     // Only the transaction log: mock_i2c_reset would also zero the registers
     // (taking VBUSOK with them) and rewind the clock the PE timers run on.
-    g_mock_txn_count = 0;
+    mock_txns_reset();
 
     simulate_tx_retry_fail(ppm);
 
@@ -5004,7 +5388,7 @@ static bool test_pe_src_caps_exhausted_settles_type_c_only(void) {
     // write that overflows it would read as a send failure to the PE, but a
     // full mock_i2c_reset would clear VBUSOK and rewind the clock as well.
     for(unsigned i = 0; i < 60u; ++i) {
-        g_mock_txn_count = 0;
+        mock_txns_reset();
         g_mock_time_ms += 200;
         ucsi_ppm_tick(ppm);
     }
@@ -5016,7 +5400,7 @@ static bool test_pe_src_caps_exhausted_settles_type_c_only(void) {
     TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc);
 
     // Settled means settled — no further advertisements, and nothing to wake for.
-    g_mock_txn_count = 0;
+    mock_txns_reset();
     g_mock_time_ms += 1000;
     ucsi_ppm_tick(ppm);
     TEST_ASSERT(find_fifo_burst_by_msg_type(0x01u) < 0);
@@ -5448,8 +5832,8 @@ static bool test_prl_detach_resets_counter(void) {
     // must reset so the next attach starts fresh.
     UcsiPpm* ppm = mock_attach(false);
     UcsiPpmPhyPdMsg msg = {.sop_type = UcsiPpmPhySopTypeSop, .header = 0u};
-    ucsi_ppm_prl_send_message(ppm, &msg);
-    ucsi_ppm_prl_send_message(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
+    prl_send_and_flush(ppm, &msg);
     TEST_ASSERT(ppm->prl_next_tx_msg_id == 2u);
 
     // Partner drops VBUS → tc_enter_unattached → prl_reset.
@@ -5872,6 +6256,14 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_init_idle),
     TEST_ENTRY(test_pe_snk_attach_enters_wait_capabilities),
     TEST_ENTRY(test_pe_snk_recv_source_caps_sends_request),
+    TEST_ENTRY(test_pe_snk_selects_highest_power_pdo),
+    TEST_ENTRY(test_pe_snk_ignores_voltage_absent_from_our_sink_caps),
+    TEST_ENTRY(test_pe_snk_clamps_request_to_our_sink_capability),
+    TEST_ENTRY(test_pe_snk_skips_non_fixed_pdos),
+    TEST_ENTRY(test_pe_extended_message_refused_not_misparsed),
+    TEST_ENTRY(test_pe_get_source_cap_extended_answered),
+    TEST_ENTRY(test_pe_get_status_answered),
+    TEST_ENTRY(test_pe_extended_tx_pads_to_object_boundary),
     TEST_ENTRY(test_pe_snk_accept_then_ps_rdy_completes_contract),
     TEST_ENTRY(test_pe_snk_reject_triggers_hard_reset),
     TEST_ENTRY(test_pe_snk_wait_response_triggers_hard_reset),
@@ -5929,6 +6321,9 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_unsupported_control_gets_not_supported),
     TEST_ENTRY(test_pe_unsupported_data_gets_not_supported),
     TEST_ENTRY(test_pe_responses_do_not_draw_not_supported),
+    TEST_ENTRY(test_prl_software_goodcrc_for_type_the_chip_skips),
+    TEST_ENTRY(test_prl_no_software_goodcrc_when_chip_acks),
+    TEST_ENTRY(test_prl_software_goodcrc_precedes_the_answer),
     TEST_ENTRY(test_prl_spec_rev_defaults_to_pd3),
     TEST_ENTRY(test_phy_goodcrc_header_matches_our_roles),
     TEST_ENTRY(test_prl_spec_rev_drops_to_match_pd2_partner),

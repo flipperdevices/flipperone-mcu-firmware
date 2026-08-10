@@ -24,10 +24,26 @@
 #define PD_MSG_TYPE_VCONN_SWAP       0x0Bu
 #define PD_MSG_TYPE_GET_SOURCE_CAP   0x07u
 #define PD_MSG_TYPE_GET_SINK_CAP     0x08u
+#define PD_MSG_TYPE_GET_SOURCE_CAP_EXT 0x11u
+#define PD_MSG_TYPE_GET_STATUS         0x12u
 #define PD_MSG_TYPE_SOURCE_CAPS_DATA 0x01u // also 0x01, but distinguished by NDO>0
 #define PD_MSG_TYPE_REQUEST_DATA     0x02u
 #define PD_MSG_TYPE_SINK_CAPS_DATA   0x04u
 #define PD_MSG_TYPE_VENDOR_DEFINED   0x0Fu
+
+// Extended Message types (PD R3.2 Table 6.47). A namespace of its own — these
+// numbers collide with Control and Data types and mean something else.
+#define PD_EXT_MSG_TYPE_SOURCE_CAPS 0x01u
+#define PD_EXT_MSG_TYPE_STATUS      0x02u
+
+// Extended Message Header (PD R3.2 Table 6.48).
+#define PD_EXT_HDR_CHUNKED_BIT     (1u << 15)
+#define PD_EXT_HDR_DATA_SIZE_MASK  0x01FFu
+
+// PD R3.2 Table 6.72. A chunk carries at most 26 payload bytes, which with the
+// 2-byte extended header fills exactly 7 data objects — the most the 3-bit
+// Number of Data Objects field can express.
+#define PD_EXT_MAX_CHUNK_LEN 26u
 
 // --- Structured VDM header layout (PD R3.0 Table 6-27) ---------------------
 
@@ -40,6 +56,7 @@
 // --- PD header layout (PD R3.0 §6.2.1.1) -----------------------------------
 
 #define PD_HDR_MSG_TYPE_MASK  0x001Fu
+#define PD_HDR_EXTENDED_BIT   (1u << 15)
 #define PD_HDR_DATA_ROLE_BIT  (1u << 5)
 #define PD_HDR_SPEC_REV_SHIFT 6u
 #define PD_HDR_POWER_ROLE_BIT (1u << 8)
@@ -285,27 +302,294 @@ static bool pe_send_sink_caps(UcsiPpm* ppm) {
     return ucsi_ppm_prl_send_message(ppm, &msg) == UcsiPpmStatusOk;
 }
 
-// Picks PDO #1 from the received Source_Capabilities (mandatory vSafe5V Fixed
-// per PD R3.0 §6.4.1), builds a matching RDO at the advertised max current,
-// transmits Request, arms SenderResponseTimer.
+// Sends an Extended Message whose Data Block fits in a single chunk.
+//
+// Multi-chunk is deliberately absent: sending a Data Block longer than
+// MaxExtendedMsgChunkLen means holding it while the receiver asks for each
+// following chunk with Request Chunk, which needs ChunkSenderResponseTimer and
+// a retransmit buffer. Nothing we answer comes close — the largest is SCEDB at
+// 25 bytes — so refuse loudly rather than grow that machinery on speculation
+// or, worse, truncate.
+static bool pe_send_extended(UcsiPpm* ppm, uint8_t ext_type, const uint8_t* data, uint16_t len) {
+    if(len > PD_EXT_MAX_CHUNK_LEN) {
+        UCSI_LOG_E(
+            ppm,
+            "extended msg type 0x%02X needs %u bytes, chunking not implemented",
+            (unsigned)ext_type,
+            (unsigned)len);
+        return false;
+    }
+
+    uint8_t bytes[2u + PD_EXT_MAX_CHUNK_LEN] = {0};
+    // PD R3.2 §6.5.1.1: with Unchunked Extended Messages Supported clear in our
+    // PDOs — which it is — the pair is chunked-only and the Chunked bit Shall be
+    // set in every Extended Message, single chunk or not.
+    const uint16_t ext_hdr =
+        (uint16_t)(PD_EXT_HDR_CHUNKED_BIT | ((uint32_t)len & PD_EXT_HDR_DATA_SIZE_MASK));
+    bytes[0] = (uint8_t)(ext_hdr & 0xFFu);
+    bytes[1] = (uint8_t)(ext_hdr >> 8);
+    memcpy(&bytes[2], data, len);
+
+    // Number of Data Objects counts the extended header and is padded to the
+    // 4-byte boundary with zeros (Table 6.48, Data Size).
+    const uint8_t words = (uint8_t)((2u + len + 3u) / 4u);
+
+    UcsiPpmPhyPdMsg msg = {
+        .sop_type = UcsiPpmPhySopTypeSop,
+        .header = (uint16_t)(pe_make_header(ppm, ext_type, words) | PD_HDR_EXTENDED_BIT),
+        .object_count = words,
+    };
+    for(uint8_t i = 0; i < words; ++i) {
+        const uint8_t* b = &bytes[i * 4u];
+        msg.objects[i] = (uint32_t)b[0] | ((uint32_t)b[1] << 8) | ((uint32_t)b[2] << 16) |
+                         ((uint32_t)b[3] << 24);
+    }
+    UCSI_LOG_I(
+        ppm,
+        "tx extended type=0x%02X size=%u ndo=%u",
+        (unsigned)ext_type,
+        (unsigned)len,
+        (unsigned)words);
+    return ucsi_ppm_prl_send_message(ppm, &msg) == UcsiPpmStatusOk;
+}
+
+// --- Source_Capabilities_Extended (PD R3.2 §6.5.2, Table 6.50) -------------
+//
+// Identity. These belong in UcsiPpmConfig rather than here — product identity
+// is the platform's, not the protocol layer's — and they will have to move once
+// SKEDB lands, because it carries the same three fields. Duplicated for now.
+//
+// The product PID, matching lib/tusb/usb_descriptors.c. Not the 0xF102 in
+// furi_hal_otp.c: that is the bootloader, a separate device with no PD stack at
+// all, so the two never describe the same thing at the same time.
+#define SCEDB_VID 0x37C1u // 16 bit. USB-IF assigned Vendor ID.
+#define SCEDB_PID 0xF101u // 16 bit. Vendor assigned Product ID.
+// 32 bit, USB-IF assigned per product, and Shall match the XID in the CertStat
+// VDO. Left zero because we have no assigned value and no CertStat VDO to
+// contradict — an invented XID would claim someone else's certification.
+#define SCEDB_XID 0x00000000u
+#define SCEDB_FW_VERSION 0x01u // 8 bit, vendor defined, no range constraint.
+#define SCEDB_HW_VERSION 0x01u // 8 bit, vendor defined, no range constraint.
+
+// Byte 10, Voltage Regulation. Bits 1:0 load step (00b = 150 mA/us default,
+// 01b = 500 mA/us), bit 2 IoC (0b = 25% default, 1b = 90%), bits 7:3 reserved.
+#define SCEDB_VOLTAGE_REGULATION 0x00u
+// Byte 11, Holdup Time. 0 = unsupported, else milliseconds the output stays in
+// regulation after AC is removed. We have no AC input, so the field is moot.
+#define SCEDB_HOLDUP_TIME 0x00u
+// Byte 12, Compliance. Bit 0 LPS, bit 1 PS1, bit 2 PS2 — claims about an
+// external power supply, which we are not.
+#define SCEDB_COMPLIANCE 0x00u
+// Byte 13, Touch Current. Bit 0 low touch current EPS, bit 1 ground pin
+// present, bit 2 ground pin is protective earth. Bus-powered handheld: none.
+#define SCEDB_TOUCH_CURRENT 0x00u
+// Bytes 14..19, Peak Current 1..3, 16 bit each. Bits 4:0 percent overload in
+// 10% steps (max 25), bits 10:5 overload period in 20 ms steps, bits 14:11
+// duty cycle in 5% steps, bit 15 VBUS droop allowed. Zero means we permit no
+// overload at all, which is the honest answer for a battery-fed OTG path.
+#define SCEDB_PEAK_CURRENT 0x0000u
+// Byte 20, Touch Temp. 0 = IEC 60950-1 (default), 1 = IEC 62368-1 TS1,
+// 2 = TS2. Anything else is invalid and read as 0.
+#define SCEDB_TOUCH_TEMP 0x00u
+// Byte 21, Source Inputs. Bit 0 external supply present, bit 1 that supply is
+// unconstrained (ignored when bit 0 is clear), bit 2 internal battery present.
+// We source from the internal cell with nothing external behind it.
+#define SCEDB_SOURCE_INPUTS 0x04u
+// Byte 22, Batteries. Bits 3:0 count of fixed batteries (0..4 valid), bits 7:4
+// hot swappable slots (0..4 valid). Must match Battery Info in SKEDB.
+#define SCEDB_BATTERIES 0x01u
+// Byte 24, EPR Source PDP Rating, added in r3.1. Only ever sent once we
+// negotiate a revision that defines it — see SCEDB_LEN. An SPR-only Source
+// Shall report 0 in it.
+#define SCEDB_EPR_PDP 0x00u
+
+// Byte 23 is the SPR Source PDP Rating in whole watts, valid 0..100. Derived
+// rather than written down so it cannot drift away from what we actually
+// advertise in source_caps.
+static uint8_t scedb_spr_pdp_watts(const UcsiPpm* ppm) {
+    uint32_t best_mw = 0u;
+    for(uint8_t i = 0; i < ppm->config.source_caps.count; ++i) {
+        const uint32_t pdo = ppm->config.source_caps.pdos[i];
+        if(!pdo_is_fixed(pdo)) continue;
+        const uint32_t mw =
+            ((uint32_t)pdo_fixed_voltage_mv(pdo) * pdo_fixed_current_ma(pdo)) / 1000u;
+        if(mw > best_mw) best_mw = mw;
+    }
+    const uint32_t watts = best_mw / 1000u;
+    return (uint8_t)(watts > 100u ? 100u : watts);
+}
+
+// The r3.0 block is bytes 0..23; r3.1 appended EPR Source PDP Rating at 24.
+// Length follows the negotiated revision. Sending the longer form to a partner
+// we told we speak r3.0 would be advertising a field out of a revision we just
+// disclaimed — §6.5's "Ignore bytes added by a later revision" is a receiver's
+// obligation, not a licence for the sender to send them early.
+#define SCEDB_LEN_R30 24u
+#define SCEDB_LEN_R31 25u
+
+static bool pe_send_source_caps_extended(UcsiPpm* ppm) {
+    uint8_t b[SCEDB_LEN_R31] = {0};
+    const uint16_t len = SCEDB_LEN_R30;
+    b[0] = (uint8_t)(SCEDB_VID & 0xFFu);
+    b[1] = (uint8_t)(SCEDB_VID >> 8);
+    b[2] = (uint8_t)(SCEDB_PID & 0xFFu);
+    b[3] = (uint8_t)(SCEDB_PID >> 8);
+    b[4] = (uint8_t)(SCEDB_XID & 0xFFu);
+    b[5] = (uint8_t)((SCEDB_XID >> 8) & 0xFFu);
+    b[6] = (uint8_t)((SCEDB_XID >> 16) & 0xFFu);
+    b[7] = (uint8_t)((SCEDB_XID >> 24) & 0xFFu);
+    b[8] = SCEDB_FW_VERSION;
+    b[9] = SCEDB_HW_VERSION;
+    b[10] = SCEDB_VOLTAGE_REGULATION;
+    b[11] = SCEDB_HOLDUP_TIME;
+    b[12] = SCEDB_COMPLIANCE;
+    b[13] = SCEDB_TOUCH_CURRENT;
+    b[14] = (uint8_t)(SCEDB_PEAK_CURRENT & 0xFFu);
+    b[15] = (uint8_t)(SCEDB_PEAK_CURRENT >> 8);
+    b[16] = b[14];
+    b[17] = b[15];
+    b[18] = b[14];
+    b[19] = b[15];
+    b[20] = SCEDB_TOUCH_TEMP;
+    b[21] = SCEDB_SOURCE_INPUTS;
+    b[22] = SCEDB_BATTERIES;
+    b[23] = scedb_spr_pdp_watts(ppm);
+    if(len > SCEDB_LEN_R30) b[24] = SCEDB_EPR_PDP;
+    return pe_send_extended(ppm, PD_EXT_MSG_TYPE_SOURCE_CAPS, b, len);
+}
+
+// --- Status (PD R3.2 §6.5.3, Table 6.51) -----------------------------------
+//
+// Byte 0, Internal Temp: 0 = feature unsupported, 1 = below 2 C, 2..255 = the
+// temperature in whole C. The charger and the fuel gauge both measure one, but
+// getting either here needs a HAL hook the core does not have, so we declare
+// it unsupported rather than invent a number.
+#define SDB_INTERNAL_TEMP 0x00u
+// Byte 1, Present Input. Bit 0 reserved; bits 2:1 are 00b internally powered,
+// 01b DC external present, 11b AC external present; bit 3 internal power from a
+// battery; bit 4 internal power from something other than a battery.
+#define SDB_PRESENT_INPUT_DC_EXTERNAL (1u << 1)
+#define SDB_PRESENT_INPUT_BATTERY     (1u << 3)
+// Byte 2, Present Battery Input, a bitmap of which batteries are supplying:
+// bits 3:0 fixed batteries 0..3, bits 7:4 hot swappable 0..3. Reserved unless
+// Present Input bit 3 is set, so it is only meaningful when we run off the cell.
+#define SDB_PRESENT_BATTERY_FIXED0 (1u << 0)
+// Byte 3, Event Flags: bit 1 OCP, bit 2 OTP, bit 3 OVP — each Shall be cleared
+// once reported — and bit 4 current-limit mode, PPS only. We latch none of
+// these yet, so nothing to report.
+#define SDB_EVENT_FLAGS 0x00u
+// Byte 4, Temperature Status. Bits 2:1: 00b not supported, 01b normal,
+// 10b warning, 11b over-temperature. Kept at not-supported to agree with
+// Internal Temp above; claiming "normal" without measuring would be a guess.
+#define SDB_TEMPERATURE_STATUS 0x00u
+// Byte 5, Power Status: reasons a Source is limiting power. "Sinks Shall set
+// this field to 0", and as a Source our limit is the configured PDO set rather
+// than any of the listed conditions.
+#define SDB_POWER_STATUS 0x00u
+
+// The r3.0 block is bytes 0..5; r3.1 appended Power State Change at 6. Same
+// reasoning as SCEDB_LEN_R30 — length follows the negotiated revision.
+#define SDB_LEN_R30 6u
+
+static bool pe_send_status(UcsiPpm* ppm) {
+    uint8_t b[SDB_LEN_R30] = {0};
+    b[0] = SDB_INTERNAL_TEMP;
+    // Which supply is actually carrying us right now. As a Sink with VBUS from
+    // the partner that is external DC; otherwise we are running off the cell.
+    if(!ppm->tc_role_is_src && ppm->pe_state == (int)UcsiPpmPeSnkReady) {
+        b[1] = SDB_PRESENT_INPUT_DC_EXTERNAL;
+        b[2] = 0u; // Reserved while Present Input bit 3 is clear.
+    } else {
+        b[1] = SDB_PRESENT_INPUT_BATTERY;
+        b[2] = SDB_PRESENT_BATTERY_FIXED0;
+    }
+    b[3] = SDB_EVENT_FLAGS;
+    b[4] = SDB_TEMPERATURE_STATUS;
+    b[5] = SDB_POWER_STATUS;
+    return pe_send_extended(ppm, PD_EXT_MSG_TYPE_STATUS, b, SDB_LEN_R30);
+}
+
+// Our own Sink capability at exactly this voltage, or 0 if we never published
+// one. Requesting a voltage we did not advertise, or more current than we said
+// we would draw at it, contradicts the Sink_Capabilities the partner may have
+// asked us for.
+static uint16_t pe_sink_allowance_ma(const UcsiPpm* ppm, uint16_t voltage_mv) {
+    for(uint8_t i = 0; i < ppm->config.sink_caps.count; ++i) {
+        const uint32_t snk = ppm->config.sink_caps.pdos[i];
+        if(!pdo_is_fixed(snk)) continue;
+        if(pdo_fixed_voltage_mv(snk) != voltage_mv) continue;
+        return pdo_fixed_current_ma(snk);
+    }
+    return 0u;
+}
+
+// Chooses which Source_Capabilities entry to Request: the most power we are
+// allowed to take. Object positions are 1-based; returns 0 only if the source
+// published nothing we can use at all.
+//
+// Only Fixed PDOs are considered. Variable and Battery supplies do not
+// guarantee a voltage, and Augmented (PPS) needs a different RDO and a periodic
+// re-Request we do not implement — selecting one would promise behaviour we do
+// not have. If none of the offered voltages appear in our own sink caps we fall
+// back to position 1, which PD R3.0 §6.4.1 requires every Source to publish as
+// vSafe5V Fixed.
+static uint8_t pe_select_pdo(const UcsiPpm* ppm, uint16_t* out_current_ma) {
+    uint8_t best_pos = 0u;
+    uint32_t best_power_mw = 0u;
+
+    for(uint8_t i = 0; i < ppm->pe_received_pdo_count; ++i) {
+        const uint32_t pdo = ppm->pe_received_pdos[i];
+        if(!pdo_is_fixed(pdo)) continue;
+
+        const uint16_t voltage_mv = pdo_fixed_voltage_mv(pdo);
+        const uint16_t allowed_ma = pe_sink_allowance_ma(ppm, voltage_mv);
+        if(allowed_ma == 0u) continue;
+
+        const uint16_t offered_ma = pdo_fixed_current_ma(pdo);
+        const uint16_t current_ma = offered_ma < allowed_ma ? offered_ma : allowed_ma;
+        const uint32_t power_mw = ((uint32_t)voltage_mv * current_ma) / 1000u;
+
+        // Strictly greater, so an equal-power tie keeps the entry found first.
+        // PD R3.0 §6.4.1.2 orders Fixed PDOs by ascending voltage, so that is
+        // the lower one — less step-down for the charger, less heat.
+        if(power_mw > best_power_mw) {
+            best_power_mw = power_mw;
+            best_pos = (uint8_t)(i + 1u);
+            *out_current_ma = current_ma;
+        }
+    }
+
+    if(best_pos == 0u && pdo_is_fixed(ppm->pe_received_pdos[0])) {
+        best_pos = 1u;
+        *out_current_ma = pdo_fixed_current_ma(ppm->pe_received_pdos[0]);
+    }
+    return best_pos;
+}
+
+// Picks the best offered PDO, builds a matching RDO, transmits Request, arms
+// SenderResponseTimer.
 static void pe_send_request(UcsiPpm* ppm) {
     if(ppm->pe_received_pdo_count == 0u) {
         pe_to_error(ppm);
         return;
     }
-    const uint32_t pdo = ppm->pe_received_pdos[0];
-    if(!pdo_is_fixed(pdo)) {
+
+    uint16_t max_current_ma = 0u;
+    const uint8_t pos = pe_select_pdo(ppm, &max_current_ma);
+    if(pos == 0u) {
         pe_to_error(ppm);
         return;
     }
-    const uint16_t max_current_ma = pdo_fixed_current_ma(pdo);
-    const uint32_t rdo = pe_build_rdo(1u, max_current_ma, true);
+
+    const uint32_t pdo = ppm->pe_received_pdos[pos - 1u];
+    const uint32_t rdo = pe_build_rdo(pos, max_current_ma, true);
     // The number we commit to draw, next to the raw object it came from —
     // taking more than the source offered is indistinguishable from the
     // source being weak unless both are on the record.
     UCSI_LOG_I(
         ppm,
-        "request pdo1 %u mV %u mA (pdo=%08lX rdo=%08lX)",
+        "request pdo%u %u mV %u mA (pdo=%08lX rdo=%08lX)",
+        (unsigned)pos,
         (unsigned)pdo_fixed_voltage_mv(pdo),
         (unsigned)max_current_ma,
         (unsigned long)pdo,
@@ -323,7 +607,7 @@ static void pe_send_request(UcsiPpm* ppm) {
         pe_to_error(ppm);
         return;
     }
-    ppm->pe_requested_pdo_index = 1u;
+    ppm->pe_requested_pdo_index = pos;
     ppm->pe_current_rdo = rdo;
     pe_set_state(ppm, (int)UcsiPpmPeSnkWaitForAccept);
     pe_arm_timer(ppm);
@@ -406,11 +690,15 @@ static void pe_commit_contract(UcsiPpm* ppm) {
 // R3.0 on — in R2.0 that opcode is Reserved, so a partner we have stepped down
 // to R2.0 for gets Reject instead (PD R2.0 §6.3.9), which is the refusal it
 // knows how to read.
-static void pe_reply_not_supported(UcsiPpm* ppm, uint8_t type) {
+static void pe_reply_not_supported(UcsiPpm* ppm, uint8_t type, bool extended) {
     const bool pd3 = ppm->prl_our_spec_rev >= UCSI_PPM_SPEC_REV_3_0;
+    // The "extended" prefix matters in a trace: Control, Data and Extended
+    // message types are three separate namespaces, so the same number means
+    // three different things.
     UCSI_LOG_I(
         ppm,
-        "msg type 0x%02X unsupported, replying %s",
+        "%smsg type 0x%02X unsupported, replying %s",
+        extended ? "extended " : "",
         (unsigned)type,
         pd3 ? "Not_Supported" : "Reject");
     (void)pe_send_control(ppm, pd3 ? PD_MSG_TYPE_NOT_SUPPORTED : PD_MSG_TYPE_REJECT);
@@ -520,7 +808,7 @@ static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
     // Anything else — Alert, Sink_Capabilities and the rest of PD 3.0's
     // catalogue, plus Unstructured VDMs. See pe_reply_not_supported: staying
     // silent is what makes a talkative partner tear the connection down.
-    pe_reply_not_supported(ppm, type);
+    pe_reply_not_supported(ppm, type, false);
 }
 
 // Pushes our current roles and revision into SWITCHES1, which is where the
@@ -528,8 +816,7 @@ static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
 // follow every change to either role, or our acknowledgements start describing
 // a port we no longer are.
 static void pe_sync_phy_header_bits(UcsiPpm* ppm) {
-    (void)ucsi_ppm_phy_set_msg_header_bits(
-        ppm, ppm->tc_role_is_src, ppm->pe_data_role_is_dfp, ppm->prl_our_spec_rev);
+    (void)ucsi_ppm_phy_set_msg_header_bits(ppm, ppm->tc_role_is_src, ppm->pe_data_role_is_dfp);
 }
 
 static bool pe_in_ready(const UcsiPpm* ppm) {
@@ -560,6 +847,18 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
     if(type == PD_MSG_TYPE_GET_SOURCE_CAP && ppm->config.source_caps.count) {
         (void)pe_src_send_caps(ppm);
         return;
+    }
+    // PD R3.2 §6.5.2: answered by a Source or a DRP, so our being the Sink right
+    // now is no reason to refuse. Refusing is what had two different partners
+    // re-asking every 23 ms for as long as they stayed plugged in.
+    if(type == PD_MSG_TYPE_GET_SOURCE_CAP_EXT) {
+        if(pe_send_source_caps_extended(ppm)) return;
+        // Fall through to the refusal if the send failed — silence would stall
+        // the partner's SenderResponseTimer.
+    }
+    // PD R3.2 §6.5.3: informational, and answered by whichever side was asked.
+    if(type == PD_MSG_TYPE_GET_STATUS) {
+        if(pe_send_status(ppm)) return;
     }
 
     // Swap requests are only processed from an established contract (*Ready).
@@ -677,7 +976,7 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
     // dealt with a response type, so anything reaching here is a request we
     // do not implement and owes the partner an answer.
     if(pe_control_needs_reply(type)) {
-        pe_reply_not_supported(ppm, type);
+        pe_reply_not_supported(ppm, type, false);
     }
 }
 
@@ -770,6 +1069,17 @@ void ucsi_ppm_pe_handle_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
         return;
     }
 
+    // PD R3.0 §6.5: an Extended Message sets bit 15 and its Message Type comes
+    // from a namespace of its own. Falling through to the Data path would read
+    // the number as a Data type — extended 0x01 is Source_Capabilities_Extended
+    // and would be taken for Source_Capabilities, whose "PDOs" would then be a
+    // slice of somebody's serial number. We implement none of them, so refuse
+    // before the type is ever interpreted.
+    if(msg->header & PD_HDR_EXTENDED_BIT) {
+        pe_reply_not_supported(ppm, (uint8_t)(msg->header & PD_HDR_MSG_TYPE_MASK), true);
+        return;
+    }
+
     if(msg->object_count > 0u) {
         pe_handle_data_message(ppm, msg);
     } else {
@@ -836,6 +1146,10 @@ UcsiPpmStatus ucsi_ppm_pe_request_renegotiate(UcsiPpm* ppm, uint16_t operating_c
     ppm->pe_current_rdo = rdo;
     pe_set_state(ppm, (int)UcsiPpmPeSnkWaitForAccept);
     pe_arm_timer(ppm);
+    // We start this exchange rather than answer one, so there is no receive in
+    // progress to wait for: the message goes out before we return, and the
+    // SenderResponseTimer just armed measures from the wire, not from a queue.
+    ucsi_ppm_prl_flush_tx(ppm);
     return UcsiPpmStatusOk;
 }
 
@@ -850,6 +1164,7 @@ UcsiPpmStatus ucsi_ppm_pe_request_dr_swap(UcsiPpm* ppm, bool to_dfp) {
     }
     pe_set_state(ppm, (int)UcsiPpmPeWaitForDrSwapResponse);
     pe_arm_timer(ppm);
+    ucsi_ppm_prl_flush_tx(ppm);
     return UcsiPpmStatusOk;
 }
 
@@ -863,6 +1178,7 @@ UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_source(UcsiPpm* ppm) {
     }
     pe_set_state(ppm, (int)UcsiPpmPePrSwapSnkSendSwap);
     pe_arm_timer(ppm);
+    ucsi_ppm_prl_flush_tx(ppm);
     return UcsiPpmStatusOk;
 }
 

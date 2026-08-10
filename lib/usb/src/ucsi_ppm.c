@@ -218,6 +218,11 @@ UcsiPpmStatus ucsi_ppm_register_write(UcsiPpm* ppm, uint16_t offset, uint16_t le
     // command dispatch (architecture.md §2).
     if(offset == UCSI_PPM_OFFSET_CONTROL_COMMAND && ppm->regfile[UCSI_PPM_OFFSET_CONTROL_COMMAND] != 0) {
         ucsi_ppm_cmd_dispatch(ppm);
+        // A command that asked PE to talk to the partner — SET_PDR, SET_UOR,
+        // SET_POWER_LEVEL — queued a message. Nothing is being received here,
+        // so the half-duplex reason to wait does not apply: send it now rather
+        // than leave it for whenever the next tick happens.
+        ucsi_ppm_prl_flush_tx(ppm);
     }
 
     return UcsiPpmStatusOk;
@@ -251,6 +256,11 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
         bool drained = false;
         for(uint32_t i = 0u; i < UCSI_PPM_PHY_IRQ_DRAIN_LIMIT && !drained; i++) {
             (void)ucsi_ppm_phy_pump(ppm, phy_event_sink_to_l3, ppm);
+            // The receive FIFO is empty as of this pass, so the half-duplex PHY
+            // is free: now is when an answer PE queued while we were reading may
+            // go out. Between passes rather than after the loop, so a partner
+            // that keeps talking cannot hold our reply past SenderResponse.
+            ucsi_ppm_prl_flush_tx(ppm);
             // No pin to read: the caller polls, one pump is all we can do.
             if(!ppm->config.gpio_read_fusb302_int) drained = true;
             // Active low — true means deasserted, nothing left to service.
@@ -273,6 +283,11 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     // After both state machines have settled, so a contract that just came up
     // is reported instead of the Rp advertisement it replaces.
     ucsi_ppm_tc_update_sink_current_limit(ppm);
+
+    // Anything the tick itself queued — a source-capability retransmission, or a
+    // message an OPM command asked for just before this tick — leaves here. The
+    // drain loop above only flushes what PE answered while reading.
+    ucsi_ppm_prl_flush_tx(ppm);
 
     // TODO: power_supply_ready handling, CCI event delivery (api.md §5.3).
 
