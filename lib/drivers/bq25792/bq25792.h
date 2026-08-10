@@ -49,6 +49,14 @@ Bq25792Status bq25792_get_temperature_battery_celsius(Bq25792* instance, float* 
  * is unplugged, so it cannot be configured once at boot. */
 Bq25792Status bq25792_get_input_voltage_limit_mv(Bq25792* instance, uint16_t* input_voltage_limit);
 
+/** Sets VINDPM. Must be re-applied per PD contract, not once at boot: the
+ * hardware picks its own value from the VBUS it measures at plug-in, which is
+ * vSafe5V, and never revisits it when we negotiate a higher voltage. Left
+ * alone, a 15 V contract keeps a ~4.4 V threshold and the charger will hold
+ * full input current while the source collapses instead of backing off.
+ * Clamped to the register's 3.6-22 V range. */
+Bq25792Status bq25792_set_input_voltage_limit_mv(Bq25792* instance, uint16_t input_voltage_limit);
+
 Bq25792Status bq25792_get_input_current_limit_ma(Bq25792* instance, uint16_t* input_current_limit);
 Bq25792Status bq25792_set_input_current_limit_ma(Bq25792* instance, uint16_t input_current_limit);
 Bq25792Status bq25792_get_charge_voltage_limit_ma(Bq25792* instance, uint16_t* charge_voltage_limit);

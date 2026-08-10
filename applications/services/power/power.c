@@ -187,6 +187,7 @@ API_WRAPPER_PARAM(bq25792_get_charger_temperature, Bq25792Status, Bq25792*, floa
 API_WRAPPER_PARAM(bq25792_get_temperature_battery_celsius, Bq25792Status, Bq25792*, float*);
 API_WRAPPER_PARAM(bq25792_get_input_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
 API_WRAPPER_PARAM(bq25792_get_input_voltage_limit_mv, Bq25792Status, Bq25792*, uint16_t*);
+API_WRAPPER_PARAM(bq25792_set_input_voltage_limit_mv, Bq25792Status, Bq25792*, uint16_t);
 API_WRAPPER_PARAM(bq25792_set_input_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
 API_WRAPPER_PARAM(bq25792_get_charge_voltage_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
 API_WRAPPER_PARAM(bq25792_set_charge_voltage_limit_ma, Bq25792Status, Bq25792*, uint16_t);
@@ -577,6 +578,13 @@ bool power_bq25792_get_input_voltage_limit_mv(Power* instance, uint16_t* input_v
     furi_check(instance);
     Bq25792Status result;
     POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_input_voltage_limit_mv, instance->bq25792_header, input_voltage_limit, result);
+    return result == Bq25792StatusOk;
+}
+
+bool power_bq25792_set_input_voltage_limit_mv(Power* instance, uint16_t input_voltage_limit) {
+    furi_check(instance);
+    Bq25792Status result;
+    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_input_voltage_limit_mv, instance->bq25792_header, input_voltage_limit, result);
     return result == Bq25792StatusOk;
 }
 

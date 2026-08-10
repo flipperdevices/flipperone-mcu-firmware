@@ -25,6 +25,16 @@
 // enough to be safe on any USB port, high enough to keep charging alive.
 #define PD_SINK_MIN_INPUT_MA (100u)
 
+// VINDPM as a fraction of the contract voltage. The threshold has to sit low
+// enough that the source's own ±5% tolerance plus the drop across cable and
+// contacts never reaches it — tripping it needlessly throttles a healthy
+// charger — and high enough that a source actually collapsing is caught long
+// before it browns out. 85% clears both at every voltage we request.
+#define PD_SINK_VINDPM_PERCENT (85u)
+// Floor for the 5 V case, where 85% would land under the charger's own
+// operating point. Matches what the hardware picks for itself at vSafe5V.
+#define PD_SINK_VINDPM_MIN_MV (4400u)
+
 struct Pd {
     FuriEventLoop* event_loop;
     FuriMessageQueue* message_queue;
@@ -42,6 +52,7 @@ struct Pd {
 typedef enum {
     PdMessageTypeResetConfig,
     PdMessageTypeSetInputLimit,
+    PdMessageTypeSetInputVoltageLimit,
 } PdMessageType;
 
 typedef struct {
@@ -49,6 +60,7 @@ typedef struct {
     FuriApiLock lock;
     bool* result;
     uint16_t input_limit_ma;
+    uint16_t input_voltage_limit_mv;
     bool probe_allowed;
 } PdMessage;
 
@@ -158,8 +170,37 @@ static const char* pd_connector_state_str(UcsiPpmConnectorState state) {
 // Runs on the UsbPd worker thread. The PD stack itself is silent, so this is
 // the only place the connector's behaviour shows up in the log — keep it,
 // bring-up on the host side is unreadable without it.
+// Keeps VINDPM in step with the voltage we actually negotiated. The charger
+// derives its own threshold from the VBUS present when the adapter appears,
+// which is always vSafe5V, and never revisits it — so after a 15 V contract it
+// would sit near 4.4 V and hold full input current while the source collapsed
+// all the way down, instead of backing off. Equally important in the other
+// direction: a threshold left at 12.75 V when the contract drops back to 5 V
+// would trip immediately and cut input current to nothing.
+static void pd_apply_contract_vindpm(Pd* instance, const UsbPdEvent* event) {
+    // Only meaningful while we consume. Sourcing runs through OTG, where this
+    // register does not participate.
+    if(event->contract.contract_in_place && event->contract.is_source) return;
+
+    uint32_t vindpm_mv = PD_SINK_VINDPM_MIN_MV;
+    if(event->contract.contract_in_place) {
+        vindpm_mv = ((uint32_t)event->contract.voltage_mv * PD_SINK_VINDPM_PERCENT) / 100u;
+        if(vindpm_mv < PD_SINK_VINDPM_MIN_MV) vindpm_mv = PD_SINK_VINDPM_MIN_MV;
+    }
+
+    // Same reasoning as the input current limit: we are on the UsbPd worker
+    // thread and the power service call blocks on I2C.
+    const PdMessage msg = {
+        .type = PdMessageTypeSetInputVoltageLimit,
+        .input_voltage_limit_mv = (uint16_t)vindpm_mv,
+    };
+    if(furi_message_queue_put(instance->message_queue, &msg, 0) != FuriStatusOk) {
+        FURI_LOG_W(TAG, "vindpm %lu mV dropped, queue full", (unsigned long)vindpm_mv);
+    }
+}
+
 static void pd_usb_pd_event(const void* message, void* context) {
-    UNUSED(context);
+    Pd* instance = context;
     const UsbPdEvent* event = message;
 
     switch(event->type) {
@@ -178,6 +219,7 @@ static void pd_usb_pd_event(const void* message, void* context) {
         } else {
             FURI_LOG_I(TAG, "contract: dropped");
         }
+        pd_apply_contract_vindpm(instance, event);
         break;
     }
 }
@@ -215,19 +257,21 @@ static void pd_message_queue_callback(FuriEventLoopObject* object, void* context
         if(msg.probe_allowed && !power_bq25792_ico_enable(instance->power, true)) {
             FURI_LOG_W(TAG, "ico enable failed");
         }
-        // What we asked for and what the charger ended up with are not the
-        // same question: several of its own mechanisms rewrite the input
-        // current limit behind us, and VINDPM — the voltage it is willing to
-        // drag the source down to before backing off — resets itself to
-        // 3600 mV on every unplug. Read both back rather than assume.
-        {
-            uint16_t applied_ma = 0;
-            uint16_t vindpm_mv = 0;
-            if(power_bq25792_get_input_current_limit_ma(instance->power, &applied_ma) &&
-               power_bq25792_get_input_voltage_limit_mv(instance->power, &vindpm_mv)) {
-                FURI_LOG_I(TAG, "charger now: iindpm=%u mA vindpm=%u mV", applied_ma, vindpm_mv);
-            }
+        // No read-back here on purpose. Verifying what the charger ended up
+        // with costs two more I2C transactions on the bus the FUSB302 shares,
+        // issued from a blocking cross-thread call, and this path runs on every
+        // contract change. That delay lands squarely inside PD negotiation: the
+        // partner's request goes unserviced, its SenderResponseTimer expires and
+        // it Soft_Resets, which drops the contract and brings us straight back
+        // here. Diagnostics do not belong on a bus the protocol depends on.
+        break;
+    case PdMessageTypeSetInputVoltageLimit:
+        result =
+            power_bq25792_set_input_voltage_limit_mv(instance->power, msg.input_voltage_limit_mv);
+        if(!result) {
+            FURI_LOG_W(TAG, "vindpm %u mV failed", msg.input_voltage_limit_mv);
         }
+        // Same reasoning as above: no verification read on the shared bus.
         break;
     default:
         furi_crash("Invalid message type");
@@ -276,12 +320,14 @@ static void pd_config_fill(Pd* instance, UsbPdConfig* config) {
     config->source_rp_current = UcsiPpmRpCurrent1A5;
 
     // Source: vSafe5V is mandatory at position 1, the rest are upgrades the
-    // partner may Request. Bounded by what bq25792 OTG can deliver.
+    // partner may Request. Capped at 12 V / 3 A = 36 W because the charger's
+    // OTG path is the weakest link in the chain, not the connector or the
+    // battery. Unconstrained Power (4th arg) is deliberately false — it claims
+    // mains behind us (PD R3.0 Table 6-9), and we run off one cell.
     config->source_caps.pdos[0] = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
     config->source_caps.pdos[1] = ucsi_ppm_pdo_fixed_source(9000, 3000, true, false, true, true);
     config->source_caps.pdos[2] = ucsi_ppm_pdo_fixed_source(12000, 3000, true, false, true, true);
-    config->source_caps.pdos[3] = ucsi_ppm_pdo_fixed_source(15000, 3000, true, false, true, true);
-    config->source_caps.count = 4;
+    config->source_caps.count = 3;
 
     config->sink_caps.pdos[0] = ucsi_ppm_pdo_fixed_sink(5000, 3000, true, false, false, true, true);
     config->sink_caps.pdos[1] = ucsi_ppm_pdo_fixed_sink(9000, 3000, true, false, false, true, true);

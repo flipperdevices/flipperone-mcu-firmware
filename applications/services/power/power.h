@@ -41,6 +41,9 @@ bool power_bq25792_get_input_current_limit_ma(Power* instance, uint16_t* input_c
 
 /** VINDPM read-back, see bq25792_get_input_voltage_limit_mv(). */
 bool power_bq25792_get_input_voltage_limit_mv(Power* instance, uint16_t* input_voltage_limit);
+/** VINDPM, see bq25792_set_input_voltage_limit_mv() — must follow the PD
+ * contract voltage, the hardware default only ever matches vSafe5V. */
+bool power_bq25792_set_input_voltage_limit_mv(Power* instance, uint16_t input_voltage_limit);
 bool power_bq25792_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit);
 bool power_bq25792_get_charge_voltage_limit_ma(Power* instance, uint16_t* charge_voltage_limit);
 bool power_bq25792_set_charge_voltage_limit_ma(Power* instance, uint16_t charge_voltage_limit);

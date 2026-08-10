@@ -9,6 +9,10 @@
 #define BQ25792_DEVICE_REVISION           0b000 //Revision
 #define BQ25792_MAX_INPUT_DEFAULT_CURRENT 500 // mA
 
+// VINDPM register range (datasheet §9.5.1.4): 8 bits, 100 mV per LSB.
+#define BQ25792_VINDPM_MIN_MV 3600
+#define BQ25792_VINDPM_MAX_MV 22000
+
 #ifdef BQ25792_DEBUG_ENABLE
 #define BQ25792_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
@@ -403,6 +407,21 @@ Bq25792Status bq25792_get_input_voltage_limit_mv(Bq25792* instance, uint16_t* in
         *input_voltage_limit = (uint16_t)raw * 100u; // 100 mV per LSB, no offset
     } else {
         FURI_LOG_E(TAG, "Failed to get input voltage limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_set_input_voltage_limit_mv(Bq25792* instance, uint16_t input_voltage_limit) {
+    furi_check(instance);
+    if(input_voltage_limit < BQ25792_VINDPM_MIN_MV) input_voltage_limit = BQ25792_VINDPM_MIN_MV;
+    if(input_voltage_limit > BQ25792_VINDPM_MAX_MV) input_voltage_limit = BQ25792_VINDPM_MAX_MV;
+    // 100 mV per LSB, no offset. Truncating rather than rounding keeps the
+    // threshold at or below what the caller asked for, so a rounding step can
+    // never make us give up on a source we were told to tolerate.
+    const uint8_t raw = (uint8_t)(input_voltage_limit / 100u);
+    Bq25792Status res = bq25792_write_reg8(instance, Bq25792RegInputVoltageLimit, raw);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set input voltage limit!");
     }
     return res;
 }
