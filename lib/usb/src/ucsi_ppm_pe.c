@@ -27,6 +27,15 @@
 #define PD_MSG_TYPE_SOURCE_CAPS_DATA 0x01u // also 0x01, but distinguished by NDO>0
 #define PD_MSG_TYPE_REQUEST_DATA     0x02u
 #define PD_MSG_TYPE_SINK_CAPS_DATA   0x04u
+#define PD_MSG_TYPE_VENDOR_DEFINED   0x0Fu
+
+// --- Structured VDM header layout (PD R3.0 Table 6-27) ---------------------
+
+#define VDM_HDR_STRUCTURED_BIT   (1u << 15)
+#define VDM_HDR_CMD_TYPE_SHIFT   6u
+#define VDM_HDR_CMD_TYPE_MASK    (0x3u << VDM_HDR_CMD_TYPE_SHIFT)
+#define VDM_CMD_TYPE_REQ         0x0u
+#define VDM_CMD_TYPE_NAK         0x2u
 
 // --- PD header layout (PD R3.0 §6.2.1.1) -----------------------------------
 
@@ -37,7 +46,8 @@
 #define PD_HDR_NUM_OBJ_SHIFT  12u
 #define PD_HDR_NUM_OBJ_MASK   (0x07u << PD_HDR_NUM_OBJ_SHIFT)
 
-#define PD_SPEC_REV_3_0 0b10u
+// Revision values live in ucsi_ppm_i.h (UCSI_PPM_SPEC_REV_*) — PRL owns which
+// one is current, PE only stamps it.
 
 // --- Source Fixed PDO field layout (PD R3.0 Table 6-9) ---------------------
 
@@ -82,10 +92,10 @@
 
 // --- helpers ---------------------------------------------------------------
 
-static uint16_t pe_build_header(uint8_t msg_type, uint8_t num_objects, bool power_role_src, bool data_role_dfp) {
+static uint16_t pe_build_header(uint8_t msg_type, uint8_t num_objects, bool power_role_src, bool data_role_dfp, uint8_t spec_rev) {
     uint16_t hdr = (uint16_t)(msg_type & PD_HDR_MSG_TYPE_MASK);
     if(data_role_dfp) hdr |= PD_HDR_DATA_ROLE_BIT;
-    hdr |= (uint16_t)(PD_SPEC_REV_3_0 << PD_HDR_SPEC_REV_SHIFT);
+    hdr |= (uint16_t)((uint32_t)(spec_rev & 0x3u) << PD_HDR_SPEC_REV_SHIFT);
     if(power_role_src) hdr |= PD_HDR_POWER_ROLE_BIT;
     hdr |= (uint16_t)(((uint32_t)num_objects & 0x07u) << PD_HDR_NUM_OBJ_SHIFT);
     return hdr;
@@ -227,7 +237,8 @@ static void pe_request_hard_reset(UcsiPpm* ppm) {
 // data role tracks pe_data_role_is_dfp (so DR_Swap can flip data role
 // without touching power role).
 static uint16_t pe_make_header(const UcsiPpm* ppm, uint8_t msg_type, uint8_t num_objects) {
-    return pe_build_header(msg_type, num_objects, ppm->tc_role_is_src, ppm->pe_data_role_is_dfp);
+    return pe_build_header(
+        msg_type, num_objects, ppm->tc_role_is_src, ppm->pe_data_role_is_dfp, ppm->prl_our_spec_rev);
 }
 
 // Sends a Control (NDO=0) message via PRL. Returns true on enqueue success.
@@ -391,9 +402,18 @@ static void pe_commit_contract(UcsiPpm* ppm) {
 // Talkative partners make this immediate: a phone asks Get_Sink_Cap,
 // Get_Revision, Get_Status and sends VDMs within milliseconds of the
 // contract.
+// Declines a message we do not implement. Not_Supported only exists from PD
+// R3.0 on — in R2.0 that opcode is Reserved, so a partner we have stepped down
+// to R2.0 for gets Reject instead (PD R2.0 §6.3.9), which is the refusal it
+// knows how to read.
 static void pe_reply_not_supported(UcsiPpm* ppm, uint8_t type) {
-    UCSI_LOG_I(ppm, "msg type 0x%02X unsupported, replying Not_Supported", (unsigned)type);
-    (void)pe_send_control(ppm, PD_MSG_TYPE_NOT_SUPPORTED);
+    const bool pd3 = ppm->prl_our_spec_rev >= UCSI_PPM_SPEC_REV_3_0;
+    UCSI_LOG_I(
+        ppm,
+        "msg type 0x%02X unsupported, replying %s",
+        (unsigned)type,
+        pd3 ? "Not_Supported" : "Reject");
+    (void)pe_send_control(ppm, pd3 ? PD_MSG_TYPE_NOT_SUPPORTED : PD_MSG_TYPE_REJECT);
 }
 
 // True for messages that must never draw a Not_Supported: replies to our own
@@ -416,6 +436,48 @@ static bool pe_control_needs_reply(uint8_t type) {
     default:
         return true;
     }
+}
+
+// Answers a Structured VDM we do not implement. PD R3.0 §6.4.4.3 wants the
+// same header back with Command Type flipped to NAK — SVID, Structured VDM
+// Version, Object Position and Command all preserved, so the initiator can
+// match the response to its request. Not_Supported is the answer for a
+// message the port does not implement at all, and a partner that gets it
+// where a NAK belongs cannot tell "no, not this command" from "no PD 3.0
+// here". Returns false if this was not a Structured VDM request, leaving the
+// caller to fall back.
+static bool pe_reply_vdm_nak(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
+    if(msg->object_count == 0u) return false;
+
+    // SOP' / SOP'' address the cable plug, not us. We never enable them on RX,
+    // but if one ever arrives, silence is the only correct answer — a port
+    // answering for a cable would be worse than not answering.
+    if(msg->sop_type != UcsiPpmPhySopTypeSop) return true;
+
+    const uint32_t vdm_hdr = msg->objects[0];
+    if(!(vdm_hdr & VDM_HDR_STRUCTURED_BIT)) return false; // Unstructured: owes Not_Supported.
+
+    // ACK / NAK / BUSY are responses. One arriving unsolicited answers a
+    // request we never sent, and replying to it would ping-pong forever.
+    const uint32_t cmd_type = (vdm_hdr & VDM_HDR_CMD_TYPE_MASK) >> VDM_HDR_CMD_TYPE_SHIFT;
+    if(cmd_type != VDM_CMD_TYPE_REQ) return true;
+
+    const uint32_t nak_hdr = (vdm_hdr & ~(uint32_t)VDM_HDR_CMD_TYPE_MASK) |
+                             ((uint32_t)VDM_CMD_TYPE_NAK << VDM_HDR_CMD_TYPE_SHIFT);
+    UCSI_LOG_I(
+        ppm,
+        "vdm cmd 0x%02X svid %04lX, replying NAK",
+        (unsigned)(vdm_hdr & 0x1Fu),
+        (unsigned long)(vdm_hdr >> 16));
+
+    UcsiPpmPhyPdMsg reply = {
+        .sop_type = UcsiPpmPhySopTypeSop,
+        .header = pe_make_header(ppm, PD_MSG_TYPE_VENDOR_DEFINED, 1u),
+        .object_count = 1u,
+    };
+    reply.objects[0] = nak_hdr;
+    (void)ucsi_ppm_prl_send_message(ppm, &reply);
+    return true;
 }
 
 static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
@@ -453,10 +515,21 @@ static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
         return;
     }
 
-    // Anything else — Alert, Vendor_Defined, Sink_Capabilities and the rest
-    // of PD 3.0's catalogue. See pe_reply_not_supported: staying silent is
-    // what makes a talkative partner tear the connection down.
+    if(type == PD_MSG_TYPE_VENDOR_DEFINED && pe_reply_vdm_nak(ppm, msg)) return;
+
+    // Anything else — Alert, Sink_Capabilities and the rest of PD 3.0's
+    // catalogue, plus Unstructured VDMs. See pe_reply_not_supported: staying
+    // silent is what makes a talkative partner tear the connection down.
     pe_reply_not_supported(ppm, type);
+}
+
+// Pushes our current roles and revision into SWITCHES1, which is where the
+// chip reads them from when it builds auto-GoodCRC headers on its own. Must
+// follow every change to either role, or our acknowledgements start describing
+// a port we no longer are.
+static void pe_sync_phy_header_bits(UcsiPpm* ppm) {
+    (void)ucsi_ppm_phy_set_msg_header_bits(
+        ppm, ppm->tc_role_is_src, ppm->pe_data_role_is_dfp, ppm->prl_our_spec_rev);
 }
 
 static bool pe_in_ready(const UcsiPpm* ppm) {
@@ -506,6 +579,7 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
         }
         // PD §6.3.10: data role flips after Accept is on the wire.
         ppm->pe_data_role_is_dfp = !ppm->pe_data_role_is_dfp;
+        pe_sync_phy_header_bits(ppm);
         ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_PARTNER_CHANGED);
         return;
     }
@@ -543,6 +617,7 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
     case(int)UcsiPpmPeWaitForDrSwapResponse:
         if(type == PD_MSG_TYPE_ACCEPT) {
             ppm->pe_data_role_is_dfp = !ppm->pe_data_role_is_dfp;
+            pe_sync_phy_header_bits(ppm);
             ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_PARTNER_CHANGED);
         }
         // Accept / Reject / Wait / Not_Supported all return to *Ready —
@@ -825,10 +900,19 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         case(int)UcsiPpmPeSrcReady:
         case(int)UcsiPpmPeSnkWaitForAccept:
         case(int)UcsiPpmPeSnkWaitForPsRdy:
-        case(int)UcsiPpmPeSrcSendCapabilities:
         case(int)UcsiPpmPeSrcTransitionSupply:
         case(int)UcsiPpmPeWaitForDrSwapResponse:
             pe_request_soft_reset(ppm);
+            break;
+        case(int)UcsiPpmPeSrcSendCapabilities:
+            // PD R3.0 §8.3.3.2.3: no GoodCRC for Source_Capabilities is a
+            // Protocol Error that sends PE_SRC_Send_Capabilities back to
+            // PE_SRC_Discovery — retry the advertisement, do not reset. A
+            // partner that never answers has no PD state to resynchronise, so
+            // Soft_Reset draws another retry-fail and the escalation runs away
+            // to Hard Reset and Error against a device that is merely not PD.
+            // The nCapsCount retry in ucsi_ppm_pe_tick owns the outcome.
+            pe_arm_timer(ppm);
             break;
         case(int)UcsiPpmPeWaitForSoftResetAccept:
             pe_request_hard_reset(ppm);
@@ -894,8 +978,8 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
             // tears down the working TX path and the chip NACKs the next
             // FIFOS push for reasons we don't fully understand (datasheet
             // doesn't spell out the post-reset TX prerequisites).
-            (void)ucsi_ppm_phy_set_msg_header_bits(
-                ppm, true /*src*/, ppm->pe_data_role_is_dfp, 0b10u /*PD R3.0*/);
+            // tc_role_is_src already flipped when the partner's PS_RDY arrived.
+            pe_sync_phy_header_bits(ppm);
             if(!pe_send_control(ppm, PD_MSG_TYPE_PS_RDY)) {
                 pe_request_hard_reset(ppm);
                 break;
@@ -924,6 +1008,7 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
     case(int)UcsiPpmPeSrcSendCapabilities:
         // Resend Source_Capabilities periodically until partner replies with
         // a Request, capped at nCapsCount (partner is Type-C only after that).
+        if(ppm->pe_typec_only) break;
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SOURCE_CAP_MS)) {
             // Advertising without a supply behind it is worse than staying
             // quiet — the partner may write us off as broken. Wait it out
@@ -935,7 +1020,14 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
                 break;
             }
             if(ppm->pe_caps_counter >= UCSI_PPM_PE_CAPS_COUNT_MAX) {
-                pe_to_error(ppm);
+                // PD R3.0 §8.3.3.2.4: nCapsCount advertisements with no
+                // Request means the partner does not do PD, which is
+                // PE_SRC_Disabled — VBUS stays up and Rp keeps advertising
+                // Type-C current. Mirrors the sink's conclusion in
+                // pe_request_hard_reset; Error would disown a working
+                // connection to something as ordinary as a flash drive.
+                UCSI_LOG_I(ppm, "partner is not PD capable, staying a type-c only source");
+                ppm->pe_typec_only = true;
             } else {
                 if(!pe_src_send_caps(ppm)) {
                     pe_to_error(ppm);
@@ -978,6 +1070,7 @@ uint32_t ucsi_ppm_pe_next_timeout_ms(const UcsiPpm* ppm) {
     case(int)UcsiPpmPeSrcTransitionSupply:
         return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_PS_TRANSITION_MS);
     case(int)UcsiPpmPeSrcSendCapabilities:
+        if(ppm->pe_typec_only) return UCSI_PPM_NO_TIMEOUT;
         return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_SOURCE_CAP_MS);
     default:
         return UCSI_PPM_NO_TIMEOUT;

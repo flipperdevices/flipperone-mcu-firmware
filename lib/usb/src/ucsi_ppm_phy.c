@@ -22,12 +22,6 @@
 // CONTROL2.TOG_SAVE_PWR: 40 ms tDIS between toggle cycles (datasheet).
 #define CONTROL2_TOG_SAVE_PWR 0x1u
 
-// SWITCHES1.SPEC_REV: PD revision used for auto-GoodCRC header construction.
-// 00 = R1.0 (deprecated), 01 = R2.0, 10/11 = Do Not Use.
-// In v1 we always advertise R3.0 in real PD messages; auto-GoodCRC is
-// fine echoing the partner's rev, so we default to R2.0 here.
-#define SWITCHES1_SPEC_REV_2_0 0x1u
-
 // --- I²C helpers -----------------------------------------------------------
 
 static UcsiPpmStatus phy_read_reg(UcsiPpm* ppm, uint8_t reg, uint8_t* out_value) {
@@ -283,8 +277,16 @@ UcsiPpmStatus ucsi_ppm_phy_enable_pd(UcsiPpm* ppm, uint8_t n_retries) {
     (void)ucsi_ppm_phy_flush_rx(ppm);
     (void)ucsi_ppm_phy_flush_tx(ppm);
 
-    // SWITCHES1.AUTO_CRC = 1.
-    s = phy_rmw_reg(ppm, Fusb302RegSwitches1, 1u << 2, 1u << 2);
+    // SWITCHES1.AUTO_CRC = 1, and SPEC_REV set to whatever revision we are
+    // currently advertising. The chip builds GoodCRC headers from this field
+    // on its own, and its reset value is R2.0 — left alone it would answer a
+    // partner's frames claiming one revision while our own messages claim
+    // another. PRL rewrites the field if it later steps us down.
+    s = phy_rmw_reg(
+        ppm,
+        Fusb302RegSwitches1,
+        (uint8_t)((1u << 2 /* AUTO_CRC */) | (3u << 5 /* SPEC_REV */)),
+        (uint8_t)((1u << 2) | ((uint32_t)(ppm->prl_our_spec_rev & 0x3u) << 5)));
     if(s != UcsiPpmStatusOk) return s;
 
     // CONTROL3: AUTO_RETRY=1, N_RETRIES, AUTO_SOFTRESET=0, AUTO_HARDRESET=0.

@@ -6,6 +6,12 @@
 extern "C" {
 #endif
 
+// PD Message Header Specification Revision, bits 7:6 (PD R3.0 §6.2.1.1.5).
+// 00b is R1.0 (deprecated) and 11b is reserved; neither is ever sent, and an
+// incoming 00b is read as R2.0 per prl-sm.md §8.
+#define UCSI_PPM_SPEC_REV_2_0 0x1u
+#define UCSI_PPM_SPEC_REV_3_0 0x2u
+
 // UCSI 3.0 Table 4-1: register file layout. Total size 528 bytes.
 #define UCSI_PPM_REGFILE_SIZE 528u
 
@@ -187,9 +193,16 @@ struct UcsiPpm {
     //   prl_messages_delivered  — running count of non-duplicate messages
     //                             passed up to PE (introspection / tests;
     //                             real PE would just consume them).
+    //   prl_our_spec_rev        — Specification Revision we stamp into every
+    //                             outgoing header, and into SWITCHES1 so the
+    //                             chip's auto-GoodCRC agrees with us. Starts at
+    //                             R3.0 and only ever drops (PD R3.0 §6.2.1.1.5:
+    //                             a port must not operate above its partner's
+    //                             revision). Reset on detach / Hard Reset.
     uint8_t prl_next_tx_msg_id;
     uint8_t prl_last_rx_msg_id;
     bool prl_last_rx_valid;
+    uint8_t prl_our_spec_rev;
     uint32_t prl_messages_delivered;
 
     // L3 PE (Policy Engine) — ucsi_ppm_pe.c.

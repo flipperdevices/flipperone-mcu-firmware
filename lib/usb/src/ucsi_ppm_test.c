@@ -3524,13 +3524,33 @@ static bool test_prl_hard_reset_event_resets_counter(void) {
 
 // Builds a partner-sent PD header. Stamps the simulated partner-side MsgID
 // at bits 11:9 so PRL dedup doesn't drop a sequence of partner replies.
-static uint16_t make_partner_header(uint8_t msg_type, uint8_t num_objects, uint8_t msg_id) {
+static uint16_t make_partner_header_rev(
+    uint8_t msg_type,
+    uint8_t num_objects,
+    uint8_t msg_id,
+    uint8_t spec_rev) {
     uint16_t hdr = (uint16_t)(msg_type & 0x1Fu);
-    hdr |= (uint16_t)(0b10u << 6); // PD 3.0
+    hdr |= (uint16_t)(((uint32_t)spec_rev & 0x3u) << 6);
     hdr |= (uint16_t)(1u << 8); // partner is Source
     hdr |= (uint16_t)(((uint32_t)msg_id & 0x07u) << 9);
     hdr |= (uint16_t)(((uint32_t)num_objects & 0x07u) << 12);
     return hdr;
+}
+
+static void simulate_pd_message_rev(
+    UcsiPpm* ppm,
+    uint8_t msg_type,
+    const uint32_t* objects,
+    uint8_t obj_count,
+    uint8_t spec_rev) {
+    const uint16_t header =
+        make_partner_header_rev(msg_type, obj_count, g_test_partner_msg_id, spec_rev);
+    g_test_partner_msg_id = (uint8_t)((g_test_partner_msg_id + 1u) & 0x07u);
+    uint8_t stream[64];
+    const size_t n =
+        build_rx_stream(stream, FUSB302_RX_TOKEN_SOP, header, objects, obj_count);
+    mock_fifo_load(stream, n);
+    simulate_message_rx_event(ppm);
 }
 
 static void simulate_pd_message(
@@ -3538,13 +3558,7 @@ static void simulate_pd_message(
     uint8_t msg_type,
     const uint32_t* objects,
     uint8_t obj_count) {
-    const uint16_t header = make_partner_header(msg_type, obj_count, g_test_partner_msg_id);
-    g_test_partner_msg_id = (uint8_t)((g_test_partner_msg_id + 1u) & 0x07u);
-    uint8_t stream[64];
-    const size_t n =
-        build_rx_stream(stream, FUSB302_RX_TOKEN_SOP, header, objects, obj_count);
-    mock_fifo_load(stream, n);
-    simulate_message_rx_event(ppm);
+    simulate_pd_message_rev(ppm, msg_type, objects, obj_count, UCSI_PPM_SPEC_REV_3_0);
 }
 
 static bool test_pe_init_idle(void) {
@@ -4508,6 +4522,9 @@ static UcsiPpm* mock_snk_ready(void) {
 // PD R3.0 §6.3.17 — anything we do not implement owes the partner a
 // Not_Supported. Staying silent stalls the partner's SenderResponseTimer and
 // it escalates to Soft_Reset and then Hard Reset, collapsing the connection.
+//
+// Both cases below assert the R3.0 form of the refusal; the R2.0 partner gets
+// Reject instead, which test_pe_unsupported_drawn_as_reject_on_pd2 covers.
 
 static bool test_pe_unsupported_control_gets_not_supported(void) {
     UcsiPpm* ppm = mock_snk_ready();
@@ -4526,6 +4543,9 @@ static bool test_pe_unsupported_data_gets_not_supported(void) {
     UcsiPpm* ppm = mock_snk_ready();
     mock_i2c_reset();
 
+    // VDM header with bit 15 clear = Unstructured, which is the case that
+    // genuinely owes Not_Supported. Structured VDMs are NAK'd instead — see
+    // test_pe_structured_vdm_gets_nak.
     const uint32_t vdo = 0u;
     simulate_pd_message(ppm, 0x0Fu /* Vendor_Defined */, &vdo, 1);
     TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u) >= 0);
@@ -4551,6 +4571,202 @@ static bool test_pe_responses_do_not_draw_not_supported(void) {
         UcsiPpm* ppm = mock_snk_ready();
         mock_i2c_reset();
         simulate_pd_message(ppm, quiet[i], NULL, 0);
+        TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u) < 0);
+        ucsi_ppm_free(ppm);
+    }
+
+    return true;
+}
+
+// --- PD Specification Revision tracking (PD R3.0 §6.2.1.1.5 / §6.1.3.1) ----
+
+// Header bits 7:6 of the message the mock captured at `idx`.
+static uint8_t fifo_burst_spec_rev(int idx) {
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+    return (uint8_t)((hdr >> 6) & 0x3u);
+}
+
+// Sink-side negotiation to SnkReady against a partner advertising `rev`.
+static UcsiPpm* mock_snk_ready_rev(uint8_t rev) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message_rev(ppm, 0x01u /* Source_Capabilities */, &pdo, 1, rev);
+    simulate_pd_message_rev(ppm, 0x03u /* Accept */, NULL, 0, rev);
+    simulate_pd_message_rev(ppm, 0x06u /* PS_RDY */, NULL, 0, rev);
+    return ppm;
+}
+
+static bool test_prl_spec_rev_defaults_to_pd3(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message_rev(ppm, 0x01u, &pdo, 1, UCSI_PPM_SPEC_REV_3_0);
+
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_3_0);
+    const int idx = find_fifo_burst_by_msg_type(0x02u /* Request */);
+    TEST_ASSERT(idx >= 0);
+    TEST_ASSERT(fifo_burst_spec_rev(idx) == UCSI_PPM_SPEC_REV_3_0);
+    // The chip's auto-GoodCRC must agree with what we stamp ourselves; its
+    // reset value is R2.0, so this only holds because enable_pd writes it.
+    TEST_ASSERT(((g_mock_regs[Fusb302RegSwitches1] >> 5) & 0x3u) == UCSI_PPM_SPEC_REV_3_0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// SWITCHES1 also carries Power Role and Data Role for the same auto-GoodCRC
+// header. Nothing wrote them at attach until now, so a source acknowledged
+// frames claiming to be a sink.
+static bool test_phy_goodcrc_header_matches_our_roles(void) {
+    UcsiPpm* ppm = mock_attach(true); // source
+    uint8_t sw1 = g_mock_regs[Fusb302RegSwitches1];
+    TEST_ASSERT((sw1 & (1u << 7)) != 0u); // Power Role = Source
+    TEST_ASSERT((sw1 & (1u << 4)) != 0u); // Data Role = DFP
+    ucsi_ppm_free(ppm);
+
+    ppm = mock_attach(false); // sink
+    sw1 = g_mock_regs[Fusb302RegSwitches1];
+    TEST_ASSERT((sw1 & (1u << 7)) == 0u); // Power Role = Sink
+    TEST_ASSERT((sw1 & (1u << 4)) == 0u); // Data Role = UFP
+    // AUTO_CRC must survive the role write — without it the chip stops
+    // acknowledging altogether.
+    TEST_ASSERT((sw1 & (1u << 2)) != 0u);
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_spec_rev_drops_to_match_pd2_partner(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message_rev(ppm, 0x01u, &pdo, 1, UCSI_PPM_SPEC_REV_2_0);
+
+    // A port may not operate above its partner's revision.
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_2_0);
+    const int idx = find_fifo_burst_by_msg_type(0x02u);
+    TEST_ASSERT(idx >= 0);
+    TEST_ASSERT(fifo_burst_spec_rev(idx) == UCSI_PPM_SPEC_REV_2_0);
+    TEST_ASSERT(((g_mock_regs[Fusb302RegSwitches1] >> 5) & 0x3u) == UCSI_PPM_SPEC_REV_2_0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_spec_rev_reads_deprecated_r1_as_pd2(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message_rev(ppm, 0x01u, &pdo, 1, 0x0u /* R1.0, deprecated */);
+
+    // 00b is not "below everything we speak" — it floors at R2.0.
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_2_0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_spec_rev_does_not_climb_back(void) {
+    UcsiPpm* ppm = mock_snk_ready_rev(UCSI_PPM_SPEC_REV_2_0);
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_2_0);
+
+    simulate_pd_message_rev(ppm, 0x18u /* Get_Revision */, NULL, 0, UCSI_PPM_SPEC_REV_3_0);
+
+    // Messages already on the wire committed us to R2.0 for this connection.
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_2_0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_unsupported_drawn_as_reject_on_pd2(void) {
+    UcsiPpm* ppm = mock_snk_ready_rev(UCSI_PPM_SPEC_REV_2_0);
+    g_mock_txn_count = 0;
+
+    simulate_pd_message_rev(ppm, 0x18u, NULL, 0, UCSI_PPM_SPEC_REV_2_0);
+
+    // Opcode 0x10 is Reserved in PD 2.0 — Reject is the refusal it can read.
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u /* Not_Supported */) < 0);
+    const int idx = find_fifo_burst_by_msg_type(0x04u /* Reject */);
+    TEST_ASSERT(idx >= 0);
+    TEST_ASSERT(fifo_burst_spec_rev(idx) == UCSI_PPM_SPEC_REV_2_0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_spec_rev_survives_soft_reset(void) {
+    UcsiPpm* ppm = mock_snk_ready_rev(UCSI_PPM_SPEC_REV_2_0);
+
+    // Soft_Reset resynchronises MessageID counters with the same partner, and
+    // that partner is no newer than it was a moment ago.
+    simulate_tx_retry_fail(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForSoftResetAccept);
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_2_0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_spec_rev_restored_on_detach(void) {
+    UcsiPpm* ppm = mock_snk_ready_rev(UCSI_PPM_SPEC_REV_2_0);
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_2_0);
+
+    // The revision describes the partner, so it dies with the connection —
+    // otherwise one PD 2.0 charger would hold us at R2.0 until reboot.
+    g_mock_time_ms = 400;
+    simulate_vbus_changed(ppm, false);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateUnattached);
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_3_0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// PD R3.0 §6.4.4.3 — a Structured VDM we do not implement is answered by
+// echoing the header with Command Type = NAK, not by Not_Supported.
+
+// Discover Identity (cmd 1) to the PD SID, Structured, Command Type = REQ.
+#define TEST_VDM_DISCOVER_IDENTITY 0xFF008001u
+
+static bool test_pe_structured_vdm_gets_nak(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_i2c_reset();
+
+    const uint32_t vdo = TEST_VDM_DISCOVER_IDENTITY;
+    simulate_pd_message(ppm, 0x0Fu /* Vendor_Defined */, &vdo, 1);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u /* Not_Supported */) < 0);
+    const int idx = find_fifo_burst_by_msg_type(0x0Fu);
+    TEST_ASSERT(idx >= 0);
+
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+    TEST_ASSERT(((hdr >> 12) & 0x07u) == 1u); // NDO=1, header only
+    const uint32_t reply = (uint32_t)t->data[8] | ((uint32_t)t->data[9] << 8) |
+                           ((uint32_t)t->data[10] << 16) | ((uint32_t)t->data[11] << 24);
+
+    TEST_ASSERT(((reply >> 6) & 0x3u) == 0x2u); // Command Type = NAK
+    // Everything the initiator matches on comes back untouched.
+    TEST_ASSERT((reply >> 16) == 0xFF00u); // SVID
+    TEST_ASSERT((reply & 0x1Fu) == 0x01u); // Command
+    TEST_ASSERT((reply & (1u << 15)) != 0u); // still Structured
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_structured_vdm_response_draws_no_reply(void) {
+    // ACK / NAK / BUSY answer a request. We never sent one, and replying to a
+    // reply would ping-pong forever.
+    const uint32_t cmd_types[] = {0x1u /* ACK */, 0x2u /* NAK */, 0x3u /* BUSY */};
+
+    for(size_t i = 0; i < sizeof(cmd_types) / sizeof(cmd_types[0]); ++i) {
+        UcsiPpm* ppm = mock_snk_ready();
+        mock_i2c_reset();
+
+        const uint32_t vdo = TEST_VDM_DISCOVER_IDENTITY | (cmd_types[i] << 6);
+        simulate_pd_message(ppm, 0x0Fu, &vdo, 1);
+
+        TEST_ASSERT(find_fifo_burst_by_msg_type(0x0Fu) < 0);
         TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u) < 0);
         ucsi_ppm_free(ppm);
     }
@@ -4743,6 +4959,68 @@ static bool test_pe_soft_reset_timeout_escalates_to_hard_reset(void) {
     ucsi_ppm_tick(ppm);
     TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
     TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// A partner that never GoodCRCs has no PD state to resynchronise, so the
+// Soft_Reset / Hard Reset ladder is the wrong answer to retry-fail while we
+// are still advertising. PD R3.0 §8.3.3.2.3 sends us back to Discovery.
+static bool test_pe_src_retry_fail_retries_caps_instead_of_resetting(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+
+    // Advertising is gated on VBUS being up, so pin it explicitly.
+    const Fusb302Status0RegBits s0 = {.vbusok = 1};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    // Only the transaction log: mock_i2c_reset would also zero the registers
+    // (taking VBUSOK with them) and rewind the clock the PE timers run on.
+    g_mock_txn_count = 0;
+
+    simulate_tx_retry_fail(ppm);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x0Du /* Soft_Reset */) < 0);
+
+    // The advertisement resumes on the next tTypeCSendSourceCap tick.
+    g_mock_time_ms += 200;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x01u /* Source_Capabilities */) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_src_caps_exhausted_settles_type_c_only(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcSendCapabilities);
+
+    const Fusb302Status0RegBits s0 = {.vbusok = 1};
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+
+    // Burn the whole nCapsCount budget against a partner that never answers.
+    // Drain only the transaction log each round: it holds 256 entries and a
+    // write that overflows it would read as a send failure to the PE, but a
+    // full mock_i2c_reset would clear VBUSOK and rewind the clock as well.
+    for(unsigned i = 0; i < 60u; ++i) {
+        g_mock_txn_count = 0;
+        g_mock_time_ms += 200;
+        ucsi_ppm_tick(ppm);
+    }
+
+    // A flash drive is a working connection, not an error: VBUS stays up and
+    // Rp keeps advertising Type-C current.
+    TEST_ASSERT(ppm->pe_typec_only);
+    TEST_ASSERT(ppm->pe_state != (int)UcsiPpmPeStateError);
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc);
+
+    // Settled means settled — no further advertisements, and nothing to wake for.
+    g_mock_txn_count = 0;
+    g_mock_time_ms += 1000;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x01u) < 0);
+    TEST_ASSERT(ucsi_ppm_next_timeout_ms(ppm) == UCSI_PPM_NO_TIMEOUT);
 
     ucsi_ppm_free(ppm);
     return true;
@@ -5651,6 +5929,16 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_unsupported_control_gets_not_supported),
     TEST_ENTRY(test_pe_unsupported_data_gets_not_supported),
     TEST_ENTRY(test_pe_responses_do_not_draw_not_supported),
+    TEST_ENTRY(test_prl_spec_rev_defaults_to_pd3),
+    TEST_ENTRY(test_phy_goodcrc_header_matches_our_roles),
+    TEST_ENTRY(test_prl_spec_rev_drops_to_match_pd2_partner),
+    TEST_ENTRY(test_prl_spec_rev_reads_deprecated_r1_as_pd2),
+    TEST_ENTRY(test_prl_spec_rev_does_not_climb_back),
+    TEST_ENTRY(test_pe_unsupported_drawn_as_reject_on_pd2),
+    TEST_ENTRY(test_prl_spec_rev_survives_soft_reset),
+    TEST_ENTRY(test_prl_spec_rev_restored_on_detach),
+    TEST_ENTRY(test_pe_structured_vdm_gets_nak),
+    TEST_ENTRY(test_pe_structured_vdm_response_draws_no_reply),
     TEST_ENTRY(test_pe_get_sink_cap_answered_with_sink_caps),
     TEST_ENTRY(test_pe_get_source_cap_answered_while_sink),
     TEST_ENTRY(test_pe_snk_ready_recv_source_caps_renegotiates),
@@ -5662,6 +5950,8 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_tx_retry_fail_in_snk_ready_triggers_soft_reset),
     TEST_ENTRY(test_pe_soft_reset_accept_restarts_negotiation),
     TEST_ENTRY(test_pe_soft_reset_timeout_escalates_to_hard_reset),
+    TEST_ENTRY(test_pe_src_retry_fail_retries_caps_instead_of_resetting),
+    TEST_ENTRY(test_pe_src_caps_exhausted_settles_type_c_only),
     TEST_ENTRY(test_pe_tx_retry_fail_in_wait_soft_reset_escalates_hard),
     TEST_ENTRY(test_pe_rx_soft_reset_accepted_and_restarts),
     TEST_ENTRY(test_prl_soft_reset_rx_resets_state_before_dedup),

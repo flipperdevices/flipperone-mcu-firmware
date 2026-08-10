@@ -24,6 +24,11 @@ extern "C" {
 UcsiPpmStatus ucsi_ppm_prl_init(UcsiPpm* ppm);
 UcsiPpmStatus ucsi_ppm_prl_reset(UcsiPpm* ppm);
 
+/** Restores the advertised PD revision to R3.0. Belongs to detach only: the
+ * revision describes the partner, so it outlives Soft_Reset and Hard Reset and
+ * dies with the connection. */
+void ucsi_ppm_prl_reset_spec_rev(UcsiPpm* ppm);
+
 // Stamps the current MessageID into `msg->header` (overwriting bits 11:9)
 // and forwards to ucsi_ppm_phy_send_message. On success the next-MessageID
 // counter advances (mod 8). The caller's `msg` is mutated in place.

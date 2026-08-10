@@ -158,7 +158,7 @@
 - **F2.6**: **PSTransitionTimer и PS_RDY**: PE в шаге 20 запускает PSTransitionTimer **на 500 мс** до того как мы зовём callback. Если PSU справляется быстрее (например, 100 мс), мы PS_RDY шлём через 100 мс — это OK. Если медленнее 500 мс → Hard Reset. **Findings**: не зафиксировано, что PSTransitionTimer применим только в этом контексте (не путать с tSenderResponse). ОК — отдельные таймеры. ✅
 - **F2.7**: **Notification flow**: PE → PPM publish. Кто конкретно «publish»? Должен быть internal API между L3 и L2 — у нас в pe-sm.md §15 есть «PE публикует в PPM (через events)». Но архитектура не зафиксировала **очередь событий PE→PPM**. **Решение**: явный `FuriMessageQueue` или callback. Зафиксировать в architecture.md.
 - **F2.8**: **Connector Status Change bitmap аккумуляция.** PE публикует «negotiated_power_level_change», PPM должен установить bit 6 в Connector Status Change. Но **что если в это время PPM в `Busy` или `WaitForAck`?** Согласно architecture.md §4.2 — bitmap копится в LPM до следующего GET_CONNECTOR_STATUS. ОК.
-- **F2.9**: **Кто ставит SPEC_REV в SWITCHES1 при upgrade на PD 3.0?** Type-C SM в шаге 6.4 ставит SPEC_REV=01b. PRL в [`prl-sm.md`](prl-sm.md) §8 detect-ит partner SpecRev из first incoming message и обновляет `our_spec_rev`. Но **кто** записывает в `SWITCHES1.SPEC_REV`? PRL должна — потому что это влияет на auto-GoodCRC header. Зафиксировать в prl-sm.md.
+- **F2.9** ✅ **Закрыт.** Кто ставит SPEC_REV в SWITCHES1: начальное значение пишет `ucsi_ppm_phy_enable_pd` (из `prl_our_spec_rev`, то есть 10b), а при понижении его перезаписывает PRL из `prl_observe_spec_rev`. Заводское значение регистра — 01b, и пока его никто не трогал, наши GoodCRC заявляли PD 2.0, а сообщения PE — PD 3.0. Направление в §8 исправлено: храповик идёт вниз, а не вверх.
 
 ---
 
@@ -187,7 +187,7 @@
    - → `PE_SNK_Discovery`.
    - Запускает SinkWaitCapTimer (465 мс).
 6. **L4**: partner отправляет Source_Capabilities → `I_GCRCSENT` → event `MessageRx`.
-7. **PRL_Rx**: парсит header (MessageID=0, partner-side counter); `stored_rx_message_id=0`; SpecRev=10b → upgrade our_spec_rev=10b → `SWITCHES1.SPEC_REV=10b`. Forward в PE.
+7. **PRL_Rx**: парсит header (MessageID=0, partner-side counter); `stored_rx_message_id=0`; SpecRev=10b → партнёр не старше нас, `our_spec_rev` остаётся 10b, `SWITCHES1.SPEC_REV` не трогаем. (Пришло бы 01b — понизились бы до него и переписали регистр.) Forward в PE.
 8. **PE**: получает MessageRx(Source_Capabilities) → отменяет SinkWaitCapTimer → → `PE_SNK_Evaluate_Capability`:
    - Парсит массив PDOs.
    - Policy: выбрать 20V/3A (если в caps есть) или fall-back.

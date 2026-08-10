@@ -19,16 +19,57 @@
 // MessageIDCounter wraps after 0..7 (PD R3.0 §6.8.1 nMessageIDCount = 7).
 #define PRL_MSG_ID_WRAP 8u
 
+// PD R3.0 Message Header — Specification Revision, bits 7:6.
+#define MSG_HDR_SPEC_REV_SHIFT 6u
+#define MSG_HDR_SPEC_REV_MASK  ((uint16_t)(0x03u << MSG_HDR_SPEC_REV_SHIFT))
+
+void ucsi_ppm_prl_reset_spec_rev(UcsiPpm* ppm) {
+    // PD R3.0 §6.1.3.1: start out claiming R3.0 and step down once a partner
+    // reveals it is older. Starting low instead would strand us on R2.0 with
+    // partners that never re-advertise.
+    ppm->prl_our_spec_rev = UCSI_PPM_SPEC_REV_3_0;
+}
+
 UcsiPpmStatus ucsi_ppm_prl_init(UcsiPpm* ppm) {
+    (void)ucsi_ppm_prl_reset(ppm);
+    ucsi_ppm_prl_reset_spec_rev(ppm);
+    return UcsiPpmStatusOk;
+}
+
+// Applies PD R3.0 §6.2.1.1.5 to a received SOP header: we may never operate
+// above the partner's revision, so our outgoing revision is the lower of the
+// two. It only ratchets down — a partner that starts speaking R3.0 later in
+// the same connection does not lift us back up, because the messages we
+// already sent committed us. Detach and Hard Reset clear the ratchet.
+static void prl_observe_spec_rev(UcsiPpm* ppm, uint16_t header) {
+    uint8_t peer = (uint8_t)((header & MSG_HDR_SPEC_REV_MASK) >> MSG_HDR_SPEC_REV_SHIFT);
+    // 00b is the deprecated R1.0 encoding; treat it as R2.0 rather than as a
+    // revision below everything we know how to speak.
+    if(peer == 0u) peer = UCSI_PPM_SPEC_REV_2_0;
+    if(peer >= ppm->prl_our_spec_rev) return;
+
+    UCSI_LOG_I(
+        ppm,
+        "spec rev: partner is %s, dropping ours to match",
+        peer == UCSI_PPM_SPEC_REV_2_0 ? "PD 2.0" : "older");
+    ppm->prl_our_spec_rev = peer;
+    // The chip builds auto-GoodCRC headers itself out of SWITCHES1, so the
+    // revision has to land there too. Leaving it stale would have us answer a
+    // partner's frame with one revision and follow it with another.
+    (void)ucsi_ppm_phy_set_msg_header_bits(
+        ppm, ppm->tc_role_is_src, ppm->pe_data_role_is_dfp, peer);
+}
+
+// Soft_Reset and Hard Reset both land here. Neither renegotiates the PD
+// revision: they resynchronise MessageID counters with the same partner, and
+// that partner is no newer than it was. Only a new attach may raise us back to
+// R3.0 — see ucsi_ppm_prl_reset_spec_rev, called from the detach path.
+UcsiPpmStatus ucsi_ppm_prl_reset(UcsiPpm* ppm) {
     ppm->prl_next_tx_msg_id = 0u;
     ppm->prl_last_rx_msg_id = 0u;
     ppm->prl_last_rx_valid = false;
     ppm->prl_messages_delivered = 0u;
     return UcsiPpmStatusOk;
-}
-
-UcsiPpmStatus ucsi_ppm_prl_reset(UcsiPpm* ppm) {
-    return ucsi_ppm_prl_init(ppm);
 }
 
 UcsiPpmStatus ucsi_ppm_prl_send_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* msg) {
@@ -89,6 +130,11 @@ static void prl_drain_rx_fifo(UcsiPpm* ppm) {
             UCSI_LOG_D(ppm, "rx goodcrc id=%u", (unsigned)((msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u));
             continue;
         }
+
+        // Before dedup: a duplicate still carries the partner's revision, and
+        // this must run on every SOP frame that reaches us, not only the ones
+        // PE ends up seeing.
+        if(msg.sop_type == UcsiPpmPhySopTypeSop) prl_observe_spec_rev(ppm, msg.header);
 
         const bool is_soft_reset = (msg_type == PD_MSG_TYPE_SOFT_RESET && num_obj == 0u);
         if(is_soft_reset && msg.sop_type == UcsiPpmPhySopTypeSop) {
