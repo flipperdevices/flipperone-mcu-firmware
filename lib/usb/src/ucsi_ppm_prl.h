@@ -24,6 +24,10 @@ extern "C" {
 UcsiPpmStatus ucsi_ppm_prl_init(UcsiPpm* ppm);
 UcsiPpmStatus ucsi_ppm_prl_reset(UcsiPpm* ppm);
 
+/** Puts the queued outgoing message, if any, on the wire. Called once the RX
+ * FIFO is drained — see ucsi_ppm_prl_send_message for why answers wait. */
+void ucsi_ppm_prl_flush_tx(UcsiPpm* ppm);
+
 /** Restores the advertised PD revision to R3.0. Belongs to detach only: the
  * revision describes the partner, so it outlives Soft_Reset and Hard Reset and
  * dies with the connection. */

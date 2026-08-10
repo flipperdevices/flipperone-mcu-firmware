@@ -134,28 +134,16 @@ UcsiPpmStatus ucsi_ppm_phy_read_vbusok(UcsiPpm* ppm, bool* out_vbus_ok);
 // Sets the header bits FUSB302 uses to build auto-GoodCRC responses:
 // SWITCHES1.{POWER_ROLE, DATA_ROLE, SPEC_REV}. Must reflect the current
 // negotiated PD state.
-UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp, uint8_t spec_rev);
+// Takes no revision: SWITCHES1.SPEC_REV is pinned to what the chip supports,
+// and passing the negotiated revision through here is what broke auto-GoodCRC.
+UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp);
 
 // --- PD messages -----------------------------------------------------------
-
-// Maximum number of Data Objects in a PD message (spec: 7).
-#define UCSI_PPM_PHY_MAX_OBJECTS 7
-
-// SOP* destination for outgoing / incoming PD messages.
-// v1 only originates SOP (port partner); SOP'/SOP'' are reserved for future
-// cable communication and are accepted by the encoder for forward compat.
-typedef enum {
-    UcsiPpmPhySopTypeSop, // SOP — port partner
-    UcsiPpmPhySopTypeSopPrime, // SOP' — first cable plug
-    UcsiPpmPhySopTypeSopDoublePrime, // SOP'' — second cable plug
-} UcsiPpmPhySopType;
-
-typedef struct {
-    UcsiPpmPhySopType sop_type;
-    uint16_t header;
-    uint32_t objects[UCSI_PPM_PHY_MAX_OBJECTS];
-    uint8_t object_count; // 0..7; control messages use 0
-} UcsiPpmPhyPdMsg;
+//
+// UCSI_PPM_PHY_MAX_OBJECTS, UcsiPpmPhySopType and UcsiPpmPhyPdMsg live in
+// ucsi_ppm_i.h: the UcsiPpm struct holds a deferred outgoing message by value,
+// and this header already depends on that struct, so the definitions have to sit
+// below it in the include graph rather than here.
 
 // --- PD path ---------------------------------------------------------------
 

@@ -335,15 +335,14 @@ static void tc_try_commit_attached(UcsiPpm* ppm) {
         ppm,
         ppm->tc_role_is_src ? (int)UcsiPpmTcStateAttachedSrc : (int)UcsiPpmTcStateAttachedSnk,
         "debounce expired, vbus ok");
-    // The chip builds auto-GoodCRC headers from SWITCHES1, so its Power Role,
-    // Data Role and Specification Revision have to say what we say. Nothing
-    // wrote the role bits before, which left a source acknowledging frames as
-    // "Sink". Done ahead of enable_pd so no GoodCRC can go out with stale
-    // roles: at attach the data role follows the power role by Type-C
-    // convention (source = DFP), the same assignment ucsi_ppm_pe_on_attach_*
-    // makes a few lines below, and only a later DR_Swap separates the two.
-    (void)ucsi_ppm_phy_set_msg_header_bits(
-        ppm, ppm->tc_role_is_src, ppm->tc_role_is_src, ppm->prl_our_spec_rev);
+    // The chip builds auto-GoodCRC headers from SWITCHES1, so its Power Role and
+    // Data Role have to say what we say. Nothing wrote the role bits before,
+    // which left a source acknowledging frames as "Sink". Done ahead of
+    // enable_pd so no GoodCRC can go out with stale roles: at attach the data
+    // role follows the power role by Type-C convention (source = DFP), the same
+    // assignment ucsi_ppm_pe_on_attach_* makes a few lines below, and only a
+    // later DR_Swap separates the two.
+    (void)ucsi_ppm_phy_set_msg_header_bits(ppm, ppm->tc_role_is_src, ppm->tc_role_is_src);
 
     (void)ucsi_ppm_phy_enable_pd(ppm, UCSI_PPM_TC_PD_RETRIES);
     ucsi_ppm_phy_log_config(ppm, "pd enabled");

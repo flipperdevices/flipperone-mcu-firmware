@@ -2,6 +2,8 @@
 
 #include "drivers/fusb302/fusb302_reg.h"
 
+#include <stdio.h>
+
 #define TAG "UcsiPhy"
 
 // All POWER blocks on (bandgap, receiver/refs, measure, oscillator).
@@ -21,6 +23,23 @@
 
 // CONTROL2.TOG_SAVE_PWR: 40 ms tDIS between toggle cycles (datasheet).
 #define CONTROL2_TOG_SAVE_PWR 0x1u
+
+// SWITCHES1.SPEC_REV — the revision the chip stamps into the GoodCRC headers it
+// builds itself. The field's encoding stops at R2.0: 00 = R1.0 (deprecated),
+// 01 = R2.0, and 10/11 are marked Do Not Use.
+//
+// Not a detail to "fix" for consistency with a negotiated R3.0. Programming 10b
+// here was measured on a PD analyser to make the chip stop acknowledging whole
+// message types — Get_Source_Cap_Extended and Vendor_Defined went out on the
+// wire with no GoodCRC at all, so the partner retried three times, gave up and
+// Soft_Reset, in a loop. Everything with a type code up to 0x0D still got
+// acknowledged, which is what made it look like a content problem for so long.
+//
+// It is also what the protocol expects: certified partners put R2.0 in their own
+// GoodCRC while sending R3.0 messages. GoodCRC revision is not part of revision
+// negotiation — the messages our PE builds carry prl_our_spec_rev, and that is
+// where the negotiated value belongs.
+#define SWITCHES1_SPEC_REV_R2_0 0x1u
 
 // --- I²C helpers -----------------------------------------------------------
 
@@ -248,11 +267,11 @@ UcsiPpmStatus ucsi_ppm_phy_set_source_termination(UcsiPpm* ppm, UcsiPpmPhyCc cc)
     return phy_rmw_reg(ppm, Fusb302RegSwitches1, sw1_mask, sw1_value);
 }
 
-UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp, uint8_t spec_rev) {
+UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp) {
     // SWITCHES1: AUTO_CRC (bit 2), DATA_ROLE (bit 4), SPEC_REV (bits 6:5),
     // POWER_ROLE (bit 7). We touch the role/rev bits and leave AUTO_CRC alone.
     const uint8_t mask = (uint8_t)((1u << 4) | (3u << 5) | (1u << 7));
-    const uint8_t value = (uint8_t)(((data_role_dfp ? 1u : 0u) << 4) | (((uint32_t)spec_rev & 0x3u) << 5) | ((power_role_src ? 1u : 0u) << 7));
+    const uint8_t value = (uint8_t)(((data_role_dfp ? 1u : 0u) << 4) | (SWITCHES1_SPEC_REV_R2_0 << 5) | ((power_role_src ? 1u : 0u) << 7));
     return phy_rmw_reg(ppm, Fusb302RegSwitches1, mask, value);
 }
 
@@ -277,16 +296,13 @@ UcsiPpmStatus ucsi_ppm_phy_enable_pd(UcsiPpm* ppm, uint8_t n_retries) {
     (void)ucsi_ppm_phy_flush_rx(ppm);
     (void)ucsi_ppm_phy_flush_tx(ppm);
 
-    // SWITCHES1.AUTO_CRC = 1, and SPEC_REV set to whatever revision we are
-    // currently advertising. The chip builds GoodCRC headers from this field
-    // on its own, and its reset value is R2.0 — left alone it would answer a
-    // partner's frames claiming one revision while our own messages claim
-    // another. PRL rewrites the field if it later steps us down.
+    // SWITCHES1.AUTO_CRC = 1, with SPEC_REV pinned to R2.0 — see the constant's
+    // comment for why the negotiated revision must not go here.
     s = phy_rmw_reg(
         ppm,
         Fusb302RegSwitches1,
         (uint8_t)((1u << 2 /* AUTO_CRC */) | (3u << 5 /* SPEC_REV */)),
-        (uint8_t)((1u << 2) | ((uint32_t)(ppm->prl_our_spec_rev & 0x3u) << 5)));
+        (uint8_t)((1u << 2) | (SWITCHES1_SPEC_REV_R2_0 << 5)));
     if(s != UcsiPpmStatusOk) return s;
 
     // CONTROL3: AUTO_RETRY=1, N_RETRIES, AUTO_SOFTRESET=0, AUTO_HARDRESET=0.
@@ -419,6 +435,20 @@ UcsiPpmStatus ucsi_ppm_phy_send_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg
     buf[len++] = FUSB302_TX_TOKEN_EOP;
     buf[len++] = FUSB302_TX_TOKEN_TXOFF;
     buf[len++] = FUSB302_TX_TOKEN_TXON;
+
+    // Extended messages only — rare enough not to flood, and the one case where
+    // what we believe we built and what reaches the wire have to be compared
+    // byte for byte. Dumps the framed payload (PACKSYM length, header, objects)
+    // and skips the fixed SOP and CRC/EOP tokens around it.
+    if(msg->header & (1u << 15)) {
+        char hex[3u * (1u + 2u + 4u * UCSI_PPM_PHY_MAX_OBJECTS) + 1u];
+        size_t pos = 0u;
+        for(size_t i = 5u; i < len - 4u && pos + 4u <= sizeof(hex); ++i) {
+            pos += (size_t)snprintf(&hex[pos], sizeof(hex) - pos, "%02X ", buf[i]);
+        }
+        hex[pos] = '\0';
+        UCSI_LOG_D(ppm, "tx frame %s", hex);
+    }
 
     return ppm->config.i2c_write(ppm->config.hal_ctx, ppm->config.fusb302_i2c_addr, buf, len);
 }
