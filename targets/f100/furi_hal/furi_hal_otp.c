@@ -40,7 +40,7 @@
 #define OTP_SCSI_VERSION     "1.00"        // max 4 chars
 
 // BOOTSEL LED: GPIO pin, connected to VCC
-#define OTP_BOOTSEL_LED_PIN  40
+#define OTP_BOOTSEL_LED_PIN  35
 
 // Bootloader info page strings
 #define OTP_REDIRECT_URL     "https://r.flipper.net/flipper_one_mcu_update" // max 127 chars
