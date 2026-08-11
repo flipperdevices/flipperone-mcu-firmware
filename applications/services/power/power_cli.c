@@ -54,7 +54,7 @@ static void power_cli_reset_pd_and_charger(void) {
 
     Power* power = furi_record_open(RECORD_POWER);
     PowerDevice power_device;
-    power_bq25792_reset_config(power);
+    power_bq2579x_reset_config(power);
     furi_record_close(RECORD_POWER);
 }
 
