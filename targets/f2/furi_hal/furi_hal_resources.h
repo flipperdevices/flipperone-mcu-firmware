@@ -87,6 +87,7 @@ extern const GpioPin gpio_nboot_disable;
 
 extern const GpioPin gpio_display_te;
 extern const GpioPin gpio_display_backlight_pwm;
+extern const GpioPin gpio_display_backlight_en;
 extern const GpioPin gpio_display_reset;
 extern const GpioPin gpio_display_d2;
 extern const GpioPin gpio_display_d1;
@@ -100,11 +101,16 @@ extern const GpioPin gpio_haptic_pwm;
 
 extern const GpioPin gpio_touchpad_rdy;
 
+extern const GpioPin gpio_power_led_red;
+extern const GpioPin gpio_power_led_green;
+extern const GpioPin gpio_power_led_blue_dfu;
+
 extern const GpioPin gpio_i2c_control_sda;
 extern const GpioPin gpio_i2c_control_scl;
 extern const GpioPin gpio_i2c_main_sda;
 extern const GpioPin gpio_i2c_main_scl;
 
+extern const GpioPin gpio_status_led_dcdc_enable;
 extern const GpioPin gpio_status_led_line1;
 extern const GpioPin gpio_status_led_line2;
 extern const GpioPin gpio_status_led_line3;

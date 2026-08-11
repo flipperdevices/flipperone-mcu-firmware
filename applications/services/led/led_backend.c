@@ -3,7 +3,6 @@
 #include <furi_bsp.h>
 #include <furi_hal_nvm.h>
 #include <furi_hal_resources.h>
-#include <furi_hal_pwm.h>
 #include <api_lock.h>
 #include <drivers/ws2812/ws2812.h>
 #include <settings/settings.h>
@@ -26,9 +25,6 @@
 
 #define LED_RGB_BRIGHTNESS_MULTIPLIER (0.5f)
 
-#define LED_BACKLIGHT_PWM_RESOLUTION 8 // 8-bit PWM for backlight
-#define LED_BACKLIGHT_PWM_FREQ_HZ    40000 // 40kHz PWM for backlight
-
 #define LED_BACKLIGHT_TIME_DEFAULT (10 * 1000)
 #define LED_BACKLIGHT_TIME_MAX     ((UINT16_MAX) * 100) // I2C: 16-bit register with 100ms resolution
 
@@ -46,7 +42,6 @@ struct Led {
     FuriMessageQueue* message_queue;
     FuriEventLoopTimer* backlight_timer;
     Ws2812* ws2812;
-    FuriHalPwm* backlight_pwm;
     LedState led_state;
 };
 
@@ -106,35 +101,6 @@ static const struct {
     [LedGroupWattmeter] = {SETTINGS_LED_GROUP_WATTMETER, 255},
     [LedGroupDisplayBacklight] = {SETTINGS_LED_BACKLIGHT, 51}, // 20%
 };
-
-static void led_backlight_brightness_transition(Led* instance, uint8_t new_value) {
-    // TODO: smooth transition using DMA + PWM
-
-    if(new_value == 0) {
-        if(instance->backlight_pwm) {
-            furi_hal_pwm_set_duty_cycle(instance->backlight_pwm, 0);
-            furi_hal_pwm_deinit(instance->backlight_pwm);
-            instance->backlight_pwm = NULL;
-        }
-    } else {
-        uint32_t max_value = (1 << LED_BACKLIGHT_PWM_RESOLUTION) - 1;
-        uint32_t duty_cycle = (new_value * max_value) / 255;
-        if(!instance->backlight_pwm) {
-            // To enable the device, the CTRL signal must be high for 500 µs.
-            // The PWM signal can then be applied with a pulse width (tp)
-            // greater or smaller than tON. To force the device into shutdown mode,
-            // the CTRL signal must be low for at least 32 ms.
-            // Requiring the CTRL pin to be low for 32 mS before the device enters
-            // shutdown allows for PWM dimming frequencies as low as 100 Hz.
-            // The device is enabled again when a CTRL signal is high for a period of 500 µs minimum.
-            // TODO: rework for new HW revision
-            instance->backlight_pwm = furi_hal_pwm_init(&gpio_display_backlight_pwm, LED_BACKLIGHT_PWM_RESOLUTION, LED_BACKLIGHT_PWM_FREQ_HZ, false);
-            furi_hal_pwm_set_duty_cycle(instance->backlight_pwm, 140);
-            furi_delay_us(2400);
-        }
-        furi_hal_pwm_set_duty_cycle(instance->backlight_pwm, duty_cycle);
-    }
-}
 
 static bool led_line_is_wanna_power(uint32_t* line_buffer, size_t led_count) {
     furi_assert(line_buffer);
@@ -288,7 +254,7 @@ static void led_backlight_enable(Led* instance, bool enable) {
     if(enable) {
         furi_state_get(instance->led_state.brightness[LedGroupDisplayBacklight], &brightness);
     }
-    led_backlight_brightness_transition(instance, brightness);
+    furi_bsp_display_backlight_set_brightness(brightness);
 }
 
 static void led_backlight_ping(Led* instance) {
@@ -477,6 +443,9 @@ static void led_backlight_input_touch_callback(const void* value, void* context)
 
 static Led* led_alloc(void) {
     Led* instance = (Led*)malloc(sizeof(Led));
+
+    // Initialize backlight
+    furi_bsp_display_backlight_init();
 
     // Ws2812 init
     GpioPin ws2812_pins[] = {gpio_status_led_line1, gpio_status_led_line2, gpio_status_led_line3};

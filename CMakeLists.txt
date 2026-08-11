@@ -9,6 +9,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(FW_TARGET "f100" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
 
+message(STATUS "Building '${FW_TARGET}' firmware from '${FIRMWARE_ORIGIN}'")
+
 # version.c reports the target as a bare number, so f100 -> 100
 if(NOT FW_TARGET MATCHES "^f([0-9]+)$")
     message(FATAL_ERROR "FW_TARGET '${FW_TARGET}' must follow the f<number> convention")
