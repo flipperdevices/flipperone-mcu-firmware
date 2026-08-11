@@ -2,70 +2,72 @@
 
 #include <stdint.h>
 #include <core/common_defines.h>
-#include "bq25792_helper.h"
+#include "bq2579x_helper.h"
+// Unified register map for BQ25792 and BQ25798 (identical except for the fields marked per-chip below)
 //https://www.ti.com/lit/ds/symlink/bq25792.pdf
+//https://www.ti.com/lit/ds/symlink/bq25798.pdf
 
 /* clang-format off */
 
 typedef enum {
-    Bq25792RegMinimalSystemVoltage = 0x00, /** Minimal System Voltage Section 9.5.1.1 */
-    Bq25792RegChargeVoltageLimit = 0x01,   /** Charge Voltage Limit Section 9.5.1.2 */
-    Bq25792RegChargeCurrentLimit = 0x03,   /** Charge Current Limit Section 9.5.1.3 */
-    Bq25792RegInputVoltageLimit = 0x05,    /** Input Voltage Limit Section 9.5.1.4 */
-    Bq25792RegInputCurrentLimit = 0x06,    /** Input Current Limit Section 9.5.1.5 */
-    Bq25792RegPrechargeControl = 0x08,     /** Precharge Control Section 9.5.1.6 */
-    Bq25792RegTerminationControl = 0x09,   /** Termination Control Section 9.5.1.7 */
-    Bq25792RegRechargeControl = 0x0A,      /** Recharge Control Section 9.5.1.8 */
-    Bq25792RegVOTGRegulation = 0x0B,       /** VOTG Regulation Section 9.5.1.9 */
-    Bq25792RegIOTGRegulation = 0x0D,       /** IOTG Regulation Section 9.5.1.10 */
-    Bq25792RegTimerControl = 0x0E,         /** Timer Control Section 9.5.1.11 */
-    Bq25792RegChargerControl0 = 0x0F,      /** Charger Control 0 Section 9.5.1.12 */
-    Bq25792RegChargerControl1 = 0x10,      /** Charger Control 1 Section 9.5.1.13 */
-    Bq25792RegChargerControl2 = 0x11,      /** Charger Control 2 Section 9.5.1.14 */
-    Bq25792RegChargerControl3 = 0x12,      /** Charger Control 3 Section 9.5.1.15 */
-    Bq25792RegChargerControl4 = 0x13,      /** Charger Control 4 Section 9.5.1.16 */
-    Bq25792RegChargerControl5 = 0x14,      /** Charger Control 5 Section 9.5.1.17 */
-    Bq25792RegReserved = 0x15,             /** Reserved Section 9.5.1.18 */
-    Bq25792RegTemperatureControl = 0x16,   /** Temperature Control Section 9.5.1.19 */
-    Bq25792RegNTCControl0 = 0x17,          /** NTC Control 0 Section 9.5.1.20 */
-    Bq25792RegNTCControl1 = 0x18,          /** NTC Control 1 Section 9.5.1.21 */
-    Bq25792RegICOCurrentLimit = 0x19,      /** ICO Current Limit Section 9.5.1.22 */
-    Bq25792RegChargerStatus0 = 0x1B,       /** Charger Status 0 Section 9.5.1.23 */
-    Bq25792RegChargerStatus1 = 0x1C,       /** Charger Status 1 Section 9.5.1.24 */
-    Bq25792RegChargerStatus2 = 0x1D,       /** Charger Status 2 Section 9.5.1.25 */
-    Bq25792RegChargerStatus3 = 0x1E,       /** Charger Status 3 Section 9.5.1.26 */
-    Bq25792RegChargerStatus4 = 0x1F,       /** Charger Status 4 Section 9.5.1.27 */
-    Bq25792RegFaultStatus0 = 0x20,         /** Fault Status 0 Section 9.5.1.28 */
-    Bq25792RegFaultStatus1 = 0x21,         /** Fault Status 1 Section 9.5.1.29 */
-    Bq25792RegChargerFlag0 = 0x22,         /** Charger Flag 0 Section 9.5.1.30 */
-    Bq25792RegChargerFlag1 = 0x23,         /** Charger Flag 1 Section 9.5.1.31 */
-    Bq25792RegChargerFlag2 = 0x24,         /** Charger Flag 2 Section 9.5.1.32 */
-    Bq25792RegChargerFlag3 = 0x25,         /** Charger Flag 3 Section 9.5.1.33 */
-    Bq25792RegFaultFlag0 = 0x26,           /** Fault Flag 0 Section 9.5.1.34 */
-    Bq25792RegFaultFlag1 = 0x27,           /** Fault Flag 1 Section 9.5.1.35 */
-    Bq25792RegChargerMask0 = 0x28,         /** Charger Mask 0 Section 9.5.1.36 */
-    Bq25792RegChargerMask1 = 0x29,         /** Charger Mask 1 Section 9.5.1.37 */
-    Bq25792RegChargerMask2 = 0x2A,         /** Charger Mask 2 Section 9.5.1.38 */
-    Bq25792RegChargerMask3 = 0x2B,         /** Charger Mask 3 Section 9.5.1.39 */
-    Bq25792RegFaultMask0 = 0x2C,           /** Fault Mask 0 Section 9.5.1.40 */
-    Bq25792RegFaultMask1 = 0x2D,           /** Fault Mask 1 Section 9.5.1.41 */
-    Bq25792RegADCControl = 0x2E,           /** ADC Control Section 9.5.1.42 */
-    Bq25792RegADCFunctionDisable0 = 0x2F,  /** ADC Function Disable 0 Section 9.5.1.43 */
-    Bq25792RegADCFunctionDisable1 = 0x30,  /** ADC Function Disable 1 Section 9.5.1.44 */
-    Bq25792RegIBUSADC = 0x31,              /** IBUS ADC Section 9.5.1.45 */
-    Bq25792RegIBATADC = 0x33,              /** IBAT ADC Section 9.5.1.46 */
-    Bq25792RegVBUSADC = 0x35,              /** VBUS ADC Section 9.5.1.47 */
-    Bq25792RegVAC1ADC = 0x37,              /** VAC1 ADC Section 9.5.1.48 */
-    Bq25792RegVAC2ADC = 0x39,              /** VAC2 ADC Section 9.5.1.49 */
-    Bq25792RegVBATADC = 0x3B,              /** VBAT ADC Section 9.5.1.50 */
-    Bq25792RegVSYSADC = 0x3D,              /** VSYS ADC Section 9.5.1.51 */
-    Bq25792RegTSADC = 0x3F,                /** TS ADC Section 9.5.1.52 */
-    Bq25792RegTDIEADC = 0x41,              /** TDIE ADC Section 9.5.1.53 */
-    Bq25792RegDPlusADC = 0x43,             /** D+ ADC Section 9.5.1.54 */
-    Bq25792RegDMinusADC = 0x45,            /** D- ADC Section 9.5.1.55 */
-    Bq25792RegDPDMDriver = 0x47,           /** DPDM Driver Section 9.5.1.56 */
-    Bq25792RegPartInformation = 0x48,      /** Part Information Section 9.5.1.57 */
-} Bq25792Reg;
+    Bq2579xRegMinimalSystemVoltage = 0x00, /** Minimal System Voltage Section 9.5.1.1 */
+    Bq2579xRegChargeVoltageLimit = 0x01,   /** Charge Voltage Limit Section 9.5.1.2 */
+    Bq2579xRegChargeCurrentLimit = 0x03,   /** Charge Current Limit Section 9.5.1.3 */
+    Bq2579xRegInputVoltageLimit = 0x05,    /** Input Voltage Limit Section 9.5.1.4 */
+    Bq2579xRegInputCurrentLimit = 0x06,    /** Input Current Limit Section 9.5.1.5 */
+    Bq2579xRegPrechargeControl = 0x08,     /** Precharge Control Section 9.5.1.6 */
+    Bq2579xRegTerminationControl = 0x09,   /** Termination Control Section 9.5.1.7 */
+    Bq2579xRegRechargeControl = 0x0A,      /** Recharge Control Section 9.5.1.8 */
+    Bq2579xRegVOTGRegulation = 0x0B,       /** VOTG Regulation Section 9.5.1.9 */
+    Bq2579xRegIOTGRegulation = 0x0D,       /** IOTG Regulation Section 9.5.1.10 */
+    Bq2579xRegTimerControl = 0x0E,         /** Timer Control Section 9.5.1.11 */
+    Bq2579xRegChargerControl0 = 0x0F,      /** Charger Control 0 Section 9.5.1.12 */
+    Bq2579xRegChargerControl1 = 0x10,      /** Charger Control 1 Section 9.5.1.13 */
+    Bq2579xRegChargerControl2 = 0x11,      /** Charger Control 2 Section 9.5.1.14 */
+    Bq2579xRegChargerControl3 = 0x12,      /** Charger Control 3 Section 9.5.1.15 */
+    Bq2579xRegChargerControl4 = 0x13,      /** Charger Control 4 Section 9.5.1.16 */
+    Bq2579xRegChargerControl5 = 0x14,      /** Charger Control 5 Section 9.5.1.17 */
+    Bq2579xRegMPPTControl = 0x15,          /** MPPT Control Section 9.5.1.18 (BQ25798 only, reserved on BQ25792) */
+    Bq2579xRegTemperatureControl = 0x16,   /** Temperature Control Section 9.5.1.19 */
+    Bq2579xRegNTCControl0 = 0x17,          /** NTC Control 0 Section 9.5.1.20 */
+    Bq2579xRegNTCControl1 = 0x18,          /** NTC Control 1 Section 9.5.1.21 */
+    Bq2579xRegICOCurrentLimit = 0x19,      /** ICO Current Limit Section 9.5.1.22 */
+    Bq2579xRegChargerStatus0 = 0x1B,       /** Charger Status 0 Section 9.5.1.23 */
+    Bq2579xRegChargerStatus1 = 0x1C,       /** Charger Status 1 Section 9.5.1.24 */
+    Bq2579xRegChargerStatus2 = 0x1D,       /** Charger Status 2 Section 9.5.1.25 */
+    Bq2579xRegChargerStatus3 = 0x1E,       /** Charger Status 3 Section 9.5.1.26 */
+    Bq2579xRegChargerStatus4 = 0x1F,       /** Charger Status 4 Section 9.5.1.27 */
+    Bq2579xRegFaultStatus0 = 0x20,         /** Fault Status 0 Section 9.5.1.28 */
+    Bq2579xRegFaultStatus1 = 0x21,         /** Fault Status 1 Section 9.5.1.29 */
+    Bq2579xRegChargerFlag0 = 0x22,         /** Charger Flag 0 Section 9.5.1.30 */
+    Bq2579xRegChargerFlag1 = 0x23,         /** Charger Flag 1 Section 9.5.1.31 */
+    Bq2579xRegChargerFlag2 = 0x24,         /** Charger Flag 2 Section 9.5.1.32 */
+    Bq2579xRegChargerFlag3 = 0x25,         /** Charger Flag 3 Section 9.5.1.33 */
+    Bq2579xRegFaultFlag0 = 0x26,           /** Fault Flag 0 Section 9.5.1.34 */
+    Bq2579xRegFaultFlag1 = 0x27,           /** Fault Flag 1 Section 9.5.1.35 */
+    Bq2579xRegChargerMask0 = 0x28,         /** Charger Mask 0 Section 9.5.1.36 */
+    Bq2579xRegChargerMask1 = 0x29,         /** Charger Mask 1 Section 9.5.1.37 */
+    Bq2579xRegChargerMask2 = 0x2A,         /** Charger Mask 2 Section 9.5.1.38 */
+    Bq2579xRegChargerMask3 = 0x2B,         /** Charger Mask 3 Section 9.5.1.39 */
+    Bq2579xRegFaultMask0 = 0x2C,           /** Fault Mask 0 Section 9.5.1.40 */
+    Bq2579xRegFaultMask1 = 0x2D,           /** Fault Mask 1 Section 9.5.1.41 */
+    Bq2579xRegADCControl = 0x2E,           /** ADC Control Section 9.5.1.42 */
+    Bq2579xRegADCFunctionDisable0 = 0x2F,  /** ADC Function Disable 0 Section 9.5.1.43 */
+    Bq2579xRegADCFunctionDisable1 = 0x30,  /** ADC Function Disable 1 Section 9.5.1.44 */
+    Bq2579xRegIBUSADC = 0x31,              /** IBUS ADC Section 9.5.1.45 */
+    Bq2579xRegIBATADC = 0x33,              /** IBAT ADC Section 9.5.1.46 */
+    Bq2579xRegVBUSADC = 0x35,              /** VBUS ADC Section 9.5.1.47 */
+    Bq2579xRegVAC1ADC = 0x37,              /** VAC1 ADC Section 9.5.1.48 */
+    Bq2579xRegVAC2ADC = 0x39,              /** VAC2 ADC Section 9.5.1.49 */
+    Bq2579xRegVBATADC = 0x3B,              /** VBAT ADC Section 9.5.1.50 */
+    Bq2579xRegVSYSADC = 0x3D,              /** VSYS ADC Section 9.5.1.51 */
+    Bq2579xRegTSADC = 0x3F,                /** TS ADC Section 9.5.1.52 */
+    Bq2579xRegTDIEADC = 0x41,              /** TDIE ADC Section 9.5.1.53 */
+    Bq2579xRegDPlusADC = 0x43,             /** D+ ADC Section 9.5.1.54 */
+    Bq2579xRegDMinusADC = 0x45,            /** D- ADC Section 9.5.1.55 */
+    Bq2579xRegDPDMDriver = 0x47,           /** DPDM Driver Section 9.5.1.56 */
+    Bq2579xRegPartInformation = 0x48,      /** Part Information Section 9.5.1.57 */
+} Bq2579xReg;
 
 
 
@@ -79,10 +81,10 @@ typedef struct {
                              // 3s: 9V
                              // 4s: 12V
     uint8_t         : 2;    // Reserved
-} Bq25792MinimalSystemVoltageRegBits;
+} Bq2579xMinimalSystemVoltageRegBits;
 _Static_assert(
-    sizeof(Bq25792MinimalSystemVoltageRegBits) == 1,
-    "Size check for 'Bq25792MinimalSystemVoltageRegBits' failed.");
+    sizeof(Bq2579xMinimalSystemVoltageRegBits) == 1,
+    "Size check for 'Bq2579xMinimalSystemVoltageRegBits' failed.");
 
 typedef struct {
     uint16_t vreg : 11;    // Battery Voltage Limit:
@@ -100,10 +102,10 @@ typedef struct {
                             // Bit Step Size : 10mV
                             // Clamped Low
     uint16_t      : 5;    // Reserved
-} Bq25792ChargeVoltageLimitRegBits;
+} Bq2579xChargeVoltageLimitRegBits;
 _Static_assert(
-    sizeof(Bq25792ChargeVoltageLimitRegBits) == 2,
-    "Size check for 'Bq25792ChargeVoltageLimitRegBits' failed.");
+    sizeof(Bq2579xChargeVoltageLimitRegBits) == 2,
+    "Size check for 'Bq2579xChargeVoltageLimitRegBits' failed.");
 
 typedef struct {
     uint16_t ichg : 9;    // Charge Current Limit:
@@ -119,10 +121,10 @@ typedef struct {
                             // Bit Step Size : 10mA
                             // Clamped Low
     uint16_t     : 7;    // Reserved
-} Bq25792ChargeCurrentLimitRegBits;
+} Bq2579xChargeCurrentLimitRegBits;
 _Static_assert(
-    sizeof(Bq25792ChargeCurrentLimitRegBits) == 2,
-    "Size check for 'Bq25792ChargeCurrentLimitRegBits' failed.");
+    sizeof(Bq2579xChargeCurrentLimitRegBits) == 2,
+    "Size check for 'Bq2579xChargeCurrentLimitRegBits' failed.");
 
 typedef struct {
     uint8_t vindpm : 8;    // Absolute VINDPM Threshold
@@ -136,10 +138,10 @@ typedef struct {
                             // Fixed Offset : 0mV
                             // Bit Step Size : 100mV
                             // Clamped Low
-} Bq25792InputVoltageLimitRegBits;
+} Bq2579xInputVoltageLimitRegBits;
 _Static_assert(
-    sizeof(Bq25792InputVoltageLimitRegBits) == 1,
-    "Size check for 'Bq25792InputVoltageLimitRegBits' failed.");
+    sizeof(Bq2579xInputVoltageLimitRegBits) == 1,
+    "Size check for 'Bq2579xInputVoltageLimitRegBits' failed.");
 
 typedef struct {
     uint16_t iindpm : 9;    // Based on D+/D- detection results:
@@ -156,10 +158,10 @@ typedef struct {
                              // Bit Step Size : 10mA
                              // Clamped Low
     uint16_t        : 7;    // Reserved
-} Bq25792InputCurrentLimitRegBits;
+} Bq2579xInputCurrentLimitRegBits;
 _Static_assert(
-    sizeof(Bq25792InputCurrentLimitRegBits) == 2,
-    "Size check for 'Bq25792InputCurrentLimitRegBits' failed.");
+    sizeof(Bq2579xInputCurrentLimitRegBits) == 2,
+    "Size check for 'Bq2579xInputCurrentLimitRegBits' failed.");
 
 typedef struct {
     uint8_t iprechg     : 6;  // Precharge current limit
@@ -178,10 +180,10 @@ typedef struct {
                                // 1h = 62.2%*VREG
                                // 2h = 66.7%*VREG
                                // 3h = 71.4%*VREG
-} Bq25792PrechargeControlRegBits;
+} Bq2579xPrechargeControlRegBits;
 _Static_assert(
-    sizeof(Bq25792PrechargeControlRegBits) == 1,
-    "Size check for 'Bq25792PrechargeControlRegBits' failed.");
+    sizeof(Bq2579xPrechargeControlRegBits) == 1,
+    "Size check for 'Bq2579xPrechargeControlRegBits' failed.");
 
 typedef struct {
     uint8_t iterm   : 5;   // Termination current
@@ -198,10 +200,10 @@ typedef struct {
                              // 0h = Not reset
                              // 1h = Reset
     uint8_t         : 1;  // Reserved
-} Bq25792TerminationControlRegBits;
+} Bq2579xTerminationControlRegBits;
 _Static_assert(
-    sizeof(Bq25792TerminationControlRegBits) == 1,
-    "Size check for 'Bq25792TerminationControlRegBits' failed.");
+    sizeof(Bq2579xTerminationControlRegBits) == 1,
+    "Size check for 'Bq2579xTerminationControlRegBits' failed.");
  
 typedef struct {
     uint8_t vrechg : 4;    // Battery Recharge Threshold Offset (Below VREG)
@@ -225,10 +227,10 @@ typedef struct {
                             // 1h = 2s
                             // 2h = 3s
                             // 3h = 4s
-} Bq25792RechargeControlRegBits;  
+} Bq2579xRechargeControlRegBits;  
 _Static_assert(
-    sizeof(Bq25792RechargeControlRegBits) == 1,
-    "Size check for 'Bq25792RechargeControlRegBits' failed.");
+    sizeof(Bq2579xRechargeControlRegBits) == 1,
+    "Size check for 'Bq2579xRechargeControlRegBits' failed.");
 
 typedef struct {
     uint16_t votg : 11;   // OTG mode regulation voltage
@@ -239,10 +241,10 @@ typedef struct {
                             // Bit Step Size : 10mV
                             // Clamped High
     uint16_t      : 5;   // Reserved
-} Bq25792VOTGRegulationRegBits;
+} Bq2579xVOTGRegulationRegBits;
 _Static_assert(
-    sizeof(Bq25792VOTGRegulationRegBits) == 2,
-    "Size check for 'Bq25792VOTGRegulationRegBits' failed.");
+    sizeof(Bq2579xVOTGRegulationRegBits) == 2,
+    "Size check for 'Bq2579xVOTGRegulationRegBits' failed.");
 
 typedef struct {
     uint8_t iotg        : 7;  // OTG current limit
@@ -257,10 +259,10 @@ typedef struct {
                                // POR: 0b
                                // 0h = 2 hrs (default)
                                // 1h = 0.5 hrs
-} Bq25792IOTGRegulationRegBits;
+} Bq2579xIOTGRegulationRegBits;
 _Static_assert(
-    sizeof(Bq25792IOTGRegulationRegBits) == 1,
-    "Size check for 'Bq25792IOTGRegulationRegBits' failed.");
+    sizeof(Bq2579xIOTGRegulationRegBits) == 1,
+    "Size check for 'Bq2579xIOTGRegulationRegBits' failed.");
 
 typedef struct {
     uint8_t tmr2x_en        : 1;   // TMR2X_EN
@@ -297,13 +299,20 @@ typedef struct {
                                     // 1h = 15 mins
                                     // 2h = 30 mins
                                     // 3h = 45 mins
-} Bq25792TimerControlRegBits;
+} Bq2579xTimerControlRegBits;
 _Static_assert(
-    sizeof(Bq25792TimerControlRegBits) == 1,
-    "Size check for 'Bq25792TimerControlRegBits' failed.");
+    sizeof(Bq2579xTimerControlRegBits) == 1,
+    "Size check for 'Bq2579xTimerControlRegBits' failed.");
 
 typedef struct {
-    uint8_t                 : 1;   // Reserved
+    uint8_t en_backup       : 1;   // BQ25798 only, reserved on BQ25792
+                                    // Reset by WATCHDOG and REG_RST
+                                    // Enables backup mode where OTG automatically engages
+                                    // when VBUS droops below voltage set in VBUS_BACKUP
+                                    // Type : RW
+                                    // POR: 0b
+                                    // 0h = Disable (default)
+                                    // 1h = Enable
     uint8_t en_term         : 1;   // Reset by WATCHDOG and REG_RST
                                     // Enable termination
                                     // Type : RW
@@ -347,10 +356,10 @@ typedef struct {
                                     // POR: 1b
                                     // 0h = The charger will NOT apply a discharging current on BAT during battery OVP
                                     // 1h = The charger will apply a discharging current on BAT during battery OVP
-} Bq25792ChargerControl0RegBits;
+} Bq2579xChargerControl0RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerControl0RegBits) == 1,
-    "Size check for 'Bq25792ChargerControl0RegBits' failed.");
+    sizeof(Bq2579xChargerControl0RegBits) == 1,
+    "Size check for 'Bq2579xChargerControl0RegBits' failed.");
 
 typedef struct {
     uint8_t watchdog : 3;   // Watchdog timer settings
@@ -369,18 +378,26 @@ typedef struct {
                             // POR: 0b
                             // 0h = Normal (default)
                             // 1h = Reset (this bit goes back to 0 after timer resets)
-    uint8_t vac_ovp : 2;  // VAC OVP thresholds
+    uint8_t vac_ovp : 2;  // VAC OVP thresholds (see Bq2579xVacOvp)
                             // Type : RW
-                            // POR: 00b
-                            // 0h = 26V (default)
-                            // 1h = 18V
+                            // POR: BQ25792: 00b (26V default), BQ25798: 11b (7V default)
+                            // 0h = 26V
+                            // 1h = 18V on BQ25792, 22V on BQ25798
                             // 2h = 12V
                             // 3h = 7V
-    uint8_t         : 2;  // Reserved
-} Bq25792ChargerControl1RegBits;
+    uint8_t vbus_backup : 2;  // BQ25798 only, reserved on BQ25792
+                            // The thresholds to trigger the backup mode,
+                            // defined as a ratio of VINDPM
+                            // Type : RW
+                            // POR: 10b
+                            // 0h = 40%*VINDPM
+                            // 1h = 60%*VINDPM
+                            // 2h = 80%*VINDPM (default)
+                            // 3h = 100%*VINDPM
+} Bq2579xChargerControl1RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerControl1RegBits) == 1,
-    "Size check for 'Bq25792ChargerControl1RegBits' failed.");
+    sizeof(Bq2579xChargerControl1RegBits) == 1,
+    "Size check for 'Bq2579xChargerControl1RegBits' failed.");
 
 typedef struct {
     uint8_t sdrv_dly        : 1;   // Delay time added to the taking action in bit [2:1] of the SFET control
@@ -420,10 +437,10 @@ typedef struct {
                                     // POR: 0b
                                     // 0h = Do NOT force D+/D- detection (default)
                                     // 1h = Force D+/D- algorithm, when D+/D- detection is done, this bit will be reset to 0
-} Bq25792ChargerControl2RegBits;
+} Bq2579xChargerControl2RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerControl2RegBits) == 1,
-    "Size check for 'Bq25792ChargerControl2RegBits' failed.");
+    sizeof(Bq2579xChargerControl2RegBits) == 1,
+    "Size check for 'Bq2579xChargerControl2RegBits' failed.");
 
 typedef struct {
     uint8_t dis_fwd_ooa     : 1;   // Disable OOA in forward mode
@@ -465,10 +482,10 @@ typedef struct {
                                     // Type : RW
                                     // POR: 0b
 
-} Bq25792ChargerControl3RegBits;
+} Bq2579xChargerControl3RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerControl3RegBits) == 1,
-    "Size check for 'Bq25792ChargerControl3RegBits' failed.");
+    sizeof(Bq2579xChargerControl3RegBits) == 1,
+    "Size check for 'Bq2579xChargerControl3RegBits' failed.");
 
 typedef struct {
     uint8_t en_ibus_ocp     : 1;   // Enable IBUS_OCP in forward mode
@@ -510,10 +527,10 @@ typedef struct {
                                     // POR: 0b
                                     // 0h = turn off (default)
                                     // 1h = turn on
-} Bq25792ChargerControl4RegBits;
+} Bq2579xChargerControl4RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerControl4RegBits) == 1,
-    "Size check for 'Bq25792ChargerControl4RegBits' failed.");
+    sizeof(Bq2579xChargerControl4RegBits) == 1,
+    "Size check for 'Bq2579xChargerControl4RegBits' failed.");
 
 typedef struct {
     uint8_t en_batoc        : 1;   // Enable the battery discharging current OCP
@@ -556,13 +573,58 @@ typedef struct {
                                     // POR: 0b 
                                     // 0h = No ship FET populated 
                                     // 1h = Ship FET populated
-} Bq25792ChargerControl5RegBits;
+} Bq2579xChargerControl5RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerControl5RegBits) == 1,
-    "Size check for 'Bq25792ChargerControl5RegBits' failed.");
+    sizeof(Bq2579xChargerControl5RegBits) == 1,
+    "Size check for 'Bq2579xChargerControl5RegBits' failed.");
+
+// MPPT Control: BQ25798 only, reserved on BQ25792
+typedef struct {
+    uint8_t en_mppt     : 1;   // Enable the MPPT to measure the VBUS open circuit voltage
+                                // Type : RW
+                                // POR: 0b
+                                // 0h = Disable (default)
+                                // 1h = Enable
+    uint8_t voc_rate    : 2;   // The time interval between two VBUS open circuit voltage measurements
+                                // Type : RW
+                                // POR: 01b
+                                // 0h = 30s
+                                // 1h = 2mins (default)
+                                // 2h = 10mins
+                                // 3h = 30mins
+    uint8_t voc_dly     : 2;   // After the converter stops switching, the time delay before the VOC is measured
+                                // Type : RW
+                                // POR: 01b
+                                // 0h = 50ms
+                                // 1h = 300ms (default)
+                                // 2h = 2s
+                                // 3h = 5s
+    uint8_t voc_pct     : 3;   // To set the VINDPM as a percentage of the VBUS open circuit voltage
+                                // when the VOC measurement is done
+                                // Type : RW
+                                // POR: 101b
+                                // 0h = 0.5625
+                                // 1h = 0.625
+                                // 2h = 0.6875
+                                // 3h = 0.75
+                                // 4h = 0.8125
+                                // 5h = 0.875 (default)
+                                // 6h = 0.9375
+                                // 7h = 1
+} Bq2579xMPPTControlRegBits;
+_Static_assert(
+    sizeof(Bq2579xMPPTControlRegBits) == 1,
+    "Size check for 'Bq2579xMPPTControlRegBits' failed.");
 
 typedef struct {
-    uint8_t             : 1;   // Reserved
+    uint8_t bkup_acfet1_on : 1; // BQ25798 only, reserved on BQ25792
+                                // When the charger is operated in backup mode, ACFET1 is off.
+                                // Setting this bit to 1, the charger clears the EN_BACKUP bit to 0,
+                                // sets DIS_ACDRV=0 and EN_ACDRV1=1 to turn on the ACFET1.
+                                // Type : RW
+                                // POR: 0b
+                                // 0h = IDLE (default)
+                                // 1h = To turn on ACFET1 in backup mode
     uint8_t vac2_pd_en  : 1;   // Enable VAC2 pull down resistor
                                 // Type : RW
                                 // POR: 0b
@@ -592,10 +654,10 @@ typedef struct {
                                 // 1h = 80°C
                                 // 2h = 100°C
                                 // 3h = 120°C (default)
-} Bq25792TemperatureControlRegBits;
+} Bq2579xTemperatureControlRegBits;
 _Static_assert(
-    sizeof(Bq25792TemperatureControlRegBits) == 1,
-    "Size check for 'Bq25792TemperatureControlRegBits' failed.");
+    sizeof(Bq2579xTemperatureControlRegBits) == 1,
+    "Size check for 'Bq2579xTemperatureControlRegBits' failed.");
 
 typedef struct {
     uint8_t             : 1;   // Reserved
@@ -624,10 +686,10 @@ typedef struct {
                                 // 5h = Set VREG to VREG-200mV
                                 // 6h = Set VREG to VREG-100mV
                                 // 7h = VREG unchanged
-} Bq25792NTCControl0RegBits;
+} Bq2579xNTCControl0RegBits;
 _Static_assert(
-    sizeof(Bq25792NTCControl0RegBits) == 1,
-    "Size check for 'Bq25792NTCControl0RegBits' failed.");
+    sizeof(Bq2579xNTCControl0RegBits) == 1,
+    "Size check for 'Bq2579xNTCControl0RegBits' failed.");
 
 typedef struct {
     uint8_t ts_ignore   : 1;   // Ignore the TS feedback, the charger considers the TS is always good to allow the charging and OTG modes, all the four TS status bits always stay at 0000 to report the normal condition.
@@ -661,10 +723,10 @@ typedef struct {
                                 // 1h = 68.4% (default) (10°C)
                                 // 2h = 65.5% (15°C)
                                 // 3h = 62.4% (20°C)
-} Bq25792NTCControl1RegBits;
+} Bq2579xNTCControl1RegBits;
 _Static_assert(
-    sizeof(Bq25792NTCControl1RegBits) == 1,
-    "Size check for 'Bq25792NTCControl1RegBits' failed.");
+    sizeof(Bq2579xNTCControl1RegBits) == 1,
+    "Size check for 'Bq2579xNTCControl1RegBits' failed.");
 
 typedef struct {
     uint16_t ico_ilim : 9; // Input Current Limit obtained from ICO or ILIM_HIZ pin setting
@@ -675,10 +737,10 @@ typedef struct {
                             // Bit Step Size : 10mA
                             // Clamped Low
     uint16_t         : 7;   // Reserved
-} Bq25792ICOCurrentLimitRegBits;
+} Bq2579xICOCurrentLimitRegBits;
 _Static_assert(
-    sizeof(Bq25792ICOCurrentLimitRegBits) == 2,
-    "Size check for 'Bq25792ICOCurrentLimitRegBits' failed.");
+    sizeof(Bq2579xICOCurrentLimitRegBits) == 2,
+    "Size check for 'Bq2579xICOCurrentLimitRegBits' failed.");
 
 typedef struct {
     uint8_t vbus_present_stat  : 1; // VBUS present status
@@ -702,6 +764,7 @@ typedef struct {
                                      // 0h = NOT in power good status
                                      // 1h = Power good
     uint8_t poorsrc_stat       : 1; // Poor source detection status
+                                     // BQ25792 only, reserved on BQ25798 (reads 0)
                                      // Type : R
                                      // POR: 0b
                                      // 0h = Normal
@@ -722,10 +785,10 @@ typedef struct {
                                      // 0h = Normal
                                      // 1h = In IINDPM regulation or IOTG regulation
 
-} Bq25792ChargerStatus0RegBits;
+} Bq2579xChargerStatus0RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerStatus0RegBits) == 1,
-    "Size check for 'Bq25792ChargerStatus0RegBits' failed.");
+    sizeof(Bq2579xChargerStatus0RegBits) == 1,
+    "Size check for 'Bq2579xChargerStatus0RegBits' failed.");
 
 typedef struct {
     uint8_t bc12_done_stat : 1; // BC1.2 status bit
@@ -733,7 +796,7 @@ typedef struct {
                                  // POR: 0b
                                  // 0h = BC1.2 or non-standard detection NOT complete
                                  // 1h = BC1.2 or non-standard detection complete
-    Bq25792ChargerStatus1Vbus vbus_stat        : 4; // VBUS status bits
+    Bq2579xChargerStatus1Vbus vbus_stat        : 4; // VBUS status bits
                                                     // Type : R
                                                     // POR: 0h
                                                     // 0h: No Input or BHOT or BCOLD in OTG mode
@@ -752,7 +815,7 @@ typedef struct {
                                                     // Dh: Reserved
                                                     // Eh: Reserved
                                                     // Fh: Reserved
-    Bq25792ChargerStatus1Charge chg_stat       : 3; // Charge Status bits
+    Bq2579xChargerStatus1Charge chg_stat       : 3; // Charge Status bits
                                                     // Type : R
                                                     // POR: 000b
                                                     // 0h = Not Charging
@@ -763,10 +826,10 @@ typedef struct {
                                                     // 5h = Reserved
                                                     // 6h = Top-off Timer Active Charging
                                                     // 7h = Charge Termination Done
-} Bq25792ChargerStatus1RegBits;
+} Bq2579xChargerStatus1RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerStatus1RegBits) == 1,
-    "Size check for 'Bq25792ChargerStatus1RegBits' failed.");
+    sizeof(Bq2579xChargerStatus1RegBits) == 1,
+    "Size check for 'Bq2579xChargerStatus1RegBits' failed.");
 
 typedef struct {
     uint8_t vbat_present_stat : 1; // Battery present status (VBAT > VBAT_UVLOZ)
@@ -785,17 +848,17 @@ typedef struct {
                                     // 0h = Normal
                                     // 1h = Device in thermal regulation
     uint8_t                   : 3; // RESERVED
-    Bq25792ChargerStatus2Ico ico_stat          : 2; // Input Current Optimizer (ICO) status
+    Bq2579xChargerStatus2Ico ico_stat          : 2; // Input Current Optimizer (ICO) status
                                                         // Type : R
                                                         // POR: 00b
                                                         // 0h = ICO disabled
                                                         // 1h = ICO optimization in progress
                                                         // 2h = Maximum input current detected
                                                         // 3h = Reserved
-} Bq25792ChargerStatus2RegBits;
+} Bq2579xChargerStatus2RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerStatus2RegBits) == 1,
-    "Size check for 'Bq25792ChargerStatus2RegBits' failed.");
+    sizeof(Bq2579xChargerStatus2RegBits) == 1,
+    "Size check for 'Bq2579xChargerStatus2RegBits' failed.");
 
 typedef struct {
     uint8_t                 : 1;   // Reserved
@@ -835,10 +898,10 @@ typedef struct {
                                     // 0h = ACFET2-RBFET2 is NOT placed
                                     // 1h = ACFET2-RBFET2 is placed
 
-} Bq25792ChargerStatus3RegBits;
+} Bq2579xChargerStatus3RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerStatus3RegBits) == 1,
-    "Size check for 'Bq25792ChargerStatus3RegBits' failed.");
+    sizeof(Bq2579xChargerStatus3RegBits) == 1,
+    "Size check for 'Bq2579xChargerStatus3RegBits' failed.");
 
 typedef struct {
     uint8_t ts_hot_stat      : 1;   // The TS temperature is in the hot range, higher than T5.
@@ -868,10 +931,10 @@ typedef struct {
                                      // 1h = The battery volage is too low to enable the OTG operation
     uint8_t                  : 3;   // RESERVED
 
-} Bq25792ChargerStatus4RegBits;
+} Bq2579xChargerStatus4RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerStatus4RegBits) == 1,
-    "Size check for 'Bq25792ChargerStatus4RegBits' failed.");
+    sizeof(Bq2579xChargerStatus4RegBits) == 1,
+    "Size check for 'Bq2579xChargerStatus4RegBits' failed.");
 
 typedef struct {
     uint8_t vac1_ovp_stat  : 1;   // VAC1 over-voltage status
@@ -915,10 +978,10 @@ typedef struct {
                                     // 0h = Normal
                                     // 1h = Device in battery discharging current regulation
 
-} Bq25792FaultStatus0RegBits;
+} Bq2579xFaultStatus0RegBits;
 _Static_assert(
-    sizeof(Bq25792FaultStatus0RegBits) == 1,
-    "Size check for 'Bq25792FaultStatus0RegBits' failed.");
+    sizeof(Bq2579xFaultStatus0RegBits) == 1,
+    "Size check for 'Bq2579xFaultStatus0RegBits' failed.");
 
 typedef struct {
     uint8_t                 : 2;   // Reserved
@@ -948,10 +1011,10 @@ typedef struct {
                                     // POR: 0b
                                     // 0h = Normal
                                     // 1h = Device in SYS short circuit protection
-} Bq25792FaultStatus1RegBits;
+} Bq2579xFaultStatus1RegBits;
 _Static_assert(
-    sizeof(Bq25792FaultStatus1RegBits) == 1,
-    "Size check for 'Bq25792FaultStatus1RegBits' failed.");
+    sizeof(Bq2579xFaultStatus1RegBits) == 1,
+    "Size check for 'Bq2579xFaultStatus1RegBits' failed.");
 
 typedef struct {
     uint8_t vbus_present_flag  : 1; // VBUS present flag
@@ -994,10 +1057,10 @@ typedef struct {
                                      // POR: 0b
                                      // 0h = Normal
                                      // 1h = IINDPM / IOTG signal rising edge detected
-} Bq25792ChargerFlag0RegBits;
+} Bq2579xChargerFlag0RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerFlag0RegBits) == 1,
-    "Size check for 'Bq25792ChargerFlag0RegBits' failed.");
+    sizeof(Bq2579xChargerFlag0RegBits) == 1,
+    "Size check for 'Bq2579xChargerFlag0RegBits' failed.");
 
 typedef struct {
     uint8_t bc12_done_flag    : 1; // BC1.2 status Flag
@@ -1032,10 +1095,10 @@ typedef struct {
                                     // POR: 0b
                                     // 0h = Normal
                                     // 1h = Charge status changed
-} Bq25792ChargerFlag1RegBits;
+} Bq2579xChargerFlag1RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerFlag1RegBits) == 1,
-    "Size check for 'Bq25792ChargerFlag1RegBits' failed.");
+    sizeof(Bq2579xChargerFlag1RegBits) == 1,
+    "Size check for 'Bq2579xChargerFlag1RegBits' failed.");
 
 typedef struct {
     uint8_t topoff_tmr_flag  : 1;  // Top off timer flag
@@ -1074,10 +1137,10 @@ typedef struct {
                                     // 0h = D+/D- detection is NOT started or still ongoing
                                     // 1h = D+/D- detection is completed
     uint8_t                  : 1;  // Reserved
-} Bq25792ChargerFlag2RegBits;
+} Bq2579xChargerFlag2RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerFlag2RegBits) == 1,
-    "Size check for 'Bq25792ChargerFlag2RegBits' failed.");
+    sizeof(Bq2579xChargerFlag2RegBits) == 1,
+    "Size check for 'Bq2579xChargerFlag2RegBits' failed.");
 
 typedef struct {
     uint8_t ts_hot_flag     : 1;   // TS hot temperature flag
@@ -1106,10 +1169,10 @@ typedef struct {
                                     // 0h = Normal
                                     // 1h = VBAT falls below the threshold to enable the OTG mode
     uint8_t                 : 3;   // Reserved
-} Bq25792ChargerFlag3RegBits;
+} Bq2579xChargerFlag3RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerFlag3RegBits) == 1,
-    "Size check for 'Bq25792ChargerFlag3RegBits' failed.");
+    sizeof(Bq2579xChargerFlag3RegBits) == 1,
+    "Size check for 'Bq2579xChargerFlag3RegBits' failed.");
 
 typedef struct {
     uint8_t vac1_ovp_flag   : 1;   // VAC1 over-voltage flag
@@ -1152,10 +1215,10 @@ typedef struct {
                                     // POR: 0b
                                     // 0h = Normal
                                     // 1h = Enter or exit IBAT regulation
-} Bq25792FaultFlag0RegBits;
+} Bq2579xFaultFlag0RegBits;
 _Static_assert(
-    sizeof(Bq25792FaultFlag0RegBits) == 1,
-    "Size check for 'Bq25792FaultFlag0RegBits' failed.");
+    sizeof(Bq2579xFaultFlag0RegBits) == 1,
+    "Size check for 'Bq2579xFaultFlag0RegBits' failed.");
 
 typedef struct {
     uint8_t                 : 2;   // Reserved
@@ -1185,10 +1248,10 @@ typedef struct {
                                     // POR: 0b
                                     // 0h = Normal
                                     // 1h = Stop switching due to system short
-} Bq25792FaultFlag1RegBits;
+} Bq2579xFaultFlag1RegBits;
 _Static_assert(
-    sizeof(Bq25792FaultFlag1RegBits) == 1,
-    "Size check for 'Bq25792FaultFlag1RegBits' failed.");
+    sizeof(Bq2579xFaultFlag1RegBits) == 1,
+    "Size check for 'Bq2579xFaultFlag1RegBits' failed.");
 
 typedef struct {
     uint8_t vbus_present_mask   : 1;   // VBUS present mask flag
@@ -1231,10 +1294,10 @@ typedef struct {
                                         // POR: 0
                                         // 0h = Enter IINDPM / IOTG does produce INT pulse
                                         // 1h = Enter IINDPM / IOTG does NOT produce INT pulse
-} Bq25792ChargerMask0RegBits;
+} Bq2579xChargerMask0RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerMask0RegBits) == 1,
-    "Size check for 'Bq25792ChargerMask0RegBits' failed.");
+    sizeof(Bq2579xChargerMask0RegBits) == 1,
+    "Size check for 'Bq2579xChargerMask0RegBits' failed.");
 
 typedef struct {
     uint8_t bc12_done_mask      : 1;   // BC1.2 status mask flag
@@ -1269,10 +1332,10 @@ typedef struct {
                                         // POR: 0b
                                         // 0h = Charging status change does produce INT
                                         // 1h = Charging status change does NOT produce INT
-} Bq25792ChargerMask1RegBits;
+} Bq2579xChargerMask1RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerMask1RegBits) == 1,
-    "Size check for 'Bq25792ChargerMask1RegBits' failed.");
+    sizeof(Bq2579xChargerMask1RegBits) == 1,
+    "Size check for 'Bq2579xChargerMask1RegBits' failed.");
 
 typedef struct {
     uint8_t topoff_tmr_mask     : 1;  // Top off timer mask flag
@@ -1311,10 +1374,10 @@ typedef struct {
                                         // 0h = D+/D- detection done does produce INT pulse
                                         // 1h = D+/D- detection done does NOT produce INT pulse
     uint8_t                     : 1;  // Reserved
-} Bq25792ChargerMask2RegBits;
+} Bq2579xChargerMask2RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerMask2RegBits) == 1,
-    "Size check for 'Bq25792ChargerMask2RegBits' failed.");
+    sizeof(Bq2579xChargerMask2RegBits) == 1,
+    "Size check for 'Bq2579xChargerMask2RegBits' failed.");
 
 typedef struct {
     uint8_t ts_hot_mask         : 1;  // TS hot temperature interrupt mask
@@ -1343,10 +1406,10 @@ typedef struct {
                                         // 0h = VBAT falling below the threshold to enable the OTG mode, does produce INT
                                         // 1h = VBAT falling below the threshold to enable the OTG mode, does NOT produce INT
     uint8_t                     : 3;  // Reserved
-} Bq25792ChargerMask3RegBits;
+} Bq2579xChargerMask3RegBits;
 _Static_assert(
-    sizeof(Bq25792ChargerMask3RegBits) == 1,
-    "Size check for 'Bq25792ChargerMask3RegBits' failed.");
+    sizeof(Bq2579xChargerMask3RegBits) == 1,
+    "Size check for 'Bq2579xChargerMask3RegBits' failed.");
  
 typedef struct {
     uint8_t vac1_ovp_mask       : 1;  // VAC1 over-voltage mask flag
@@ -1389,10 +1452,10 @@ typedef struct {
                                         // POR: 0b
                                         // 0h = enter or exit IBAT regulation does produce INT
                                         // 1h = enter or exit IBAT regulation does NOT produce INT
-} Bq25792FaultMask0RegBits;
+} Bq2579xFaultMask0RegBits;
 _Static_assert(
-    sizeof(Bq25792FaultMask0RegBits) == 1,
-    "Size check for 'Bq25792FaultMask0RegBits' failed.");
+    sizeof(Bq2579xFaultMask0RegBits) == 1,
+    "Size check for 'Bq2579xFaultMask0RegBits' failed.");
  
 typedef struct {
     uint8_t                     : 2;  // Reserved
@@ -1422,10 +1485,10 @@ typedef struct {
                                         // POR: 0b
                                         // 0h = System short fault does produce INT
                                         // 1h = System short fault does NOT produce INT
-} Bq25792FaultMask1RegBits;
+} Bq2579xFaultMask1RegBits;
 _Static_assert(
-    sizeof(Bq25792FaultMask1RegBits) == 1,
-    "Size check for 'Bq25792FaultMask1RegBits' failed.");
+    sizeof(Bq2579xFaultMask1RegBits) == 1,
+    "Size check for 'Bq2579xFaultMask1RegBits' failed.");
  
 typedef struct {
     uint8_t                     : 2;  // Reserved
@@ -1456,10 +1519,10 @@ typedef struct {
                                         // POR: 0b
                                         // 0h = Disable
                                         // 1h = Enable
-} Bq25792AdcControlRegBits;
+} Bq2579xAdcControlRegBits;
 _Static_assert(
-    sizeof(Bq25792AdcControlRegBits) == 1,
-    "Size check for 'Bq25792AdcControlRegBits' failed.");
+    sizeof(Bq2579xAdcControlRegBits) == 1,
+    "Size check for 'Bq2579xAdcControlRegBits' failed.");
  
 typedef struct {
     uint8_t                     : 1;  // Reserved
@@ -1498,10 +1561,10 @@ typedef struct {
                                         // POR: 0b
                                         // 0h = Enable (Default)
                                         // 1h = Disable
-} Bq25792AdcFunctionDisable0RegBits;
+} Bq2579xAdcFunctionDisable0RegBits;
 _Static_assert(
-    sizeof(Bq25792AdcFunctionDisable0RegBits) == 1,
-    "Size check for 'Bq25792AdcFunctionDisable0RegBits' failed.");
+    sizeof(Bq2579xAdcFunctionDisable0RegBits) == 1,
+    "Size check for 'Bq2579xAdcFunctionDisable0RegBits' failed.");
  
 typedef struct {
     uint8_t                     : 4;  // Reserved
@@ -1525,10 +1588,10 @@ typedef struct {
                                         // POR: 0b
                                         // 0h = Enable (Default)
                                         // 1h = Disable
-} Bq25792AdcFunctionDisable1RegBits;
+} Bq2579xAdcFunctionDisable1RegBits;
 _Static_assert(
-    sizeof(Bq25792AdcFunctionDisable1RegBits) == 1,
-    "Size check for 'Bq25792AdcFunctionDisable1RegBits' failed.");
+    sizeof(Bq2579xAdcFunctionDisable1RegBits) == 1,
+    "Size check for 'Bq2579xAdcFunctionDisable1RegBits' failed.");
  
 typedef struct {
     int16_t ibus_adc;   // IBUS ADC reading
@@ -1539,10 +1602,10 @@ typedef struct {
                         // Range : 0mA-5000mA
                         // Fixed Offset : 0mA
                         // Bit Step Size : 1mA
-} Bq25792IbusAdcRegBits;
+} Bq2579xIbusAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792IbusAdcRegBits) == 2,
-    "Size check for 'Bq25792IbusAdcRegBits' failed.");
+    sizeof(Bq2579xIbusAdcRegBits) == 2,
+    "Size check for 'Bq2579xIbusAdcRegBits' failed.");
  
 typedef struct {
     int16_t ibat_adc;   // IBAT ADC reading
@@ -1553,10 +1616,10 @@ typedef struct {
                         // Range : 0mA-8000mA
                         // Fixed Offset : 0mA
                         // Bit Step Size : 1mA
-} Bq25792IbatAdcRegBits;
+} Bq2579xIbatAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792IbatAdcRegBits) == 2,
-    "Size check for 'Bq25792IbatAdcRegBits' failed.");
+    sizeof(Bq2579xIbatAdcRegBits) == 2,
+    "Size check for 'Bq2579xIbatAdcRegBits' failed.");
  
 typedef struct {
     uint16_t vbus_adc;  // VBUS ADC reading
@@ -1565,10 +1628,10 @@ typedef struct {
                         // Range : 0mV-30000mV
                         // Fixed Offset : 0mV
                         // Bit Step Size : 1mV
-} Bq25792VbusAdcRegBits;
+} Bq2579xVbusAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792VbusAdcRegBits) == 2,
-    "Size check for 'Bq25792VbusAdcRegBits' failed.");
+    sizeof(Bq2579xVbusAdcRegBits) == 2,
+    "Size check for 'Bq2579xVbusAdcRegBits' failed.");
  
 typedef struct {
     uint16_t vac1_adc;  // VAC1 ADC reading.
@@ -1577,10 +1640,10 @@ typedef struct {
                         // Range : 0mV-30000mV
                         // Fixed Offset : 0mV
                         // Bit Step Size : 1mV
-} Bq25792Vac1AdcRegBits;
+} Bq2579xVac1AdcRegBits;
 _Static_assert(
-    sizeof(Bq25792Vac1AdcRegBits) == 2,
-    "Size check for 'Bq25792Vac1AdcRegBits' failed.");
+    sizeof(Bq2579xVac1AdcRegBits) == 2,
+    "Size check for 'Bq2579xVac1AdcRegBits' failed.");
  
 typedef struct {
     uint16_t vac2_adc;  // VAC2 ADC reading.
@@ -1589,10 +1652,10 @@ typedef struct {
                         // Range : 0mV-30000mV
                         // Fixed Offset : 0mV
                         // Bit Step Size : 1mV
-} Bq25792Vac2AdcRegBits;
+} Bq2579xVac2AdcRegBits;
 _Static_assert(
-    sizeof(Bq25792Vac2AdcRegBits) == 2,
-    "Size check for 'Bq25792Vac2AdcRegBits' failed.");
+    sizeof(Bq2579xVac2AdcRegBits) == 2,
+    "Size check for 'Bq2579xVac2AdcRegBits' failed.");
  
 typedef struct {
     uint16_t vbat_adc;  // The battery remote sensing voltage (VBATP-GND) ADC reading
@@ -1601,10 +1664,10 @@ typedef struct {
                         // Range : 0mV-20000mV
                         // Fixed Offset : 0mV
                         // Bit Step Size : 1mV
-} Bq25792VbatAdcRegBits;
+} Bq2579xVbatAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792VbatAdcRegBits) == 2,
-    "Size check for 'Bq25792VbatAdcRegBits' failed.");
+    sizeof(Bq2579xVbatAdcRegBits) == 2,
+    "Size check for 'Bq2579xVbatAdcRegBits' failed.");
  
 typedef struct {
     uint16_t vsys_adc;  // VSYS ADC reading
@@ -1613,10 +1676,10 @@ typedef struct {
                         // Range : 0mV-24000mV
                         // Fixed Offset : 0mV
                         // Bit Step Size : 1mV
-} Bq25792VsysAdcRegBits;
+} Bq2579xVsysAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792VsysAdcRegBits) == 2,
-    "Size check for 'Bq25792VsysAdcRegBits' failed.");
+    sizeof(Bq2579xVsysAdcRegBits) == 2,
+    "Size check for 'Bq2579xVsysAdcRegBits' failed.");
  
 typedef struct {
     uint16_t ts_adc;  // TS ADC reading
@@ -1625,10 +1688,10 @@ typedef struct {
                         // Range : 0%-99.9023%
                         // Fixed Offset : 0%
                         // Bit Step Size : 0.0976563%
-} Bq25792TsAdcRegBits;
+} Bq2579xTsAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792TsAdcRegBits) == 2,
-    "Size check for 'Bq25792TsAdcRegBits' failed.");
+    sizeof(Bq2579xTsAdcRegBits) == 2,
+    "Size check for 'Bq2579xTsAdcRegBits' failed.");
  
 typedef struct {
     int16_t tdie_adc;   // TDIE ADC reading
@@ -1638,10 +1701,10 @@ typedef struct {
                         // Range : -40°C-150°C
                         // Fixed Offset : 0°C
                         // Bit Step Size : 0.5°C
-} Bq25792TdieAdcRegBits;
+} Bq2579xTdieAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792TdieAdcRegBits) == 2,
-    "Size check for 'Bq25792TdieAdcRegBits' failed.");
+    sizeof(Bq2579xTdieAdcRegBits) == 2,
+    "Size check for 'Bq2579xTdieAdcRegBits' failed.");
  
 typedef struct {
     uint16_t dp_adc;  // D+ ADC reading
@@ -1650,10 +1713,10 @@ typedef struct {
                         // Range : 0mV-3600mV
                         // Fixed Offset : 0mV
                         // Bit Step Size : 1mV
-} Bq25792DpAdcRegBits;
+} Bq2579xDpAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792DpAdcRegBits) == 2,
-    "Size check for 'Bq25792DpAdcRegBits' failed.");
+    sizeof(Bq2579xDpAdcRegBits) == 2,
+    "Size check for 'Bq2579xDpAdcRegBits' failed.");
  
 typedef struct {
     uint16_t dm_adc;  // D- ADC reading
@@ -1662,10 +1725,10 @@ typedef struct {
                         // Range : 0mV-3600mV
                         // Fixed Offset : 0mV
                         // Bit Step Size : 1mV
-} Bq25792DmAdcRegBits;
+} Bq2579xDmAdcRegBits;
 _Static_assert(
-    sizeof(Bq25792DmAdcRegBits) == 2,
-    "Size check for 'Bq25792DmAdcRegBits' failed.");
+    sizeof(Bq2579xDmAdcRegBits) == 2,
+    "Size check for 'Bq2579xDmAdcRegBits' failed.");
  
 typedef struct {
     uint8_t                     : 2;  // Reserved
@@ -1691,69 +1754,69 @@ typedef struct {
                                         // 5h = 2.7V
                                         // 6h = 3.3V
                                         // 7h = D+/D- Short
-} Bq25792DpDmDriverRegBits;
+} Bq2579xDpDmDriverRegBits;
 _Static_assert(
-    sizeof(Bq25792DpDmDriverRegBits) == 1,
-    "Size check for 'Bq25792DpDmDriverRegBits' failed.");
+    sizeof(Bq2579xDpDmDriverRegBits) == 1,
+    "Size check for 'Bq2579xDpDmDriverRegBits' failed.");
  
 typedef struct {
     uint8_t dev_rev             : 3;  // Device Revision
-                                        // POR: 000b = BQ25792
+                                        // 000b = BQ25792, 001b = BQ25798
                                         // Type : R
     uint8_t pn                  : 3;  // Device Part number
-                                        // POR: 001b = BQ25792
+                                        // 001b = BQ25792, 011b = BQ25798
                                         // All the other options are reserved
                                         // Type : R
     uint8_t                     : 2;  // Reserved
-} Bq25792PartInformationRegBits;
+} Bq2579xPartInformationRegBits;
 _Static_assert(
-    sizeof(Bq25792PartInformationRegBits) == 1,
-    "Size check for 'Bq25792PartInformationRegBits' failed.");
+    sizeof(Bq2579xPartInformationRegBits) == 1,
+    "Size check for 'Bq2579xPartInformationRegBits' failed.");
 
 typedef struct {
     union {
         struct {
             // STATUS 0
-            Bq25792ChargerStatus0RegBits stat0;
+            Bq2579xChargerStatus0RegBits stat0;
             // STATUS 1
-            Bq25792ChargerStatus1RegBits stat1;
+            Bq2579xChargerStatus1RegBits stat1;
             // STATUS 2
-            Bq25792ChargerStatus2RegBits stat2;
+            Bq2579xChargerStatus2RegBits stat2;
             // STATUS 3
-            Bq25792ChargerStatus3RegBits stat3;
+            Bq2579xChargerStatus3RegBits stat3;
             // STATUS 4
-            Bq25792ChargerStatus4RegBits stat4;
+            Bq2579xChargerStatus4RegBits stat4;
         } FURI_PACKED;
         uint8_t data[5];
     };
-} FURI_PACKED Bq25792ChargerStatusReg;
+} FURI_PACKED Bq2579xChargerStatusReg;
 
 typedef struct {
     union {
         struct {
             // FAULT 0
-            Bq25792FaultStatus0RegBits fault0;
+            Bq2579xFaultStatus0RegBits fault0;
             // FAULT 1
-            Bq25792FaultStatus1RegBits fault1;
+            Bq2579xFaultStatus1RegBits fault1;
         } FURI_PACKED;
         uint8_t data[2];
     };
-} FURI_PACKED Bq25792FaultStatusReg;
+} FURI_PACKED Bq2579xFaultStatusReg;
 
 typedef struct {
     union {
         struct {
             // FLAG 0
-            Bq25792ChargerFlag0RegBits flag0;
+            Bq2579xChargerFlag0RegBits flag0;
             // FLAG 1
-            Bq25792ChargerFlag1RegBits flag1;
+            Bq2579xChargerFlag1RegBits flag1;
             // FLAG 2
-            Bq25792ChargerFlag2RegBits flag2;
+            Bq2579xChargerFlag2RegBits flag2;
             // FLAG 3
-            Bq25792ChargerFlag3RegBits flag3;
+            Bq2579xChargerFlag3RegBits flag3;
         } FURI_PACKED;
         uint8_t data[4];
     };
-} FURI_PACKED Bq25792ChargerFlagReg;
+} FURI_PACKED Bq2579xChargerFlagReg;
 
 /* clang-format on */

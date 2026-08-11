@@ -319,6 +319,6 @@ void desktop_start_cpu(bool to_maskrom) {
 
 void desktop_power_off(void) {
     Power* power_off = furi_record_open(RECORD_POWER);
-    power_bq25792_set_power_switch(power_off, Bq25792PowerShipMode);
+    power_bq2579x_set_power_switch(power_off, Bq2579xPowerShipMode);
     furi_record_close(RECORD_POWER);
 }

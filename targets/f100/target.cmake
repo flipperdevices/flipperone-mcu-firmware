@@ -18,7 +18,7 @@ fw_sources(
     lib/corelibs/lib/version/*.c*
     lib/toolbox/*.c*
     lib/tusb/*.c*
-    lib/drivers/bq25792/*.c*
+    lib/drivers/bq2579x/*.c*
     lib/drivers/bq28z620/*.c*
     lib/drivers/display/*.c*
     lib/drivers/drv2605l/*.c*

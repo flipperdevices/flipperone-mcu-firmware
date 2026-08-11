@@ -6,24 +6,24 @@
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_resources.h>
 #include <drivers/ina219/ina219.h>
-#include <drivers/bq25792/bq25792.h>
+#include <drivers/bq2579x/bq2579x.h>
 #include <drivers/bq28z620/bq28z620.h>
 #include <furi_bsp.h>
 
 #define TAG "Power"
 
-#define BQ25792_IRQ_DEBUG_ENABLE
+#define BQ2579X_IRQ_DEBUG_ENABLE
 
 #define POWER_MAX_MESSAGES            (8)
 #define POWER_INA_SHUNT_RESISTOR_OHMS (0.004f)
 #define POWER_INA_BUS_CURRENT_MAX     (9.0f)
 
-#define BQ25792_BAT_MAX_CHARGE_VOLTAGE 8650
-#define BQ25792_BAT_MAX_CHARGE_CURRENT 3000
-#define BQ25792_BAT_MAX_INPUT_CURRENT  3000
+#define BQ2579X_BAT_MAX_CHARGE_VOLTAGE 8650
+#define BQ2579X_BAT_MAX_CHARGE_CURRENT 3000
+#define BQ2579X_BAT_MAX_INPUT_CURRENT  3000
 
-#define BQ25792_OTG_WATCHDOG_TIME      Bq25792WatchdogTime0_5s
-#define BQ25792_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
+#define BQ2579X_OTG_WATCHDOG_TIME      Bq2579xWatchdogTime0_5s
+#define BQ2579X_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
 
 typedef enum {
     PowerEventTypeIsr = (1 << 0),
@@ -33,7 +33,7 @@ typedef enum {
 struct Power {
     FuriEventLoop* event_loop;
     FuriPubSub* event_pubsub;
-    Bq25792* bq25792_header;
+    Bq2579x* bq2579x_header;
     Ina219* ina219_header;
     Bq28z620* bq28z620_header;
     FuriMessageQueue* message_queue;
@@ -43,38 +43,38 @@ struct Power {
     FuriCallbackWithContext otg_overcurrent;
 };
 
-static Bq25792Status power_bq25792_reset_and_load_config(Power* instance) {
+static Bq2579xStatus power_bq2579x_reset_and_load_config(Power* instance) {
     furi_assert(instance);
-    Bq25792Status res = Bq25792StatusUnknown;
+    Bq2579xStatus res = Bq2579xStatusUnknown;
 
     do {
-        res = bq25792_load_default_config(instance->bq25792_header);
-        if(res != Bq25792StatusOk) {
-            FURI_LOG_E(TAG, "Failed to load BQ25792 default config: %d", res);
+        res = bq2579x_load_default_config(instance->bq2579x_header);
+        if(res != Bq2579xStatusOk) {
+            FURI_LOG_E(TAG, "Failed to load BQ2579X default config: %d", res);
             break;
         }
         // Set default charge voltage and current limits
-        res = bq25792_set_charge_voltage_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_VOLTAGE);
-        if(res != Bq25792StatusOk) {
-            FURI_LOG_E(TAG, "Failed to set BQ25792 charge voltage limit: %d", res);
+        res = bq2579x_set_charge_voltage_limit_ma(instance->bq2579x_header, BQ2579X_BAT_MAX_CHARGE_VOLTAGE);
+        if(res != Bq2579xStatusOk) {
+            FURI_LOG_E(TAG, "Failed to set BQ2579X charge voltage limit: %d", res);
             break;
         }
-        res = bq25792_set_charge_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_CHARGE_CURRENT);
-        if(res != Bq25792StatusOk) {
-            FURI_LOG_E(TAG, "Failed to set BQ25792 charge current limit: %d", res);
+        res = bq2579x_set_charge_current_limit_ma(instance->bq2579x_header, BQ2579X_BAT_MAX_CHARGE_CURRENT);
+        if(res != Bq2579xStatusOk) {
+            FURI_LOG_E(TAG, "Failed to set BQ2579X charge current limit: %d", res);
             break;
         }
-        res = bq25792_set_input_current_limit_ma(instance->bq25792_header, BQ25792_BAT_MAX_INPUT_CURRENT);
-        if(res != Bq25792StatusOk) {
-            FURI_LOG_E(TAG, "Failed to set BQ25792 input current limit: %d", res);
+        res = bq2579x_set_input_current_limit_ma(instance->bq2579x_header, BQ2579X_BAT_MAX_INPUT_CURRENT);
+        if(res != Bq2579xStatusOk) {
+            FURI_LOG_E(TAG, "Failed to set BQ2579X input current limit: %d", res);
             break;
         }
     } while(false);
     return res;
 }
 
-#ifdef BQ25792_IRQ_DEBUG_ENABLE
-static void power_bq25792_print_charger_irq(Power* instance, Bq25792ChargerFlagReg fl) {
+#ifdef BQ2579X_IRQ_DEBUG_ENABLE
+static void power_bq2579x_print_charger_irq(Power* instance, Bq2579xChargerFlagReg fl) {
     FuriString* arena = furi_string_alloc();
     furi_string_set(arena, "");
     if(fl.flag0.vbus_present_flag) furi_string_cat_printf(arena, " VBUS_PRESENT");
@@ -117,19 +117,19 @@ static void power_bq25792_print_charger_irq(Power* instance, Bq25792ChargerFlagR
 }
 #endif
 
-static void __isr __not_in_flash_func(power_bq25792_event_isr)(void* context) {
+static void __isr __not_in_flash_func(power_bq2579x_event_isr)(void* context) {
     Power* instance = (Power*)context;
     furi_event_loop_set_custom_event(instance->event_loop, PowerEventTypeIsr);
 
-    Bq25792ChargerFlagReg fl = {0};
-    bq25792_get_charger_irq_flags(instance->bq25792_header, &fl);
+    Bq2579xChargerFlagReg fl = {0};
+    bq2579x_get_charger_irq_flags(instance->bq2579x_header, &fl);
 
     if(fl.flag0.iindpm_flag && instance->otg_enabled) {
         if(instance->otg_overcurrent.callback) instance->otg_overcurrent.callback(instance->otg_overcurrent.context);
     }
 
-#ifdef BQ25792_IRQ_DEBUG_ENABLE
-    power_bq25792_print_charger_irq(instance, fl);
+#ifdef BQ2579X_IRQ_DEBUG_ENABLE
+    power_bq2579x_print_charger_irq(instance, fl);
 #endif
 }
 
@@ -168,113 +168,113 @@ API_WRAPPER(ina219_get_current_a, float_t, Ina219*);
 API_WRAPPER(ina219_get_power_w, float_t, Ina219*);
 API_WRAPPER(ina219_get_shunt_voltage_mv, float_t, Ina219*);
 
-// Bq25792 wrappers
+// Bq2579x wrappers
 
-API_WRAPPER_PARAM(bq25792_set_power_switch, Bq25792Status, Bq25792*, Bq25792PowerSwitch);
-API_WRAPPER_PARAM(bq25792_get_ibus_ma, Bq25792Status, Bq25792*, int16_t*);
-API_WRAPPER_PARAM(bq25792_get_ibat_ma, Bq25792Status, Bq25792*, int16_t*);
-API_WRAPPER_PARAM(bq25792_get_vbus_mv, Bq25792Status, Bq25792*, uint16_t*);
-API_WRAPPER_PARAM(bq25792_get_vbat_mv, Bq25792Status, Bq25792*, uint16_t*);
-API_WRAPPER_PARAM(bq25792_get_vsys_mv, Bq25792Status, Bq25792*, uint16_t*);
-API_WRAPPER_PARAM(bq25792_get_charger_temperature, Bq25792Status, Bq25792*, float*);
-API_WRAPPER_PARAM(bq25792_get_temperature_battery_celsius, Bq25792Status, Bq25792*, float*);
-API_WRAPPER_PARAM(bq25792_get_input_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
-API_WRAPPER_PARAM(bq25792_set_input_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
-API_WRAPPER_PARAM(bq25792_get_charge_voltage_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
-API_WRAPPER_PARAM(bq25792_set_charge_voltage_limit_ma, Bq25792Status, Bq25792*, uint16_t);
-API_WRAPPER_PARAM(bq25792_get_charge_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
-API_WRAPPER_PARAM(bq25792_set_charge_current_limit_ma, Bq25792Status, Bq25792*, uint16_t);
-API_WRAPPER_PARAM(bq25792_get_ico_current_limit_ma, Bq25792Status, Bq25792*, uint16_t*);
-API_WRAPPER_PARAM(bq25792_charge_enable, Bq25792Status, Bq25792*, bool);
-API_WRAPPER_PARAM(bq25792_charge_is_enabled, Bq25792Status, Bq25792*, bool*);
-API_WRAPPER_PARAM(bq25792_get_charger_status, Bq25792Status, Bq25792*, Bq25792ChargerStatusReg*);
-API_WRAPPER_PARAM(bq25792_get_charger_fault, Bq25792Status, Bq25792*, Bq25792FaultStatusReg*);
-API_WRAPPER_PARAM(bq25792_get_charger_irq_flags, Bq25792Status, Bq25792*, Bq25792ChargerFlagReg*);
-API_WRAPPER_PARAM(bq25792_adc_enable, Bq25792Status, Bq25792*, bool);
-API_WRAPPER(bq25792_watchdog_reset, Bq25792Status, Bq25792*);
+API_WRAPPER_PARAM(bq2579x_set_power_switch, Bq2579xStatus, Bq2579x*, Bq2579xPowerSwitch);
+API_WRAPPER_PARAM(bq2579x_get_ibus_ma, Bq2579xStatus, Bq2579x*, int16_t*);
+API_WRAPPER_PARAM(bq2579x_get_ibat_ma, Bq2579xStatus, Bq2579x*, int16_t*);
+API_WRAPPER_PARAM(bq2579x_get_vbus_mv, Bq2579xStatus, Bq2579x*, uint16_t*);
+API_WRAPPER_PARAM(bq2579x_get_vbat_mv, Bq2579xStatus, Bq2579x*, uint16_t*);
+API_WRAPPER_PARAM(bq2579x_get_vsys_mv, Bq2579xStatus, Bq2579x*, uint16_t*);
+API_WRAPPER_PARAM(bq2579x_get_charger_temperature, Bq2579xStatus, Bq2579x*, float*);
+API_WRAPPER_PARAM(bq2579x_get_temperature_battery_celsius, Bq2579xStatus, Bq2579x*, float*);
+API_WRAPPER_PARAM(bq2579x_get_input_current_limit_ma, Bq2579xStatus, Bq2579x*, uint16_t*);
+API_WRAPPER_PARAM(bq2579x_set_input_current_limit_ma, Bq2579xStatus, Bq2579x*, uint16_t);
+API_WRAPPER_PARAM(bq2579x_get_charge_voltage_limit_ma, Bq2579xStatus, Bq2579x*, uint16_t*);
+API_WRAPPER_PARAM(bq2579x_set_charge_voltage_limit_ma, Bq2579xStatus, Bq2579x*, uint16_t);
+API_WRAPPER_PARAM(bq2579x_get_charge_current_limit_ma, Bq2579xStatus, Bq2579x*, uint16_t*);
+API_WRAPPER_PARAM(bq2579x_set_charge_current_limit_ma, Bq2579xStatus, Bq2579x*, uint16_t);
+API_WRAPPER_PARAM(bq2579x_get_ico_current_limit_ma, Bq2579xStatus, Bq2579x*, uint16_t*);
+API_WRAPPER_PARAM(bq2579x_charge_enable, Bq2579xStatus, Bq2579x*, bool);
+API_WRAPPER_PARAM(bq2579x_charge_is_enabled, Bq2579xStatus, Bq2579x*, bool*);
+API_WRAPPER_PARAM(bq2579x_get_charger_status, Bq2579xStatus, Bq2579x*, Bq2579xChargerStatusReg*);
+API_WRAPPER_PARAM(bq2579x_get_charger_fault, Bq2579xStatus, Bq2579x*, Bq2579xFaultStatusReg*);
+API_WRAPPER_PARAM(bq2579x_get_charger_irq_flags, Bq2579xStatus, Bq2579x*, Bq2579xChargerFlagReg*);
+API_WRAPPER_PARAM(bq2579x_adc_enable, Bq2579xStatus, Bq2579x*, bool);
+API_WRAPPER(bq2579x_watchdog_reset, Bq2579xStatus, Bq2579x*);
 
-/* Wrapper for power-side BQ25792 reset/config function so it can be queued via PowerMessage */
-API_WRAPPER(power_bq25792_reset_and_load_config, Bq25792Status, Power*);
+/* Wrapper for power-side BQ2579X reset/config function so it can be queued via PowerMessage */
+API_WRAPPER(power_bq2579x_reset_and_load_config, Bq2579xStatus, Power*);
 
 typedef struct {
     uint16_t voltage_mv;
     uint16_t current_ma;
-} PowerBq25792OtgParams;
+} PowerBq2579xOtgParams;
 
-static void power_bq25792_otg_watchdog_timer_callback(void* context) {
+static void power_bq2579x_otg_watchdog_timer_callback(void* context) {
     furi_assert(context);
     Power* instance = (Power*)context;
-    if(bq25792_watchdog_reset(instance->bq25792_header) != Bq25792StatusOk) {
+    if(bq2579x_watchdog_reset(instance->bq2579x_header) != Bq2579xStatusOk) {
         FURI_LOG_E(TAG, "OTG watchdog reset failed");
     }
 }
 
-static Bq25792Status power_bq25792_set_otg_params_internal(Power* instance, PowerBq25792OtgParams* params) {
+static Bq2579xStatus power_bq2579x_set_otg_params_internal(Power* instance, PowerBq2579xOtgParams* params) {
     furi_assert(instance);
     furi_assert(params);
-    Bq25792Status res = bq25792_set_otg_voltage_mv(instance->bq25792_header, params->voltage_mv);
-    if(res != Bq25792StatusOk) {
+    Bq2579xStatus res = bq2579x_set_otg_voltage_mv(instance->bq2579x_header, params->voltage_mv);
+    if(res != Bq2579xStatusOk) {
         FURI_LOG_E(TAG, "Failed to set OTG voltage: %d", res);
         return res;
     }
-    res = bq25792_set_otg_current_ma(instance->bq25792_header, params->current_ma);
-    if(res != Bq25792StatusOk) {
+    res = bq2579x_set_otg_current_ma(instance->bq2579x_header, params->current_ma);
+    if(res != Bq2579xStatusOk) {
         FURI_LOG_E(TAG, "Failed to set OTG current: %d", res);
     }
     return res;
 }
 
-static Bq25792Status power_bq25792_otg_enable_internal(Power* instance, bool enable) {
+static Bq2579xStatus power_bq2579x_otg_enable_internal(Power* instance, bool enable) {
     furi_assert(instance);
-    Bq25792Status res = Bq25792StatusUnknown;
+    Bq2579xStatus res = Bq2579xStatusUnknown;
 
     if(enable) {
-        res = bq25792_watchdog_set_time(instance->bq25792_header, BQ25792_OTG_WATCHDOG_TIME);
-        if(res != Bq25792StatusOk) {
+        res = bq2579x_watchdog_set_time(instance->bq2579x_header, BQ2579X_OTG_WATCHDOG_TIME);
+        if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to set OTG watchdog time: %d", res);
             return res;
         }
-        res = bq25792_watchdog_reset(instance->bq25792_header);
-        if(res != Bq25792StatusOk) {
+        res = bq2579x_watchdog_reset(instance->bq2579x_header);
+        if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to reset OTG watchdog: %d", res);
             return res;
         }
-        res = bq25792_otg_enable(instance->bq25792_header, true);
-        if(res != Bq25792StatusOk) {
+        res = bq2579x_otg_enable(instance->bq2579x_header, true);
+        if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to enable OTG: %d", res);
             return res;
         }
         instance->otg_enabled = true;
-        furi_event_loop_timer_start(instance->otg_watchdog_timer, BQ25792_OTG_WATCHDOG_PERIOD_MS);
+        furi_event_loop_timer_start(instance->otg_watchdog_timer, BQ2579X_OTG_WATCHDOG_PERIOD_MS);
     } else {
         // If OTG disable fails, stop pets so the chip WD resets it for us;
         // keep WD enabled until OTG is confirmed off.
-        res = bq25792_otg_enable(instance->bq25792_header, false);
+        res = bq2579x_otg_enable(instance->bq2579x_header, false);
         furi_event_loop_timer_stop(instance->otg_watchdog_timer);
 
-        if(res != Bq25792StatusOk) {
+        if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to disable OTG: %d", res);
             return res;
         }
 
         instance->otg_enabled = false;
 
-        res = bq25792_watchdog_set_time(instance->bq25792_header, Bq25792WatchdogTimeDisabled);
-        if(res != Bq25792StatusOk) {
+        res = bq2579x_watchdog_set_time(instance->bq2579x_header, Bq2579xWatchdogTimeDisabled);
+        if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to disable OTG watchdog: %d", res);
         }
     }
     return res;
 }
 
-static Bq25792Status power_bq25792_is_usb_connected(Power* instance, bool* usb_connected) {
+static Bq2579xStatus power_bq2579x_is_usb_connected(Power* instance, bool* usb_connected) {
     furi_assert(instance);
     furi_assert(usb_connected); 
-    Bq25792Status res = Bq25792StatusUnknown;
+    Bq2579xStatus res = Bq2579xStatusUnknown;
 
-    Bq25792ChargerStatusReg status = {0};
-    res = bq25792_get_charger_status(instance->bq25792_header, &status);
-    if(res != Bq25792StatusOk) {
+    Bq2579xChargerStatusReg status = {0};
+    res = bq2579x_get_charger_status(instance->bq2579x_header, &status);
+    if(res != Bq2579xStatusOk) {
         FURI_LOG_E(TAG, "Failed to get charger status: %d", res);
         return res;
     }
@@ -282,9 +282,9 @@ static Bq25792Status power_bq25792_is_usb_connected(Power* instance, bool* usb_c
     return res;
 }
 
-API_WRAPPER_PARAM(power_bq25792_set_otg_params_internal, Bq25792Status, Power*, PowerBq25792OtgParams*);
-API_WRAPPER_PARAM(power_bq25792_otg_enable_internal, Bq25792Status, Power*, bool);
-API_WRAPPER_PARAM(power_bq25792_is_usb_connected, Bq25792Status, Power*, bool*);
+API_WRAPPER_PARAM(power_bq2579x_set_otg_params_internal, Bq2579xStatus, Power*, PowerBq2579xOtgParams*);
+API_WRAPPER_PARAM(power_bq2579x_otg_enable_internal, Bq2579xStatus, Power*, bool);
+API_WRAPPER_PARAM(power_bq2579x_is_usb_connected, Bq2579xStatus, Power*, bool*);
 // Bq28z620 wrappers
 
 API_WRAPPER_PARAM(bq28z620_get_control_status, Bq28z620Status, Bq28z620*, Bq28z620StdCmdControlStatusRegBits*);
@@ -355,18 +355,18 @@ static Power* power_alloc(void) {
     instance->otg_enabled = false;
     instance->otg_overcurrent = (FuriCallbackWithContext){0};
     instance->otg_watchdog_timer =
-        furi_event_loop_timer_alloc(instance->event_loop, power_bq25792_otg_watchdog_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
+        furi_event_loop_timer_alloc(instance->event_loop, power_bq2579x_otg_watchdog_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
 
-    // init bq25792
-    instance->bq25792_header = bq25792_init(&furi_hal_i2c_handle_main, BQ25792_ADDRESS, NULL);
-    if(instance->bq25792_header) {
-        instance->devices |= PowerDeviceBq25792;
+    // init bq2579x
+    instance->bq2579x_header = bq2579x_init(&furi_hal_i2c_handle_main, BQ2579X_ADDRESS, NULL);
+    if(instance->bq2579x_header) {
+        instance->devices |= PowerDeviceBq2579x;
         /* call synchronous implementation to initialize charger */
-        power_bq25792_reset_and_load_config(instance);
-        furi_bsp_expander_main_attach_bq25792_callback(power_bq25792_event_isr, instance);
+        power_bq2579x_reset_and_load_config(instance);
+        furi_bsp_expander_main_attach_bq2579x_callback(power_bq2579x_event_isr, instance);
 
     } else {
-        FURI_LOG_E(TAG, "Failed to initialize BQ25792");
+        FURI_LOG_E(TAG, "Failed to initialize BQ2579X");
     }
 
     // init ina219
@@ -492,179 +492,179 @@ float_t power_ina219_get_shunt_voltage_mv(Power* instance) {
     return shunt_voltage;
 }
 
-// Bq25792 API functions
+// Bq2579x API functions
 
-bool power_bq25792_reset_config(Power* instance) {
+bool power_bq2579x_reset_config(Power* instance) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL(PowerDeviceBq25792, power_bq25792_reset_and_load_config, instance, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL(PowerDeviceBq2579x, power_bq2579x_reset_and_load_config, instance, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_set_power_switch(Power* instance, Bq25792PowerSwitch power_switch) {
+bool power_bq2579x_set_power_switch(Power* instance, Bq2579xPowerSwitch power_switch) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_power_switch, instance->bq25792_header, power_switch, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_set_power_switch, instance->bq2579x_header, power_switch, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_ibus_ma(Power* instance, int16_t* ibus) {
+bool power_bq2579x_get_ibus_ma(Power* instance, int16_t* ibus) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_ibus_ma, instance->bq25792_header, ibus, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_ibus_ma, instance->bq2579x_header, ibus, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_ibat_ma(Power* instance, int16_t* ibat) {
+bool power_bq2579x_get_ibat_ma(Power* instance, int16_t* ibat) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_ibat_ma, instance->bq25792_header, ibat, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_ibat_ma, instance->bq2579x_header, ibat, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_vbus_mv(Power* instance, uint16_t* vbus) {
+bool power_bq2579x_get_vbus_mv(Power* instance, uint16_t* vbus) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_vbus_mv, instance->bq25792_header, vbus, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_vbus_mv, instance->bq2579x_header, vbus, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_vbat_mv(Power* instance, uint16_t* vbat) {
+bool power_bq2579x_get_vbat_mv(Power* instance, uint16_t* vbat) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_vbat_mv, instance->bq25792_header, vbat, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_vbat_mv, instance->bq2579x_header, vbat, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_vsys_mv(Power* instance, uint16_t* vsys) {
+bool power_bq2579x_get_vsys_mv(Power* instance, uint16_t* vsys) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_vsys_mv, instance->bq25792_header, vsys, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_vsys_mv, instance->bq2579x_header, vsys, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_charger_temperature(Power* instance, float* temperature) {
+bool power_bq2579x_get_charger_temperature(Power* instance, float* temperature) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charger_temperature, instance->bq25792_header, temperature, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_charger_temperature, instance->bq2579x_header, temperature, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_temperature_battery_celsius(Power* instance, float* temperature) {
+bool power_bq2579x_get_temperature_battery_celsius(Power* instance, float* temperature) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_temperature_battery_celsius, instance->bq25792_header, temperature, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_temperature_battery_celsius, instance->bq2579x_header, temperature, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_input_current_limit_ma(Power* instance, uint16_t* input_current_limit) {
+bool power_bq2579x_get_input_current_limit_ma(Power* instance, uint16_t* input_current_limit) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_input_current_limit_ma, instance->bq2579x_header, input_current_limit, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit) {
+bool power_bq2579x_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_input_current_limit_ma, instance->bq25792_header, input_current_limit, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_set_input_current_limit_ma, instance->bq2579x_header, input_current_limit, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_charge_voltage_limit_ma(Power* instance, uint16_t* charge_voltage_limit) {
+bool power_bq2579x_get_charge_voltage_limit_ma(Power* instance, uint16_t* charge_voltage_limit) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_charge_voltage_limit_ma, instance->bq2579x_header, charge_voltage_limit, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_set_charge_voltage_limit_ma(Power* instance, uint16_t charge_voltage_limit) {
+bool power_bq2579x_set_charge_voltage_limit_ma(Power* instance, uint16_t charge_voltage_limit) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_charge_voltage_limit_ma, instance->bq25792_header, charge_voltage_limit, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_set_charge_voltage_limit_ma, instance->bq2579x_header, charge_voltage_limit, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_charge_current_limit_ma(Power* instance, uint16_t* charge_current_limit) {
+bool power_bq2579x_get_charge_current_limit_ma(Power* instance, uint16_t* charge_current_limit) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_charge_current_limit_ma, instance->bq2579x_header, charge_current_limit, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_set_charge_current_limit_ma(Power* instance, uint16_t charge_current_limit) {
+bool power_bq2579x_set_charge_current_limit_ma(Power* instance, uint16_t charge_current_limit) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_set_charge_current_limit_ma, instance->bq25792_header, charge_current_limit, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_set_charge_current_limit_ma, instance->bq2579x_header, charge_current_limit, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_charge_enable(Power* instance, bool enable) {
+bool power_bq2579x_charge_enable(Power* instance, bool enable) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_charge_enable, instance->bq25792_header, enable, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_charge_enable, instance->bq2579x_header, enable, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_charge_is_enabled(Power* instance, bool* enabled) {
+bool power_bq2579x_charge_is_enabled(Power* instance, bool* enabled) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_charge_is_enabled, instance->bq25792_header, enabled, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_charge_is_enabled, instance->bq2579x_header, enabled, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_charger_status(Power* instance, Bq25792ChargerStatusReg* status) {
+bool power_bq2579x_get_charger_status(Power* instance, Bq2579xChargerStatusReg* status) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charger_status, instance->bq25792_header, status, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_charger_status, instance->bq2579x_header, status, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_charger_fault(Power* instance, Bq25792FaultStatusReg* fault) {
+bool power_bq2579x_get_charger_fault(Power* instance, Bq2579xFaultStatusReg* fault) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charger_fault, instance->bq25792_header, fault, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_charger_fault, instance->bq2579x_header, fault, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_get_charger_irq_flags(Power* instance, Bq25792ChargerFlagReg* irq_flags) {
+bool power_bq2579x_get_charger_irq_flags(Power* instance, Bq2579xChargerFlagReg* irq_flags) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_charger_irq_flags, instance->bq25792_header, irq_flags, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_charger_irq_flags, instance->bq2579x_header, irq_flags, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_adc_enable(Power* instance, bool enable) {
+bool power_bq2579x_adc_enable(Power* instance, bool enable) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_adc_enable, instance->bq25792_header, enable, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_adc_enable, instance->bq2579x_header, enable, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_watchdog_reset(Power* instance) {
+bool power_bq2579x_watchdog_reset(Power* instance) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL(PowerDeviceBq25792, bq25792_watchdog_reset, instance->bq25792_header, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL(PowerDeviceBq2579x, bq2579x_watchdog_reset, instance->bq2579x_header, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t current_ma) {
+bool power_bq2579x_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t current_ma) {
     furi_check(instance);
-    Bq25792Status result;
-    PowerBq25792OtgParams params = {.voltage_mv = voltage_mv, .current_ma = current_ma};
-    PowerBq25792OtgParams* params_ptr = &params;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, power_bq25792_set_otg_params_internal, instance, params_ptr, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    PowerBq2579xOtgParams params = {.voltage_mv = voltage_mv, .current_ma = current_ma};
+    PowerBq2579xOtgParams* params_ptr = &params;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, power_bq2579x_set_otg_params_internal, instance, params_ptr, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_otg_enable(Power* instance, bool enable) {
+bool power_bq2579x_otg_enable(Power* instance, bool enable) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, power_bq25792_otg_enable_internal, instance, enable, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, power_bq2579x_otg_enable_internal, instance, enable, result);
+    return result == Bq2579xStatusOk;
 }
 
-void power_bq25792_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context) {
+void power_bq2579x_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context) {
     furi_check(instance);
     FURI_CRITICAL_ENTER();
     instance->otg_overcurrent.callback = callback;
@@ -672,18 +672,18 @@ void power_bq25792_set_otg_overcurrent_callback(Power* instance, FuriCallback ca
     FURI_CRITICAL_EXIT();
 }
 
-bool power_bq25792_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit) {
+bool power_bq2579x_get_ico_current_limit_ma(Power* instance, uint16_t* ico_current_limit) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, bq25792_get_ico_current_limit_ma, instance->bq25792_header, ico_current_limit, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_ico_current_limit_ma, instance->bq2579x_header, ico_current_limit, result);
+    return result == Bq2579xStatusOk;
 }
 
-bool power_bq25792_usb_is_connected(Power* instance, bool* usb_connected) {
+bool power_bq2579x_usb_is_connected(Power* instance, bool* usb_connected) {
     furi_check(instance);
-    Bq25792Status result;
-    POWER_API_CALL_PARAM(PowerDeviceBq25792, power_bq25792_is_usb_connected, instance, usb_connected, result);
-    return result == Bq25792StatusOk;
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, power_bq2579x_is_usb_connected, instance, usb_connected, result);
+    return result == Bq2579xStatusOk;
 }
 
 // Bq28z620 API functions
