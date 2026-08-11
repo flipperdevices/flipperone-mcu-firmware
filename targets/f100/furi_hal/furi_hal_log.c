@@ -1,5 +1,5 @@
-#include "furi_hal_log.h"
-#include "furi_hal_serial_control.h"
+#include <furi_hal_log.h>
+#include <furi_hal_serial_control.h>
 #include <SEGGER_RTT.h>
 
 #define TAG "FuriHalLog"

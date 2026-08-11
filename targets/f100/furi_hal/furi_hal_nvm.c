@@ -1,4 +1,4 @@
-#include "furi_hal_nvm.h"
+#include <furi_hal_nvm.h>
 #include <kvstore.h>
 #include <blockdevice/flash.h>
 #include <kvstore_logkvs.h>
@@ -8,8 +8,6 @@
 
 #define FURI_HAL_NVM_MAX_KEY_SIZE 256
 #define FURI_HAL_NVM_MAX_STR_SIZE 256
-
-//#include "kvstore.h"
 
 /* FURI_HAL_NVM_BANK_DEFAULT_SIZE is passed as a compile definition from CMakeLists.txt */
 #define FURI_HAL_NVM_BANK_OFFSET (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)

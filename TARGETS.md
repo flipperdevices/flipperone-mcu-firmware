@@ -62,6 +62,16 @@ actually needs a different value for it.
 A `fw_base()` must be the first statement in a descriptor: the base is loaded in
 place, so everything after it is applied on top.
 
+### No quoted includes inside `targets/`
+
+Headers are overridden by include order, not by copying — both directories stay on
+the path, child first. Quotes break that: the compiler searches the including file's
+own directory first, so one translation unit can pull in the f100 copy and the f2
+copy at once. `#pragma once` keys on the path and will not deduplicate them, and
+every type in the header is redeclared.
+
+Use `<>` for everything under `targets/`, SDK headers included.
+
 ## API
 
 The rule for paths: **without a prefix they are relative to the repository root**,

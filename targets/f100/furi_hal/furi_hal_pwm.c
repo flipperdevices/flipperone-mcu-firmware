@@ -2,7 +2,7 @@
 #include <furi_hal.h>
 #include <furi_hal_gpio.h>
 #include <hardware/pwm.h>
-#include "hardware/clocks.h"
+#include <hardware/clocks.h>
 
 #define TAG "FuriHalPwm"
 

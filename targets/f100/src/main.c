@@ -5,7 +5,7 @@
 #include <furi_bsp.h>
 #include <flipper.h>
 
-#include "pico/multicore.h"
+#include <pico/multicore.h>
 
 #define TAG "Main"
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "furi_hal_gpio.h"
+#include <furi_hal_gpio.h>
 
 typedef struct FuriHalPwm FuriHalPwm;
 

@@ -128,7 +128,7 @@ static void led_backlight_brightness_transition(Led* instance, uint8_t new_value
             // shutdown allows for PWM dimming frequencies as low as 100 Hz.
             // The device is enabled again when a CTRL signal is high for a period of 500 µs minimum.
             // TODO: rework for new HW revision
-            instance->backlight_pwm = furi_hal_pwm_init(&gpio_display_ctrl, LED_BACKLIGHT_PWM_RESOLUTION, LED_BACKLIGHT_PWM_FREQ_HZ, false);
+            instance->backlight_pwm = furi_hal_pwm_init(&gpio_display_backlight_pwm, LED_BACKLIGHT_PWM_RESOLUTION, LED_BACKLIGHT_PWM_FREQ_HZ, false);
             furi_hal_pwm_set_duty_cycle(instance->backlight_pwm, 140);
             furi_delay_us(2400);
         }

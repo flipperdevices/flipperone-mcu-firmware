@@ -2,7 +2,7 @@
 #include <drivers/pcal6416/pcal6416.h>
 #include <stdio.h>
 
-#include "furi_bsp_expander.h"
+#include <furi_bsp_expander.h>
 
 #define TAG "BspExpander"
 

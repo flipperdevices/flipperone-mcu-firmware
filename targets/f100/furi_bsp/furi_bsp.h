@@ -1,5 +1,5 @@
 #pragma once
-#include "furi_bsp_expander.h"
+#include <furi_bsp_expander.h>
 
 #ifdef __cplusplus
 extern "C" {

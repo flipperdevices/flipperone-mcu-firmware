@@ -1,14 +1,11 @@
-#include "furi_hal_gpio.h"
+#include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
 
 const GpioPin gpio_qspi0_cs1 = {.pin = 0};
 const GpioPin gpio_nboot_disable = {.pin = 1};
 
-const GpioPin gpio_i2cx_sda = {.pin = 10};
-const GpioPin gpio_i2cx_scl = {.pin = 11};
-
 const GpioPin gpio_display_te = {.pin = 5};
-const GpioPin gpio_display_ctrl = {.pin = 6};
+const GpioPin gpio_display_backlight_pwm = {.pin = 6};
 const GpioPin gpio_display_reset = {.pin = 12};
 const GpioPin gpio_display_d2 = {.pin = 14};
 const GpioPin gpio_display_d1 = {.pin = 15};
@@ -17,8 +14,7 @@ const GpioPin gpio_display_cs = {.pin = 17};
 const GpioPin gpio_display_scl = {.pin = 18};
 const GpioPin gpio_display_sda = {.pin = 19};
 const GpioPin gpio_display_vci_en = {.pin = 24};
-//spi mode pins
-const GpioPin gpio_display_dc = {.pin = 13};
+
 
 const GpioPin gpio_haptic_en = {.pin = 7};
 const GpioPin gpio_haptic_pwm = {.pin = 8};

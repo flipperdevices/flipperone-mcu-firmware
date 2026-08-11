@@ -1,8 +1,8 @@
 #include <furi.h>
-#include "furi_hal_otp.h"
-#include "pico/bootrom.h"
-#include "hardware/structs/otp.h"
-#include "hardware/regs/otp_data.h"
+#include <furi_hal_otp.h>
+#include <pico/bootrom.h>
+#include <hardware/structs/otp.h>
+#include <hardware/regs/otp_data.h>
 #include <string.h>
 
 #define TAG "FuriHalOtp"

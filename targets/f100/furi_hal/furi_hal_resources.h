@@ -85,11 +85,8 @@ typedef struct {
 extern const GpioPin gpio_qspi0_cs1;
 extern const GpioPin gpio_nboot_disable;
 
-extern const GpioPin gpio_i2cx_sda;
-extern const GpioPin gpio_i2cx_scl;
-
 extern const GpioPin gpio_display_te;
-extern const GpioPin gpio_display_ctrl;
+extern const GpioPin gpio_display_backlight_pwm;
 extern const GpioPin gpio_display_reset;
 extern const GpioPin gpio_display_d2;
 extern const GpioPin gpio_display_d1;
@@ -98,8 +95,6 @@ extern const GpioPin gpio_display_cs;
 extern const GpioPin gpio_display_scl;
 extern const GpioPin gpio_display_sda;
 extern const GpioPin gpio_display_vci_en;
-//spi mode pins
-extern const GpioPin gpio_display_dc;
 
 extern const GpioPin gpio_haptic_en;
 extern const GpioPin gpio_haptic_pwm;
