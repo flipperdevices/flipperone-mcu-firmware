@@ -39,6 +39,9 @@
 #define OTP_SCSI_PRODUCT     "One"         // max 16 chars
 #define OTP_SCSI_VERSION     "1.00"        // max 4 chars
 
+// BOOTSEL LED: GPIO pin, connected to VCC
+#define OTP_BOOTSEL_LED_PIN  35
+
 // Bootloader info page strings
 #define OTP_REDIRECT_URL     "https://r.flipper.net/flipper_one_mcu_update" // max 127 chars
 #define OTP_REDIRECT_NAME    "How to Update Firmware" // max 127 chars
@@ -74,6 +77,10 @@ void furi_hal_otp_init(void) {
 
     if(!furi_hal_otp_usb_white_label_valid()) {
         FURI_LOG_E(TAG, "USB white label is not valid");
+    }
+
+    if(!furi_hal_otp_bootsel_led_valid()) {
+        FURI_LOG_E(TAG, "BOOTSEL LED is not valid");
     }
 }
 
@@ -261,6 +268,42 @@ FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t firmwar
     furi_string_free(board_id_str);
 
     return error;
+}
+
+bool furi_hal_otp_bootsel_led_valid(void) {
+    // BOOT_FLAGS0 is a 3x redundant 24-bit row (no ECC)
+    // Raw mode: 4 bytes per row, low 24 bits = OTP value
+    uint32_t buf = 0;
+    otp_cmd_t cmd = {.flags = OTP_DATA_BOOT_FLAGS0_ROW};
+    int rc = rom_func_otp_access((uint8_t*)&buf, sizeof(buf), cmd);
+    if(rc != BOOTROM_OK) {
+        FURI_LOG_E(TAG, "OTP read failed: %d", rc);
+        return false;
+    }
+    return (buf & OTP_DATA_BOOT_FLAGS0_ENABLE_BOOTSEL_LED_BITS) != 0;
+}
+
+bool furi_hal_otp_write_bootsel_led(void) {
+    // 1. BOOTSEL_LED_CFG (ECC): pin number in bits 5:0, ACTIVELOW (bit 8) = 0 (errata https://forums.raspberrypi.com/viewtopic.php?t=397828)
+    const uint16_t led_cfg = (OTP_BOOTSEL_LED_PIN << OTP_DATA_BOOTSEL_LED_CFG_PIN_LSB) & OTP_DATA_BOOTSEL_LED_CFG_PIN_BITS;
+    if(!furi_hal_otp_write_ecc(OTP_DATA_BOOTSEL_LED_CFG_ROW, led_cfg)) {
+        return false;
+    }
+
+    // 2. BOOT_FLAGS0 (raw, 3x redundant): set ENABLE_BOOTSEL_LED
+    // Raw OTP writes can only set bits 0->1, so previously programmed flags are preserved
+    const uint32_t boot_flags0 = OTP_DATA_BOOT_FLAGS0_ENABLE_BOOTSEL_LED_BITS;
+    if(!furi_hal_otp_write_raw(OTP_DATA_BOOT_FLAGS0_ROW, boot_flags0)) {
+        return false;
+    }
+    if(!furi_hal_otp_write_raw(OTP_DATA_BOOT_FLAGS0_R1_ROW, boot_flags0)) {
+        return false;
+    }
+    if(!furi_hal_otp_write_raw(OTP_DATA_BOOT_FLAGS0_R2_ROW, boot_flags0)) {
+        return false;
+    }
+
+    return true;
 }
 
 const char* furi_hal_otp_usb_white_label_error_to_string(FuriHalOtpUsbWhiteLabelError error) {
