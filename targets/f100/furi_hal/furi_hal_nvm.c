@@ -1,46 +1,19 @@
 #include "furi_hal_nvm.h"
 #include <kvstore.h>
-#include <blockdevice/flash.h>
 #include <kvstore_logkvs.h>
-#include <pico/btstack_flash_bank.h>
+#include <furi_hal_nvm_storage.h>
 
 #define TAG "FuriHalNvm"
 
 #define FURI_HAL_NVM_MAX_KEY_SIZE 256
 #define FURI_HAL_NVM_MAX_STR_SIZE 256
 
-//#include "kvstore.h"
-
-/* FURI_HAL_NVM_BANK_DEFAULT_SIZE is passed as a compile definition from CMakeLists.txt */
-#define FURI_HAL_NVM_BANK_OFFSET (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)
-
-bool kvs_init(void) {
-    FURI_LOG_I(
-        TAG,
-        "Create a block device that uses 0x%08x->0x%08x(%uKB) areas of flash memory",
-        XIP_BASE + FURI_HAL_NVM_BANK_OFFSET,
-        XIP_BASE + FURI_HAL_NVM_BANK_OFFSET + FURI_HAL_NVM_BANK_DEFAULT_SIZE,
-        FURI_HAL_NVM_BANK_DEFAULT_SIZE / 1024);
-    blockdevice_t* bd = blockdevice_flash_create(FURI_HAL_NVM_BANK_OFFSET, FURI_HAL_NVM_BANK_DEFAULT_SIZE);
-
-    FURI_LOG_I(TAG, "Create a Log structured Key-Value Store that uses a block device");
-    kvs_t* kvs = kvs_logkvs_create(bd);
-
-    if(!kvs) {
-        FURI_LOG_E(TAG, "Failed to create Key-Value Store");
-        return false;
-    }
-
-    FURI_LOG_I(TAG, "Assign to global Key-Value Store");
-    kvs_assign(kvs);
-
-    return true;
-}
+static blockdevice_t* storage_bd = NULL;
 
 void furi_hal_nvm_wipe(void) {
     // Erase the entire area used for NVM
     FURI_CRITICAL_ENTER();
-    flash_range_erase(FURI_HAL_NVM_BANK_OFFSET, FURI_HAL_NVM_BANK_DEFAULT_SIZE);
+    furi_hal_nvm_storage_wipe(storage_bd);
     FURI_CRITICAL_EXIT();
 }
 
@@ -55,11 +28,17 @@ void furi_hal_nvm_set_fault_data(uint32_t value) {
 
 void furi_hal_nvm_init(void) {
     // Initialize Key-Value Store
-    // Defalut setting uses 128KB of flash memory for KV store, at the end of flash memory
-    if(!kvs_init()) {
+    storage_bd = furi_hal_nvm_storage_init();
+
+    FURI_LOG_I(TAG, "Create a Log structured Key-Value Store that uses a block device");
+    kvs_t* kvs = kvs_logkvs_create(storage_bd);
+
+    if(!kvs) {
         // ToDo: add notice that NVM is scribbled
         FURI_LOG_E(TAG, "Failed to initialize Key-Value Store");
         furi_hal_nvm_wipe();
+    } else {
+        kvs_assign(kvs);
     }
 }
 
@@ -69,6 +48,9 @@ void furi_hal_nvm_deinit(void) {
     if(kvs) {
         kvs->deinit(kvs);
     }
+
+    furi_hal_nvm_storage_deinit(storage_bd);
+    storage_bd = NULL;
 }
 
 static FuriHalNvmStorage furi_hal_nvm_check_error(const char* key, int rc) {
