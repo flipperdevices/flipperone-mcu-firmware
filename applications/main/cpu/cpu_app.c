@@ -1,6 +1,6 @@
 #include "cpu_app.h"
 #include <furi.h>
-#include <furi_bsp.h>
+#include <furi_bsp_linux.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include <gui/modules/popup_menu.h>
@@ -66,32 +66,6 @@ static void furi_hal_reset_pd_and_charger(void) {
     PowerDevice power_device;
     power_bq2579x_reset_config(power);
     furi_record_close(RECORD_POWER);
-}
-
-static void furi_hal_bsp_linux_reset(void) {
-    furi_bsp_main_reset();
-}
-
-static bool furi_hal_bsp_linux_is_load(void) {
-    const uint32_t mask = OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En;
-    uint32_t status = furi_bsp_expander_main_read_output();
-    return (status & mask) == mask;
-}
-
-static void furi_hal_bsp_linux_start(void) {
-    uint32_t status = furi_bsp_expander_main_read_output();
-    FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En;
-    FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
-    furi_bsp_expander_main_write_output(status);
-}
-
-static void furi_hal_bsp_linux_maskrom(void) {
-    uint32_t status = furi_bsp_expander_main_read_output();
-    FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En | OutputExpMainExpander17;
-    FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
-    furi_bsp_expander_main_write_output(status);
 }
 
 static bool cpu_app_layout(void* _model) {
@@ -180,30 +154,27 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
         case CpuAppMessageTypeStart:
-            if(!furi_hal_bsp_linux_is_load()) {
-                furi_hal_bsp_linux_reset();
-                furi_hal_bsp_linux_start();
+            if(!furi_bsp_linux_is_load()) {
+                furi_bsp_linux_reset();
+                furi_bsp_linux_start();
             }
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             break;
         case CpuAppMessageTypeReset:
             furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
-            furi_hal_bsp_linux_start();
+            furi_bsp_linux_reset();
+            furi_bsp_linux_start();
             instance->skip_frames = 2;
             cpu_app_model_apply(instance, cpu_app_model_init, NULL);
             break;
         case CpuAppMessageTypeShutdown:
             furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
+            furi_bsp_linux_reset();
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             break;
         case CpuAppMessageTypeMaskrom:
             furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
-            furi_hal_bsp_linux_maskrom();
+            furi_bsp_linux_reset();
+            furi_bsp_linux_maskrom();
             break;
         case CpuAppMessageTypeNewFrame:
             if(instance->skip_frames > 0) {
