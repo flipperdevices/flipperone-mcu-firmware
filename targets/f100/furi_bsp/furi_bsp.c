@@ -8,5 +8,6 @@ void __assert_func(const char* file, int line, const char* func, const char* fai
 
 void furi_bsp_init(void) {
     furi_bsp_expander_init();
+    furi_bsp_vci_init();
     furi_bsp_stdio_init();
 }
