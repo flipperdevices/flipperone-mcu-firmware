@@ -6,9 +6,14 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(FIRMWARE_TARGET 100 CACHE STRING "Firmware target number")
+set(FW_TARGET "f100" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
-set(TARGET_HARDWARE "f${FIRMWARE_TARGET}")
+
+# version.c reports the target as a bare number, so f100 -> 100
+if(NOT FW_TARGET MATCHES "^f([0-9]+)$")
+    message(FATAL_ERROR "FW_TARGET '${FW_TARGET}' must follow the f<number> convention")
+endif()
+set(FIRMWARE_TARGET "${CMAKE_MATCH_1}")
 
 # Initialise pico_sdk from installed location
 # (note this can come from environment, CMake cache etc)
@@ -51,41 +56,14 @@ add_compile_options(-Wno-unused-but-set-variable)
 # clay.c has some warnings also
 add_compile_options(-Wno-unknown-pragmas)
 
-# Add executable. Default name is the project name, version 0.1
-file(GLOB_RECURSE SOURCES
-    "lib/corelibs/lib/furi/*.c*"
-    "lib/corelibs/lib/furi/core/*.c*"
-    "lib/corelibs/lib/version/*.c*"
-    "lib/toolbox/*.c*"
-    "app/*.c"
-    "app/theme/*.c"
-    "app/fs/*.c"
-    "targets/${TARGET_HARDWARE}/furi_hal/*.c*"
-    "targets/${TARGET_HARDWARE}/furi_bsp/*.c*"
-    "lib/drivers/display/*.c*"  
-    "lib/drivers/tps62868x/*.c*"
-    "lib/drivers/tca6416a/*.c*"
-    "lib/drivers/pcal6416/*.c*"
-    "lib/drivers/drv2605l/*.c*"
-    "lib/drivers/iqs7211e/*.c*"
-    "lib/drivers/spi_get_frame/*.c*"
-    "lib/drivers/ina219/*.c*"
-    "lib/drivers/ina4230/*.c*"
-    "lib/drivers/bq25792/*.c*"
-    "lib/drivers/bq28z620/*.c*"
-    "lib/drivers/fusb302/*.c*"
-    "lib/drivers/hd3ss3220/*.c*"
-    "lib/drivers/i2c_slave/*.c*"
-    "lib/drivers/headphones/*.c*"
-    "lib/tusb/*.c*"
-    "applications/*.c"
-    "applications/services/*.c"
-    "applications/main/*.c"
-    "targets/${TARGET_HARDWARE}/src/*.c*" 
-)
+# The set of sources and include directories is described by the target, see
+# targets/target_api.cmake for how a target inherits from another one.
+include("${CMAKE_CURRENT_LIST_DIR}/targets/target_api.cmake")
+fw_load(${FW_TARGET})
+fw_resolve()
 
-add_executable(${PROJECT_NAME} 
-    ${SOURCES}
+add_executable(${PROJECT_NAME}
+    ${FW_SOURCES}
 )
 
 # NVM bank size — single source of truth used by both the linker script
@@ -127,7 +105,7 @@ file(WRITE "${CMAKE_BINARY_DIR}/pico_flash_region.ld"
 # Must come after the SDK's --script= so that __heap_start/__heap_end and
 # .stack_dummy (all defined in memmap_default.ld) are already resolved.
 # Using LINKER:-T, preserves ordering against the SDK's -Wl,--script=.
-set(LINKER_SYMBOLS_LD ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/linker_symbols.ld)
+fw_find_file(linker_symbols.ld LINKER_SYMBOLS_LD)
 target_link_options(${PROJECT_NAME} PRIVATE "LINKER:-T,${LINKER_SYMBOLS_LD}")
 set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS ${LINKER_SYMBOLS_LD})
 
@@ -142,20 +120,7 @@ pico_enable_stdio_usb(${PROJECT_NAME} 0)
 
 # Add the standard include files to the build
 target_include_directories(${PROJECT_NAME} PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR}/applications
-    ${CMAKE_CURRENT_LIST_DIR}/applications/services
-    ${CMAKE_CURRENT_LIST_DIR}/lib/toolbox
-    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/furi
-    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/version
-    ${CMAKE_CURRENT_LIST_DIR}/lib/tusb
-    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/src
-    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_hal
-    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/furi_bsp
-    ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/config
-    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib
-    ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
-    ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/mlib
-    ${CMAKE_CURRENT_LIST_DIR}/lib
+    ${FW_INCLUDES}
 )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/uart_pio)
@@ -170,6 +135,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/cli)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/containers)
 
 # Add the standard library to the build
+# TODO: add to targets system
 target_link_libraries(${PROJECT_NAME}
     cmsis_core
     pico_stdlib

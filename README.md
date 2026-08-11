@@ -40,6 +40,12 @@ Builds run automatically on every push to the `dev` branch, on tag pushes, and o
 
 Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). The extension automatically downloads the ARM toolchain, CMake, Ninja, and Pico SDK. Open the project folder and use the extension's compile button.
 
+### Hardware targets
+
+Each board is described by `targets/<name>/target.cmake`, and a target can be based on another one. The default is `f100`; to build a different board, run the **Select Target** task in VSCode (`Terminal → Run Task`) or pass `-DFW_TARGET=<name>` to CMake.
+
+See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
+
 <details>
 <summary>Manual build (Linux / macOS)</summary>
 
