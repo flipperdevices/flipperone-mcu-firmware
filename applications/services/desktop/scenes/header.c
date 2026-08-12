@@ -5,6 +5,7 @@
 #include "../scene.h"
 #include <power/power.h>
 #include "../desktop_i.h"
+#include <furi_hal_flash.h>
 
 #define TAG "Header"
 
@@ -117,7 +118,8 @@ static void header_on_alloc(Scene* scene, void* context) {
             const Version* version = version_get();
 
             model->version_text = furi_string_alloc();
-            furi_string_printf(model->version_text, "%s %s", version_get_gitbranch(version), version_get_githash(version));
+            furi_string_printf(model->version_text, "[%c] ", furi_hal_flash_get_active_fw_partition() == FlashPartitionIdFwA ? 'A' : 'B');
+            furi_string_cat_printf(model->version_text, "%s %s", version_get_gitbranch(version), version_get_githash(version));
 
             model->charge_text = furi_string_alloc();
         },

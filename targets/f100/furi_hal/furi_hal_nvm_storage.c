@@ -4,12 +4,9 @@
 #include <pico/flash.h>
 #include <pico/mutex.h>
 #include "blockdevice/flash.h"
-#include "pico/bootrom.h"
-#include "boot/picobin.h"
+#include <furi_hal_flash.h>
 
 #define TAG "FuriHalNvmStorage"
-
-#define NVM_PARTITION_ID 2 // Third partition after A+B
 
 #define FLASH_SAFE_EXECUTE_TIMEOUT 10 * 1000
 
@@ -121,30 +118,11 @@ static bd_size_t size(blockdevice_t* device) {
 }
 
 blockdevice_t* furi_hal_nvm_storage_init(void) {
-    uint32_t nvm_start = 0;
+    size_t nvm_start = 0;
     size_t nvm_length = 0;
 
-    // See datasheet 5.4.8.16; 5.9.4.2 for more details
-    uint32_t buffer[(3 * 4) + 1] = {0}; // maximum of 4 partitions, each with maximum of 4 words returned, plus 1 for header
-    int ret = rom_get_partition_table_info(buffer, COUNT_OF(buffer), PT_INFO_PARTITION_LOCATION_AND_FLAGS | PT_INFO_PARTITION_ID);
-
-    furi_check(buffer[0] == (PT_INFO_PARTITION_LOCATION_AND_FLAGS | PT_INFO_PARTITION_ID));
-
-    uint32_t partition_count = (ret - 1) / 4;
-    for(size_t i = 0; i < partition_count; i++) {
-        size_t offset = 1 + i * 4;
-
-        uint32_t id = buffer[offset + 2];
-        if(id == NVM_PARTITION_ID) {
-            uint32_t start = (buffer[offset] & PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_LSB;
-            uint32_t end = (buffer[offset] & PICOBIN_PARTITION_LOCATION_LAST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_LAST_SECTOR_LSB;
-            nvm_length = (end - start + 1) * 4096;
-            nvm_start = start * 4096;
-            break;
-        }
-    }
-
-    FURI_LOG_I(TAG, "NVM partition: 0x%08lx %uk", nvm_start, nvm_length / 1024);
+    furi_hal_flash_get_partition_info(FlashPartitionIdStorage, &nvm_start, &nvm_length);
+    FURI_LOG_I(TAG, "NVM partition: 0x%08x %uk", nvm_start, nvm_length / 1024);
 
     blockdevice_t* device = malloc(sizeof(blockdevice_t));
     blockdevice_flash_config_t* config = malloc(sizeof(blockdevice_flash_config_t));

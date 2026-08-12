@@ -8,6 +8,39 @@
 #include <furi.h>
 #include <hardware/flash.h>
 
+#include "pico/bootrom.h"
+#include "boot/picobin.h"
+
+bool furi_hal_flash_get_partition_info(FlashPartitionId partition_id, size_t* base, size_t* size) {
+    // See datasheet 5.4.8.16; 5.9.4.2 for more details
+    uint32_t buffer[(3 * 4) + 1] = {0}; // maximum of 3 partitions, each with maximum of 4 words returned, plus 1 for header
+    int ret = rom_get_partition_table_info(buffer, COUNT_OF(buffer), PT_INFO_PARTITION_LOCATION_AND_FLAGS | PT_INFO_PARTITION_ID);
+
+    furi_check(buffer[0] == (PT_INFO_PARTITION_LOCATION_AND_FLAGS | PT_INFO_PARTITION_ID));
+
+    uint32_t partition_count = (ret - 1) / 4;
+    for(size_t i = 0; i < partition_count; i++) {
+        size_t offset = 1 + i * 4;
+
+        uint32_t id = buffer[offset + 2];
+        if(id == partition_id) {
+            uint32_t start = (buffer[offset] & PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_LSB;
+            uint32_t end = (buffer[offset] & PICOBIN_PARTITION_LOCATION_LAST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_LAST_SECTOR_LSB;
+            *size = (end - start + 1) * 4096;
+            *base = start * 4096;
+            return true;
+        }
+    }
+    return false;
+}
+
+FlashPartitionId furi_hal_flash_get_active_fw_partition(void) {
+    boot_info_t boot_info = {};
+    int ret = rom_get_boot_info(&boot_info);
+    furi_check(ret);
+    return boot_info.partition == 0 ? FlashPartitionIdFwA : FlashPartitionIdFwB;
+}
+
 size_t furi_hal_flash_get_page_size(void) {
     return FLASH_PAGE_SIZE;
 }
