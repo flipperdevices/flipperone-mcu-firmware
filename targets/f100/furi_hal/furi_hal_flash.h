@@ -29,6 +29,12 @@ bool furi_hal_flash_get_partition_info(FlashPartitionId partition_id, size_t* ba
  */
 FlashPartitionId furi_hal_flash_get_active_fw_partition(void);
 
+/** Rollback to the other firmware partition
+ *
+ * @return     true if rollback was successful, false if another partition is empty or invalid
+ */
+bool furi_hal_flash_rollback(void);
+
 /** Get flash base address
  *
  * @return     pointer to flash base

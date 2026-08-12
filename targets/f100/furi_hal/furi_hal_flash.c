@@ -26,8 +26,8 @@ bool furi_hal_flash_get_partition_info(FlashPartitionId partition_id, size_t* ba
         if(id == partition_id) {
             uint32_t start = (buffer[offset] & PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_FIRST_SECTOR_LSB;
             uint32_t end = (buffer[offset] & PICOBIN_PARTITION_LOCATION_LAST_SECTOR_BITS) >> PICOBIN_PARTITION_LOCATION_LAST_SECTOR_LSB;
-            *size = (end - start + 1) * 4096;
-            *base = start * 4096;
+            if(size) *size = (end - start + 1) * 4096;
+            if(base) *base = start * 4096;
             return true;
         }
     }
@@ -39,6 +39,19 @@ FlashPartitionId furi_hal_flash_get_active_fw_partition(void) {
     int ret = rom_get_boot_info(&boot_info);
     furi_check(ret);
     return boot_info.partition == 0 ? FlashPartitionIdFwA : FlashPartitionIdFwB;
+}
+
+bool furi_hal_flash_rollback(void) {
+    FlashPartitionId active_partition = furi_hal_flash_get_active_fw_partition();
+    // TODO: manually check if there is a valid firmware in opposite partition
+    size_t part_base;
+    bool ret = furi_hal_flash_get_partition_info(active_partition, &part_base, NULL);
+    furi_check(ret);
+    FURI_CRITICAL_ENTER();
+    flash_range_erase(part_base, FLASH_SECTOR_SIZE);
+    FURI_CRITICAL_EXIT();
+
+    return true;
 }
 
 size_t furi_hal_flash_get_page_size(void) {
