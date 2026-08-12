@@ -167,7 +167,7 @@ static const TestEntry cb_tests[] = {
     TEST_ENTRY(circular_buffer_test_write_read_overwrite_false),
 };
 
-const size_t test_count = COUNT_OF(cb_tests);
+static const size_t test_count = COUNT_OF(cb_tests);
 
 bool circular_buffer_test_run(void) {
     FURI_LOG_I(TAG, "suite: start (%zu tests)", test_count);

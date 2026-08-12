@@ -44,6 +44,19 @@ Bq25792Status bq25792_get_vsys_mv(Bq25792* instance, uint16_t* vsys);
 Bq25792Status bq25792_get_bat_pct(Bq25792* instance, float* bat_pct);
 Bq25792Status bq25792_get_charger_temperature(Bq25792* instance, float* temperature);
 Bq25792Status bq25792_get_temperature_battery_celsius(Bq25792* instance, float* bat_temperature);
+/** VINDPM: the input voltage the charger regulates down to before it starts
+ * cutting input current. Hardware resets it to 3600 mV whenever the adapter
+ * is unplugged, so it cannot be configured once at boot. */
+Bq25792Status bq25792_get_input_voltage_limit_mv(Bq25792* instance, uint16_t* input_voltage_limit);
+
+/** Sets VINDPM. Must be re-applied per PD contract, not once at boot: the
+ * hardware picks its own value from the VBUS it measures at plug-in, which is
+ * vSafe5V, and never revisits it when we negotiate a higher voltage. Left
+ * alone, a 15 V contract keeps a ~4.4 V threshold and the charger will hold
+ * full input current while the source collapses instead of backing off.
+ * Clamped to the register's 3.6-22 V range. */
+Bq25792Status bq25792_set_input_voltage_limit_mv(Bq25792* instance, uint16_t input_voltage_limit);
+
 Bq25792Status bq25792_get_input_current_limit_ma(Bq25792* instance, uint16_t* input_current_limit);
 Bq25792Status bq25792_set_input_current_limit_ma(Bq25792* instance, uint16_t input_current_limit);
 Bq25792Status bq25792_get_charge_voltage_limit_ma(Bq25792* instance, uint16_t* charge_voltage_limit);
@@ -52,6 +65,13 @@ Bq25792Status bq25792_get_charge_current_limit_ma(Bq25792* instance, uint16_t* c
 Bq25792Status bq25792_set_charge_current_limit_ma(Bq25792* instance, uint16_t charge_current_limit);
 Bq25792Status bq25792_get_ico_current_limit_ma(Bq25792* instance, uint16_t* ico_current_limit);
 Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable);
+
+/** Input Current Optimization. When on, the charger probes above the
+ * configured input current limit until the source droops, to discover what it
+ * can really deliver — useful only for a source that does not advertise its
+ * capability. Off after bq25792_load_default_config(): overshooting a limit
+ * we already know from PD or Type-C browns the source out. */
+Bq25792Status bq25792_ico_enable(Bq25792* instance, bool enable);
 Bq25792Status bq25792_charge_is_enabled(Bq25792* instance, bool* enabled);
 Bq25792Status bq25792_get_charger_status(Bq25792* instance, Bq25792ChargerStatusReg* status);
 Bq25792Status bq25792_get_charger_fault(Bq25792* instance, Bq25792FaultStatusReg* fault);

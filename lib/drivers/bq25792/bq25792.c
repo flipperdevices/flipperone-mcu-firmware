@@ -9,6 +9,10 @@
 #define BQ25792_DEVICE_REVISION           0b000 //Revision
 #define BQ25792_MAX_INPUT_DEFAULT_CURRENT 500 // mA
 
+// VINDPM register range (datasheet §9.5.1.4): 8 bits, 100 mV per LSB.
+#define BQ25792_VINDPM_MIN_MV 3600
+#define BQ25792_VINDPM_MAX_MV 22000
+
 #ifdef BQ25792_DEBUG_ENABLE
 #define BQ25792_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
@@ -180,7 +184,9 @@ Bq25792Status bq25792_load_default_config(Bq25792* instance) {
             break;
         }
 
-        // Disable Dp/Dm detection
+        // Disable Dp/Dm detection. D+/D- are unconnected on this hardware, so
+        // BC1.2 would read floating pins — and its verdict lands straight in
+        // the input current limit, overriding what Type-C and PD told us.
         Bq25792ChargerControl2RegBits charger_control_2 = {0};
         res = bq25792_write_reg8(instance, Bq25792RegChargerControl2, *(uint8_t*)&charger_control_2);
         if(res != Bq25792StatusOk) {
@@ -210,8 +216,13 @@ Bq25792Status bq25792_load_default_config(Bq25792* instance) {
         if(res != Bq25792StatusOk) {
             break;
         }
-        // Enabling automatic adjustment of input current
-        charger_control_0.en_ico = 1; // Enable ICO current limit
+        // ICO probes upward past the configured input current limit to find
+        // what the source can really deliver. That is the right thing only
+        // for a source that never tells us — with a PD contract or a Type-C
+        // Rp advertisement the limit is known, and overshooting it browns the
+        // source out. Off by default; whoever knows the port's state turns it
+        // on via bq25792_ico_enable().
+        charger_control_0.en_ico = 0;
         res = bq25792_write_reg8(instance, Bq25792RegChargerControl0, *(uint8_t*)&charger_control_0);
         if(res != Bq25792StatusOk) {
             break;
@@ -387,6 +398,34 @@ Bq25792Status bq25792_get_charger_temperature(Bq25792* instance, float* temperat
     return res;
 }
 
+Bq25792Status bq25792_get_input_voltage_limit_mv(Bq25792* instance, uint16_t* input_voltage_limit) {
+    furi_check(instance);
+    furi_check(input_voltage_limit);
+    uint8_t raw = 0;
+    Bq25792Status res = bq25792_read_reg8(instance, Bq25792RegInputVoltageLimit, &raw);
+    if(res == Bq25792StatusOk) {
+        *input_voltage_limit = (uint16_t)raw * 100u; // 100 mV per LSB, no offset
+    } else {
+        FURI_LOG_E(TAG, "Failed to get input voltage limit!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_set_input_voltage_limit_mv(Bq25792* instance, uint16_t input_voltage_limit) {
+    furi_check(instance);
+    if(input_voltage_limit < BQ25792_VINDPM_MIN_MV) input_voltage_limit = BQ25792_VINDPM_MIN_MV;
+    if(input_voltage_limit > BQ25792_VINDPM_MAX_MV) input_voltage_limit = BQ25792_VINDPM_MAX_MV;
+    // 100 mV per LSB, no offset. Truncating rather than rounding keeps the
+    // threshold at or below what the caller asked for, so a rounding step can
+    // never make us give up on a source we were told to tolerate.
+    const uint8_t raw = (uint8_t)(input_voltage_limit / 100u);
+    Bq25792Status res = bq25792_write_reg8(instance, Bq25792RegInputVoltageLimit, raw);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set input voltage limit!");
+    }
+    return res;
+}
+
 Bq25792Status bq25792_get_input_current_limit_ma(Bq25792* instance, uint16_t* input_current_limit) {
     furi_check(instance);
     furi_check(input_current_limit);
@@ -509,6 +548,24 @@ Bq25792Status bq25792_charge_enable(Bq25792* instance, bool enable) {
     } while(0);
     if(res != Bq25792StatusOk) {
         FURI_LOG_E(TAG, "Failed to set charge enable!");
+    }
+    return res;
+}
+
+Bq25792Status bq25792_ico_enable(Bq25792* instance, bool enable) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792ChargerControl0RegBits charger_control_0 = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegChargerControl0, (uint8_t*)&charger_control_0);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        charger_control_0.en_ico = enable ? 1 : 0;
+        res = bq25792_write_reg8(instance, Bq25792RegChargerControl0, *(uint8_t*)&charger_control_0);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set ICO enable!");
     }
     return res;
 }

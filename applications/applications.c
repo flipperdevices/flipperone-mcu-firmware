@@ -25,10 +25,12 @@ extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
+// extern int32_t pd_ucsi_app(void* p);
+
+extern int32_t unit_test_app(void* p);
 extern int32_t font_test_app(void* p);
 extern int32_t cli_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
-extern int32_t unit_test_app(void* p);
 
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
