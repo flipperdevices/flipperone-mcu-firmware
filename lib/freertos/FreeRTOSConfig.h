@@ -92,7 +92,9 @@ extern "C" {
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_QUEUE_SETS                    1
 #define configUSE_TIME_SLICING                  1
-#define configUSE_NEWLIB_REENTRANT              1 // Necessary if any floating point printfs are used!
+#if !defined(configUSE_NEWLIB_REENTRANT) && !defined(configUSE_PICOLIBC_TLS)
+#error "Per-task C runtime state option must be provided by the build system"
+#endif
 #define configENABLE_BACKWARD_COMPATIBILITY     0
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 5
 
