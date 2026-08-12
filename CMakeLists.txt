@@ -104,13 +104,6 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     PICO_CRT0_IMAGE_TYPE_TBYB=0
 )
 
-if(NOT DEFINED PICO_FLASH_SIZE_BYTES)
-    message(WARNING "PICO_FLASH_SIZE_BYTES is not defined, falling back to 16 MiB.")
-    set(PICO_FLASH_SIZE_BYTES (7 * 1024 * 1024))
-endif()
-file(WRITE "${CMAKE_BINARY_DIR}/pico_flash_region.ld"
-    "FLASH(rx) : ORIGIN = 0x10000000, LENGTH = ${PICO_FLASH_SIZE_BYTES}\n")
-
 # Link-time heap symbols (__heap_start__, __heap_end__, __heap_size__).
 # Must come after the SDK's --script= so that __heap_start/__heap_end and
 # .stack_dummy (all defined in memmap_default.ld) are already resolved.
@@ -185,3 +178,18 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 pico_add_extra_outputs(${PROJECT_NAME})
+
+# Build partition table .bin and .u2f
+pico_init_picotool()
+if(picotool_FOUND)
+    add_custom_target(partition_table ALL
+        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.bin
+        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
+        BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/partition_table.bin
+        BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
+        COMMENT "Building partition table"
+    )
+    add_dependencies(${PROJECT_NAME} partition_table)
+else()
+    message(WARNING "picotool not found, partition table will not be built")
+endif()

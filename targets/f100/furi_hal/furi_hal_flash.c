@@ -15,9 +15,11 @@ size_t furi_hal_flash_get_page_size(void) {
 size_t furi_hal_flash_get_base(void) {
     // Always return the base of the first bank (abstract both banks as a single region)
     return XIP_BASE;
+    // FIXME: get from partition table
 }
 
 const void* furi_hal_flash_get_free_end_address(void) {
     // The end of the free region is the end of the flash (abstract both banks as a single region)
     return (const void*)(XIP_BASE + PICO_FLASH_SIZE_BYTES);
+    // FIXME: get from partition table
 }

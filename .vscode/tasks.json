@@ -13,7 +13,7 @@
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe"
             },
-            "problemMatcher": []
+            "problemMatcher": [ ]
         },
         {
             "label": "Run Project",
@@ -30,7 +30,27 @@
                 "reveal": "always",
                 "panel": "dedicated"
             },
-            "problemMatcher": [],
+            "problemMatcher": [ ],
+            "windows": {
+                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool.exe"
+            }
+        },
+        {
+            "label": "Write partition table",
+            "type": "process",
+            "command": "${env:HOME}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool",
+            "group": "build",
+            "dependsOn": "Compile Project",
+            "args": [
+                "load",
+                "build/partition_table.uf2",
+                "-fvx"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": [ ],
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool.exe"
             }
@@ -38,7 +58,7 @@
         {
             "label": "Flash",
             "type": "process",
-            "command": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "command": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
@@ -48,10 +68,10 @@
                 "interface/cmsis-dap.cfg",
                 "-f",
                 "target/${command:raspberry-pi-pico.getTarget}.cfg",
-                "-c",
-                "adapter speed 5000; program \"${command:raspberry-pi-pico.launchTargetPath}\" verify reset exit"
+                "-f",
+                "targets/f100/flash.tcl"
             ],
-            "problemMatcher": [],
+            "problemMatcher": [ ],
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe"
             }

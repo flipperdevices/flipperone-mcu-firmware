@@ -3,17 +3,17 @@
     "configurations": [
         {
             "name": "Pico Debug",
-            "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+            "cwd": "${userHome}/one/openocd/tcl",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "serverpath": "${userHome}/one/openocd/src/openocd",
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg"
+                "target/rp2350.cfg"
             ],
             "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "runToEntryPoint": "main",
@@ -21,7 +21,7 @@
             // Also works fine for flash binaries
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "load \"${command:raspberry-pi-pico.launchTargetPath}\""
+                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000",
             ],
             "openOCDLaunchCommands": [
                 "adapter speed 5000"
@@ -44,17 +44,17 @@
         },
         {
             "name": "Pico Debug Attach",
-            "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+            "cwd": "${userHome}/one/openocd/tcl",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "serverpath": "${userHome}/one/openocd/src/openocd",
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg"
+                "target/rp2350.cfg"
             ],
             "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "openOCDLaunchCommands": [
@@ -78,17 +78,18 @@
         },
         {
             "name": "Pico Debug (FreeRTOS)",
-            "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+            "cwd": "${userHome}/one/openocd/tcl",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "serverpath": "${userHome}/one/openocd/src/openocd",
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg"
+                "target/rp2350.cfg",
+                // "${workspaceFolder}/scripts/flash.tcl"
             ],
             "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "rtos": "FreeRTOS",
@@ -97,10 +98,11 @@
             // Also works fine for flash binaries
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "load \"${command:raspberry-pi-pico.launchTargetPath}\""
+                // Load fw to slot A (0x10002000). Assume that partition table is already flashed and slot B is empty
+                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000",
             ],
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
             ],
             "rttConfig": {
                 "enabled": true,
@@ -120,17 +122,17 @@
         },
         {
             "name": "Pico Debug Attach (FreeRTOS)",
-            "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+            "cwd": "${userHome}/one/openocd/tcl",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "serverpath": "${userHome}/one/openocd/src/openocd",
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg"
+                "target/rp2350.cfg"
             ],
             "svdFile": "${userHome}/.pico-sdk/sdk/2.2.0/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "rtos": "FreeRTOS",
