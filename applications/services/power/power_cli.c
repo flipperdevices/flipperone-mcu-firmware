@@ -5,9 +5,12 @@
 #include <cli/cli_ansi.h>
 #include <cli/cli_command.h>
 #include <furi_hal.h>
+#include <furi_hal_power.h>
+#include <furi_bsp_linux.h>
 #include <toolbox/property.h>
 
 #include <power/power.h>
+#include <pd/pd.h>
 #include "power_show_cli.h"
 #include "power_consumption_cli.h"
 
@@ -42,6 +45,18 @@ typedef struct {
     const char* description;
     bool (*execute)(PipeSide*, FuriString*);
 } PowerCmd;
+
+static void power_cli_reset_pd_and_charger(void) {
+    Pd* pd = furi_record_open(RECORD_PD);
+    PdDevice pd_device;
+    pd_reset_config(pd);
+    furi_record_close(RECORD_PD);
+
+    Power* power = furi_record_open(RECORD_POWER);
+    PowerDevice power_device;
+    power_bq25792_reset_config(power);
+    furi_record_close(RECORD_POWER);
+}
 
 static bool power_cli_off(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
@@ -84,6 +99,9 @@ static bool power_cli_ship_mode(PipeSide* pipe, FuriString* args) {
 static bool power_cli_reboot(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
     UNUSED(args);
+
+    power_cli_reset_pd_and_charger();
+
     Power* power = furi_record_open(RECORD_POWER);
 
     furi_delay_ms(100);
@@ -95,6 +113,23 @@ static bool power_cli_reboot(PipeSide* pipe, FuriString* args) {
 
     furi_record_close(RECORD_POWER);
     return success;
+}
+
+static bool power_cli_boot(PipeSide* pipe, FuriString* args) {
+    UNUSED(pipe);
+    UNUSED(args);
+    power_cli_reset_pd_and_charger();
+    furi_hal_power_enter_bootsel();
+    return true;
+}
+
+static bool power_cli_maskrom(PipeSide* pipe, FuriString* args) {
+    UNUSED(pipe);
+    UNUSED(args);
+    power_cli_reset_pd_and_charger();
+    furi_bsp_linux_reset();
+    furi_bsp_linux_maskrom();
+    return true;
 }
 
 static void power_cli_print_property(const char* key, const char* value, bool last, void* context) {
@@ -190,6 +225,8 @@ static const PowerCmd power_cmds[] = {
     {"off", "", "Power off the device, WARNING: Powers on only when connected via USB.", power_cli_off},
     {"ship", "", "Enter ship mode", power_cli_ship_mode},
     {"reboot", "", "Reboot the device", power_cli_reboot},
+    {"boot", "", "Boot MCU to bootloader", power_cli_boot},
+    {"maskrom", "", "Boot CPU to maskrom", power_cli_maskrom},
 };
 
 static void power_cli_print_usage(void) {
