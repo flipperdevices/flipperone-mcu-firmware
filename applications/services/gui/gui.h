@@ -9,6 +9,8 @@ extern "C" {
 
 typedef struct Gui Gui;
 
+typedef struct PopupMenu PopupMenu;
+
 #define RECORD_GUI "Gui"
 
 typedef enum {
@@ -38,6 +40,29 @@ void gui_remove_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, 
 
 size_t gui_get_width(Gui* gui);
 size_t gui_get_height(Gui* gui);
+
+/**
+ * Feed a full-screen frame to the GUI for display.
+ *
+ * The frame must be in the exact canvas/display format (8-bit grayscale,
+ * width*height bytes, full screen). The GUI decides how to present it: if no
+ * overlay (e.g. the power menu) is shown on top, it is blitted straight to the
+ * display, bypassing Clay; otherwise it is composited via Clay under the
+ * overlay.
+ *
+ * The pointer is only used transiently (copied out during the next redraw), so
+ * the caller must keep it valid until then.
+ */
+void gui_push_frame(Gui* gui, const uint8_t* data);
+
+/**
+ * Register the popup menu used as an overlay on top of pushed frames.
+ *
+ * The GUI checks its visibility to decide between the fast direct-blit path
+ * and the Clay-composited path (menu drawn over the frame). Pass NULL to
+ * clear the reference (e.g. when the owning application exits).
+ */
+void gui_set_menu(Gui* gui, PopupMenu* menu);
 
 #ifdef __cplusplus
 }

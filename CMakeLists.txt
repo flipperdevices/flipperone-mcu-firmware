@@ -2,6 +2,19 @@
 
 cmake_minimum_required(VERSION 3.13)
 
+# Automatically initialise required git submodules if not done yet
+find_package(Git QUIET)
+if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule update --init --depth 1
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_SUBMOD_RESULT
+    )
+    if(NOT GIT_SUBMOD_RESULT EQUAL "0")
+        message(WARNING "git submodule update --init failed (${GIT_SUBMOD_RESULT})")
+    endif()
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -84,8 +97,17 @@ file(GLOB_RECURSE SOURCES
     "targets/${TARGET_HARDWARE}/src/*.c*" 
 )
 
+# Collect RPC source files
+file(GLOB RPC_SOURCES "${CMAKE_CURRENT_LIST_DIR}/applications/services/rpc/*.c")
+
 add_executable(${PROJECT_NAME} 
     ${SOURCES}
+    # Nanopb Protocol Buffers runtime library
+    ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_common.c
+    ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_encode.c
+    ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_decode.c
+    # RPC service: CLI-based protobuf communication (frame + input)
+    ${RPC_SOURCES}
 )
 
 # NVM bank size — single source of truth used by both the linker script
@@ -156,6 +178,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}/lib/freertos
     ${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib/mlib
     ${CMAKE_CURRENT_LIST_DIR}/lib
+    ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb
+    ${CMAKE_BINARY_DIR}/generated/proto
 )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/uart_pio)

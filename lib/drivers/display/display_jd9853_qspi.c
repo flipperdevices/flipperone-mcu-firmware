@@ -1,6 +1,7 @@
 #include "display_jd9853_qspi.h"
 #include "display_jd9853_reg.h"
 
+#include <furi.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
 #include <drivers/tps62868x/tps62868x.h>
@@ -31,9 +32,25 @@ struct DisplayJd9853QSPI {
     Tps62868x* power_supply;
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
+#ifdef DISPLAY_JD9853_SHOW_FPS
+    volatile uint32_t frames_written; /* frames queued to the display */
+    FuriTimer* fps_timer; /* periodic FPS logger */
+#endif
 };
 
 static DisplayJd9853QSPI* display_instance = NULL;
+
+#ifdef DISPLAY_JD9853_SHOW_FPS
+static void display_jd9853_fps_timer_callback(void* ctx) {
+    UNUSED(ctx);
+    DisplayJd9853QSPI* display = display_instance;
+    if(!display) return;
+    uint32_t fps = display->frames_written;
+    display->frames_written = 0;
+
+    FURI_LOG_W(TAG, "Display TX: %lu FPS", (unsigned long)fps);
+}
+#endif
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853QSPI* display) {
     UNUSED(display);
@@ -178,14 +195,14 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
     if(!display->display_is_connected) {
         return; // Don't attempt to write if display is not connected
     }
+#ifdef DISPLAY_JD9853_SHOW_FPS
+    display->frames_written++;
+#endif
 
-    while(furi_semaphore_get_space(display->busy)) {
-        furi_thread_yield();
-    };
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
 
     memcpy(display->buffer_header.data, buffer, size);
 
-    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     furi_hal_gpio_enable_int_callback(&gpio_display_te);
 }
 
@@ -271,7 +288,12 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     DisplayJd9853QSPI* display = malloc(sizeof(DisplayJd9853QSPI));
     display_instance = display;
     display->busy = furi_semaphore_alloc(1, 1);
+#ifdef DISPLAY_JD9853_SHOW_FPS
+    display->frames_written = 0;
 
+    display->fps_timer = furi_timer_alloc(display_jd9853_fps_timer_callback, FuriTimerTypePeriodic, NULL);
+    furi_timer_start(display->fps_timer, 1000);
+#endif
     display->buffer_header.cmd[0] = JD9853_QSPI_CMD_4_LINE_MODE;
     display->buffer_header.cmd[1] = 0;
     display->buffer_header.cmd[2] = JD9853_QSPI_CMD_4_LINE_RAMWR;

@@ -26,6 +26,7 @@ extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
 extern int32_t font_test_app(void* p);
 extern int32_t cli_on_system_start(void* p);
+extern int32_t rpc_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
 
 
@@ -211,6 +212,13 @@ const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
         .app = cli_on_system_start,
         .name = "CliOnSystemStart",
         .appid = "cli_on_system_start",
+        .stack_size = 1024 * 2,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = rpc_on_system_start,
+        .name = "RpcOnSystemStart",
+        .appid = "rpc_on_system_start",
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
