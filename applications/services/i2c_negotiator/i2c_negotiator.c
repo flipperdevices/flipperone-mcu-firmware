@@ -249,6 +249,13 @@ static void i2c_negotiator_backlight_timeout_callback(const void* item, void* co
     with_i2c_register({ i2c_register_update(I2C_BACKLIGHT_TIMEOUT, *timeout / 100, 0xFFFF); });
 }
 
+void i2c_negotiator_updater_data_block_write(I2CNegotiator* instance, uint16_t value) {
+    UNUSED(instance);
+    UNUSED(value);
+    FURI_LOG_W(TAG, "Updater data block write");
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_updater_data_block_write);
+
 I2CNegotiator* i2c_negotiator_alloc() {
     I2CNegotiator* instance = malloc(sizeof(I2CNegotiator));
     instance->gui = furi_record_open(RECORD_GUI);
@@ -308,6 +315,11 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
         // Haptic
         i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
+
+        // Updater
+        uint8_t* updater_data_block = malloc(256);
+        i2c_register_add_memory_block(
+            I2C_UPDATER_DATA_BLOCK_ADDRESS, 256, updater_data_block, i2c_negotiator_updater_data_block_write_message, instance->negotiator_queue);
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);
