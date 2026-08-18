@@ -6,7 +6,7 @@
 
 #define TAG "Render"
 
-#define CANARY_VALUE 0xDEADBEEF
+#define CANARY_VALUE ((uint32_t)0xDEADBEEF)
 
 #ifdef RENDER_DEBUG_ENABLE
 #define RENDER_DEBUG(...) FURI_LOG_I(__VA_ARGS__)
@@ -15,9 +15,9 @@
 #endif
 
 struct Canvas {
-    uint32_t* canary_pre;
+    uint8_t* canary_pre;
     Color* data;
-    uint32_t* canary_post;
+    uint8_t* canary_post;
 
     size_t width;
     size_t height;
@@ -589,13 +589,9 @@ static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderD
          * Fall back to pixel-by-pixel rendering which respects the
          * scissor rectangle.
          */
-        if(dst_x0 >= canvas->scissors_x0 && dst_y0 >= canvas->scissors_y0 &&
-           dst_x0 + src_w <= canvas->scissors_x1 && dst_y0 + src_h <= canvas->scissors_y1) {
+        if(dst_x0 >= canvas->scissors_x0 && dst_y0 >= canvas->scissors_y0 && dst_x0 + src_w <= canvas->scissors_x1 && dst_y0 + src_h <= canvas->scissors_y1) {
             for(int32_t y = 0; y < src_h; y++) {
-                memcpy(
-                    &canvas->data[(dst_y0 + y) * canvas->width + dst_x0],
-                    &data[y * image->width],
-                    src_w);
+                memcpy(&canvas->data[(dst_y0 + y) * canvas->width + dst_x0], &data[y * image->width], src_w);
             }
         } else {
             for(int32_t y = 0; y < src_h; y++) {
@@ -717,12 +713,14 @@ void canvas_init(void) {
 
 static Canvas* canvas_alloc_in_place_internal(void* buffer, size_t width, size_t height, bool allocated_by_malloc) {
     Canvas* canvas = buffer;
-    canvas->canary_pre = (uint32_t*)((uint8_t*)buffer + sizeof(Canvas));
-    canvas->data = (Color*)(canvas->canary_pre + 1);
-    memset(canvas->data, 0xFF, sizeof(Color) * width * height);
-    canvas->canary_post = (uint32_t*)(canvas->data + width * height);
-    *(canvas->canary_pre) = CANARY_VALUE;
-    *(canvas->canary_post) = CANARY_VALUE;
+    canvas->canary_pre = (uint8_t*)buffer + sizeof(Canvas);
+    canvas->data = (Color*)(canvas->canary_pre + sizeof(CANARY_VALUE));
+    memset(canvas->data, 0xFF, sizeof(*canvas->data) * width * height);
+    canvas->canary_post = (uint8_t*)(canvas->data + width * height);
+    // canary_post can be unaligned (data is byte-sized), so access canaries via memcpy
+    const uint32_t canary = CANARY_VALUE;
+    memcpy(canvas->canary_pre, &canary, sizeof(canary));
+    memcpy(canvas->canary_post, &canary, sizeof(canary));
     canvas->width = width;
     canvas->height = height;
     render_scissor_reset(canvas);
@@ -741,8 +739,8 @@ Canvas* canvas_alloc_in_place(void* buffer, size_t width, size_t height) {
 }
 
 size_t canvas_get_required_buffer_size(size_t width, size_t height) {
-    // Canvas + canary_pre + data + canary_post
-    size_t total_size = sizeof(Canvas) + sizeof(uint32_t) + sizeof(Color) * width * height + sizeof(uint32_t);
+    // Canvas + canary_pre + data(WxH) + canary_post
+    size_t total_size = sizeof(Canvas) + sizeof(CANARY_VALUE) + (SIZEOF_MEMBER(Canvas, data[0]) * width * height) + sizeof(CANARY_VALUE);
     return total_size;
 }
 
@@ -753,8 +751,14 @@ void canvas_free(Canvas* canvas) {
 }
 
 Color* canvas_get_data(Canvas* canvas) {
-    furi_check(*canvas->canary_pre == CANARY_VALUE, "Canvas pre-canary corrupted");
-    furi_check(*canvas->canary_post == CANARY_VALUE, "Canvas post-canary corrupted");
+    // canary_post can be unaligned (data is byte-sized), so access canaries via memcpy
+    uint32_t canary_pre;
+    uint32_t canary_post;
+    memcpy(&canary_pre, canvas->canary_pre, sizeof(canary_pre));
+    memcpy(&canary_post, canvas->canary_post, sizeof(canary_post));
+    furi_check(canary_pre == CANARY_VALUE, "Canvas pre-canary corrupted");
+    furi_check(canary_post == CANARY_VALUE, "Canvas post-canary corrupted");
+
     return canvas->data;
 }
 
