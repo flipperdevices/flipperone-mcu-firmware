@@ -21,8 +21,6 @@
 #define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        5 //5us
 #define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS 1000
 
-#define DISPLAY_JD9853_SHOW_FPS
-
 typedef struct {
     uint32_t cmd[4];
     uint8_t data[JD9853_WIDTH * JD9853_HEIGHT];

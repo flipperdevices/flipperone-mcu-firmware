@@ -14,8 +14,6 @@
 #define SPI_GET_FRAME_BAUDRATE    25 * 1000000 // 75MHz
 #define SPI_GET_FRAME_SPI1_HANDLE spi1
 
-#define SPI_SHOW_FPS
-
 typedef struct {
     uint8_t data[SPI_GET_FRAME_SIZE];
 } SpiGetFrameBuffer;
