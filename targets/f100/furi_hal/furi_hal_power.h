@@ -13,7 +13,7 @@ extern "C" {
 
 void furi_hal_power_reset(void);
 
-void furi_hal_power_enter_dfu(void);
+void furi_hal_power_enter_bootsel(void);
 
 /** Get current insomnia level
  *

@@ -74,7 +74,7 @@ static bool debug_menu_input(InputEvent* event, void* context) {
         scene_exit(scene, desktop);
         consumed = true;
     } else if(event->type == InputTypePress && event->key == InputKey5) {
-        furi_hal_power_enter_dfu();
+        furi_hal_power_enter_bootsel();
         consumed = true;
     } else if((event->type == InputTypePress) || (event->type == InputTypeRepeat)) {
         switch(event->key) {
