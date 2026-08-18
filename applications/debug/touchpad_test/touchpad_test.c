@@ -19,7 +19,7 @@ typedef struct TouchpadTestLine {
     int32_t y1;
 } TouchpadTestLine;
 
-#define TOUCHPAD_MAX_LINES_COUNT (32 * 1024 / sizeof(TouchpadTestLine))
+#define TOUCHPAD_MAX_LINES_COUNT (16 * 1024 / sizeof(TouchpadTestLine))
 
 ARRAY_DEF(TouchpadTestLineArray, TouchpadTestLine, M_POD_OPLIST);
 #define M_OPL_TouchpadTestLineArray_t() ARRAY_OPLIST(TouchpadTestLineArray, M_POD_OPLIST)

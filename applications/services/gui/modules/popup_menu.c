@@ -2,6 +2,7 @@
 #include <m-array.h>
 #include <gui/clay_helper.h>
 #include <gui/gui.h>
+#include <gui/gui_i.h>
 #include <gui/modules/elements.h>
 #include <assets.h>
 
@@ -363,6 +364,13 @@ void popup_menu_set_visible(PopupMenu* menu, bool visible) {
             model->power_pressed = true;
         },
         true);
+}
+
+bool popup_menu_is_visible(PopupMenu* menu) {
+    furi_check(menu);
+    bool visible = false;
+    with_view_model(menu->view, PopupMenuViewModel * model, { visible = model->visible; }, false);
+    return visible;
 }
 
 void popup_menu_set_callback(PopupMenu* menu, PopupMenuCallback callback, void* context) {

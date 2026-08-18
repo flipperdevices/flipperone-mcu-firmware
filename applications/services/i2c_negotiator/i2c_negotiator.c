@@ -322,7 +322,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
 int32_t i2c_negotiator_srv(void* p) {
     UNUSED(p);
-
+    furi_thread_set_current_priority(FuriThreadPriorityHigh);
     I2CNegotiator* instance = i2c_negotiator_alloc();
 
     furi_event_loop_run(instance->event_loop);

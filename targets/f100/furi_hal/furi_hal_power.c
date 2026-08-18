@@ -23,7 +23,7 @@ void furi_hal_power_reset(void) {
     watchdog_reboot(0, 0, 0);
 }
 
-void furi_hal_power_enter_dfu(void) {
+void furi_hal_power_enter_bootsel(void) {
     reset_usb_boot(0, 0);
 }
 

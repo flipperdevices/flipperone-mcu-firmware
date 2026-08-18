@@ -148,7 +148,7 @@ void i2c_intercom_setup_end(I2CIntercom* instance) {
 
 int32_t i2c_intercom_srv(void* p) {
     UNUSED(p);
-
+    furi_thread_set_current_priority(FuriThreadPriorityHigh);
     I2CIntercom* instance = malloc(sizeof(I2CIntercom));
     instance->thread_id = furi_thread_get_current_id();
     instance->bus_handle = &furi_hal_i2c_handle_cpu;

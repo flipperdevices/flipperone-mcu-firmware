@@ -2,6 +2,7 @@
 #include <furi.h>
 #include <furi_bsp.h>
 #include <furi_hal_resources.h>
+#include <furi_bsp_linux.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include <gui/modules/popup_menu.h>
@@ -69,32 +70,6 @@ static void furi_hal_reset_pd_and_charger(void) {
     furi_record_close(RECORD_POWER);
 }
 
-static void furi_hal_bsp_linux_reset(void) {
-    furi_bsp_main_reset();
-}
-
-static bool furi_hal_bsp_linux_is_load(void) {
-    const uint32_t mask = OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En;
-    uint32_t status = furi_bsp_expander_main_read_output();
-    return (status & mask) == mask;
-}
-
-static void furi_hal_bsp_linux_start(void) {
-    uint32_t status = furi_bsp_expander_main_read_output();
-    FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En;
-    FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
-    furi_bsp_expander_main_write_output(status);
-}
-
-static void furi_hal_bsp_linux_maskrom(void) {
-    uint32_t status = furi_bsp_expander_main_read_output();
-    FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En | OutputExpMainExpander17;
-    FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
-    furi_bsp_expander_main_write_output(status);
-}
-
 static bool cpu_app_layout(void* _model) {
     furi_assert(_model);
     CpuAppModel* model = (CpuAppModel*)_model;
@@ -145,11 +120,20 @@ static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     return true;
 }
 
-static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
-    model->frame.data = context;
-    model->frame.width = JD9853_WIDTH;
-    model->frame.height = JD9853_HEIGHT;
-    return true;
+/* Update the model to the latest frame WITHOUT triggering a redraw. The GUI
+ * service decides how to present the frame (direct blit or Clay composite);
+ * keeping the model in sync ensures a Clay redraw always uses the latest
+ * frame, e.g. when the menu is opened over it. */
+static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
+    with_view_model(
+        instance->display_view,
+        CpuAppModel * model,
+        {
+            model->frame.data = data;
+            model->frame.width = JD9853_WIDTH;
+            model->frame.height = JD9853_HEIGHT;
+        },
+        false);
 }
 
 static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* model, void* context), void* context) {
@@ -169,7 +153,10 @@ static void __isr __not_in_flash_func(cpu_app_pio_get_frame_isr)(uint8_t* data, 
             },
     };
 
-    furi_check(furi_message_queue_put(instance->app_queue, &message, 0) == FuriStatusOk);
+    //furi_check(furi_message_queue_put(instance->app_queue, &message, 0) == FuriStatusOk);
+    if(furi_message_queue_put(instance->app_queue, &message, 0) != FuriStatusOk) {
+        FURI_LOG_E(TAG, "cpu_app_spi_get_frame_isr message = %ld", furi_message_queue_get_count(instance->app_queue));
+    }
 }
 
 static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
@@ -181,36 +168,38 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
         case CpuAppMessageTypeStart:
-            if(!furi_hal_bsp_linux_is_load()) {
-                furi_hal_bsp_linux_reset();
-                furi_hal_bsp_linux_start();
+            if(!furi_bsp_linux_is_load()) {
+                furi_bsp_linux_reset();
+                furi_bsp_linux_start();
             }
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             break;
         case CpuAppMessageTypeReset:
             furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
-            furi_hal_bsp_linux_start();
+            furi_bsp_linux_reset();
+            furi_bsp_linux_start();
             instance->skip_frames = 2;
             cpu_app_model_apply(instance, cpu_app_model_init, NULL);
             break;
         case CpuAppMessageTypeShutdown:
             furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
+            furi_bsp_linux_reset();
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             break;
         case CpuAppMessageTypeMaskrom:
             furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
-            furi_hal_bsp_linux_maskrom();
+            furi_bsp_linux_reset();
+            furi_bsp_linux_maskrom();
             break;
         case CpuAppMessageTypeNewFrame:
             if(instance->skip_frames > 0) {
                 instance->skip_frames--;
             } else {
-                cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
+                /* Always keep the model in sync (no redraw) and hand the frame
+                 * to the GUI: it decides internally whether to blit it directly
+                 * to the display (menu hidden) or composite it via Clay (menu
+                 * drawn on top). */
+                cpu_app_model_set_frame(instance, message.as.new_frame.data);
+                gui_push_frame(instance->gui, message.as.new_frame.data);
             }
             break;
         default:
@@ -266,11 +255,13 @@ static CpuApp* cpu_app_alloc(void) {
     popup_menu_add_item(instance->menu, "Reboot", CpuMenuItemReboot);
 
     gui_add_view(instance->gui, instance->menu_view, GuiViewPriorityPowerMenu);
+    gui_set_menu(instance->gui, instance->menu);
 
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
+    gui_set_menu(instance->gui, NULL);
     gui_remove_view(instance->gui, instance->display_view);
     gui_remove_view(instance->gui, instance->menu_view);
     popup_menu_free(instance->menu);
