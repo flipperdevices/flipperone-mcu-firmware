@@ -64,6 +64,11 @@ struct Gui {
     // plus the popup menu overlay used to decide between the fast (direct
     // blit, menu hidden) and the Clay-composited (menu on top) render paths.
     const uint8_t* pending_frame;
+
+    // TODO: keeping a direct pointer to a concrete overlay (PopupMenu) here is
+    // bad practice, but it saves us a lot of CPU time by enabling the fast
+    // frame path. Think about a generalized approach (e.g. an overlay/layer
+    // abstraction) instead of special-casing the menu.
     PopupMenu* menu;
 };
 
@@ -144,8 +149,7 @@ static void gui_redraw(Gui* gui) {
      * be drawn on top of it. */
     const uint8_t* frame = gui->pending_frame;
     gui->pending_frame = NULL;
-    const bool fast_frame =
-        (frame != NULL && (gui->menu == NULL || !popup_menu_is_visible(gui->menu)));
+    const bool fast_frame = (frame != NULL && (gui->menu == NULL || !popup_menu_is_visible(gui->menu)));
 
     if(fast_frame) {
         size_t size = canvas_get_width(gui->render_canvas) * canvas_get_height(gui->render_canvas);
