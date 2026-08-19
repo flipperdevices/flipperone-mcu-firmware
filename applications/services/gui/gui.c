@@ -8,6 +8,7 @@
 #include "clay_helper.h"
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/display/display_jd9853_reg.h>
+#include <string.h>
 
 #define TAG "GuiSrv"
 
@@ -15,6 +16,9 @@
 #define GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE 32
 
 #define GUI_EVENT_FLAG_REDRAW (1U << 0)
+
+#define CLAY_MAX_ELEMENT_COUNT            128
+#define CLAY_MAX_MEASURE_TEXT_CACHE_WORDS 256
 
 typedef struct {
     View* view;
@@ -55,6 +59,17 @@ struct Gui {
 
     FuriMutex* callback_mutex;
     GuiCallbackArray_t gui_callbacks_pair;
+
+    // Fast frame path: latest full-screen frame pushed via gui_push_frame(),
+    // plus the popup menu overlay used to decide between the fast (direct
+    // blit, menu hidden) and the Clay-composited (menu on top) render paths.
+    const uint8_t* pending_frame;
+
+    // TODO: keeping a direct pointer to a concrete overlay (PopupMenu) here is
+    // bad practice, but it saves us a lot of CPU time by enabling the fast
+    // frame path. Think about a generalized approach (e.g. an overlay/layer
+    // abstraction) instead of special-casing the menu.
+    PopupMenu* menu;
 };
 
 static int gui_view_compare(const ViewHandle* a, const ViewHandle* b) {
@@ -129,46 +144,60 @@ static void gui_redraw(Gui* gui) {
     furi_assert(gui);
     gui_lock(gui);
 
-    Clay_ResetMeasureTextCache();
-    Clay_BeginLayout();
+    /* A full-screen frame pushed via gui_push_frame() is blitted straight into
+     * the canvas, bypassing Clay, when nothing (e.g. the power menu) needs to
+     * be drawn on top of it. */
+    const uint8_t* frame = gui->pending_frame;
+    gui->pending_frame = NULL;
+    const bool fast_frame = (frame != NULL && (gui->menu == NULL || !popup_menu_is_visible(gui->menu)));
 
-    ViewHandleArray_it_t it;
+    if(fast_frame) {
+        size_t size = canvas_get_width(gui->render_canvas) * canvas_get_height(gui->render_canvas);
+        memcpy(canvas_get_data(gui->render_canvas), frame, size);
+    } else {
+        Clay_ResetMeasureTextCache();
+        Clay_BeginLayout();
 
-    CLAY(
-        CLAY_ID("GUI"),
-        {
-            .layout =
-                {
-                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                    // workaround for the pixel shift bug
-                    .padding = {.left = 1, .top = 0, .right = 1, .bottom = 0},
-                },
-        }) {
+        ViewHandleArray_it_t it;
+
+        CLAY(
+            CLAY_ID("GUI"),
+            {
+                .layout =
+                    {
+                        .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                        // workaround for the pixel shift bug
+                        .padding = {.left = 1, .top = 0, .right = 1, .bottom = 0},
+                    },
+            }) {
+            if(gui_view_find_opaque_from_top(gui->views, &it)) {
+                do {
+                    ViewHandle* handle = ViewHandleArray_ref(it);
+                    View* view = gui_view_from_it(&it);
+                    if(view_is_enabled(view)) {
+                        view_layout(view);
+                    }
+                    ViewHandleArray_next(it);
+                } while(!ViewHandleArray_end_p(it));
+            }
+        }
+
+        Clay_RenderCommandArray renderCommands = Clay_EndLayout();
+
+        clay_render_do_render(gui->render_canvas, &renderCommands);
+
         if(gui_view_find_opaque_from_top(gui->views, &it)) {
             do {
                 ViewHandle* handle = ViewHandleArray_ref(it);
                 View* view = gui_view_from_it(&it);
-                if(view_is_enabled(view)) {
-                    view_layout(view);
-                }
+                if(view_is_enabled(view)) view_post_layout(view);
                 ViewHandleArray_next(it);
             } while(!ViewHandleArray_end_p(it));
         }
     }
 
-    Clay_RenderCommandArray renderCommands = Clay_EndLayout();
-
-    clay_render_do_render(gui->render_canvas, &renderCommands);
-
-    if(gui_view_find_opaque_from_top(gui->views, &it)) {
-        do {
-            ViewHandle* handle = ViewHandleArray_ref(it);
-            View* view = gui_view_from_it(&it);
-            if(view_is_enabled(view)) view_post_layout(view);
-            ViewHandleArray_next(it);
-        } while(!ViewHandleArray_end_p(it));
-    }
+    /* Shared: push the canvas to the display and notify framebuffer consumers. */
 
     size_t width = canvas_get_width(gui->render_canvas);
     size_t height = canvas_get_height(gui->render_canvas);
@@ -360,6 +389,7 @@ static Gui* gui_alloc(void) {
     canvas_init();
 
     Gui* gui = malloc(sizeof(Gui));
+    FURI_LOG_I(TAG, "Gui struct: %zu bytes", sizeof(Gui));
 
     // Allocate mutex
     gui->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
@@ -368,21 +398,37 @@ static Gui* gui_alloc(void) {
     gui->event_loop = furi_event_loop_alloc();
     gui->redraw_flag = furi_event_flag_alloc();
     gui->input_queue = furi_message_queue_alloc(GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent));
+    FURI_LOG_I(
+        TAG, "InputEvent: %zu bytes x %u → queue ~%zu bytes", sizeof(InputEvent), GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent) * GUI_INPUT_EVENT_QUEUE_SIZE);
     gui->input_touch_queue = furi_message_queue_alloc(GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE, sizeof(InputTouchEvent));
+    FURI_LOG_I(
+        TAG,
+        "InputTouchEvent: %zu bytes x %u → queue ~%zu bytes",
+        sizeof(InputTouchEvent),
+        GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE,
+        sizeof(InputTouchEvent) * GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE);
 
     // View ports
     ViewHandleArray_init(gui->views);
 
     // Display and buffer
     gui->display = display_jd9853_qspi_init();
+    size_t canvas_buf_size = canvas_get_required_buffer_size(JD9853_WIDTH, JD9853_HEIGHT);
     gui->render_canvas = canvas_alloc(JD9853_WIDTH, JD9853_HEIGHT);
+    FURI_LOG_I(TAG, "Canvas %ux%u: %zu bytes (framebuffer %zu bytes)", JD9853_WIDTH, JD9853_HEIGHT, canvas_buf_size, (size_t)JD9853_WIDTH * JD9853_HEIGHT);
 
     // Clay initialization
-    Clay_SetMaxElementCount(256);
-    Clay_SetMaxMeasureTextCacheWordCount(512);
-    uint64_t totalMemorySize = Clay_MinMemorySize();
-    FURI_LOG_I(TAG, "Clay allocation: %lluk", totalMemorySize / 1024);
-    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(totalMemorySize, malloc(totalMemorySize));
+    Clay_SetMaxElementCount(CLAY_MAX_ELEMENT_COUNT);
+    Clay_SetMaxMeasureTextCacheWordCount(CLAY_MAX_MEASURE_TEXT_CACHE_WORDS);
+    uint64_t clay_memory = Clay_MinMemorySize();
+    FURI_LOG_I(
+        TAG,
+        "Clay arena: %llu bytes (~%llu KiB), elements=%u, text_cache=%u words",
+        clay_memory,
+        clay_memory / 1024,
+        CLAY_MAX_ELEMENT_COUNT,
+        CLAY_MAX_MEASURE_TEXT_CACHE_WORDS);
+    Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(clay_memory, malloc(clay_memory));
     Clay_Initialize(arena, (Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT}, (Clay_ErrorHandler){gui_handle_clay_errors, gui});
     Clay_SetMeasureTextFunction(clay_render_measure_text, NULL);
 
@@ -420,6 +466,25 @@ size_t gui_get_width(Gui* gui) {
 size_t gui_get_height(Gui* gui) {
     furi_check(gui);
     return canvas_get_height(gui->render_canvas);
+}
+
+void gui_push_frame(Gui* gui, const uint8_t* data) {
+    furi_check(gui);
+    furi_check(data);
+
+    gui_lock(gui);
+    gui->pending_frame = data;
+    gui_unlock(gui);
+
+    gui_update(gui);
+}
+
+void gui_set_menu(Gui* gui, PopupMenu* menu) {
+    furi_check(gui);
+
+    gui_lock(gui);
+    gui->menu = menu;
+    gui_unlock(gui);
 }
 
 void gui_add_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, void* context) {

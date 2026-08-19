@@ -2,6 +2,19 @@
 
 cmake_minimum_required(VERSION 3.13)
 
+# Automatically initialise required git submodules if not done yet
+find_package(Git QUIET)
+if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} submodule update --init --depth 1
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        RESULT_VARIABLE GIT_SUBMOD_RESULT
+    )
+    if(NOT GIT_SUBMOD_RESULT EQUAL "0")
+        message(WARNING "git submodule update --init failed (${GIT_SUBMOD_RESULT})")
+    endif()
+endif()
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -66,6 +79,12 @@ fw_resolve()
 
 add_executable(${PROJECT_NAME}
     ${FW_SOURCES}
+    # Nanopb Protocol Buffers runtime library. Listed by hand rather than through
+    # the target descriptor because lib/nanopb is a submodule: a glob over one
+    # that has not been fetched expands to nothing instead of failing.
+    ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_common.c
+    ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_encode.c
+    ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_decode.c
 )
 
 # NVM bank size — single source of truth used by both the linker script
@@ -123,11 +142,14 @@ pico_enable_stdio_usb(${PROJECT_NAME} 0)
 # Add the standard include files to the build
 target_include_directories(${PROJECT_NAME} PRIVATE
     ${FW_INCLUDES}
+    ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb
+    ${CMAKE_BINARY_DIR}/generated/proto
 )
 
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/uart_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/corelibs/lib)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/ws2812)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/pio_get_frame)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/drivers/i2c_master_pio)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/freertos)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/lib/pico-kvstore)
@@ -155,6 +177,7 @@ target_link_libraries(${PROJECT_NAME}
     cli
     containers
     ws2812
+    pio_get_frame
     pio_i2c
     freertos
     assets
