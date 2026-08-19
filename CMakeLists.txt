@@ -22,8 +22,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(FW_TARGET "f100" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
 
-message(STATUS "Building '${FW_TARGET}' firmware from '${FIRMWARE_ORIGIN}'")
-
 # version.c reports the target as a bare number, so f100 -> 100
 if(NOT FW_TARGET MATCHES "^f([0-9]+)$")
     message(FATAL_ERROR "FW_TARGET '${FW_TARGET}' must follow the f<number> convention")
@@ -188,3 +186,12 @@ target_link_libraries(${PROJECT_NAME}
 )
 
 pico_add_extra_outputs(${PROJECT_NAME})
+
+# The binary name is the same for every board, so say which one this is. A custom
+# target produces no output, so it is always out of date and reports on every
+# build, not only when the firmware actually relinks.
+add_custom_target(firmware_target ALL
+    COMMAND ${CMAKE_COMMAND} -E echo "Compiled firmware for target '${FW_TARGET}'"
+    COMMENT "Firmware target"
+    VERBATIM)
+add_dependencies(firmware_target ${PROJECT_NAME})
