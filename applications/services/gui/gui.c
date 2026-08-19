@@ -6,6 +6,7 @@
 #include "clay.h"
 #include "clay_render.h"
 #include "clay_helper.h"
+#include <gui/modules/popup_menu.h>
 #include <drivers/display/display_jd9853_qspi.h>
 #include <drivers/display/display_jd9853_reg.h>
 #include <string.h>
