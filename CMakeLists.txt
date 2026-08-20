@@ -19,10 +19,10 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(FW_TARGET "f100" CACHE STRING "Hardware target, a directory under targets/")
+set(FW_TARGET "f1" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
 
-# version.c reports the target as a bare number, so f100 -> 100
+# version.c reports the target as a bare number, so f1 -> 1
 if(NOT FW_TARGET MATCHES "^f([0-9]+)$")
     message(FATAL_ERROR "FW_TARGET '${FW_TARGET}' must follow the f<number> convention")
 endif()

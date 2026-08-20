@@ -7,7 +7,7 @@ where the hardware differs.
 ```
 targets/
 ├── target_api.cmake      the API below, included by the top-level CMakeLists
-├── f100/
+├── f1/
 │   ├── target.cmake      the descriptor
 │   ├── config/           furi_config.h, tusb_config.h, ...
 │   ├── furi_hal/
@@ -15,7 +15,7 @@ targets/
 │   ├── src/
 │   └── linker_symbols.ld
 └── f2/
-    └── target.cmake      fw_base(f100), nothing of its own yet
+    └── target.cmake      fw_base(f1), nothing of its own yet
 ```
 
 The directory name is the target name and must look like `f<number>`; the number is
@@ -23,7 +23,7 @@ what `version.c` reports as `TARGET`.
 
 ## Building for a target
 
-The default is `f100`. To build another one:
+The default is `f1`. To build another one:
 
 * **VSCode** — `Terminal → Run Task → Select Target`, then compile as usual. Nothing
   else changes: the executable is always named after `project()`, so the compile,
@@ -47,14 +47,14 @@ actually needs a different value for it.
 
 ## Inheritance
 
-`fw_base(f100)` in `targets/f2/target.cmake` makes the search path
-`[targets/f2, targets/f100]` — child first. From that one rule:
+`fw_base(f1)` in `targets/f2/target.cmake` makes the search path
+`[targets/f2, targets/f1]` — child first. From that one rule:
 
 | To do this | Do this |
 | --- | --- |
 | Replace an inherited file | Put it in `targets/f2/` under the same relative path. The child's copy wins; the descriptor does not change. |
-| Replace an inherited header | The same. Include directories are emitted child first, so `targets/f2/config/furi_config.h` shadows the f100 one while every header f2 did not override keeps coming from f100. |
-| Add a file next to inherited ones | Nothing — the inherited glob already covers `targets/f2/furi_hal/*.c`. Only a directory f100 has no equivalent of needs a new `fw_target_sources()`. |
+| Replace an inherited header | The same. Include directories are emitted child first, so `targets/f2/config/furi_config.h` shadows the f1 one while every header f2 did not override keeps coming from f1. |
+| Add a file next to inherited ones | Nothing — the inherited glob already covers `targets/f2/furi_hal/*.c`. Only a directory f1 has no equivalent of needs a new `fw_target_sources()`. |
 | Drop an inherited file | `fw_target_remove(furi_hal/furi_hal_power.c)` |
 | Drop shared code | `fw_remove(lib/drivers/tca6416a/*.c)` |
 | Add shared code | `fw_sources(lib/drivers/pcal6416/*.c)` |
@@ -66,7 +66,7 @@ place, so everything after it is applied on top.
 
 Headers are overridden by include order, not by copying — both directories stay on
 the path, child first. Quotes break that: the compiler searches the including file's
-own directory first, so one translation unit can pull in the f100 copy and the f2
+own directory first, so one translation unit can pull in the f1 copy and the f2
 copy at once. `#pragma once` keys on the path and will not deduplicate them, and
 every type in the header is redeclared.
 

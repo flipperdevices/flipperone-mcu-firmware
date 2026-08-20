@@ -8,8 +8,8 @@
 # Paths without a fw_target_ prefix are relative to the repository root, like
 # everywhere else in the project. The fw_target_ ones are relative to the target
 # directory and are looked up along the inheritance chain: for a target f2 whose
-# descriptor starts with fw_base(f100) the search path is [targets/f2,
-# targets/f100], child first, which means
+# descriptor starts with fw_base(f1) the search path is [targets/f2,
+# targets/f1], child first, which means
 #
 #   * overriding a file means dropping it into the child under the same relative
 #     path — no descriptor change needed, the child's copy wins;

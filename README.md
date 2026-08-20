@@ -42,7 +42,7 @@ Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico ext
 
 ### Hardware targets
 
-Each board is described by `targets/<name>/target.cmake`, and a target can be based on another one. The default is `f100`; to build a different board, run the **Select Target** task in VSCode (`Terminal → Run Task`) or pass `-DFW_TARGET=<name>` to CMake.
+Each board is described by `targets/<name>/target.cmake`, and a target can be based on another one. The default is `f1`; to build a different board, run the **Select Target** task in VSCode (`Terminal → Run Task`) or pass `-DFW_TARGET=<name>` to CMake.
 
 See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
 

@@ -1,5 +1,3 @@
-# Flipper One MCU, target f100.
-
 fw_target_sources(
     furi_hal/*.c*
     furi_bsp/*.c*

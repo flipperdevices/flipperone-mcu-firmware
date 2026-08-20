@@ -65,6 +65,7 @@
             "detail": "Reconfigure the build for a different hardware target",
             "type": "process",
             "command": "${userHome}/.pico-sdk/cmake/v3.31.5/bin/cmake",
+            "group": "build",
             "args": [
                 "-S",
                 "${workspaceFolder}",
@@ -92,9 +93,9 @@
             "id": "fwTarget",
             "type": "pickString",
             "description": "Hardware target",
-            "default": "f100",
+            "default": "f1",
             "options": [
-                "f100",
+                "f1",
                 "f2"
             ]
         }

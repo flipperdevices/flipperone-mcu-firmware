@@ -38,7 +38,7 @@ jobs:
       matrix:
         # Every directory under targets/ that has a target.cmake.
         # Keep in sync with the links posted by the 'comment' job below.
-        target: [f100, f2]
+        target: [f1, f2]
 
     # Identical across the matrix — the targets only differ in what they build
     outputs:
@@ -142,17 +142,17 @@ jobs:
     # but that file is generated into the build dir. Co-locate both so MemBrowse
     # can resolve the include — passing them separately drops the FLASH region.
     - name: Collect linker script for MemBrowse
-      if: matrix.target == 'f100'
+      if: matrix.target == 'f1'
       working-directory: ${{github.workspace}}/firmware/build
       run: |
         mkdir -p ldscripts
         cp ../../pico-sdk/src/rp2_common/pico_crt0/rp2350/memmap_default.ld ldscripts/
         cp "$(find . -name pico_flash_region.ld -print -quit)" ldscripts/
 
-    # TODO: MemBrowse still tracks f100 only, under its original target name.
+    # TODO: MemBrowse still tracks f1 only, under its original target name.
     # Reporting the other targets needs a separate MemBrowse-side target per board.
     - name: Run MemBrowse analysis
-      if: matrix.target == 'f100'
+      if: matrix.target == 'f1'
       uses: membrowse/membrowse-action@v1
       env:
         GIT_DIR: ${{github.workspace}}/firmware/.git
@@ -244,7 +244,7 @@ jobs:
         # One line per entry of the build matrix
         body: |
           **Compiled firmware for commit `${{needs.build.outputs.commit_sha}}`:**
-          - [🍓 f100 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.build.outputs.branch_name}}/flipper-one-mcu-f100-firmware-${{needs.build.outputs.suffix}}.uf2)
+          - [🍓 f1 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.build.outputs.branch_name}}/flipper-one-mcu-f1-firmware-${{needs.build.outputs.suffix}}.uf2)
           - [🍓 f2 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.build.outputs.branch_name}}/flipper-one-mcu-f2-firmware-${{needs.build.outputs.suffix}}.uf2)
         edit-mode: replace
 
