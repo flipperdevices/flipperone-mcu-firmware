@@ -186,6 +186,7 @@ static void cli_command_expander_ext_help(PipeSide* pipe, FuriString* args, void
         "\tGPIO_5V0_EN \t\t5 \r\n"
         "\tGPIO_3V3_EN \t\t6 \r\n"
         "\tEXPANDER_P17 \t\t7 \r\n"
+        "\tMUX_EN \t\t\t8 \r\n"
         "Where <VALUE> is:\r\n"
         "\tSet output low \t\t0 \r\n"
         "\tSet output high \t\t1\r\n");
@@ -214,7 +215,7 @@ void cli_command_expander_ext(PipeSide* pipe, FuriString* args, void* context) {
         cli_command_expander_ext_help(pipe, args, context);
         return;
     }
-    if(expander_gpio_out_number < 0 || expander_gpio_out_number > 7) {
+    if(expander_gpio_out_number < 0 || expander_gpio_out_number > 8) {
         cli_command_expander_ext_help(pipe, args, context);
         return;
     }
@@ -256,7 +257,10 @@ void cli_command_expander_ext(PipeSide* pipe, FuriString* args, void* context) {
         output = cli_command_expander_ext_set(output, OutputExpMainGpio3v3En, expander_gpio_out_value);
         break;
     case 7:
-        output = cli_command_expander_ext_set(output, OutputExpMainExpander17, expander_gpio_out_value);
+        output = cli_command_expander_ext_set(output, OutputExpMainMaskromEn, expander_gpio_out_value);
+        break;
+    case 8:
+        output = cli_command_expander_ext_set(output, OutputExpMainMuxEn, expander_gpio_out_value);
         break;
     }
 

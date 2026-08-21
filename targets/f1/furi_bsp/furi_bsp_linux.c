@@ -26,7 +26,7 @@ void furi_bsp_linux_start(void) {
 void furi_bsp_linux_maskrom(void) {
     uint32_t status = furi_bsp_expander_main_read_output();
     FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En | OutputExpMainExpander17;
+    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En | OutputExpMainMaskromEn;
     FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
     furi_bsp_expander_main_write_output(status);
     furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);

@@ -29,7 +29,6 @@ typedef struct {
     ExpanderCallbackStorage mux_vconn_fault;
     ExpanderCallbackStorage type_c_up_sw_pg;
     ExpanderCallbackStorage type_a_up_sw_pg;
-    ExpanderCallbackStorage expander7;
 } ExpanderMain;
 
 #define EXPANDER_MAIN_THREAD_FLAG_ISR 0x00000001
@@ -131,12 +130,6 @@ static int32_t furi_bsp_expander_callback_thread(void* context) {
             EXPANDER_DEBUG("Type-A Up SW PG Detected");
             if(instance->type_a_up_sw_pg.callback) {
                 instance->type_a_up_sw_pg.callback(instance->type_a_up_sw_pg.context);
-            }
-        }
-        if(changed & InputExpMainExpander7) {
-            EXPANDER_DEBUG("Expander 7 Interrupt Detected");
-            if(instance->expander7.callback) {
-                instance->expander7.callback(instance->expander7.context);
             }
         }
     }
@@ -370,17 +363,6 @@ void furi_bsp_expander_main_attach_type_a_up_sw_pg_callback(FuriCallback callbac
     if(expander_main->handle) {
         furi_check(expander_main->type_a_up_sw_pg.callback == NULL);
         furi_bsp_set_callback(&expander_main->type_a_up_sw_pg, callback, context);
-    } else {
-        furi_bsp_show_error_message_main_expander();
-    }
-}
-
-void furi_bsp_expander_main_attach_expander7_callback(FuriCallback callback, void* context) {
-    furi_check(callback != NULL);
-    furi_check(expander_main != NULL);
-    if(expander_main->handle) {
-        furi_check(expander_main->expander7.callback == NULL);
-        furi_bsp_set_callback(&expander_main->expander7, callback, context);
     } else {
         furi_bsp_show_error_message_main_expander();
     }
