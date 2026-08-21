@@ -18,6 +18,7 @@ typedef struct {
 
 typedef struct {
     Pcal6416* handle;
+    FuriMutex* handle_mutex;
     FuriThreadId thread_id;
     InputExpMain input_mask_old;
     FuriBspControlExpanderMain control_state;
@@ -85,7 +86,9 @@ static int32_t furi_bsp_expander_callback_thread(void* context) {
         furi_thread_flags_wait(EXPANDER_MAIN_THREAD_FLAG_ISR, FuriFlagWaitAny, FuriWaitForever);
 
         // Trigger on interrupts that changed and transitioned from high to low (active low)
+        furi_check(furi_mutex_acquire(instance->handle_mutex, FuriWaitForever) == FuriStatusOk);
         InputExpMain input = ~pcal6416_read_input(instance->handle) & InputExpMainInputMask;
+        furi_check(furi_mutex_release(instance->handle_mutex) == FuriStatusOk);
         EXPANDER_DEBUG("Expander Main Input: 0x%02X", input);
         InputExpMain changed = (input ^ instance->input_mask_old) & input;
         instance->input_mask_old = input;
@@ -141,6 +144,7 @@ static void furi_bsp_expander_main_init(void) {
     furi_check(expander_main == NULL);
 
     expander_main = malloc(sizeof(ExpanderMain));
+    expander_main->handle_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     expander_main->handle = pcal6416_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, PCAL6416_ADDRESS_A0);
 
     if(expander_main->handle) {
@@ -162,23 +166,28 @@ static void furi_bsp_expander_main_init(void) {
 
 void furi_bsp_main_reset(void) {
     furi_check(expander_main != NULL);
+    furi_check(furi_mutex_acquire(expander_main->handle_mutex, FuriWaitForever) == FuriStatusOk);
     if(expander_main->handle) {
         pcal6416_deinit(expander_main->handle);
+        expander_main->handle = NULL;
 
         furi_hal_gpio_write_open_drain(&gpio_main_board_reset, false);
         furi_delay_ms(50);
         furi_hal_gpio_write_open_drain(&gpio_main_board_reset, true);
         furi_delay_ms(10);
 
-        pcal6416_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, PCAL6416_ADDRESS_A0);
+        expander_main->handle = pcal6416_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, PCAL6416_ADDRESS_A0);
         pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
         expander_main->control_state = FuriBspControlExpanderMainMcu;
         // Todo: Errata lay the I2C line
-        furi_bsp_expander_main_write_output(OutputExpMainVcc5v0DevS0En);
+        pcal6416_write_output(expander_main->handle, OutputExpMainVcc5v0DevS0En & OutputExpMainMask);
         pcal6416_write_mode(expander_main->handle, InputExpMainInputMask);
+        expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
+
     } else {
         furi_bsp_show_error_message_main_expander();
     }
+    furi_check(furi_mutex_release(expander_main->handle_mutex) == FuriStatusOk);
 }
 
 void furi_bsp_expander_init(void) {
@@ -236,49 +245,58 @@ void furi_bsp_expander_control_led_power(uint16_t led_mask) {
 
 void furi_bsp_expander_main_write_output(uint16_t output_mask) {
     furi_check(expander_main != NULL);
+    furi_check(furi_mutex_acquire(expander_main->handle_mutex, FuriWaitForever) == FuriStatusOk);
     if(expander_main->handle) {
         pcal6416_write_output(expander_main->handle, output_mask & OutputExpMainMask);
     } else {
         furi_bsp_show_error_message_main_expander();
     }
+    furi_check(furi_mutex_release(expander_main->handle_mutex) == FuriStatusOk);
 }
 
 uint16_t furi_bsp_expander_main_read_output(void) {
     furi_check(expander_main != NULL);
+    uint16_t result = 0;
+    furi_check(furi_mutex_acquire(expander_main->handle_mutex, FuriWaitForever) == FuriStatusOk);
     if(expander_main->handle) {
-        return pcal6416_read_input(expander_main->handle) & OutputExpMainMask;
+        result = pcal6416_read_input(expander_main->handle) & OutputExpMainMask;
     } else {
         furi_bsp_show_error_message_main_expander();
-        return 0;
     }
+    furi_check(furi_mutex_release(expander_main->handle_mutex) == FuriStatusOk);
+    return result;
 }
 
 uint16_t furi_bsp_expander_main_read_input(void) {
     furi_assert(expander_main != NULL);
+    uint16_t result = 0;
+    furi_check(furi_mutex_acquire(expander_main->handle_mutex, FuriWaitForever) == FuriStatusOk);
     if(expander_main->handle) {
-        return pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
+        result = pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
     } else {
         furi_bsp_show_error_message_main_expander();
-        return 0;
     }
+    furi_check(furi_mutex_release(expander_main->handle_mutex) == FuriStatusOk);
+    return result;
 }
 
 void furi_bsp_expander_main_set_control(FuriBspControlExpanderMain control) {
     furi_check(expander_main != NULL);
+    furi_check(furi_mutex_acquire(expander_main->handle_mutex, FuriWaitForever) == FuriStatusOk);
     if(expander_main->handle) {
-        if(control == expander_main->control_state) {
-            return;
-        }
-        if(control == FuriBspControlExpanderMainMcu) {
-            pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
-            expander_main->control_state = FuriBspControlExpanderMainMcu;
-        } else {
-            pcal6416_set_input_callback(expander_main->handle, NULL, NULL);
-            expander_main->control_state = FuriBspControlExpanderMainCpu;
+        if(control != expander_main->control_state) {
+            if(control == FuriBspControlExpanderMainMcu) {
+                pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
+                expander_main->control_state = FuriBspControlExpanderMainMcu;
+            } else {
+                pcal6416_set_input_callback(expander_main->handle, NULL, NULL);
+                expander_main->control_state = FuriBspControlExpanderMainCpu;
+            }
         }
     } else {
         furi_bsp_show_error_message_main_expander();
     }
+    furi_check(furi_mutex_release(expander_main->handle_mutex) == FuriStatusOk);
 }
 
 FuriBspControlExpanderMain furi_bsp_expander_main_get_control_state(void) {
