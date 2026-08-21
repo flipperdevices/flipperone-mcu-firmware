@@ -52,12 +52,12 @@ typedef enum {
     InputExpMainMuxVconnFault = (1 << 4),
     InputExpMainTypeCUpSwPg = (1 << 5),
     InputExpMainTypeAUpSwPg = (1 << 6),
-    OutputExpMainMuxEn = (1 << 7),
 
     InputExpMainInputMask = (0x007F),
 } InputExpMain;
 
 typedef enum {
+    OutputExpMainMuxEn = (1 << 7),
     OutputExpMainUsb20Sel = (1 << 8),
     OutputExpMainHubPwrEn = (1 << 9),
     OutputExpMainTypeAUpSwEn = (1 << 10),
@@ -66,6 +66,7 @@ typedef enum {
     OutputExpMainGpio5v0En = (1 << 13),
     OutputExpMainGpio3v3En = (1 << 14),
     OutputExpMainMaskromEn = (1 << 15),
+    
     OutputExpMainMask = (0xFF80),
 } OutputExpMain;
 
