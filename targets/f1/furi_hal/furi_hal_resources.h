@@ -54,7 +54,7 @@ typedef enum {
     InputExpMainTypeAUpSwPg = (1 << 6),
     OutputExpMainMuxEn = (1 << 7),
 
-    InputExpMainInputMask = (0x007F),
+    InputExpMainInputMask = (0x00FF),
 } InputExpMain;
 
 typedef enum {
@@ -66,7 +66,7 @@ typedef enum {
     OutputExpMainGpio5v0En = (1 << 13),
     OutputExpMainGpio3v3En = (1 << 14),
     OutputExpMainMaskromEn = (1 << 15),
-    OutputExpMainMask = (0xFF80),
+    OutputExpMainMask = (0xFF00),
 } OutputExpMain;
 
 typedef struct {
