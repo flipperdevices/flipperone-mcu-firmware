@@ -57,7 +57,7 @@ typedef enum {
 } InputExpMain;
 
 typedef enum {
-    OutputExpMainMuxEn = (1 << 7),
+    OutputExpMainNMuxEn = (1 << 7),
     OutputExpMainUsb20Sel = (1 << 8),
     OutputExpMainHubPwrEn = (1 << 9),
     OutputExpMainTypeAUpSwEn = (1 << 10),
@@ -66,7 +66,7 @@ typedef enum {
     OutputExpMainGpio5v0En = (1 << 13),
     OutputExpMainGpio3v3En = (1 << 14),
     OutputExpMainMaskromEn = (1 << 15),
-    
+
     OutputExpMainMask = (0xFF00),
 } OutputExpMain;
 

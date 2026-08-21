@@ -153,7 +153,7 @@ static void furi_bsp_expander_main_init(void) {
         expander_main->control_state = FuriBspControlExpanderMainMcu;
 
         uint32_t output_mask = furi_bsp_expander_main_read_output();
-        furi_bsp_expander_main_write_output(output_mask);
+        furi_bsp_expander_main_write_output(output_mask | OutputExpMainNMuxEn);
         pcal6416_write_mode(expander_main->handle, InputExpMainInputMask);
 
         expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
@@ -180,7 +180,7 @@ void furi_bsp_main_reset(void) {
         pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
         expander_main->control_state = FuriBspControlExpanderMainMcu;
 
-        //pcal6416_write_output(expander_main->handle, OutputExpMainMask);
+        pcal6416_write_output(expander_main->handle, OutputExpMainNMuxEn & OutputExpMainMask);
         pcal6416_write_mode(expander_main->handle, InputExpMainInputMask);
         expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
 
