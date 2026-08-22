@@ -18,13 +18,12 @@ void furi_bsp_display_backlight_init(void) {
 }
 
 void furi_bsp_display_backlight_set_brightness(uint8_t brightness) {
-    FURI_LOG_I("Display Backlight", "Setting brightness to %u", brightness);
-
-    if(handle_backlight.brightness == brightness) {
+    
+    
+    if(handle_backlight.brightness == brightness) { // No change in brightness, do nothing
         return;
     }
 
-    FURI_LOG_I("Display Backlight", "!!!!!!!!!!!!");
     if(brightness == 0) {
         if(handle_backlight.backlight_pwm) {
             furi_hal_pwm_set_duty_cycle(handle_backlight.backlight_pwm, 0);
@@ -33,7 +32,7 @@ void furi_bsp_display_backlight_set_brightness(uint8_t brightness) {
         }
     } else {
         uint32_t max_value = (1 << BACKLIGHT_PWM_RESOLUTION) - 1;
-        uint32_t duty_cycle = (brightness * max_value) / max_value;
+        furi_check(brightness <= max_value);
         if(!handle_backlight.backlight_pwm) {
             // To enable the device, the CTRL signal must be high for 500 µs.
             // The PWM signal can then be applied with a pulse width (tp)
@@ -54,9 +53,8 @@ void furi_bsp_display_backlight_set_brightness(uint8_t brightness) {
                 "Display Backlight", "Backlight PWM initialized with resolution %u bits and frequency %u Hz", BACKLIGHT_PWM_RESOLUTION, BACKLIGHT_PWM_FREQ_HZ);
         }
 
-        FURI_LOG_I("Display Backlight", "Setting duty cycle to %lu", duty_cycle);
-        furi_hal_pwm_set_duty_cycle(handle_backlight.backlight_pwm, duty_cycle);
-        
+        furi_hal_pwm_set_duty_cycle(handle_backlight.backlight_pwm, brightness);
+
     }
     handle_backlight.brightness = brightness;
 }
