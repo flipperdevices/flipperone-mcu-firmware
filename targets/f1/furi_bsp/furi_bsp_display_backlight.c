@@ -13,8 +13,6 @@ void furi_bsp_display_backlight_init(void) {
 }
 
 void furi_bsp_display_backlight_set_brightness(uint8_t brightness) {
-    // TODO: smooth transition using DMA + PWM
-
     if(brightness == 0) {
         if(backlight_pwm) {
             furi_hal_pwm_set_duty_cycle(backlight_pwm, 0);
@@ -23,7 +21,7 @@ void furi_bsp_display_backlight_set_brightness(uint8_t brightness) {
         }
     } else {
         uint32_t max_value = (1 << BACKLIGHT_PWM_RESOLUTION) - 1;
-        uint32_t duty_cycle = (brightness * max_value) / 255;
+        uint32_t duty_cycle = (brightness * max_value) / max_value;
         if(!backlight_pwm) {
             // To enable the device, the CTRL signal must be high for 500 µs.
             // The PWM signal can then be applied with a pulse width (tp)
