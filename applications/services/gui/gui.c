@@ -17,7 +17,7 @@
 
 #define GUI_EVENT_FLAG_REDRAW (1U << 0)
 
-#define CLAY_MAX_ELEMENT_COUNT            128
+#define CLAY_MAX_ELEMENT_COUNT            144
 #define CLAY_MAX_MEASURE_TEXT_CACHE_WORDS 256
 
 typedef struct {

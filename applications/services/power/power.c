@@ -1,5 +1,6 @@
 #include "power.h"
 
+#include <furi_power_config.h>
 #include <furi_bsp_expander.h>
 #include <furi.h>
 #include <api_lock.h>
@@ -14,14 +15,7 @@
 
 #define BQ2579X_IRQ_DEBUG_ENABLE
 
-#define POWER_MAX_MESSAGES            (8)
-#define POWER_INA_SHUNT_RESISTOR_OHMS (0.004f)
-#define POWER_INA_BUS_CURRENT_MAX     (9.0f)
-
-#define BQ2579X_BAT_MAX_CHARGE_VOLTAGE 8650
-#define BQ2579X_BAT_MAX_CHARGE_CURRENT 3000
-#define BQ2579X_BAT_MAX_INPUT_CURRENT  3000
-
+#define POWER_MAX_MESSAGES             (8)
 #define BQ2579X_OTG_WATCHDOG_TIME      Bq2579xWatchdogTime0_5s
 #define BQ2579X_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
 
@@ -54,17 +48,17 @@ static Bq2579xStatus power_bq2579x_reset_and_load_config(Power* instance) {
             break;
         }
         // Set default charge voltage and current limits
-        res = bq2579x_set_charge_voltage_limit_ma(instance->bq2579x_header, BQ2579X_BAT_MAX_CHARGE_VOLTAGE);
+        res = bq2579x_set_charge_voltage_limit_ma(instance->bq2579x_header, FURI_POWER_CONFIG_BQ2579X_BAT_MAX_CHARGE_VOLTAGE);
         if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to set BQ2579X charge voltage limit: %d", res);
             break;
         }
-        res = bq2579x_set_charge_current_limit_ma(instance->bq2579x_header, BQ2579X_BAT_MAX_CHARGE_CURRENT);
+        res = bq2579x_set_charge_current_limit_ma(instance->bq2579x_header, FURI_POWER_CONFIG_BQ2579X_BAT_MAX_CHARGE_CURRENT);
         if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to set BQ2579X charge current limit: %d", res);
             break;
         }
-        res = bq2579x_set_input_current_limit_ma(instance->bq2579x_header, BQ2579X_BAT_MAX_INPUT_CURRENT);
+        res = bq2579x_set_input_current_limit_ma(instance->bq2579x_header, FURI_POWER_CONFIG_BQ2579X_BAT_MAX_INPUT_CURRENT);
         if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to set BQ2579X input current limit: %d", res);
             break;
@@ -269,7 +263,7 @@ static Bq2579xStatus power_bq2579x_otg_enable_internal(Power* instance, bool ena
 
 static Bq2579xStatus power_bq2579x_is_usb_connected(Power* instance, bool* usb_connected) {
     furi_assert(instance);
-    furi_assert(usb_connected); 
+    furi_assert(usb_connected);
     Bq2579xStatus res = Bq2579xStatusUnknown;
 
     Bq2579xChargerStatusReg status = {0};
@@ -370,7 +364,7 @@ static Power* power_alloc(void) {
     }
 
     // init ina219
-    instance->ina219_header = ina219_init(&furi_hal_i2c_handle_main, INA219_ADDRESS, POWER_INA_SHUNT_RESISTOR_OHMS, POWER_INA_BUS_CURRENT_MAX);
+    instance->ina219_header = ina219_init(&furi_hal_i2c_handle_main, INA219_ADDRESS, FURI_POWER_CONFIG_INA_SHUNT_RESISTOR_OHMS, FURI_POWER_CONFIG_INA_BUS_CURRENT_MAX);
     if(instance->ina219_header) {
         instance->devices |= PowerDeviceIna219;
     } else {
