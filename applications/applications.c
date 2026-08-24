@@ -113,7 +113,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = led_srv,
         .name = "LedSrv",
         .appid = "led_srv",
-        .stack_size = 1024,
+        .stack_size = 1280,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
