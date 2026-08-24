@@ -99,7 +99,7 @@ static const struct {
     [LedGroupLink] = {SETTINGS_LED_GROUP_LINK, 255},
     [LedGroupPower] = {SETTINGS_LED_GROUP_POWER, 255},
     [LedGroupWattmeter] = {SETTINGS_LED_GROUP_WATTMETER, 255},
-    [LedGroupDisplayBacklight] = {SETTINGS_LED_BACKLIGHT, 51}, // 20%
+    [LedGroupDisplayBacklight] = {SETTINGS_LED_BACKLIGHT, 26}, // 10%
 };
 
 static bool led_line_is_wanna_power(uint32_t* line_buffer, size_t led_count) {
