@@ -50,9 +50,9 @@ typedef enum {
     LedTypeBatteryCenter,
 
     // special types
-    LedTypeLine1Off,
-    LedTypeLine2Off,
-    LedTypeLine3Off,
+    // LedTypeLine1Off,
+    // LedTypeLine2Off,
+    // LedTypeLine3Off,
     LedTypeLineAllOff,
 } LedType;
 
