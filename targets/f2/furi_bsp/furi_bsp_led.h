@@ -8,7 +8,7 @@ typedef struct FuriBspLed FuriBspLed;
 #define LED_LINE_1_LEDS_COUNT (4U)
 #define LED_LINE_2_LEDS_COUNT (6U)
 #define LED_LINE_3_LEDS_COUNT (6U)
-#define LED_TOTAL_LEDS_COUNT  (LED_LINE_1_LEDS_COUNT + 1U + LED_LINE_2_LEDS_COUNT + LED_LINE_3_LEDS_COUNT ) // +1 for LedTypeBatteryOutline
+#define LED_TOTAL_LEDS_COUNT  (LED_LINE_1_LEDS_COUNT + 1U + LED_LINE_2_LEDS_COUNT + LED_LINE_3_LEDS_COUNT ) // +1 for FuriBspLedTypePower
 
 #ifdef __cplusplus
 extern "C" {
