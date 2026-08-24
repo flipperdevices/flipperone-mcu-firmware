@@ -78,7 +78,7 @@ static const struct {
     [LedGroupLink] = {SETTINGS_LED_GROUP_LINK, 255},
     [LedGroupPower] = {SETTINGS_LED_GROUP_POWER, 255},
     [LedGroupWattmeter] = {SETTINGS_LED_GROUP_WATTMETER, 255},
-    [LedGroupDisplayBacklight] = {SETTINGS_LED_BACKLIGHT, 51}, // 20%
+    [LedGroupDisplayBacklight] = {SETTINGS_LED_BACKLIGHT, 26}, // 10%
 };
 
 static LedGroup led_get_led_group_by_led_type(FuriBspLedType type) {

@@ -151,9 +151,9 @@ static void furi_bsp_expander_main_init(void) {
         FURI_LOG_I(TAG, "Initializing Main Expander");
         pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
         expander_main->control_state = FuriBspControlExpanderMainMcu;
-        // Todo: Errata lay the I2C line
+
         uint32_t output_mask = furi_bsp_expander_main_read_output();
-        furi_bsp_expander_main_write_output(output_mask | OutputExpMainVcc5v0DevS0En);
+        furi_bsp_expander_main_write_output(output_mask | OutputExpMainNMuxEn);
         pcal6416_write_mode(expander_main->handle, InputExpMainInputMask);
 
         expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
@@ -179,8 +179,8 @@ void furi_bsp_main_reset(void) {
         expander_main->handle = pcal6416_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, PCAL6416_ADDRESS_A0);
         pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
         expander_main->control_state = FuriBspControlExpanderMainMcu;
-        // Todo: Errata lay the I2C line
-        pcal6416_write_output(expander_main->handle, OutputExpMainVcc5v0DevS0En & OutputExpMainMask);
+
+        pcal6416_write_output(expander_main->handle, OutputExpMainNMuxEn & OutputExpMainMask);
         pcal6416_write_mode(expander_main->handle, InputExpMainInputMask);
         expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
 

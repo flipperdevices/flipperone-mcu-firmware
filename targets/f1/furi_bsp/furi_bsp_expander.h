@@ -113,12 +113,6 @@ void furi_bsp_expander_main_attach_type_c_up_sw_pg_callback(FuriCallback callbac
  */
 void furi_bsp_expander_main_attach_type_a_up_sw_pg_callback(FuriCallback callback, void* context);
 
-/** Attach callbacks for main expander input events
- * @param callback - function to call on Expander 7 events
- * @param context - context to pass to the callback
- */
-void furi_bsp_expander_main_attach_expander7_callback(FuriCallback callback, void* context);
-
 void furi_bsp_main_reset(void);
 
 #ifdef __cplusplus
