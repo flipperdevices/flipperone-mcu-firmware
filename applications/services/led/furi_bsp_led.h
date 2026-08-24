@@ -1,5 +1,7 @@
 #pragma once
 
+#include "led.h"
+
 typedef struct FuriBspLed FuriBspLed;
 
 

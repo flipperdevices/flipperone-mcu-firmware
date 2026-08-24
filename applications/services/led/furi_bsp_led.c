@@ -1,6 +1,8 @@
 #include "furi_bsp_led.h"
 
+#include <furi.h>
 #include <furi_bsp.h>
+#include <furi_hal_resources.h>
 
 #include <drivers/ws2812/ws2812.h>
 
@@ -30,17 +32,14 @@ struct FuriBspLed {
 static LedUpdateLine led_get_update_line_by_type(LedType type) {
     switch(type) {
     // Line 1
-    case LedTypeLine1Off:
     case LedTypeNet ... LedTypeEth1:
         return LedUpdateLine1;
 
     // Line 2
-    case LedTypeLine2Off:
     case LedTypePower ... LedTypeBatteryWatt4:
         return LedUpdateLine2;
 
     // Line 3
-    case LedTypeLine3Off:
     case LedTypeUsbCharging ... LedTypeBatteryCenter:
         return LedUpdateLine3;
 
@@ -53,12 +52,16 @@ static LedUpdateLine led_get_update_line_by_type(LedType type) {
 }
 
 void furi_bsp_led_set(FuriBspLed* instance, LedType type, uint8_t r, uint8_t g, uint8_t b) {
+    furi_assert(instance);
+    furi_check(type < LED_TOTAL_LEDS_COUNT);
     instance->led_state.line[type] = ws2812_urgb_u32(r, g, b);
     instance->led_state.update_line |= led_get_update_line_by_type(type);
 }
 
 void furi_bsp_led_all_off(FuriBspLed* instance) {
+    furi_assert(instance);
     memset(instance->led_state.line, 0x00, sizeof(instance->led_state.line));
+    instance->led_state.update_line |= LedUpdateLine1 | LedUpdateLine2 | LedUpdateLine3;
 }
 
 static bool led_line_is_wanna_power(uint32_t* line_buffer, size_t led_count) {

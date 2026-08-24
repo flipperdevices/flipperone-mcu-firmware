@@ -2,14 +2,12 @@
 
 #include <furi_bsp.h>
 #include <furi_hal_nvm.h>
-#include <furi_hal_resources.h>
 #include <api_lock.h>
-// #include <drivers/ws2812/ws2812.h>
 #include <settings/settings.h>
 #include <input/input.h>
 #include <input_touch/input_touch.h>
 
-#include <furi_bsp_led.h>
+#include "furi_bsp_led.h"
 
 #define TAG "Led"
 
@@ -18,7 +16,7 @@
 // #define LED_LINE_3_LEDS_COUNT (6U)
 // #define LED_TOTAL_LEDS_COUNT  (LED_LINE_1_LEDS_COUNT + LED_LINE_2_LEDS_COUNT + LED_LINE_3_LEDS_COUNT)
 
-#define LED_MAX_MESSAGES            (8U)
+#define LED_MAX_MESSAGES (8U)
 // #define LED_WAIT_POWER_ON_WS2812_MS (5U)
 // #define LED_LINE1_INDEX             (0U)
 // #define LED_LINE2_INDEX             (1U)
@@ -46,7 +44,6 @@ struct Led {
     //Ws2812* ws2812;
 
     FuriBspLed* bsp_led;
-
 
     LedState led_state;
 };
@@ -278,18 +275,19 @@ static void led_process_set_color_batch(Led* instance, LedItem* items, size_t co
     for(size_t i = 0; i < count; i++) {
         switch(items[i].type) {
         // regular leds
-        case LedTypeNet ... LedTypeBatteryCenter:
+        case LedTypeNet ... LedTypeBatteryCenter: {
             LedGroup group = led_get_led_group_by_led_type(items[i].type);
 
             uint8_t brightness;
             furi_state_get(instance->led_state.brightness[group], &brightness);
 
             led_set_color(instance, items[i].type, items[i].color, brightness);
-            // if(items[i].type == LedTypeBatteryOutline) {
-            //     // outline is 2 leds
-            //     led_set_color(instance, LedTypeBatteryOutline + 1, items[i].color, brightness);
-            // }
+            if(items[i].type == LedTypeBatteryOutline) {
+                // outline is 2 leds
+                led_set_color(instance, LedTypeBatteryOutline + 1, items[i].color, brightness);
+            }
             break;
+        }
         // case LedTypeLine1Off:
         //     //turn off line 1
         //     memset(led_get_line_1(instance), 0x00, LED_LINE_1_LEDS_COUNT * sizeof(instance->led_state.line[0]));
@@ -326,15 +324,13 @@ static void led_process_set_brightness(Led* instance, LedGroup group, uint8_t br
     } else {
         const LedType* group_leds = leds_group[group];
         size_t group_leds_count = leds_in_group_count[group];
-        LedUpdateLine update_line = 0;
 
         for(size_t i = 0; i < group_leds_count; i++) {
             LedType type = group_leds[i];
             led_set_color(instance, type, instance->led_state.colors[type], brightness);
-            update_line |= led_get_update_line_by_type(type);
         }
 
-        led_update_lines(instance, update_line);
+        furi_bsp_led_update(instance->bsp_led);
     }
 
     if(save_to_nvm) {
@@ -353,7 +349,7 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
     bool result = false;
 
     switch(msg.type) {
-    case LedMessageTypeSetColorSingle:
+    case LedMessageTypeSetColorSingle: {
         LedItem led_item = {
             .type = msg.set_color_single.type,
             .color = msg.set_color_single.color,
@@ -361,17 +357,20 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
         led_process_set_color_batch(instance, &led_item, 1);
         result = true;
         break;
-    case LedMessageTypeSetColorBatch:
+    }
+    case LedMessageTypeSetColorBatch: {
         const LedItem* items = msg.set_color_batch.items->items;
         const size_t count = msg.set_color_batch.items->count;
         led_process_set_color_batch(instance, (LedItem*)items, count);
         result = true;
         break;
-    case LedMessageTypeSetBrightness:
+    }
+    case LedMessageTypeSetBrightness: {
         led_process_set_brightness(instance, msg.set_brightness.group, msg.set_brightness.brightness, true);
         result = true;
         break;
-    case LedMessageTypeSetBacklightTime:
+    }
+    case LedMessageTypeSetBacklightTime: {
         uint32_t timeout = msg.set_backlight_time.timeout_ms;
         furi_state_set(instance->led_state.backlight_time, &timeout);
         furi_hal_nvm_set_uint32(SETTINGS_LED_BACKLIGHT_TIME, timeout);
@@ -382,7 +381,8 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
         }
         result = true;
         break;
-    case LedMessageTypeBacklightControl:
+    }
+    case LedMessageTypeBacklightControl: {
         if(msg.backlight_time_control.flags & LedBacklightTimeFlagAlwaysOn) {
             instance->led_state.backlight_always_on = true;
             led_backlight_enable(instance, true);
@@ -397,10 +397,12 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
         }
         result = true;
         break;
-    case LedMessageTypeBacklightInputToggle:
+    }
+    case LedMessageTypeBacklightInputToggle: {
         led_backlight_ping(instance);
         result = true;
         break;
+    }
 
     default:
         furi_crash("Invalid message type");
@@ -452,6 +454,7 @@ static void led_backlight_input_touch_callback(const void* value, void* context)
 
 static Led* led_alloc(void) {
     Led* instance = (Led*)malloc(sizeof(Led));
+    memset(instance, 0x00, sizeof(*instance));
 
     // Initialize backlight
     furi_bsp_display_backlight_init();
@@ -463,7 +466,6 @@ static Led* led_alloc(void) {
     // BSP LED init
     instance->bsp_led = furi_bsp_led_alloc();
 
-
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(LED_MAX_MESSAGES, sizeof(LedMessage));
     instance->backlight_timer = furi_event_loop_timer_alloc(instance->event_loop, led_backlight_timer_callback, FuriEventLoopTimerTypeOnce, instance);
@@ -473,7 +475,7 @@ static Led* led_alloc(void) {
     FuriHalNvmStorage res = furi_hal_nvm_get_uint32(SETTINGS_LED_BACKLIGHT_TIME, &backlight_time_value);
     if((res != FuriHalNvmStorageOK) || (backlight_time_value > LED_BACKLIGHT_TIME_MAX)) {
         backlight_time_value = LED_BACKLIGHT_TIME_DEFAULT;
-        FURI_LOG_E(TAG, "Failed to read %s from NVM, defaulting to %lu", SETTINGS_LED_BACKLIGHT_TIME, backlight_time_value);
+        FURI_LOG_E(TAG, "Failed to read %s from NVM, defaulting to %lu", SETTINGS_LED_BACKLIGHT_TIME, (unsigned long)backlight_time_value);
         furi_hal_nvm_set_uint32(SETTINGS_LED_BACKLIGHT_TIME, backlight_time_value);
     }
     furi_state_set(instance->led_state.backlight_time, &backlight_time_value);
@@ -485,7 +487,7 @@ static Led* led_alloc(void) {
         uint32_t brightness_value = 0;
         if(furi_hal_nvm_get_uint32(state_name, &brightness_value) != FuriHalNvmStorageOK) {
             brightness_value = led_settings[i].default_value;
-            FURI_LOG_E(TAG, "Failed to read %s from NVM, defaulting to %lu", state_name, brightness_value);
+            FURI_LOG_E(TAG, "Failed to read %s from NVM, defaulting to %lu", state_name, (unsigned long)brightness_value);
             furi_hal_nvm_set_uint32(state_name, brightness_value);
         }
 
