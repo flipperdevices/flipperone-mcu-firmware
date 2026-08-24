@@ -68,8 +68,8 @@ static FURI_ALWAYS_INLINE int ina219_read_reg(Ina219* instance, Ina219Reg reg, u
 }
 
 /* Datasheet Table 4: conversion time for each ADC setting. */
-static uint32_t ina219_adc_shunt_time_us(Ina219ShuntRes adc) {
-    switch(adc & 0x0F) {
+static uint32_t ina219_adc_shunt_time_us(Ina219ShuntRes shunt_mode) {
+    switch(shunt_mode) {
     case Ina219ShuntRes9bit1S84ms:
         return 84;
     case Ina219ShuntRes10bit1S148ms:
@@ -93,15 +93,15 @@ static uint32_t ina219_adc_shunt_time_us(Ina219ShuntRes adc) {
     case Ina219ShuntRes12bit128S68100ms:
         return 68100;
     default: {
-        furi_crash("Invalid ADC SHUNT");
+        furi_crash("Invalid SHUNT MODE");
         return 68100; // Unreachable, but avoids compiler warning
     }
     }
 }
 
 /* Datasheet Table 4: conversion time for each ADC setting. */
-static uint32_t ina219_adc_bus_time_us(Ina219BusRes adc) {
-    switch(adc & 0x0F) {
+static uint32_t ina219_adc_bus_time_us(Ina219BusRes bus_mode) {
+    switch(bus_mode) {
     case Ina219BusRes9bit:
         return 84;
     case Ina219BusRes10bit:
@@ -111,7 +111,7 @@ static uint32_t ina219_adc_bus_time_us(Ina219BusRes adc) {
     case Ina219BusRes12bit:
         return 532;
     default: {
-        furi_crash("Invalid ADC BUS");
+        furi_crash("Invalid BUS MODE");
         return 532; // Unreachable, but avoids compiler warning
     }
     }
