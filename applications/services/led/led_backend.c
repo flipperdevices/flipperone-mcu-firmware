@@ -7,31 +7,16 @@
 #include <input/input.h>
 #include <input_touch/input_touch.h>
 
-#include "furi_bsp_led.h"
-
 #define TAG "Led"
 
-// #define LED_LINE_1_LEDS_COUNT (4U)
-// #define LED_LINE_2_LEDS_COUNT (7U)
-// #define LED_LINE_3_LEDS_COUNT (6U)
-// #define LED_TOTAL_LEDS_COUNT  (LED_LINE_1_LEDS_COUNT + LED_LINE_2_LEDS_COUNT + LED_LINE_3_LEDS_COUNT)
-
-#define LED_MAX_MESSAGES (8U)
-// #define LED_WAIT_POWER_ON_WS2812_MS (5U)
-// #define LED_LINE1_INDEX             (0U)
-// #define LED_LINE2_INDEX             (1U)
-// #define LED_LINE3_INDEX             (2U)
-// #define LED_LINES_COUNT             (3U)
-
+#define LED_MAX_MESSAGES              (8U)
 #define LED_RGB_BRIGHTNESS_MULTIPLIER (0.5f)
 
 #define LED_BACKLIGHT_TIME_DEFAULT (10 * 1000)
 #define LED_BACKLIGHT_TIME_MAX     ((UINT16_MAX) * 100) // I2C: 16-bit register with 100ms resolution
 
 typedef struct {
-    //uint32_t line[LED_TOTAL_LEDS_COUNT];
     LedColor colors[LED_TOTAL_LEDS_COUNT];
-    //StatusLedPower mask_power;
     FuriState* brightness[LedGroupMax];
     FuriState* backlight_time;
     bool backlight_always_on;
@@ -41,10 +26,7 @@ struct Led {
     FuriEventLoop* event_loop;
     FuriMessageQueue* message_queue;
     FuriEventLoopTimer* backlight_timer;
-    //Ws2812* ws2812;
-
     FuriBspLed* bsp_led;
-
     LedState led_state;
 };
 
@@ -57,19 +39,13 @@ typedef enum {
     LedMessageTypeBacklightInputToggle,
 } LedMessageType;
 
-// typedef enum {
-//     LedUpdateLine1 = (1 << 0U),
-//     LedUpdateLine2 = (1 << 1U),
-//     LedUpdateLine3 = (1 << 2U),
-// } LedUpdateLine;
-
 typedef struct {
     LedMessageType type;
     FuriApiLock lock;
     bool* result;
     union {
         struct {
-            LedType type;
+            FuriBspLedType type;
             LedColor color;
         } set_color_single;
 
@@ -105,129 +81,45 @@ static const struct {
     [LedGroupDisplayBacklight] = {SETTINGS_LED_BACKLIGHT, 51}, // 20%
 };
 
-// static bool led_line_is_wanna_power(uint32_t* line_buffer, size_t led_count) {
-//     furi_assert(line_buffer);
-//     bool need_power = false;
-//     for(size_t i = 0; i < led_count; i++) {
-//         if(line_buffer[i] != 0) {
-//             need_power = true;
-//             break;
-//         }
-//     }
-//     return need_power;
-// }
-
-// static FURI_ALWAYS_INLINE bool led_start_off_timer(Led* instance, bool check_line, StatusLedPower line_power) {
-//     furi_assert(instance);
-//     if(check_line != (instance->led_state.mask_power & line_power)) {
-//         if(check_line) {
-//             instance->led_state.mask_power |= line_power;
-//             furi_bsp_expander_control_led_power(instance->led_state.mask_power);
-//             furi_delay_ms(LED_WAIT_POWER_ON_WS2812_MS);
-//         } else {
-//             instance->led_state.mask_power &= ~line_power;
-//             furi_bsp_expander_control_led_power(instance->led_state.mask_power);
-//         }
-//     }
-//     return instance->led_state.mask_power & line_power;
-// }
-
-// static uint32_t* led_get_line_1(Led* instance) {
-//     return instance->led_state.line;
-// }
-
-// static uint32_t* led_get_line_2(Led* instance) {
-//     return instance->led_state.line + LED_LINE_1_LEDS_COUNT;
-// }
-
-// static uint32_t* led_get_line_3(Led* instance) {
-//     return instance->led_state.line + LED_LINE_1_LEDS_COUNT + LED_LINE_2_LEDS_COUNT;
-// }
-
-// static void led_update_lines(Led* instance, LedUpdateLine update_line) {
-//     furi_assert(instance);
-//     if(update_line & LedUpdateLine1) {
-//         if(led_start_off_timer(instance, led_line_is_wanna_power(led_get_line_1(instance), LED_LINE_1_LEDS_COUNT), StatusLedPowerLine1)) {
-//             ws2812_write_buffer_dma(instance->ws2812, LED_LINE1_INDEX, led_get_line_1(instance), LED_LINE_1_LEDS_COUNT);
-//         }
-//     }
-//     if(update_line & LedUpdateLine2) {
-//         if(led_start_off_timer(instance, led_line_is_wanna_power(led_get_line_2(instance), LED_LINE_2_LEDS_COUNT), StatusLedPowerLine2)) {
-//             ws2812_write_buffer_dma(instance->ws2812, LED_LINE2_INDEX, led_get_line_2(instance), LED_LINE_2_LEDS_COUNT);
-//         }
-//     }
-//     if(update_line & LedUpdateLine3) {
-//         if(led_start_off_timer(instance, led_line_is_wanna_power(led_get_line_3(instance), LED_LINE_3_LEDS_COUNT), StatusLedPowerLine3)) {
-//             ws2812_write_buffer_dma(instance->ws2812, LED_LINE3_INDEX, led_get_line_3(instance), LED_LINE_3_LEDS_COUNT);
-//         }
-//     }
-// }
-
-// static LedUpdateLine led_get_update_line_by_type(LedType type) {
-//     switch(type) {
-//     // Line 1
-//     case LedTypeLine1Off:
-//     case LedTypeNet ... LedTypeEth1:
-//         return LedUpdateLine1;
-
-//     // Line 2
-//     case LedTypeLine2Off:
-//     case LedTypePower ... LedTypeBatteryWatt4:
-//         return LedUpdateLine2;
-
-//     // Line 3
-//     case LedTypeLine3Off:
-//     case LedTypeUsbCharging ... LedTypeBatteryCenter:
-//         return LedUpdateLine3;
-
-//     // All lines
-//     case LedTypeLineAllOff:
-//         return LedUpdateLine1 | LedUpdateLine2 | LedUpdateLine3;
-//     default:
-//         return 0;
-//     }
-// }
-
-static LedGroup led_get_led_group_by_led_type(LedType type) {
+static LedGroup led_get_led_group_by_led_type(FuriBspLedType type) {
     switch(type) {
-    case LedTypeNet ... LedTypeEth1:
+    case FuriBspLedTypeNet ... FuriBspLedTypeEth1:
         return LedGroupLink;
-    case LedTypePower:
+    case FuriBspLedTypePower:
         return LedGroupPower;
-    case LedTypeBatteryOutline ... LedTypeBatteryCenter:
+    case FuriBspLedTypeBatteryOutline ... FuriBspLedTypeBatteryCenter:
         return LedGroupWattmeter;
     default:
-        furi_crash("LedType");
+        furi_crash("FuriBspLedType");
     }
 }
 
-static const LedType leds_in_link_group[] = {
-    LedTypeNet,
-    LedTypeWiFi,
-    LedTypeEth2,
-    LedTypeEth1,
+static const FuriBspLedType leds_in_link_group[] = {
+    FuriBspLedTypeNet,
+    FuriBspLedTypeWiFi,
+    FuriBspLedTypeEth2,
+    FuriBspLedTypeEth1,
 };
 
-static const LedType leds_in_power_group[] = {
-    LedTypePower,
+static const FuriBspLedType leds_in_power_group[] = {
+    FuriBspLedTypePower,
 };
 
-static const LedType leds_in_wattmeter_group[] = {
-    LedTypeBatteryOutline,
-    LedTypeBatteryOutline + 1, // second led of the outline
-    LedTypeBatteryWatt1,
-    LedTypeBatteryWatt2,
-    LedTypeBatteryWatt3,
-    LedTypeBatteryWatt4,
-    LedTypeUsbCharging,
-    LedTypeUsbWatt1,
-    LedTypeUsbWatt2,
-    LedTypeUsbWatt3,
-    LedTypeUsbWatt4,
-    LedTypeBatteryCenter,
+static const FuriBspLedType leds_in_wattmeter_group[] = {
+    FuriBspLedTypeBatteryOutline,
+    FuriBspLedTypeBatteryWatt1,
+    FuriBspLedTypeBatteryWatt2,
+    FuriBspLedTypeBatteryWatt3,
+    FuriBspLedTypeBatteryWatt4,
+    FuriBspLedTypeUsbCharging,
+    FuriBspLedTypeUsbWatt1,
+    FuriBspLedTypeUsbWatt2,
+    FuriBspLedTypeUsbWatt3,
+    FuriBspLedTypeUsbWatt4,
+    FuriBspLedTypeBatteryCenter,
 };
 
-static const LedType* leds_group[LedGroupMax] = {
+static const FuriBspLedType* leds_group[LedGroupMax] = {
     [LedGroupLink] = leds_in_link_group,
     [LedGroupPower] = leds_in_power_group,
     [LedGroupWattmeter] = leds_in_wattmeter_group,
@@ -241,7 +133,7 @@ static const size_t leds_in_group_count[LedGroupMax] = {
     [LedGroupDisplayBacklight] = 0,
 };
 
-static void led_set_color(Led* instance, LedType type, LedColor color, uint8_t brightness) {
+static void led_set_color(Led* instance, FuriBspLedType type, LedColor color, uint8_t brightness) {
     instance->led_state.colors[type] = color;
 
     LedColor adjusted_color = {
@@ -271,46 +163,25 @@ static void led_backlight_ping(Led* instance) {
 }
 
 static void led_process_set_color_batch(Led* instance, LedItem* items, size_t count) {
-    //LedUpdateLine update_line = 0;
     for(size_t i = 0; i < count; i++) {
         switch(items[i].type) {
         // regular leds
-        case LedTypeNet ... LedTypeBatteryCenter: {
+        case FuriBspLedTypeNet ... FuriBspLedTypeBatteryCenter: {
             LedGroup group = led_get_led_group_by_led_type(items[i].type);
 
             uint8_t brightness;
             furi_state_get(instance->led_state.brightness[group], &brightness);
 
             led_set_color(instance, items[i].type, items[i].color, brightness);
-            if(items[i].type == LedTypeBatteryOutline) {
-                // outline is 2 leds
-                led_set_color(instance, LedTypeBatteryOutline + 1, items[i].color, brightness);
-            }
             break;
         }
-        // case LedTypeLine1Off:
-        //     //turn off line 1
-        //     memset(led_get_line_1(instance), 0x00, LED_LINE_1_LEDS_COUNT * sizeof(instance->led_state.line[0]));
-        //     break;
-        // case LedTypeLine2Off:
-        //     //turn off line 2
-        //     memset(led_get_line_2(instance), 0x00, LED_LINE_2_LEDS_COUNT * sizeof(instance->led_state.line[0]));
-        //     break;
-        // case LedTypeLine3Off:
-        //     //turn off line 3
-        //     memset(led_get_line_3(instance), 0x00, LED_LINE_3_LEDS_COUNT * sizeof(instance->led_state.line[0]));
-        //     break;
-        case LedTypeLineAllOff:
+
+        case FuriBspLedTypeAllOff:
             //turn off all lines
-            //memset(instance->led_state.line, 0x00, sizeof(instance->led_state.line));
             furi_bsp_led_all_off(instance->bsp_led);
             break;
         }
-
-        //update_line |= led_get_update_line_by_type(items[i].type);
     }
-
-    //led_update_lines(instance, update_line);
     furi_bsp_led_update(instance->bsp_led);
 }
 
@@ -322,11 +193,11 @@ static void led_process_set_brightness(Led* instance, LedGroup group, uint8_t br
     if(group == LedGroupDisplayBacklight) {
         led_backlight_ping(instance);
     } else {
-        const LedType* group_leds = leds_group[group];
+        const FuriBspLedType* group_leds = leds_group[group];
         size_t group_leds_count = leds_in_group_count[group];
 
         for(size_t i = 0; i < group_leds_count; i++) {
-            LedType type = group_leds[i];
+            FuriBspLedType type = group_leds[i];
             led_set_color(instance, type, instance->led_state.colors[type], brightness);
         }
 
@@ -459,10 +330,6 @@ static Led* led_alloc(void) {
     // Initialize backlight
     furi_bsp_display_backlight_init();
 
-    // // Ws2812 init
-    // GpioPin ws2812_pins[] = {gpio_status_led_line1, gpio_status_led_line2, gpio_status_led_line3};
-    // instance->ws2812 = ws2812_init(ws2812_pins, LED_LINES_COUNT);
-
     // BSP LED init
     instance->bsp_led = furi_bsp_led_alloc();
 
@@ -514,7 +381,7 @@ int32_t led_srv(void* p) {
     return 0;
 }
 
-void led_set_color_single(Led* instance, LedType type, LedColor color) {
+void led_set_color_single(Led* instance, FuriBspLedType type, LedColor color) {
     furi_check(instance);
 
     const LedMessage msg = {
@@ -524,12 +391,12 @@ void led_set_color_single(Led* instance, LedType type, LedColor color) {
     led_send_message(instance, &msg);
 }
 
-void led_set_color_batch(Led* instance, const LedBatch* items) {
+void led_set_color_batch(Led* instance, const LedBatch* batch) {
     furi_check(instance);
 
     const LedMessage msg = {
         .type = LedMessageTypeSetColorBatch,
-        .set_color_batch = {.items = items},
+        .set_color_batch = {.items = batch},
     };
     led_send_message(instance, &msg);
 }

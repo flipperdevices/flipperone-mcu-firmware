@@ -29,33 +29,47 @@ struct FuriBspLed {
     LedState led_state;
 };
 
-static LedUpdateLine led_get_update_line_by_type(LedType type) {
+static LedUpdateLine led_get_update_line_by_type(FuriBspLedType type) {
     switch(type) {
     // Line 1
-    case LedTypeNet ... LedTypeEth1:
+    case FuriBspLedTypeNet ... FuriBspLedTypeEth1:
         return LedUpdateLine1;
 
     // Line 2
-    case LedTypePower ... LedTypeBatteryWatt4:
+    case FuriBspLedTypePower ... FuriBspLedTypeBatteryWatt4:
         return LedUpdateLine2;
 
     // Line 3
-    case LedTypeUsbCharging ... LedTypeBatteryCenter:
+    case FuriBspLedTypeUsbCharging ... FuriBspLedTypeBatteryCenter:
         return LedUpdateLine3;
 
     // All lines
-    case LedTypeLineAllOff:
+    case FuriBspLedTypeAllOff:
         return LedUpdateLine1 | LedUpdateLine2 | LedUpdateLine3;
     default:
         return 0;
     }
 }
 
-void furi_bsp_led_set(FuriBspLed* instance, LedType type, uint8_t r, uint8_t g, uint8_t b) {
+static uint8_t led_type_to_physical_index(FuriBspLedType type) {
+    if(type > FuriBspLedTypeBatteryOutline) {
+        // LedTypeBatteryOutline occupies two physical LEDs
+        return (uint8_t)(type + 1);
+    }
+    return (uint8_t)type;
+}
+
+void furi_bsp_led_set(FuriBspLed* instance, FuriBspLedType type, uint8_t r, uint8_t g, uint8_t b) {
     furi_assert(instance);
-    furi_check(type < LED_TOTAL_LEDS_COUNT);
-    instance->led_state.line[type] = ws2812_urgb_u32(r, g, b);
+    furi_check(type <= FuriBspLedTypeBatteryCenter);
+    const uint32_t color = ws2812_urgb_u32(r, g, b);
+    const uint8_t index = led_type_to_physical_index(type);
+    instance->led_state.line[index] = color;
     instance->led_state.update_line |= led_get_update_line_by_type(type);
+    if(type == FuriBspLedTypeBatteryOutline) {
+        // outline is 2 physical leds
+        instance->led_state.line[index + 1] = color;
+    }
 }
 
 void furi_bsp_led_all_off(FuriBspLed* instance) {

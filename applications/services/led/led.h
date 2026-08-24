@@ -1,5 +1,6 @@
 #pragma once
 #include <furi.h>
+#include <furi_bsp_led_type.h>
 
 #define RECORD_LEDS "led"
 typedef struct Led Led;
@@ -26,38 +27,8 @@ typedef struct {
         .b = ((color565 >> 0) & 0x1F) << 3,  \
     }
 
-typedef enum {
-    // line 1
-    LedTypeNet,
-    LedTypeWiFi,
-    LedTypeEth2,
-    LedTypeEth1,
-
-    // line 2
-    LedTypePower,
-    LedTypeBatteryOutline, // 2 leds
-    LedTypeBatteryWatt1 = LedTypeBatteryOutline + 2,
-    LedTypeBatteryWatt2,
-    LedTypeBatteryWatt3,
-    LedTypeBatteryWatt4,
-
-    // line 3
-    LedTypeUsbCharging,
-    LedTypeUsbWatt1,
-    LedTypeUsbWatt2,
-    LedTypeUsbWatt3,
-    LedTypeUsbWatt4,
-    LedTypeBatteryCenter,
-
-    // special types
-    // LedTypeLine1Off,
-    // LedTypeLine2Off,
-    // LedTypeLine3Off,
-    LedTypeLineAllOff,
-} LedType;
-
 typedef struct {
-    const LedType type;
+    const FuriBspLedType type;
     const LedColor color;
 } LedItem;
 
@@ -79,9 +50,9 @@ typedef enum {
 extern "C" {
 #endif
 
-void led_set_color_single(Led* instance, LedType type, LedColor color);
+void led_set_color_single(Led* instance, FuriBspLedType type, LedColor color);
 
-void led_set_color_batch(Led* instance, const LedBatch* items);
+void led_set_color_batch(Led* instance, const LedBatch* batch);
 
 void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness);
 
