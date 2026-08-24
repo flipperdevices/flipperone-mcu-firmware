@@ -68,22 +68,51 @@ static FURI_ALWAYS_INLINE int ina219_read_reg(Ina219* instance, Ina219Reg reg, u
 }
 
 /* Datasheet Table 4: conversion time for each ADC setting. */
-static uint32_t ina219_adc_time_us(uint8_t adc) {
+static uint32_t ina219_adc_shunt_time_us(Ina219ShuntRes adc) {
     switch(adc & 0x0F) {
-    case Ina219ShuntRes9bit1S84ms: return 84;
-    case Ina219ShuntRes10bit1S148ms: return 148;
-    case Ina219ShuntRes11bit1S276ms: return 276;
-    case Ina219ShuntRes12bit1S532ms: return 532;
-    case Ina219ShuntRes12bit2S1060ms: return 1060;
-    case Ina219ShuntRes12bit4S2130ms: return 2130;
-    case Ina219ShuntRes12bit8S4260ms: return 4260;
-    case Ina219ShuntRes12bit16S8510ms: return 8510;
-    case Ina219ShuntRes12bit32S17020ms: return 17020;
-    case Ina219ShuntRes12bit64S34050ms: return 34050;
-    case Ina219ShuntRes12bit128S68100ms: return 68100;
+    case Ina219ShuntRes9bit1S84ms:
+        return 84;
+    case Ina219ShuntRes10bit1S148ms:
+        return 148;
+    case Ina219ShuntRes11bit1S276ms:
+        return 276;
+    case Ina219ShuntRes12bit1S532ms:
+        return 532;
+    case Ina219ShuntRes12bit2S1060ms:
+        return 1060;
+    case Ina219ShuntRes12bit4S2130ms:
+        return 2130;
+    case Ina219ShuntRes12bit8S4260ms:
+        return 4260;
+    case Ina219ShuntRes12bit16S8510ms:
+        return 8510;
+    case Ina219ShuntRes12bit32S17020ms:
+        return 17020;
+    case Ina219ShuntRes12bit64S34050ms:
+        return 34050;
+    case Ina219ShuntRes12bit128S68100ms:
+        return 68100;
     default: {
-        furi_crash("Invalid ADC");
+        furi_crash("Invalid ADC SHUNT");
         return 68100; // Unreachable, but avoids compiler warning
+    }
+    }
+}
+
+/* Datasheet Table 4: conversion time for each ADC setting. */
+static uint32_t ina219_adc_bus_time_us(Ina219BusRes adc) {
+    switch(adc & 0x0F) {
+    case Ina219BusRes9bit:
+        return 84;
+    case Ina219BusRes10bit:
+        return 148;
+    case Ina219BusRes11bit:
+        return 276;
+    case Ina219BusRes12bit:
+        return 532;
+    default: {
+        furi_crash("Invalid ADC BUS");
+        return 532; // Unreachable, but avoids compiler warning
     }
     }
 }
@@ -154,8 +183,8 @@ void ina219_set_config(Ina219* instance, Ina219Range range, Ina219BusRes bus_res
     config.mode = mode;
     instance->mode = mode;
     instance->config = config;
-    instance->bus_conv_time_us = ina219_adc_time_us(bus_res);
-    instance->shunt_conv_time_us = ina219_adc_time_us(shunt_res);
+    instance->bus_conv_time_us = ina219_adc_bus_time_us(bus_res);
+    instance->shunt_conv_time_us = ina219_adc_shunt_time_us(shunt_res);
     ina219_write_reg(instance, Ina219RegConfig, *(uint16_t*)&config);
 }
 
@@ -187,8 +216,8 @@ Ina219* ina219_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, floa
         config.mode = Ina219ModePowerDown;
         instance->config = config;
         instance->mode = Ina219ModePowerDown;
-        instance->bus_conv_time_us = ina219_adc_time_us(config.badc);
-        instance->shunt_conv_time_us = ina219_adc_time_us(config.sadc);
+        instance->bus_conv_time_us = ina219_adc_bus_time_us(config.badc);
+        instance->shunt_conv_time_us = ina219_adc_shunt_time_us(config.sadc);
         ina219_write_reg(instance, Ina219RegConfig, *(uint16_t*)&config);
 
     } else {
@@ -220,10 +249,7 @@ void ina219_set_power_down(Ina219* instance, bool power_down) {
 float ina219_get_power_w(Ina219* instance) {
     furi_check(instance);
     // Power requires both conversions: trigger a single shunt+bus cycle.
-    ina219_trigger_conversion(
-        instance,
-        Ina219ModeShuntBusTrig,
-        instance->bus_conv_time_us + instance->shunt_conv_time_us + INA219_TRIGGER_MARGIN_US);
+    ina219_trigger_conversion(instance, Ina219ModeShuntBusTrig, instance->bus_conv_time_us + instance->shunt_conv_time_us + INA219_TRIGGER_MARGIN_US);
     uint16_t raw_power = 0;
     ina219_read_reg(instance, Ina219RegPower, &raw_power);
     return raw_power * instance->power_lsb;
@@ -231,8 +257,7 @@ float ina219_get_power_w(Ina219* instance) {
 
 float ina219_get_bus_voltage_v(Ina219* instance) {
     furi_check(instance);
-    ina219_trigger_conversion(
-        instance, Ina219ModeBusTrig, instance->bus_conv_time_us + INA219_TRIGGER_MARGIN_US);
+    ina219_trigger_conversion(instance, Ina219ModeBusTrig, instance->bus_conv_time_us + INA219_TRIGGER_MARGIN_US);
     Ina219BusVoltageRegBits raw_bus_voltage = {0};
     ina219_read_reg(instance, Ina219RegBusVoltage, (uint16_t*)&raw_bus_voltage);
     if(raw_bus_voltage.ovf) {
@@ -243,8 +268,7 @@ float ina219_get_bus_voltage_v(Ina219* instance) {
 
 float ina219_get_shunt_voltage_mv(Ina219* instance) {
     furi_check(instance);
-    ina219_trigger_conversion(
-        instance, Ina219ModeShuntTrig, instance->shunt_conv_time_us + INA219_TRIGGER_MARGIN_US);
+    ina219_trigger_conversion(instance, Ina219ModeShuntTrig, instance->shunt_conv_time_us + INA219_TRIGGER_MARGIN_US);
     int16_t raw_shunt_voltage = 0;
     ina219_read_reg(instance, Ina219RegShuntVoltage, (uint16_t*)&raw_shunt_voltage);
     return raw_shunt_voltage * 0.01f; // LSB = 10uV
@@ -252,8 +276,7 @@ float ina219_get_shunt_voltage_mv(Ina219* instance) {
 
 float ina219_get_current_a(Ina219* instance) {
     furi_check(instance);
-    ina219_trigger_conversion(
-        instance, Ina219ModeShuntTrig, instance->shunt_conv_time_us + INA219_TRIGGER_MARGIN_US);
+    ina219_trigger_conversion(instance, Ina219ModeShuntTrig, instance->shunt_conv_time_us + INA219_TRIGGER_MARGIN_US);
     int16_t raw_current = 0;
     ina219_read_reg(instance, Ina219RegCurrent, (uint16_t*)&raw_current);
     return (float)raw_current * instance->current_lsb;
