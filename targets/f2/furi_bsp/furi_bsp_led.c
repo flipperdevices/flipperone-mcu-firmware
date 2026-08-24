@@ -72,7 +72,6 @@ void furi_bsp_led_set(FuriBspLed* instance, FuriBspLedType type, uint8_t r, uint
     furi_check(type <= FuriBspLedTypeBatteryCenter);
 
     if(type == FuriBspLedTypePower) {
-        //FURI_LOG_W("FuriBspLed", "FuriBspLedTypePower.");
         furi_hal_pwm_set_duty_cycle(instance->led_state.pwm_power_r, r);
         furi_hal_pwm_set_duty_cycle(instance->led_state.pwm_power_g, g);
         furi_hal_pwm_set_duty_cycle(instance->led_state.pwm_power_b, b);
