@@ -6,6 +6,8 @@
 
 #include <drivers/ws2812/ws2812.h>
 
+#define TAG "FuriBspLed"
+
 #define LED_LINES_COUNT             (3U)
 #define LED_WAIT_POWER_ON_WS2812_MS (5U)
 #define LED_LINE1_INDEX             (0U)

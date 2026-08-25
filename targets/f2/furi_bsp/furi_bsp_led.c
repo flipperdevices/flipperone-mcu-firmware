@@ -7,6 +7,8 @@
 
 #include <drivers/ws2812/ws2812.h>
 
+#define TAG "FuriBspLed"
+
 #define LED_LINES_COUNT             (3U)
 #define LED_WAIT_POWER_ON_WS2812_MS (5U)
 #define LED_LINE1_INDEX             (0U)
@@ -92,6 +94,9 @@ void furi_bsp_led_all_off(FuriBspLed* instance) {
     furi_assert(instance);
     memset(instance->led_state.line, 0x00, sizeof(instance->led_state.line));
     instance->led_state.update_line |= LedUpdateLine1 | LedUpdateLine2 | LedUpdateLine3;
+    furi_hal_pwm_set_duty_cycle(instance->led_state.pwm_power_r, 0);
+    furi_hal_pwm_set_duty_cycle(instance->led_state.pwm_power_g, 0);
+    furi_hal_pwm_set_duty_cycle(instance->led_state.pwm_power_b, 0);
 }
 
 static bool led_line_is_wanna_power(uint32_t* line_buffer, size_t led_count) {
