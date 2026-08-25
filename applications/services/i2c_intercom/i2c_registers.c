@@ -10,19 +10,11 @@ typedef enum {
     I2CRegFlagWrite = 1 << 1,
     I2CRegFlagReadToClear = 1 << 2,
     I2CRegFlagInterrupt = 1 << 3,
-    I2CRegFlagMemoryBlock = 1 << 4,
 } I2CRegFlag;
 
 typedef struct {
     uint32_t flags;
-    union {
-        uint16_t value;
-        struct {
-            uint16_t size;
-            uint8_t* data;
-        } block;
-    };
-
+    uint16_t value;
 } I2CReg;
 
 DICT_DEF2(I2CRegMap, uint16_t, M_DEFAULT_OPLIST, I2CReg, M_POD_OPLIST);
@@ -206,20 +198,6 @@ void i2c_register_add_writable(uint16_t address, uint16_t default_value, I2CRegi
     FURI_CRITICAL_EXIT();
 }
 
-void i2c_register_add_memory_block(uint16_t address, uint16_t size, uint8_t* data, I2CRegisterCallback write_callback, void* write_callback_context) {
-    furi_check(address % 2 == 0); // only even addresses are valid
-    furi_check(i2c_register_get(address) == NULL); // address must not exist
-    furi_check(size > 0);
-    furi_check(data != NULL);
-
-    FURI_CRITICAL_ENTER();
-    I2CReg reg = {.flags = I2CRegFlagRead | I2CRegFlagWrite | I2CRegFlagMemoryBlock, .block.size = size, .block.data = data};
-    i2c_register_set_at(address, reg);
-    I2CRegisterCallbackWithContext callback_with_context = {.callback = write_callback, .context = write_callback_context};
-    i2c_interrupt_callback_set_at(address, callback_with_context);
-    FURI_CRITICAL_EXIT();
-}
-
 void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit) {
     FURI_CRITICAL_ENTER();
     i2c_register_add_internal(address, 0x0000, I2CRegFlagRead | I2CRegFlagReadToClear | I2CRegFlagInterrupt);
@@ -295,28 +273,12 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
     }
 
     bool result = false;
-    uint16_t even_address = (address) & 0xFFFE;
-    I2CReg* reg = i2c_register_get(even_address);
+    bool is_hi_byte = address & 1;
+    uint16_t even_address = address & 0xFFFE;
 
-    if(!reg) {
-        // No match - maybe it's a memory block
-        reg = i2c_register_get(address);
-        if(reg) {
-            if((reg->flags & I2CRegFlagMemoryBlock) == 0) reg = NULL;
-        }
-    }
-    if(reg && (reg->flags & I2CRegFlagWrite)) {
-        if((reg->flags & I2CRegFlagMemoryBlock) && (offset < reg->block.size)) {
-            reg->block.data[offset] = value;
-            if(offset == reg->block.size - 1) {
-                I2CRegisterCallbackWithContext* callback_with_context = i2c_interrupt_callback_get(address);
-                if(callback_with_context && callback_with_context->callback) {
-                    callback_with_context->callback(callback_with_context->context, address, reg->value);
-                }
-            }
-            result = true;
-        } else {
-            bool is_hi_byte = address & 1;
+    do {
+        I2CReg* reg = i2c_register_get(even_address);
+        if(reg && (reg->flags & I2CRegFlagWrite)) {
             if(is_hi_byte) {
                 REG16_SET_HI(reg->value, value);
 
@@ -330,7 +292,7 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
             }
             result = true;
         }
-    }
+    } while(false);
 
     return result;
 }

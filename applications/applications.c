@@ -19,6 +19,7 @@ extern int32_t headphones_srv(void* p);
 extern int32_t usb_mux_srv(void* p);
 extern int32_t cli_uart_srv(void* p);
 extern int32_t cli_vcp_srv(void* p);
+extern int32_t updater_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -133,6 +134,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = cli_uart_srv,
         .name = "CliUartSrv",
         .appid = "cli_uart_srv",
+        .stack_size = 1024 * 2,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = updater_srv,
+        .name = "UpdaterSrv",
+        .appid = "updater_srv",
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },

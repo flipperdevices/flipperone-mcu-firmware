@@ -171,4 +171,22 @@
 #define I2C_HAPTIC_DURATION_MASK           (0x00FF)
 #define I2C_HAPTIC_DURATION_SHIFT          (0)
 
-#define I2C_UPDATER_DATA_BLOCK_ADDRESS (0xF000 + 0x100)
+// Updater registers
+
+/*
+ * 0xF000 + 0x00: Updater status register (read), High byte: UpdaterError, Low byte: UpdaterState
+ * 0xF000 + 0x02: Updater firmware version register (read), 2 bytes, current firmware version
+ * 0xF000 + 0x04: Updater command register (write), UpdaterCommand
+ * 0xF000 + 0x20: Updater new firmware CRC register (write), 2 bytes, CRC16 of the new firmware
+ * 0xF000 + 0x22: Updater new firmware blocks register (write), 2 bytes, number of blocks of the new firmware
+ * 0xF000 + 0x40: Updater data register (write), 256 bytes of data, followed by 2 bytes of block index and 2 bytes of CRC16. 
+*/
+#define I2C_UPDATER_STATUS_REG_ADDRESS     (0xF000 + 0x00)
+#define I2C_UPDATER_FW_VERSION_REG_ADDRESS (0xF000 + 2)
+#define I2C_UPDATER_CMD_REG_ADDRESS        (0xF000 + 4)
+
+#define I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS    (0xF000 + 0x20)
+#define I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS (0xF000 + 0x20 + 2)
+
+#define I2C_UPDATER_DATA_ADDRESS (0xF000 + 0x40)
+#define I2C_UPDATER_DATA_LEN     (256 + 2 + 2)

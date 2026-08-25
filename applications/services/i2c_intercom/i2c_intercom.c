@@ -31,8 +31,7 @@ struct I2CIntercom {
     alarm_id_t timeout_alarm;
 
     volatile I2CIntercomState state;
-    volatile size_t start_address;
-    volatile size_t read_address_offset;
+    volatile size_t mem_address;
 };
 
 static int64_t __isr __not_in_flash_func(i2c_intercom_timeout_callback)(alarm_id_t id, __unused void* user_data) {
@@ -47,13 +46,14 @@ static int64_t __isr __not_in_flash_func(i2c_intercom_timeout_callback)(alarm_id
 static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
     uint8_t data;
     with_i2c_register({
-        if(!i2c_register_read_start(instance->start_address, instance->read_address_offset, &data)) {
+        if(!i2c_register_read_start(instance->mem_address, &data)) {
             data = I2C_INTERCOM_INVALID_ADDRESS_VALUE;
+            FURI_LOG_W(TAG, "read from invalid addr 0x%04X", instance->mem_address);
         }
         uint8_t len = furi_hal_i2c_slave_write_blocking(handle, &data, 1);
         if(len) {
-            i2c_register_read_commit(instance->start_address, instance->read_address_offset);
-            instance->read_address_offset++;
+            i2c_register_read_commit(instance->mem_address);
+            instance->mem_address++;
         }
     });
 }
@@ -61,13 +61,16 @@ static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle,
 static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
     size_t total = 0;
     size_t len = 0;
-    size_t addr_offset = 0;
     do {
         uint8_t data;
         len = furi_hal_i2c_slave_read_blocking(handle, &data, 1);
         if(len) {
-            with_i2c_register({ i2c_register_write(instance->start_address, addr_offset, data); });
-            addr_offset++;
+            bool valid = false;
+            with_i2c_register({ valid = i2c_register_write(instance->mem_address, data); });
+            if(!valid) {
+                FURI_LOG_W(TAG, "write to invalid addr 0x%04X", instance->mem_address);
+            }
+            instance->mem_address++;
         }
         total += len;
     } while(len);
@@ -104,8 +107,7 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     case FuriHalI2cBusSlaveEventWrite:
         // Master is writing data to slave
         if(instance->state == I2CIntercomStateStart) {
-            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->start_address);
-            instance->read_address_offset = 0;
+            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
         }
         if(instance->state == I2CIntercomStateAddressSet) {
             i2c_intercom_data_receive(handle, instance);
@@ -118,18 +120,16 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
         if(instance->state == I2CIntercomStateStart || instance->state == I2CIntercomStateDataTransmitted) {
-            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->start_address);
-            instance->read_address_offset = 0;
+            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
         }
         if(instance->state == I2CIntercomStateAddressNoSet || instance->state == I2CIntercomStateIdle) {
-            instance->start_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
+            instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
         }
         break;
     case FuriHalI2cBusSlaveEventStop:
         // Master has sent a Stop signal, finalize any ongoing operations
         if(instance->state == I2CIntercomStateStart) {
-            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->start_address);
-            instance->read_address_offset = 0;
+            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
         }
         if(instance->state == I2CIntercomStateAddressSet) {
             i2c_intercom_data_receive(handle, instance);
@@ -143,8 +143,6 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     default:
         break;
     }
-
-    // furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_FLAG_ISR);
 }
 
 void i2c_intercom_setup_end(I2CIntercom* instance) {
@@ -162,7 +160,7 @@ int32_t i2c_intercom_srv(void* p) {
 
     furi_record_create(RECORD_I2C_INTERCOM, instance);
 
-    FURI_LOG_I(TAG, "started");
+    FURI_LOG_I(TAG, "Started");
 
     // wait to end of setup before allowing interrupts
     {
@@ -170,12 +168,12 @@ int32_t i2c_intercom_srv(void* p) {
         furi_check(!(flags & FuriFlagError));
     }
 
-    FURI_LOG_I(TAG, "setup completed, enabling I2C slave mode");
+    FURI_LOG_I(TAG, "Setup completed, enabling I2C slave mode");
 
     furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
     instance->state = I2CIntercomStateIdle;
-    instance->start_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
+    instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
 
     while(1) {
         furi_delay_ms(FuriWaitForever);

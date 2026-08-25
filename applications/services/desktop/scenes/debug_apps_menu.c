@@ -13,6 +13,7 @@
 
 typedef struct {
     uint32_t selected_index;
+    bool rollback_available;
 } DebugMenuViewModel;
 
 static bool debug_menu_layout(void* _model) {
@@ -54,8 +55,7 @@ static bool debug_menu_layout(void* _model) {
             }
         }
     }
-
-    elements_softkey_button_element(0, "Rollback", false, false);
+    if(model->rollback_available) elements_softkey_button_element(0, "Rollback", false, false);
     elements_softkey_button_element(4, "DFU", false, false);
 
     return false;
@@ -79,9 +79,13 @@ static bool debug_menu_input(InputEvent* event, void* context) {
         furi_hal_power_enter_bootsel();
         consumed = true;
     } else if(event->type == InputTypePress && event->key == InputKey1) {
-        furi_hal_flash_rollback();
-        furi_hal_power_reset();
-        consumed = true;
+        bool rollback_available = false;
+        with_view_model(view, DebugMenuViewModel * model, { rollback_available = model->rollback_available; }, false);
+        if(rollback_available) {
+            furi_hal_flash_fw_partition_invalidate(furi_hal_flash_get_active_fw_partition());
+            furi_hal_power_reset();
+            consumed = true;
+        }
     } else if((event->type == InputTypePress) || (event->type == InputTypeRepeat)) {
         switch(event->key) {
         case InputKeyDown:
@@ -110,7 +114,18 @@ static void debug_menu_on_enter(Scene* scene, void* context) {
     view_set_layout_callback(view, debug_menu_layout);
     view_set_input_callback(view, debug_menu_input, scene);
 
-    with_view_model(view, DebugMenuViewModel * model, { model->selected_index = 0; }, false);
+    bool rollback_available = false;
+    FlashPartitionId rollback_part = furi_hal_flash_get_active_fw_partition() == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
+    rollback_available = furi_hal_flash_fw_partition_is_valid(rollback_part);
+
+    with_view_model(
+        view,
+        DebugMenuViewModel * model,
+        {
+            model->selected_index = 0;
+            model->rollback_available = rollback_available;
+        },
+        false);
 }
 
 static void debug_menu_on_exit(Scene* scene, void* context) {
