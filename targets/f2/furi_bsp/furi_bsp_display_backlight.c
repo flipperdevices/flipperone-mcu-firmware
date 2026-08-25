@@ -9,13 +9,6 @@
 #define BACKLIGHT_PWM_RESOLUTION 8 // 8-bit PWM for backlight
 #define BACKLIGHT_PWM_FREQ_HZ    40000 // 40kHz PWM for backlight
 
-// typedef struct {
-//     uint8_t brightness;
-//     FuriHalPwm* backlight_pwm;
-// } FuriBspDisplayBacklight;
-
-// static FuriBspDisplayBacklight handle_backlight = {0, NULL};
-
 static FuriHalPwm* backlight_pwm = NULL;
 
 void furi_bsp_display_backlight_init(void) {
