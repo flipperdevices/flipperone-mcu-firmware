@@ -20,6 +20,7 @@ typedef struct {
     FuriState* brightness[LedGroupMax];
     FuriState* backlight_time;
     bool backlight_always_on;
+    uint8_t backlight_applied_brightness;
 } LedState;
 
 struct Led {
@@ -150,11 +151,18 @@ static void led_backlight_enable(Led* instance, bool enable) {
     if(enable) {
         furi_state_get(instance->led_state.brightness[LedGroupDisplayBacklight], &brightness);
     }
+    instance->led_state.backlight_applied_brightness = brightness;
     furi_bsp_display_backlight_set_brightness(brightness);
 }
 
 static void led_backlight_ping(Led* instance) {
-    led_backlight_enable(instance, true);
+    uint8_t brightness = 0;
+    furi_state_get(instance->led_state.brightness[LedGroupDisplayBacklight], &brightness);
+    if(brightness != instance->led_state.backlight_applied_brightness) {
+        // enable only when the applied brightness actually changes
+        led_backlight_enable(instance, true);
+    }
+
     uint32_t backlight_time;
     furi_state_get(instance->led_state.backlight_time, &backlight_time);
     if((!instance->led_state.backlight_always_on) && (backlight_time > 0)) {
