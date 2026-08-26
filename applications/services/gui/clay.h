@@ -1040,6 +1040,11 @@ typedef struct {
     bool maxRenderCommandsExceeded;
     bool maxTextMeasureCacheExceeded;
     bool textMeasurementFunctionNotSet;
+    // layoutElementsHashMapInternal is persistent (never reset between frames), so this can
+    // trip long after startup once enough distinct element IDs have been seen across the
+    // session, silently breaking hashmap lookups (e.g. floating element parent attachment)
+    // for any newly-seen ID from that point on.
+    bool maxHashMapItemsExceeded;
 } Clay_BooleanWarnings;
 
 typedef struct {
@@ -1719,6 +1724,13 @@ bool Clay__PointIsInsideRect(Clay_Vector2 point, Clay_BoundingBox rect) {
 Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Clay_LayoutElement* layoutElement) {
     Clay_Context* context = Clay_GetCurrentContext();
     if (context->layoutElementsHashMapInternal.length == context->layoutElementsHashMapInternal.capacity - 1) {
+        if (!context->booleanWarnings.maxHashMapItemsExceeded) {
+            context->booleanWarnings.maxHashMapItemsExceeded = true;
+            context->errorHandler.errorHandlerFunction(CLAY__INIT(Clay_ErrorData) {
+                    .errorType = CLAY_ERROR_TYPE_ELEMENTS_CAPACITY_EXCEEDED,
+                    .errorText = CLAY_STRING("Clay ran out of capacity in its persistent element-id hashmap (layoutElementsHashMapInternal). This array is never reset between frames, so it fills up permanently over the session as new distinct element IDs are seen; from now on newly-seen element IDs will fail hashmap lookups. Try using Clay_SetMaxElementCount() with a higher value."),
+                    .userData = context->errorHandler.userData });
+        }
         return NULL;
     }
     Clay_LayoutElementHashMapItem item = { .elementId = elementId, .layoutElement = layoutElement, .nextIndex = -1, .generation = context->generation + 1 };
@@ -1998,10 +2010,24 @@ bool Clay__MemCmp(const char *s1, const char *s2, int32_t length);
     }
 #endif
 
+// Fires the error handler exactly once, the moment an element gets silently
+// dropped because context->layoutElements ran out of capacity. Without this,
+// the caller has no way of knowing that Clay__Open*Element() returned early
+// and skipped creating the element.
+void Clay__WarnElementCapacityExceeded(Clay_Context *context) {
+    if (!context->booleanWarnings.maxElementsExceeded) {
+        context->booleanWarnings.maxElementsExceeded = true;
+        context->errorHandler.errorHandlerFunction(CLAY__INIT(Clay_ErrorData) {
+                .errorType = CLAY_ERROR_TYPE_ELEMENTS_CAPACITY_EXCEEDED,
+                .errorText = CLAY_STRING("Clay ran out of capacity in its internal array for storing elements and dropped one or more elements. This limit can be increased with Clay_SetMaxElementCount()."),
+                .userData = context->errorHandler.userData });
+    }
+}
+
 void Clay__OpenElement(void) {
     Clay_Context* context = Clay_GetCurrentContext();
     if (context->layoutElements.length == context->layoutElements.capacity - 1 || context->booleanWarnings.maxElementsExceeded) {
-        context->booleanWarnings.maxElementsExceeded = true;
+        Clay__WarnElementCapacityExceeded(context);
         return;
     }
     Clay_LayoutElement layoutElement = CLAY__DEFAULT_STRUCT;
@@ -2018,7 +2044,7 @@ void Clay__OpenElement(void) {
 void Clay__OpenElementWithId(Clay_ElementId elementId) {
     Clay_Context* context = Clay_GetCurrentContext();
     if (context->layoutElements.length == context->layoutElements.capacity - 1 || context->booleanWarnings.maxElementsExceeded) {
-        context->booleanWarnings.maxElementsExceeded = true;
+        Clay__WarnElementCapacityExceeded(context);
         return;
     }
     Clay_LayoutElement layoutElement = CLAY__DEFAULT_STRUCT;
@@ -2037,7 +2063,7 @@ void Clay__OpenElementWithId(Clay_ElementId elementId) {
 void Clay__OpenTextElement(Clay_String text, Clay_TextElementConfig *textConfig) {
     Clay_Context* context = Clay_GetCurrentContext();
     if (context->layoutElements.length == context->layoutElements.capacity - 1 || context->booleanWarnings.maxElementsExceeded) {
-        context->booleanWarnings.maxElementsExceeded = true;
+        Clay__WarnElementCapacityExceeded(context);
         return;
     }
     Clay_LayoutElement *parentElement = Clay__GetOpenLayoutElement();

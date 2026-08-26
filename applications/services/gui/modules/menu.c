@@ -73,7 +73,7 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
                 .wrapMode = CLAY_TEXT_WRAP_NONE,
             }));
 
-        CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}}}){};
+        CLAY(CLAY_ID_LOCAL("Spacer"), {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}}}){};
 
         if(sub_label) {
             CLAY_TEXT(
@@ -86,41 +86,53 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
         }
 
         if(selected) {
-            CLAY_AUTO_ID({
-                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(MENU_LINE_HEIGHT + 1)}},
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-                .border =
-                    {
-                        .color = COLOR_BLACK,
-                        .width = {.bottom = 2, .top = 1},
-                    },
-            }){};
+            /* Explicit, menu/row-independent IDs: only one item can ever be
+             * selected at a time, so these always occupy the same fixed slot
+             * in Clay's persistent element-id hashmap instead of a new one
+             * derived from (row index, sibling offset) - the latter churns
+             * through unique IDs as different rows/menus get selected over
+             * the session and eventually exhausts that hashmap for good. */
+            CLAY(
+                CLAY_ID("MenuSelectionBorder"),
+                {
+                    .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(MENU_LINE_HEIGHT + 1)}},
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                    .border =
+                        {
+                            .color = COLOR_BLACK,
+                            .width = {.bottom = 2, .top = 1},
+                        },
+                }){};
 
             const Image* left_border = &menu_border_left;
             const Image* right_border = &menu_border_right;
 
-            CLAY_AUTO_ID({
-                .layout = {.sizing = {.height = CLAY_SIZING_FIXED(left_border->height), .width = CLAY_SIZING_FIXED(left_border->width)}},
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-                .image = {.imageData = (void*)left_border},
-            }){};
-            CLAY_AUTO_ID({
-                .layout = {.sizing = {.height = CLAY_SIZING_FIXED(right_border->height), .width = CLAY_SIZING_FIXED(right_border->width)}},
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-                .image = {.imageData = (void*)right_border},
-            }){};
+            CLAY(
+                CLAY_ID("MenuSelectionLeftCorner"),
+                {
+                    .layout = {.sizing = {.height = CLAY_SIZING_FIXED(left_border->height), .width = CLAY_SIZING_FIXED(left_border->width)}},
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                    .image = {.imageData = (void*)left_border},
+                }){};
+            CLAY(
+                CLAY_ID("MenuSelectionRightCorner"),
+                {
+                    .layout = {.sizing = {.height = CLAY_SIZING_FIXED(right_border->height), .width = CLAY_SIZING_FIXED(right_border->width)}},
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                    .image = {.imageData = (void*)right_border},
+                }){};
         }
     }
 }
@@ -163,16 +175,18 @@ static void menu_draw_scrollbar(MenuViewModel* model) {
             .image = {.imageData = (void*)&scrollbar_background},
         }) {
         if(model->show_scrollbar) {
-            CLAY_AUTO_ID({
-                .backgroundColor = COLOR_BLACK,
-                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_PERCENT(model->scrollbar_len)}},
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                        .offset = {.y = model->scrollbar_offset + 1},
-                    },
-            }){};
+            CLAY(
+                CLAY_ID("ScrollbarThumb"),
+                {
+                    .backgroundColor = COLOR_BLACK,
+                    .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_PERCENT(model->scrollbar_len)}},
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                            .offset = {.y = model->scrollbar_offset + 1},
+                        },
+                }){};
         }
     }
 }
@@ -181,31 +195,35 @@ static bool menu_layout_callback(void* _model) {
     MenuViewModel* model = _model;
     furi_assert(model);
 
-    CLAY_AUTO_ID({
-        .backgroundColor = COLOR_WHITE,
-        .layout =
-            {
-                .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-                .padding = {.left = 4, .right = 1, .top = 2, .bottom = 2},
-                .childGap = 2,
-            },
-    }) {
-        if(model->title) {
-            CLAY_TEXT(clay_helper_string_from_chars(model->title), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_GRAY}));
-        }
-        CLAY_AUTO_ID({
+    CLAY(
+        CLAY_APP_ID("Root"),
+        {
             .backgroundColor = COLOR_WHITE,
             .layout =
                 {
-                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                    .layoutDirection = CLAY_TOP_TO_BOTTOM,
                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
                     .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-                    .padding = {.left = 4, .right = 0, .top = 0, .bottom = 0},
-                    .childGap = 9,
+                    .padding = {.left = 4, .right = 1, .top = 2, .bottom = 2},
+                    .childGap = 2,
                 },
         }) {
+        if(model->title) {
+            CLAY_TEXT(clay_helper_string_from_chars(model->title), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_GRAY}));
+        }
+        CLAY(
+            CLAY_APP_ID("Content"),
+            {
+                .backgroundColor = COLOR_WHITE,
+                .layout =
+                    {
+                        .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                        .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
+                        .padding = {.left = 4, .right = 0, .top = 0, .bottom = 0},
+                        .childGap = 9,
+                    },
+            }) {
             menu_draw_item_list(model);
             menu_draw_scrollbar(model);
         }
