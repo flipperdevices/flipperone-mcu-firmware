@@ -17,7 +17,15 @@
 
 #define GUI_EVENT_FLAG_REDRAW (1U << 0)
 
-#define CLAY_MAX_ELEMENT_COUNT            144
+/* Clay has two separate capacity limits:
+ * - CLAY_MAX_ELEMENT_COUNT: per-frame ephemeral arrays (layoutElements,
+ *   renderCommands, per-element configs) - reset every frame, so only the
+ *   busiest single screen matters.
+ * - CLAY_MAX_ELEMENT_ID_COUNT: session-persistent ID-keyed arrays (the
+ *   element-id hashmap, text measurement cache) - never reset, so this must
+ *   cover every distinct element ID ever seen across ALL screens/apps. */
+#define CLAY_MAX_ELEMENT_COUNT            80
+#define CLAY_MAX_ELEMENT_ID_COUNT         256
 #define CLAY_MAX_MEASURE_TEXT_CACHE_WORDS 256
 
 typedef struct {
@@ -353,6 +361,29 @@ void gui_remove_view(Gui* gui, View* view) {
 
 static void gui_handle_clay_errors(Clay_ErrorData errorData) {
     FURI_LOG_E(TAG, "clay error: %s", errorData.errorText.chars);
+
+    if(errorData.errorType == CLAY_ERROR_TYPE_DUPLICATE_ID) {
+        FURI_LOG_E(
+            TAG,
+            "clay duplicate element id: %lu (base=%lu, offset=%lu)",
+            (unsigned long)errorData.elementId,
+            (unsigned long)errorData.elementBaseId,
+            (unsigned long)errorData.elementOffset);
+        if(errorData.elementStringId.chars) {
+            FURI_LOG_E(TAG, "clay duplicate string id: %.*s", (int)errorData.elementStringId.length, errorData.elementStringId.chars);
+        }
+    }
+
+    /* Dump the persistent element-id hashmap fill level so capacity overflows
+     * are diagnosable from the device log alone: once
+     * layoutElementsHashMapInternal fills up it stays full for the rest of the
+     * session, so the reported counts show how far CLAY_MAX_ELEMENT_ID_COUNT
+     * needs to grow. */
+    FURI_LOG_E(
+        TAG,
+        "clay state: hashmap=%d/%d",
+        (int)Clay_GetLayoutElementHashMapLength(),
+        (int)Clay_GetLayoutElementHashMapCapacity());
 }
 
 static void gui_input_logic(FuriEventLoopObject* object, void* context) {
@@ -419,14 +450,16 @@ static Gui* gui_alloc(void) {
 
     // Clay initialization
     Clay_SetMaxElementCount(CLAY_MAX_ELEMENT_COUNT);
+    Clay_SetMaxElementIdCount(CLAY_MAX_ELEMENT_ID_COUNT);
     Clay_SetMaxMeasureTextCacheWordCount(CLAY_MAX_MEASURE_TEXT_CACHE_WORDS);
     uint64_t clay_memory = Clay_MinMemorySize();
     FURI_LOG_I(
         TAG,
-        "Clay arena: %llu bytes (~%llu KiB), elements=%u, text_cache=%u words",
+        "Clay arena: %llu bytes (~%llu KiB), elements=%u, ids=%u, text_cache=%u words",
         clay_memory,
         clay_memory / 1024,
         CLAY_MAX_ELEMENT_COUNT,
+        CLAY_MAX_ELEMENT_ID_COUNT,
         CLAY_MAX_MEASURE_TEXT_CACHE_WORDS);
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(clay_memory, malloc(clay_memory));
     Clay_Initialize(arena, (Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT}, (Clay_ErrorHandler){gui_handle_clay_errors, gui});
