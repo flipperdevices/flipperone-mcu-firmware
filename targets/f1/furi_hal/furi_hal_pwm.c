@@ -46,6 +46,16 @@ FuriHalPwm* furi_hal_pwm_init(const GpioPin* gpio, size_t bits, size_t freq_hz, 
 
     // Set the PWM wrap value
     pwm_set_wrap(instance->slice_num, instance->max_value);
+
+    // Apply polarity inversion in hardware (CSR A_INV/B_INV) instead of
+    // inverting the level in software. Preserve the other channel's polarity
+    // bit in case the slice is shared with another PWM instance.
+    const uint32_t csr = pwm_hw->slice[instance->slice_num].csr;
+    pwm_set_output_polarity(
+        instance->slice_num,
+        instance->channel_num == 0 ? invert : (bool)(csr & PWM_CH0_CSR_A_INV_BITS),
+        instance->channel_num == 1 ? invert : (bool)(csr & PWM_CH0_CSR_B_INV_BITS));
+
     pwm_set_enabled(instance->slice_num, true);
     return instance;
 }
@@ -54,6 +64,12 @@ void furi_hal_pwm_deinit(FuriHalPwm* instance) {
     furi_check(instance);
 
     pwm_set_enabled(instance->slice_num, false);
+    // Clear this channel's inversion bit, preserving the other channel's.
+    const uint32_t csr = pwm_hw->slice[instance->slice_num].csr;
+    pwm_set_output_polarity(
+        instance->slice_num,
+        instance->channel_num == 0 ? false : (bool)(csr & PWM_CH0_CSR_A_INV_BITS),
+        instance->channel_num == 1 ? false : (bool)(csr & PWM_CH0_CSR_B_INV_BITS));
     furi_hal_gpio_init_ex(instance->gpio, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
 
     free(instance);
@@ -66,8 +82,7 @@ void furi_hal_pwm_set_duty_cycle(FuriHalPwm* instance, uint32_t value) {
         value = instance->max_value;
     }
 
-    if(instance->invert) {
-        value = instance->max_value - value; // Invert the PWM value
-    }
+    // Polarity is handled by the slice's A_INV/B_INV hardware bit set at
+    // init, so the level is written as-is.
     pwm_set_chan_level(instance->slice_num, instance->channel_num, value);
 }

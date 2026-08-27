@@ -2,6 +2,7 @@
 #include <furi_bsp_display_backlight.h>
 #include <furi_bsp_expander.h>
 #include <furi_bsp_vci.h>
+#include <furi_bsp_led.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -168,25 +168,25 @@ I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_backlight_control_set);
 
 void i2c_negotiator_led_link1(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
-    led_set_color_single(instance->led, LedTypeNet, color);
+    led_set_color_single(instance->led, FuriBspLedTypeNet, color);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link1);
 
 void i2c_negotiator_led_link2(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
-    led_set_color_single(instance->led, LedTypeWiFi, color);
+    led_set_color_single(instance->led, FuriBspLedTypeWiFi, color);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link2);
 
 void i2c_negotiator_led_link3(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
-    led_set_color_single(instance->led, LedTypeEth2, color);
+    led_set_color_single(instance->led, FuriBspLedTypeEth2, color);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link3);
 
 void i2c_negotiator_led_link4(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
-    led_set_color_single(instance->led, LedTypeEth1, color);
+    led_set_color_single(instance->led, FuriBspLedTypeEth1, color);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4);
 
