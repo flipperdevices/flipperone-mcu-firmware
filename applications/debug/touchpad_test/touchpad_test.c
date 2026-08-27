@@ -67,20 +67,22 @@ static bool touchpad_test_app_layout(void* _model) {
                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                     },
             }) {
-            CLAY_AUTO_ID({.layout = {.padding = {8, 8, 4, 4}}}) {
+            CLAY(CLAY_APP_ID("HeaderText"), {.layout = {.padding = {8, 8, 4, 4}}}) {
                 CLAY_TEXT(CLAY_STRING("Touchpad Test"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
             }
-            CLAY_AUTO_ID({
-                .layout =
-                    {
-                        .padding = {8, 8, 4, 4},
-                    },
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_CENTER, .parent = CLAY_ATTACH_POINT_RIGHT_CENTER},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-            }) {
+            CLAY(
+                CLAY_APP_ID("ClearHint"),
+                {
+                    .layout =
+                        {
+                            .padding = {8, 8, 4, 4},
+                        },
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_CENTER, .parent = CLAY_ATTACH_POINT_RIGHT_CENTER},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                }) {
                 CLAY_TEXT(CLAY_STRING("Ok to clear"), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
         }

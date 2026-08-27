@@ -50,23 +50,25 @@ static bool self_check_layout(void* _model) {
                     },
             }) {
             // image wrapper with floating position
-            CLAY_AUTO_ID({
-                .layout =
-                    {
-                        .sizing = {.height = CLAY_SIZING_FIT(0), .width = CLAY_SIZING_FIT(0)},
-                        .padding = {.left = 0, .right = 3, .top = 3, .bottom = 0},
-                    },
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-            }) {
+            CLAY(
+                CLAY_APP_ID("LogoWrapper"),
+                {
+                    .layout =
+                        {
+                            .sizing = {.height = CLAY_SIZING_FIT(0), .width = CLAY_SIZING_FIT(0)},
+                            .padding = {.left = 0, .right = 3, .top = 3, .bottom = 0},
+                        },
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                }) {
                 clay_fixed_image(&logo_head);
             }
 
             // text
-            CLAY_AUTO_ID() {
+            CLAY(CLAY_APP_ID("StatusText")) {
                 CLAY_TEXT(clay_helper_string_from(model->status_str), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
         }

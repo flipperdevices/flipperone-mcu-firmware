@@ -809,6 +809,16 @@ typedef struct Clay_ErrorData {
     // CLAY_ERROR_TYPE_PERCENTAGE_OVER_1 - An element was declared that using CLAY_SIZING_PERCENT but the percentage value was over 1. Percentage values are expected to be in the 0-1 range.
     // CLAY_ERROR_TYPE_INTERNAL_ERROR - Clay encountered an internal error. It would be wonderful if you could report this so we can fix it!
     Clay_ErrorType errorType;
+    // For CLAY_ERROR_TYPE_DUPLICATE_ID: the numeric id of the colliding element,
+    // plus its base id (parent id for text elements) and child offset, so the
+    // colliding declaration can be identified from the log alone.
+    uint32_t elementId;
+    uint32_t elementBaseId;
+    uint32_t elementOffset;
+    // For CLAY_ERROR_TYPE_DUPLICATE_ID: the string id when statically allocated
+    // (chars is NULL for dynamically-generated ids such as text elements).
+    // Valid only during the error callback.
+    Clay_String elementStringId;
     // A string containing human-readable error text that explains the error in more detail.
     Clay_String errorText;
     // A transparent pointer passed through from when the error handler was first provided.
@@ -847,6 +857,12 @@ CLAY_DLL_EXPORT Clay_Context* Clay_GetCurrentContext(void);
 // Sets the context that clay will use to compute the layout.
 // Used to restore a context saved from Clay_GetCurrentContext when using multiple instances of clay simultaneously.
 CLAY_DLL_EXPORT void Clay_SetCurrentContext(Clay_Context* context);
+// Returns the current fill level and capacity of the persistent element-id
+// hashmap (layoutElementsHashMapInternal). This map is never reset during the
+// session, so these are useful for diagnosing capacity overflow from an error
+// handler.
+CLAY_DLL_EXPORT int32_t Clay_GetLayoutElementHashMapLength(void);
+CLAY_DLL_EXPORT int32_t Clay_GetLayoutElementHashMapCapacity(void);
 // Updates the state of Clay's internal scroll data, updating scroll content positions if scrollDelta is non zero, and progressing momentum scrolling.
 // - enableDragScrolling when set to true will enable mobile device like "touch drag" scroll of scroll containers, including momentum scrolling after the touch has ended.
 // - scrollDelta is the amount to scroll this frame on each axis in pixels.
@@ -911,6 +927,14 @@ CLAY_DLL_EXPORT int32_t Clay_GetMaxElementCount(void);
 // Modifies the maximum number of UI elements supported by Clay's current configuration.
 // This may require reallocating additional memory, and re-calling Clay_Initialize();
 CLAY_DLL_EXPORT void Clay_SetMaxElementCount(int32_t maxElementCount);
+// Returns the capacity of the persistent element-id hashmap and other
+// session-lifetime ID-keyed arrays. Unlike maxElementCount (per-frame), these
+// arrays are never reset, so this must cover all distinct element IDs ever seen
+// across the whole session.
+CLAY_DLL_EXPORT int32_t Clay_GetMaxElementIdCount(void);
+// Modifies the capacity of the persistent element-id hashmap. Must be called
+// before Clay_Initialize().
+CLAY_DLL_EXPORT void Clay_SetMaxElementIdCount(int32_t maxElementIdCount);
 // Returns the maximum number of measured "words" (whitespace seperated runs of characters) that Clay can store in its internal text measurement cache.
 CLAY_DLL_EXPORT int32_t Clay_GetMaxMeasureTextCacheWordCount(void);
 // Modifies the maximum number of measured "words" (whitespace seperated runs of characters) that Clay can store in its internal text measurement cache.
@@ -1026,6 +1050,7 @@ CLAY__ARRAY_DEFINE_FUNCTIONS(typeName, arrayName)   \
 
 Clay_Context *Clay__currentContext;
 int32_t Clay__defaultMaxElementCount = 8192;
+int32_t Clay__defaultMaxElementIdCount = 8192;
 int32_t Clay__defaultMaxMeasureTextWordCacheCount = 16384;
 
 void Clay__ErrorHandlerFunctionDefault(Clay_ErrorData errorText) {
@@ -1040,6 +1065,11 @@ typedef struct {
     bool maxRenderCommandsExceeded;
     bool maxTextMeasureCacheExceeded;
     bool textMeasurementFunctionNotSet;
+    // layoutElementsHashMapInternal is persistent (never reset between frames), so this can
+    // trip long after startup once enough distinct element IDs have been seen across the
+    // session, silently breaking hashmap lookups (e.g. floating element parent attachment)
+    // for any newly-seen ID from that point on.
+    bool maxHashMapItemsExceeded;
 } Clay_BooleanWarnings;
 
 typedef struct {
@@ -1230,6 +1260,7 @@ CLAY__ARRAY_DEFINE(Clay__LayoutElementTreeRoot, Clay__LayoutElementTreeRootArray
 
 struct Clay_Context {
     int32_t maxElementCount;
+    int32_t maxElementIdCount;
     int32_t maxMeasureTextCacheWordCount;
     bool warningsEnabled;
     Clay_ErrorHandler errorHandler;
@@ -1323,7 +1354,14 @@ Clay_LayoutElement* Clay__GetOpenLayoutElement(void) {
 
 uint32_t Clay__GetParentElementId(void) {
     Clay_Context* context = Clay_GetCurrentContext();
-    return Clay_LayoutElementArray_Get(&context->layoutElements, Clay__int32_tArray_GetValue(&context->openLayoutElementStack, context->openLayoutElementStack.length - 2))->id;
+    // Note: this fork's CLAY(id, ...) macro evaluates the id argument BEFORE
+    // Clay__OpenElementWithId() pushes the element, so the currently open
+    // element (stack top) is the future parent. Using length - 2 (upstream's
+    // value, correct when the id is evaluated after opening via the declaration
+    // config) would hash against the GRANDPARENT, making CLAY_ID_LOCAL shared
+    // between siblings with different parents - which produced duplicate IDs
+    // (e.g. the menu item Spacer, all hashed against "MenuItems").
+    return Clay_LayoutElementArray_Get(&context->layoutElements, Clay__int32_tArray_GetValue(&context->openLayoutElementStack, context->openLayoutElementStack.length - 1))->id;
 }
 
 Clay_LayoutConfig * Clay__StoreLayoutConfig(Clay_LayoutConfig config) {  return Clay_GetCurrentContext()->booleanWarnings.maxElementsExceeded ? &CLAY_LAYOUT_DEFAULT : Clay__LayoutConfigArray_Add(&Clay_GetCurrentContext()->layoutConfigs, config); }
@@ -1719,6 +1757,13 @@ bool Clay__PointIsInsideRect(Clay_Vector2 point, Clay_BoundingBox rect) {
 Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Clay_LayoutElement* layoutElement) {
     Clay_Context* context = Clay_GetCurrentContext();
     if (context->layoutElementsHashMapInternal.length == context->layoutElementsHashMapInternal.capacity - 1) {
+        if (!context->booleanWarnings.maxHashMapItemsExceeded) {
+            context->booleanWarnings.maxHashMapItemsExceeded = true;
+            context->errorHandler.errorHandlerFunction(CLAY__INIT(Clay_ErrorData) {
+                    .errorType = CLAY_ERROR_TYPE_ELEMENTS_CAPACITY_EXCEEDED,
+                    .errorText = CLAY_STRING("Clay ran out of capacity in its persistent element-id hashmap (layoutElementsHashMapInternal). This array is never reset between frames, so it fills up permanently over the session as new distinct element IDs are seen; from now on newly-seen element IDs will fail hashmap lookups. Try using Clay_SetMaxElementIdCount() with a higher value."),
+                    .userData = context->errorHandler.userData });
+        }
         return NULL;
     }
     Clay_LayoutElementHashMapItem item = { .elementId = elementId, .layoutElement = layoutElement, .nextIndex = -1, .generation = context->generation + 1 };
@@ -1739,6 +1784,10 @@ Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Cl
             } else { // Multiple collisions this frame - two elements have the same ID
                 context->errorHandler.errorHandlerFunction(CLAY__INIT(Clay_ErrorData) {
                     .errorType = CLAY_ERROR_TYPE_DUPLICATE_ID,
+                    .elementId = elementId.id,
+                    .elementBaseId = elementId.baseId,
+                    .elementOffset = elementId.offset,
+                    .elementStringId = elementId.stringId,
                     .errorText = CLAY_STRING("An element with this ID was already previously declared during this layout."),
                     .userData = context->errorHandler.userData });
                 if (context->debugModeEnabled) {
@@ -1998,10 +2047,24 @@ bool Clay__MemCmp(const char *s1, const char *s2, int32_t length);
     }
 #endif
 
+// Fires the error handler exactly once, the moment an element gets silently
+// dropped because context->layoutElements ran out of capacity. Without this,
+// the caller has no way of knowing that Clay__Open*Element() returned early
+// and skipped creating the element.
+void Clay__WarnElementCapacityExceeded(Clay_Context *context) {
+    if (!context->booleanWarnings.maxElementsExceeded) {
+        context->booleanWarnings.maxElementsExceeded = true;
+        context->errorHandler.errorHandlerFunction(CLAY__INIT(Clay_ErrorData) {
+                .errorType = CLAY_ERROR_TYPE_ELEMENTS_CAPACITY_EXCEEDED,
+                .errorText = CLAY_STRING("Clay ran out of capacity in its internal array for storing elements and dropped one or more elements. This limit can be increased with Clay_SetMaxElementCount()."),
+                .userData = context->errorHandler.userData });
+    }
+}
+
 void Clay__OpenElement(void) {
     Clay_Context* context = Clay_GetCurrentContext();
     if (context->layoutElements.length == context->layoutElements.capacity - 1 || context->booleanWarnings.maxElementsExceeded) {
-        context->booleanWarnings.maxElementsExceeded = true;
+        Clay__WarnElementCapacityExceeded(context);
         return;
     }
     Clay_LayoutElement layoutElement = CLAY__DEFAULT_STRUCT;
@@ -2018,7 +2081,7 @@ void Clay__OpenElement(void) {
 void Clay__OpenElementWithId(Clay_ElementId elementId) {
     Clay_Context* context = Clay_GetCurrentContext();
     if (context->layoutElements.length == context->layoutElements.capacity - 1 || context->booleanWarnings.maxElementsExceeded) {
-        context->booleanWarnings.maxElementsExceeded = true;
+        Clay__WarnElementCapacityExceeded(context);
         return;
     }
     Clay_LayoutElement layoutElement = CLAY__DEFAULT_STRUCT;
@@ -2037,7 +2100,7 @@ void Clay__OpenElementWithId(Clay_ElementId elementId) {
 void Clay__OpenTextElement(Clay_String text, Clay_TextElementConfig *textConfig) {
     Clay_Context* context = Clay_GetCurrentContext();
     if (context->layoutElements.length == context->layoutElements.capacity - 1 || context->booleanWarnings.maxElementsExceeded) {
-        context->booleanWarnings.maxElementsExceeded = true;
+        Clay__WarnElementCapacityExceeded(context);
         return;
     }
     Clay_LayoutElement *parentElement = Clay__GetOpenLayoutElement();
@@ -2222,19 +2285,20 @@ void Clay__InitializeEphemeralMemory(Clay_Context* context) {
 void Clay__InitializePersistentMemory(Clay_Context* context) {
     // Persistent memory - initialized once and not reset
     int32_t maxElementCount = context->maxElementCount;
+    int32_t maxElementIdCount = context->maxElementIdCount;
     int32_t maxMeasureTextCacheWordCount = context->maxMeasureTextCacheWordCount;
     Clay_Arena *arena = &context->internalArena;
 
     context->scrollContainerDatas = Clay__ScrollContainerDataInternalArray_Allocate_Arena(100, arena);
-    context->layoutElementsHashMapInternal = Clay__LayoutElementHashMapItemArray_Allocate_Arena(maxElementCount, arena);
-    context->layoutElementsHashMap = Clay__int32_tArray_Allocate_Arena(maxElementCount, arena);
-    context->measureTextHashMapInternal = Clay__MeasureTextCacheItemArray_Allocate_Arena(maxElementCount, arena);
-    context->measureTextHashMapInternalFreeList = Clay__int32_tArray_Allocate_Arena(maxElementCount, arena);
+    context->layoutElementsHashMapInternal = Clay__LayoutElementHashMapItemArray_Allocate_Arena(maxElementIdCount, arena);
+    context->layoutElementsHashMap = Clay__int32_tArray_Allocate_Arena(maxElementIdCount, arena);
+    context->measureTextHashMapInternal = Clay__MeasureTextCacheItemArray_Allocate_Arena(maxElementIdCount, arena);
+    context->measureTextHashMapInternalFreeList = Clay__int32_tArray_Allocate_Arena(maxElementIdCount, arena);
     context->measuredWordsFreeList = Clay__int32_tArray_Allocate_Arena(maxMeasureTextCacheWordCount, arena);
-    context->measureTextHashMap = Clay__int32_tArray_Allocate_Arena(maxElementCount, arena);
+    context->measureTextHashMap = Clay__int32_tArray_Allocate_Arena(maxElementIdCount, arena);
     context->measuredWords = Clay__MeasuredWordArray_Allocate_Arena(maxMeasureTextCacheWordCount, arena);
     context->pointerOverIds = Clay_ElementIdArray_Allocate_Arena(maxElementCount, arena);
-    context->debugElementData = Clay__DebugElementDataArray_Allocate_Arena(maxElementCount, arena);
+    context->debugElementData = Clay__DebugElementDataArray_Allocate_Arena(maxElementIdCount, arena);
     context->arenaResetOffset = arena->nextAllocation;
 }
 
@@ -3921,6 +3985,7 @@ CLAY_WASM_EXPORT("Clay_MinMemorySize")
 uint32_t Clay_MinMemorySize(void) {
     Clay_Context fakeContext = {
         .maxElementCount = Clay__defaultMaxElementCount,
+        .maxElementIdCount = Clay__defaultMaxElementIdCount,
         .maxMeasureTextCacheWordCount = Clay__defaultMaxMeasureTextWordCacheCount,
         .internalArena = {
             .capacity = SIZE_MAX,
@@ -3930,6 +3995,7 @@ uint32_t Clay_MinMemorySize(void) {
     Clay_Context* currentContext = Clay_GetCurrentContext();
     if (currentContext) {
         fakeContext.maxElementCount = currentContext->maxElementCount;
+        fakeContext.maxElementIdCount = currentContext->maxElementIdCount;
         fakeContext.maxMeasureTextCacheWordCount = currentContext->maxMeasureTextCacheWordCount;
     }
     // Reserve space in the arena for the context, important for calculating min memory size correctly
@@ -4049,6 +4115,7 @@ Clay_Context* Clay_Initialize(Clay_Arena arena, Clay_Dimensions layoutDimensions
     Clay_Context *oldContext = Clay_GetCurrentContext();
     *context = CLAY__INIT(Clay_Context) {
         .maxElementCount = oldContext ? oldContext->maxElementCount : Clay__defaultMaxElementCount,
+        .maxElementIdCount = oldContext ? oldContext->maxElementIdCount : Clay__defaultMaxElementIdCount,
         .maxMeasureTextCacheWordCount = oldContext ? oldContext->maxMeasureTextCacheWordCount : Clay__defaultMaxMeasureTextWordCacheCount,
         .errorHandler = errorHandler.errorHandlerFunction ? errorHandler : CLAY__INIT(Clay_ErrorHandler) { Clay__ErrorHandlerFunctionDefault, 0 },
         .layoutDimensions = layoutDimensions,
@@ -4076,6 +4143,16 @@ Clay_Context* Clay_GetCurrentContext(void) {
 CLAY_WASM_EXPORT("Clay_SetCurrentContext")
 void Clay_SetCurrentContext(Clay_Context* context) {
     Clay__currentContext = context;
+}
+
+CLAY_WASM_EXPORT("Clay_GetLayoutElementHashMapLength")
+int32_t Clay_GetLayoutElementHashMapLength(void) {
+    return Clay_GetCurrentContext()->layoutElementsHashMapInternal.length;
+}
+
+CLAY_WASM_EXPORT("Clay_GetLayoutElementHashMapCapacity")
+int32_t Clay_GetLayoutElementHashMapCapacity(void) {
+    return Clay_GetCurrentContext()->layoutElementsHashMapInternal.capacity;
 }
 
 CLAY_WASM_EXPORT("Clay_GetScrollOffset")
@@ -4391,6 +4468,22 @@ void Clay_SetMaxElementCount(int32_t maxElementCount) {
     } else {
         Clay__defaultMaxElementCount = maxElementCount; // TODO: Fix this
         Clay__defaultMaxMeasureTextWordCacheCount = maxElementCount * 2;
+    }
+}
+
+CLAY_WASM_EXPORT("Clay_GetMaxElementIdCount")
+int32_t Clay_GetMaxElementIdCount(void) {
+    Clay_Context* context = Clay_GetCurrentContext();
+    return context->maxElementIdCount;
+}
+
+CLAY_WASM_EXPORT("Clay_SetMaxElementIdCount")
+void Clay_SetMaxElementIdCount(int32_t maxElementIdCount) {
+    Clay_Context* context = Clay_GetCurrentContext();
+    if (context) {
+        context->maxElementIdCount = maxElementIdCount;
+    } else {
+        Clay__defaultMaxElementIdCount = maxElementIdCount;
     }
 }
 
