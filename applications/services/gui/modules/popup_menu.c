@@ -27,6 +27,7 @@ ARRAY_DEF(PopupMenuItemArray, PopupMenuItem, M_POD_OPLIST); // TODO: dict, use i
 
 typedef struct {
     char* title;
+    char status[32];
     PopupMenuItemArray_t items;
     size_t position;
     bool visible;
@@ -134,6 +135,23 @@ static void popup_menu_draw_title(const char* title) {
     }
 }
 
+static void popup_menu_draw_status(const char* status) {
+    if(status[0] == '\0') {
+        return;
+    }
+
+    CLAY_AUTO_ID({
+        .layout =
+            {
+                .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(11)},
+            },
+        .border = {.color = COLOR_BLACK, .width = {.bottom = 1}},
+    }) {
+        CLAY_TEXT(clay_helper_string_from_chars(status), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+    }
+}
+
 static bool popup_menu_layout_callback(void* _model) {
     PopupMenuViewModel* model = _model;
     furi_assert(model);
@@ -175,6 +193,7 @@ static bool popup_menu_layout_callback(void* _model) {
             .cornerRadius = CLAY_CORNER_RADIUS(5),
         }) {
             popup_menu_draw_title(model->title);
+            popup_menu_draw_status(model->status);
             popup_menu_draw_item_list(model);
         }
     }
@@ -287,6 +306,7 @@ PopupMenu* popup_menu_alloc(View* view) {
         PopupMenuViewModel * model,
         {
             PopupMenuItemArray_init(model->items);
+            model->status[0] = '\0';
             model->power_pressed = true;
         },
         false);
@@ -332,6 +352,24 @@ void popup_menu_set_title(PopupMenu* menu, const char* title) {
             model->title = title ? strdup(title) : NULL;
         },
         true);
+}
+
+void popup_menu_set_status(PopupMenu* menu, const char* format, ...) {
+    furi_check(menu);
+    va_list args;
+    va_start(args, format);
+    with_view_model(
+        menu->view,
+        PopupMenuViewModel * model,
+        {
+            if(format) {
+                vsnprintf(model->status, sizeof(model->status), format, args);
+            } else {
+                model->status[0] = '\0';
+            }
+        },
+        true);
+    va_end(args);
 }
 
 void popup_menu_set_position(PopupMenu* menu, size_t item_id) {

@@ -212,6 +212,9 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         scene_enter(desktop->debug_menu_scene, desktop);
         consumed = true;
         break;
+    case DesktopSceneEventTypePowerUpdate:
+        scene_event(desktop->power_menu_scene, message.event, message.data);
+        break;
     }
 
     if(!consumed) {
