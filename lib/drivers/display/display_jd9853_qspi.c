@@ -87,7 +87,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_dma_put_buffer(DisplayJd9853QSPI* display, const uint8_t* data, size_t size) {
-    display_jd9853_hstx_wait_complete(display);
+    display_jd9853_hstx_wait_complete(display); // FIXME: don't block ISR
 
     dma_channel_set_read_addr(display->dma_tx_channel, data, false);
     dma_channel_set_transfer_count(display->dma_tx_channel, size / 4, false);

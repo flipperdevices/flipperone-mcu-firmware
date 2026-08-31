@@ -116,7 +116,7 @@ include(lib/corelibs/lib/version/CMakeLists.txt)
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 pico_set_program_version(${PROJECT_NAME} "0.1")
-pico_set_binary_version(${PROJECT_NAME} MAJOR 0x1234 MINOR 0)
+pico_set_binary_version(${PROJECT_NAME} MAJOR 0x0010 MINOR 0)
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(${PROJECT_NAME} 0)

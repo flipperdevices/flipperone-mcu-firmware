@@ -72,7 +72,7 @@ typedef struct {
 
 static I2CRegisters i2c;
 
-static void i2c_register_interrupt_line_set(bool set) {
+static inline void i2c_register_interrupt_line_set(bool set) {
     if(set) {
         furi_hal_gpio_write_open_drain(&gpio_cpu_int, false);
         furi_hal_gpio_write(&gpio_m40, true);
@@ -88,7 +88,7 @@ static void i2c_register_interrupt_line_init(void) {
     i2c_register_interrupt_line_set(false);
 }
 
-static I2CReg* i2c_register_get(uint16_t address) {
+static inline I2CReg* i2c_register_get(uint16_t address) {
     return I2CRegMap_get(i2c.map, address);
 }
 
@@ -96,7 +96,7 @@ static void i2c_register_set_at(uint16_t address, I2CReg reg) {
     I2CRegMap_set_at(i2c.map, address, reg);
 }
 
-static I2CInterruptInfo* i2c_interrupt_info_get(uint16_t address) {
+static inline I2CInterruptInfo* i2c_interrupt_info_get(uint16_t address) {
     return I2CInterruptInfoMap_get(i2c.interrupt_info_map, address);
 }
 
@@ -207,7 +207,7 @@ void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t
     FURI_CRITICAL_EXIT();
 }
 
-bool i2c_register_read_start(uint16_t address, uint8_t* value) {
+bool __isr __not_in_flash_func(i2c_register_read_start)(uint16_t address, uint8_t* value) {
     const I2CRegion* region = i2c_region_find(address);
     if(region) {
         return region->read ? region->read(region->context, address - region->base, value) : false;
@@ -232,7 +232,7 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value) {
     return result;
 }
 
-bool i2c_register_read_commit(uint16_t address) {
+bool __isr __not_in_flash_func(i2c_register_read_commit)(uint16_t address) {
     // Regions have no read-to-clear semantics — nothing to commit. Bailing
     // out here keeps the per-byte cost of a region read down to one lookup.
     if(i2c_region_find(address)) return false;
@@ -266,7 +266,7 @@ bool i2c_register_read_commit(uint16_t address) {
     return result;
 }
 
-bool i2c_register_write(uint16_t address, uint8_t value) {
+bool __isr __not_in_flash_func(i2c_register_write)(uint16_t address, uint8_t value) {
     const I2CRegion* region = i2c_region_find(address);
     if(region) {
         return region->write ? region->write(region->context, address - region->base, value) : false;
@@ -297,7 +297,7 @@ bool i2c_register_write(uint16_t address, uint8_t value) {
     return result;
 }
 
-bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask) {
+bool __isr __not_in_flash_func(i2c_register_update)(uint16_t address, uint16_t value, uint16_t mask) {
     I2CReg* reg = i2c_register_get(address);
     furi_check(reg); // address must exist
     uint16_t old_value = reg->value;

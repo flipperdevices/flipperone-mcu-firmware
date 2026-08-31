@@ -28,20 +28,10 @@ typedef enum {
 struct I2CIntercom {
     FuriThreadId thread_id;
     const FuriHalI2cBusHandle* bus_handle;
-    alarm_id_t timeout_alarm;
 
     volatile I2CIntercomState state;
     volatile size_t mem_address;
 };
-
-static int64_t __isr __not_in_flash_func(i2c_intercom_timeout_callback)(alarm_id_t id, __unused void* user_data) {
-    UNUSED(id);
-    I2CIntercom* instance = user_data;
-
-    instance->state = I2CIntercomStateIdle;
-    furi_hal_i2c_slave_bus_reset(instance->bus_handle);
-    return 0;
-}
 
 static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
     uint8_t data;
@@ -102,9 +92,11 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     case FuriHalI2cBusSlaveEventStart:
         // Master has sent a Start signal, prepare to receive address
         instance->state = I2CIntercomStateStart;
-        instance->timeout_alarm = add_alarm_in_ms(I2C_INTERCOM_TIMEOUT_MS, i2c_intercom_timeout_callback, instance, true);
         break;
     case FuriHalI2cBusSlaveEventWrite:
+        if(instance->state == I2CIntercomStateIdle) {
+            furi_crash("I2CIntercom: Write event in invalid state");
+        }
         // Master is writing data to slave
         if(instance->state == I2CIntercomStateStart) {
             instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
@@ -112,6 +104,7 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
         if(instance->state == I2CIntercomStateAddressSet) {
             i2c_intercom_data_receive(handle, instance);
         }
+
         break;
     case FuriHalI2cBusSlaveEventRead:
         // Master is requesting data from slave
@@ -136,7 +129,6 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
         }
 
         instance->state = I2CIntercomStateIdle;
-        cancel_alarm(instance->timeout_alarm);
 
         break;
 

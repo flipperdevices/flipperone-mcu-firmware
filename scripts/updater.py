@@ -1,4 +1,6 @@
 from periphery import I2C
+from enum import Enum
+import time
 import argparse
 
 MCU_ADDR = 0x69
@@ -11,6 +13,27 @@ REG_FW_CRC = 0xF020
 REG_FW_BLOCKS = 0xF022
 
 REG_FW_DATA = 0xF040
+
+class UpdaterStatus(Enum):
+    IDLE = 0
+    RUNNING = 1
+    BUSY = 2
+    DONE = 3
+    ERROR = 4
+
+class UpdaterError(Enum):
+    NONE = 0
+    NOT_STARTED = 1
+    SIZE_ERROR = 2
+    BLOCK_CRC_ERROR = 3
+    BLOCK_INDEX_ERROR = 4
+    FW_CRC_ERROR = 5
+    FW_VERSION_ERROR = 6
+
+class UpdaterCommand(Enum):
+    NONE = 0
+    START = 1
+    ABORT = 2
 
 class Crc16:
     def __init__(self, polynomial=0xA001):
@@ -70,7 +93,13 @@ class McuI2C:
     
         write_msg = I2C.Message([addr_high, addr_low] + list(buf))
         self.i2c.transfer(MCU_ADDR, [write_msg])
-        
+
+def get_state(mcu) -> tuple[UpdaterStatus, UpdaterError]:
+    reg_status = mcu.read_register(REG_STATUS)
+    return UpdaterStatus(reg_status & 0xFF), UpdaterError((reg_status >> 8) & 0xFF)
+
+def send_command(mcu, command: UpdaterCommand):
+    mcu.write_register(REG_FW_COMMAND, int(command.value))
 
 def main():
     crc16 = Crc16()
@@ -86,22 +115,39 @@ def main():
     )
     args = parser.parse_args()
 
-    reg_status = mcu.read_register(REG_STATUS)
+    state, error = get_state(mcu)
     reg_fw_version = mcu.read_register(REG_FW_VERSION)
-    print(f"Status: 0x{reg_status:04X}, FW Version: 0x{reg_fw_version:04X}")
+    print(f"State: {state.name}, Current FW version: 0x{reg_fw_version:04X}")
+    if state != UpdaterStatus.IDLE:
+        print("Aborting previous update")
+        send_command(mcu, UpdaterCommand.ABORT)
 
     with open(args.file_path, "rb") as f:
         firmware_data = f.read()
 
-    block_count = (len(firmware_data) + 255) // 256
-    print(f"Firmware size: {len(firmware_data)} bytes, blocks: {block_count}")
     # pad firmware_data to a multiple of 256 bytes
     firmware_data += bytes((256 - len(firmware_data) % 256) % 256)
+    block_count = (len(firmware_data) + 255) // 256
+    print(f"Firmware size: {len(firmware_data)} bytes, {block_count} blocks")
+    
     fw_crc = crc16.compute(firmware_data)
 
     mcu.write_register(REG_FW_CRC, fw_crc)
     mcu.write_register(REG_FW_BLOCKS, block_count)
-    mcu.write_register(REG_FW_COMMAND, 1)  # Start update
+    send_command(mcu, UpdaterCommand.START)  # Start update
+
+    print("Erasing flash area...")
+
+    state, error = get_state(mcu)
+    while state != UpdaterStatus.RUNNING:
+        time.sleep(1)
+        state, error = get_state(mcu)
+        print(f"State: {state.name}")
+        if state == UpdaterStatus.ERROR:
+            print(f"Error: {error.name}")
+            return
+
+    start_time = time.perf_counter()
 
     data = bytearray(256+4)
     for i in range(block_count):
@@ -113,10 +159,30 @@ def main():
         data[258] = crc_calc & 0xFF
         data[259] = (crc_calc >> 8) & 0xFF
 
-        # reg_status = mcu.read_register(REG_STATUS)
-        # print(f"Status: 0x{reg_status:04X}, Sending block {block_idx}/{block_count-1}")
+        state, error = get_state(mcu)
+        print(f"State: {state.name}, Sending block {block_idx}/{block_count}")
+        while state == UpdaterStatus.BUSY:
+            time.sleep(0.1)
+            state, error = get_state(mcu)
 
+        if state == UpdaterStatus.ERROR:
+            print(f"Error: {error.name}")
+            return
+        
         mcu.write_block(REG_FW_DATA, data)
+
+    end_time = time.perf_counter()
+
+    time.sleep(0.1)  # wait for the last block to be processed
+
+    state, error = get_state(mcu)
+    print(f"State: {state.name}")
+    if state == UpdaterStatus.ERROR:
+        print(f"Error: {error.name}")
+        return
+
+    print(f"Written in {end_time - start_time:.2f}s ({len(firmware_data)/(end_time - start_time)/1024*8:.2f} Kbits/s)")
+    print("Update complete. Reset MCU to start new firmware.")
 
 if __name__ == "__main__":
     main()

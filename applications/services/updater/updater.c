@@ -68,7 +68,7 @@ typedef struct {
 } UpdaterMessage;
 
 // I2C write callbacks, called from interrupt context
-void updater_on_i2c_crc_reg_write(void* context, uint16_t address, uint16_t value) {
+void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint16_t address, uint16_t value) {
     Updater* updater = context;
     furi_check(updater);
 
@@ -79,7 +79,7 @@ void updater_on_i2c_crc_reg_write(void* context, uint16_t address, uint16_t valu
     furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
 }
 
-void updater_on_i2c_blocks_reg_write(void* context, uint16_t address, uint16_t value) {
+void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, uint16_t address, uint16_t value) {
     Updater* updater = context;
     furi_check(updater);
 
@@ -90,7 +90,7 @@ void updater_on_i2c_blocks_reg_write(void* context, uint16_t address, uint16_t v
     furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
 }
 
-void updater_on_i2c_command_reg_write(void* context, uint16_t address, uint16_t value) {
+void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, uint16_t address, uint16_t value) {
     Updater* updater = context;
     furi_check(updater);
 
@@ -99,7 +99,7 @@ void updater_on_i2c_command_reg_write(void* context, uint16_t address, uint16_t 
     furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
 }
 
-bool updater_on_i2c_data_write(void* context, uint16_t offset, uint8_t value) {
+bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_t offset, uint8_t value) {
     Updater* updater = context;
     furi_check(updater);
 
@@ -136,21 +136,6 @@ static void updater_state_change(Updater* updater, UpdaterState new_state, Updat
         if(updater->state_callback) {
             updater->state_callback(new_state, new_state == UpdaterStateError ? error : UpdaterErrorNone, updater->state_callback_context);
         }
-    }
-}
-
-void updater_write_flash_block(Updater* updater, uint16_t block_idx, uint8_t* data) {
-    furi_check(updater);
-    furi_check(data);
-
-    size_t write_address = updater->write_partition_address + (block_idx * 256);
-    if(write_address % FLASH_SECTOR_SIZE == 0) {
-        furi_hal_flash_erase_sector(write_address);
-    }
-    if(block_idx < FLASH_SECTOR_SIZE / 256) {
-        memcpy(updater->first_sector_buf + (block_idx * 256), data, 256);
-    } else {
-        furi_hal_flash_write(write_address, data, 256);
     }
 }
 
@@ -196,6 +181,7 @@ static void updater_write_first_sector(Updater* updater) {
     }
 
     updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
+    FURI_LOG_I(TAG, "Done");
 }
 
 static void updater_process_block(Updater* updater, UpdaterMessage* msg) {
@@ -217,7 +203,12 @@ static void updater_process_block(Updater* updater, UpdaterMessage* msg) {
         return;
     }
 
-    updater_write_flash_block(updater, msg->block.block_idx, msg->block.data);
+    if(msg->block.block_idx < FLASH_SECTOR_SIZE / 256) {
+        memcpy(updater->first_sector_buf + (msg->block.block_idx * 256), msg->block.data, 256);
+    } else {
+        size_t write_address = updater->write_partition_address + (msg->block.block_idx * 256);
+        furi_hal_flash_write(write_address, msg->block.data, 256);
+    }
 
     updater->current_block++;
 
@@ -250,7 +241,14 @@ static void updater_message_callback(FuriEventLoopObject* object, void* context)
             if((instance->fw_blocks < (FLASH_SECTOR_SIZE * 4 / 256)) || (instance->fw_blocks * 256 > instance->write_partition_size)) {
                 updater_state_change(instance, UpdaterStateError, UpdaterErrorSizeError);
             } else {
+                updater_state_change(instance, UpdaterStateBusy, UpdaterErrorNone);
                 instance->current_block = 0;
+                FURI_LOG_I(TAG, "Erase start");
+                for(size_t i = 0; i < instance->fw_blocks; i += FLASH_SECTOR_SIZE / 256) {
+                    furi_hal_flash_erase_sector(instance->write_partition_address + i * 256);
+                    furi_delay_ms(1); // Force context switch to keep GUI responsive
+                }
+                FURI_LOG_I(TAG, "Erase done");
                 updater_state_change(instance, UpdaterStateRunning, UpdaterErrorNone);
             }
         }
@@ -296,7 +294,12 @@ int32_t updater_srv(void* p) {
     const uint8_t* part_ptr = furi_hal_flash_get_read_ptr(active_part_base);
 
     furi_check(furi_hal_flash_get_image_version(part_ptr, instance->current_version.raw));
-    FURI_LOG_I(TAG, "Current FW version: %04X, counter: %u", instance->current_version.version, instance->current_version.counter);
+    FURI_LOG_I(
+        TAG,
+        "Current FW slot: %c, version: %04X, counter: %u",
+        instance->active_partition == FlashPartitionIdFwA ? 'A' : 'B',
+        instance->current_version.version,
+        instance->current_version.counter);
 
     furi_record_create(RECORD_UPDATER, instance);
 
