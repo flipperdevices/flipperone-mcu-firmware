@@ -8,35 +8,7 @@
 #define FURI_HAL_NVM_MAX_KEY_SIZE 256
 #define FURI_HAL_NVM_MAX_STR_SIZE 256
 
-<<<<<<< HEAD:targets/f100/furi_hal/furi_hal_nvm.c
 static blockdevice_t* storage_bd = NULL;
-=======
-/* FURI_HAL_NVM_BANK_DEFAULT_SIZE is passed as a compile definition from CMakeLists.txt */
-#define FURI_HAL_NVM_BANK_OFFSET (PICO_FLASH_BANK_STORAGE_OFFSET - FURI_HAL_NVM_BANK_DEFAULT_SIZE)
-
-bool kvs_init(void) {
-    FURI_LOG_I(
-        TAG,
-        "Create a block device that uses 0x%08x->0x%08x(%uKB) areas of flash memory",
-        XIP_BASE + FURI_HAL_NVM_BANK_OFFSET,
-        XIP_BASE + FURI_HAL_NVM_BANK_OFFSET + FURI_HAL_NVM_BANK_DEFAULT_SIZE,
-        FURI_HAL_NVM_BANK_DEFAULT_SIZE / 1024);
-    blockdevice_t* bd = blockdevice_flash_create(FURI_HAL_NVM_BANK_OFFSET, FURI_HAL_NVM_BANK_DEFAULT_SIZE);
-
-    FURI_LOG_I(TAG, "Create a Log structured Key-Value Store that uses a block device");
-    kvs_t* kvs = kvs_logkvs_create(bd);
-
-    if(!kvs) {
-        FURI_LOG_E(TAG, "Failed to create Key-Value Store");
-        return false;
-    }
-
-    FURI_LOG_I(TAG, "Assign to global Key-Value Store");
-    kvs_assign(kvs);
-
-    return true;
-}
->>>>>>> dev:targets/f1/furi_hal/furi_hal_nvm.c
 
 void furi_hal_nvm_wipe(void) {
     // Erase the entire area used for NVM

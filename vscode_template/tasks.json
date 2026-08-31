@@ -69,7 +69,7 @@
                 "-f",
                 "target/${command:raspberry-pi-pico.getTarget}.cfg",
                 "-f",
-                "targets/f100/flash.tcl"
+                "targets/f1/flash.tcl"
             ],
             "problemMatcher": [ ],
             "windows": {

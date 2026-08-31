@@ -172,8 +172,8 @@ pico_add_extra_outputs(${PROJECT_NAME})
 pico_init_picotool()
 if(picotool_FOUND)
     add_custom_target(partition_table ALL
-        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.bin
-        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/${TARGET_HARDWARE}/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
+        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/${FW_TARGET}/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.bin
+        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/${FW_TARGET}/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
         BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/partition_table.bin
         BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
         COMMENT "Building partition table"
