@@ -38,24 +38,24 @@ static void cli_command_led_help(PipeSide* pipe, FuriString* args, void* context
         "\tblack \t\t6\r\n");
 }
 
-LedType cli_led_types[] = {
-    LedTypeNet,
-    LedTypeWiFi,
-    LedTypeEth2,
-    LedTypeEth1,
-    LedTypePower,
-    LedTypeBatteryOutline,
-    LedTypeBatteryWatt1,
-    LedTypeBatteryWatt2,
-    LedTypeBatteryWatt3,
-    LedTypeBatteryWatt4,
-    LedTypeUsbCharging,
-    LedTypeUsbWatt1,
-    LedTypeUsbWatt2,
-    LedTypeUsbWatt3,
-    LedTypeUsbWatt4,
-    LedTypeBatteryCenter,
-    LedTypeLineAllOff,
+FuriBspLedType cli_led_types[] = {
+    FuriBspLedTypeNet,
+    FuriBspLedTypeWiFi,
+    FuriBspLedTypeEth2,
+    FuriBspLedTypeEth1,
+    FuriBspLedTypePower,
+    FuriBspLedTypeBatteryOutline,
+    FuriBspLedTypeBatteryWatt1,
+    FuriBspLedTypeBatteryWatt2,
+    FuriBspLedTypeBatteryWatt3,
+    FuriBspLedTypeBatteryWatt4,
+    FuriBspLedTypeUsbCharging,
+    FuriBspLedTypeUsbWatt1,
+    FuriBspLedTypeUsbWatt2,
+    FuriBspLedTypeUsbWatt3,
+    FuriBspLedTypeUsbWatt4,
+    FuriBspLedTypeBatteryCenter,
+    FuriBspLedTypeAllOff,
 };
 
 LedColor cli_led_colors[] = {
@@ -83,17 +83,17 @@ void led_cli(PipeSide* pipe, FuriString* args, void* context) {
         cli_command_led_help(pipe, args, context);
         return;
     }
-    if(led_type < 0 || led_type >= sizeof(cli_led_types) / sizeof(LedType)) {
+    if(led_type < 0 || led_type >= sizeof(cli_led_types) / sizeof(FuriBspLedType)) {
         cli_command_led_help(pipe, args, context);
         return;
     }
 
-    if(furi_string_size(args) < 1 && cli_led_types[led_type] != LedTypeLineAllOff) {
+    if(furi_string_size(args) < 1 && cli_led_types[led_type] != FuriBspLedTypeAllOff) {
         cli_command_led_help(pipe, args, context);
         return;
     }
 
-    if(cli_led_types[led_type] != LedTypeLineAllOff) {
+    if(cli_led_types[led_type] != FuriBspLedTypeAllOff) {
         if(!args_read_int_and_trim(args, &color)) {
             cli_command_led_help(pipe, args, context);
             return;

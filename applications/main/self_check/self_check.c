@@ -168,7 +168,7 @@ static bool self_check_process(FuriString* status_str) {
         furi_string_cat_printf(status_str, "Expander main: %s\n", (expander_device & FuriBspDeviceExpanderMain) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Haptic: %s\n", (haptic_device & HapticDeviceDrv2605l) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "PD: %s\n", (pd_device & PdDeviceFusb302) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Charger: %s\n", (power_device & PowerDeviceBq25792) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Charger: %s\n", (power_device & PowerDeviceBq2579x) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Gauge: %s\n", (power_device & PowerDeviceBq28z620) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Touchpad: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "USB Mux: %s\n", (usb_mux_device & UsbMuxDeviceHd3ss3220) ? "ok" : "NOT FOUND");

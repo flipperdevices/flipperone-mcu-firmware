@@ -3,3 +3,17 @@ build
 assets/python/.venv/*
 .cache
 .vscode
+
+# Python venv
+.env
+.venv
+env/
+venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Generated protobuf Python modules
+applications/debug/rpc_test/pb2/

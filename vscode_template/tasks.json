@@ -75,6 +75,49 @@
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe"
             }
+        },
+        {
+            // Reconfigures the one build directory for another board. Everything
+            // else keeps working unchanged: the executable is always named after
+            // project(), so the compile, flash and debug entries never mention a
+            // target. Switching costs a full rebuild.
+            "label": "Select Target",
+            "detail": "Reconfigure the build for a different hardware target",
+            "type": "process",
+            "command": "${userHome}/.pico-sdk/cmake/v3.31.5/bin/cmake",
+            "group": "build",
+            "args": [
+                "-S",
+                "${workspaceFolder}",
+                "-B",
+                "${workspaceFolder}/build",
+                "-G",
+                "Ninja",
+                "-DFW_TARGET=${input:fwTarget}"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": [],
+            "windows": {
+                "command": "${env:USERPROFILE}/.pico-sdk/cmake/v3.31.5/bin/cmake.exe"
+            }
+        }
+    ],
+    "inputs": [
+        {
+            // One entry per directory under targets/ that has a target.cmake.
+            // A name that is not there fails the configure with the list of the
+            // ones that are.
+            "id": "fwTarget",
+            "type": "pickString",
+            "description": "Hardware target",
+            "default": "f1",
+            "options": [
+                "f1",
+                "f2"
+            ]
         }
     ]
 }
