@@ -28,6 +28,7 @@ extern int32_t font_test_app(void* p);
 extern int32_t cli_on_system_start(void* p);
 extern int32_t rpc_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
+extern int32_t cpu_app(void* p);
 
 
 // CLI commands
@@ -37,6 +38,7 @@ extern void uart_echo_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void dmesg_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void input_cli_command(PipeSide* pipe, FuriString* args, void* context);
 extern void unit_tests_cli_command(PipeSide* pipe, FuriString* args, void* context);
+extern void desktop_command_cli(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -190,6 +192,22 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+    {
+        .app = cpu_app,
+        .name = "CPU App Start",
+        .appid = "cpu_app_start",
+        .stack_size = 1024 * 4,
+        .flags = FlipperInternalApplicationFlagDefault,
+        .args = "start",
+    },
+    {
+        .app = cpu_app,
+        .name = "CPU App Maskrom",
+        .appid = "cpu_app_maskrom",
+        .stack_size = 1024 * 4,
+        .flags = FlipperInternalApplicationFlagDefault,
+        .args = "maskrom",
+    },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
 
@@ -259,6 +277,12 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = unit_tests_cli_command,
         .name = "unit_tests",
+        .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = desktop_command_cli,
+        .name = "desktop",
         .stack_size = 1024 * 2,
         .flags = CliCommandFlagParallelSafe,
     },

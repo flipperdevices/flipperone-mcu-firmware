@@ -479,6 +479,16 @@ void gui_push_frame(Gui* gui, const uint8_t* data) {
     gui_update(gui);
 }
 
+void gui_clear_frame(Gui* gui) {
+    furi_check(gui);
+
+    gui_lock(gui);
+    gui->pending_frame = NULL;
+    gui_unlock(gui);
+
+    gui_update(gui);
+}
+
 void gui_set_menu(Gui* gui, PopupMenu* menu) {
     furi_check(gui);
 

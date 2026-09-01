@@ -141,6 +141,16 @@ static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* 
     with_view_model(instance->display_view, CpuAppModel * model, { update = callback(model, context); }, update);
 }
 
+/* Reset the CPU and power hardware to a clean state. Runs on every app exit
+ * path (menu "Stop", desktop stop_app, etc.) to make sure the CPU is never
+ * left running behind the desktop. */
+static void cpu_app_do_shutdown(CpuApp* instance) {
+    furi_hal_reset_pd_and_charger();
+    furi_bsp_linux_reset();
+    // Do not leave the old frame on screen after the app exits.
+    gui_clear_frame(instance->gui);
+}
+
 static void __isr __not_in_flash_func(cpu_app_pio_get_frame_isr)(uint8_t* data, size_t size, void* context) {
     CpuApp* instance = context;
 
@@ -178,11 +188,14 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             furi_bsp_linux_reset();
             furi_bsp_linux_start();
             instance->skip_frames = 2;
+            // Drop the stale frame so the screen shows the "starting" image
+            // right away instead of the old picture.
+            gui_clear_frame(instance->gui);
             cpu_app_model_apply(instance, cpu_app_model_init, NULL);
             break;
         case CpuAppMessageTypeShutdown:
-            furi_hal_reset_pd_and_charger();
-            furi_bsp_linux_reset();
+            // The actual hardware cleanup happens in cpu_app_do_shutdown()
+            // after the event loop exits, so it covers every exit path.
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             break;
         case CpuAppMessageTypeMaskrom:
@@ -261,6 +274,10 @@ static CpuApp* cpu_app_alloc(void) {
 }
 
 static void cpu_app_free(CpuApp* instance) {
+    // Drop any pending frame before freeing the buffers it points to,
+    // otherwise a later redraw would blit freed memory.
+    gui_clear_frame(instance->gui);
+
     gui_set_menu(instance->gui, NULL);
     gui_remove_view(instance->gui, instance->display_view);
     gui_remove_view(instance->gui, instance->menu_view);
@@ -275,6 +292,9 @@ static void cpu_app_free(CpuApp* instance) {
     furi_event_loop_free(instance->event_loop);
     furi_message_queue_free(instance->app_queue);
     pio_get_frame_deinit(instance->pio_get_frame);
+    // Safety: clear a frame that may have been pushed between the first
+    // clear and the PIO deinit (no pushes are possible after deinit).
+    gui_clear_frame(instance->gui);
     free(instance);
 }
 
@@ -294,6 +314,9 @@ int32_t cpu_app(void* p) {
     }
 
     furi_event_loop_run(instance->event_loop);
+    // Clean up the hardware on every exit path (menu "Stop", desktop stop_app,
+    // etc.) so the CPU never keeps running behind the desktop.
+    cpu_app_do_shutdown(instance);
     cpu_app_free(instance);
     return 0;
 }
