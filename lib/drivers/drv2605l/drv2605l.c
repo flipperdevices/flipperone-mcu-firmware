@@ -298,8 +298,10 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
     instance->address = address;
 
     furi_hal_gpio_init_simple(instance->pin_en, GpioModeOutputPushPull);
+    furi_hal_gpio_write(instance->pin_en, false);
+    furi_delay_ms(10);
     furi_hal_gpio_write(instance->pin_en, true);
-
+    furi_delay_ms(10);
     //Todo: GpioModeOutputPushPull
     //furi_hal_gpio_init_simple(instance->pin_trigger, GpioModeOutputPushPull);
 
