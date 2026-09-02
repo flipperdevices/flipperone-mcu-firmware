@@ -141,9 +141,6 @@ static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* 
     with_view_model(instance->display_view, CpuAppModel * model, { update = callback(model, context); }, update);
 }
 
-/* Reset the CPU and power hardware to a clean state. Runs on every app exit
- * path (menu "Stop", desktop stop_app, etc.) to make sure the CPU is never
- * left running behind the desktop. */
 static void cpu_app_do_shutdown(CpuApp* instance) {
     furi_hal_reset_pd_and_charger();
     furi_bsp_linux_reset();
@@ -163,7 +160,6 @@ static void __isr __not_in_flash_func(cpu_app_pio_get_frame_isr)(uint8_t* data, 
             },
     };
 
-    //furi_check(furi_message_queue_put(instance->app_queue, &message, 0) == FuriStatusOk);
     if(furi_message_queue_put(instance->app_queue, &message, 0) != FuriStatusOk) {
         FURI_LOG_E(TAG, "cpu_app_spi_get_frame_isr message = %ld", furi_message_queue_get_count(instance->app_queue));
     }
@@ -274,9 +270,6 @@ static CpuApp* cpu_app_alloc(void) {
 }
 
 static void cpu_app_free(CpuApp* instance) {
-    // Drop any pending frame before freeing the buffers it points to,
-    // otherwise a later redraw would blit freed memory.
-    gui_clear_frame(instance->gui);
 
     gui_set_menu(instance->gui, NULL);
     gui_remove_view(instance->gui, instance->display_view);
@@ -292,8 +285,7 @@ static void cpu_app_free(CpuApp* instance) {
     furi_event_loop_free(instance->event_loop);
     furi_message_queue_free(instance->app_queue);
     pio_get_frame_deinit(instance->pio_get_frame);
-    // Safety: clear a frame that may have been pushed between the first
-    // clear and the PIO deinit (no pushes are possible after deinit).
+
     gui_clear_frame(instance->gui);
     free(instance);
 }
@@ -314,8 +306,7 @@ int32_t cpu_app(void* p) {
     }
 
     furi_event_loop_run(instance->event_loop);
-    // Clean up the hardware on every exit path (menu "Stop", desktop stop_app,
-    // etc.) so the CPU never keeps running behind the desktop.
+
     cpu_app_do_shutdown(instance);
     cpu_app_free(instance);
     return 0;

@@ -226,7 +226,6 @@ static void self_check_app_autorun(void) {
     desktop_register_app("self_check", furi_thread_get_current());
 
     if(!self_check_process(NULL)) {
-        // Something is missing: keep running to notify the user.
         self_check_app_main();
     }
 
