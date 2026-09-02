@@ -34,8 +34,8 @@ static bool desktop_cli_start_app(PipeSide* pipe, FuriString* args) {
     const FlipperInternalApplication* target = NULL;
 
     do {
-        if(!args_read_string_and_trim(args, app_name)) {
-            printf("usage: desktop start_app <app_name|appid>\r\n");
+        if(!args_read_probably_quoted_string_and_trim(args, app_name)) {
+            printf("usage: desktop start_app <appid|\"app name\">\r\n");
             break;
         }
 
@@ -54,7 +54,7 @@ static bool desktop_cli_start_app(PipeSide* pipe, FuriString* args) {
         }
 
         if(!desktop_start_app(target)) {
-            const char* running = desktop_get_running_app_name();
+            const char* running = desktop_get_running_app_id();
             printf(
                 "failed to start %s: %s is already running\r\n",
                 target->appid,
@@ -73,8 +73,12 @@ static bool desktop_cli_stop_app(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
     UNUSED(args);
 
+    const char* appid = desktop_get_running_app_id();
+
     if(!desktop_stop_app()) {
         printf("no app is running\r\n");
+    } else {
+        printf("stop requested: %s\r\n", appid ? appid : "unknown app");
     }
     return true;
 }

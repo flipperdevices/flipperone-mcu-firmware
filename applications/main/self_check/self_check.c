@@ -223,7 +223,9 @@ static void self_check_app_autorun(void) {
 
     // Occupy the desktop app slot right away: no other app can be started
     // via desktop while we are running (and desktop can stop us on demand).
-    desktop_register_app("self_check", furi_thread_get_current());
+    if(!desktop_register_app("self_check", furi_thread_get_current())) {
+        FURI_LOG_E(TAG, "Failed to register with desktop");
+    }
 
     if(!self_check_process(NULL)) {
         self_check_app_main();

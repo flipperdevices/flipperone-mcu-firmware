@@ -177,9 +177,14 @@ void furi_bsp_main_reset(void) {
         pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
         expander_main->control_state = FuriBspControlExpanderMainMcu;
 
-        pcal6416_write_output(expander_main->handle, OutputExpMainVcc5v0DevS0En & OutputExpMainMask);
-        pcal6416_write_mode(expander_main->handle, InputExpMainInputMask);
-        expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
+        const bool ok =
+            pcal6416_write_output(expander_main->handle, OutputExpMainVcc5v0DevS0En & OutputExpMainMask) &&
+            pcal6416_write_mode(expander_main->handle, InputExpMainInputMask);
+        if(!ok) {
+            furi_bsp_show_error_message_main_expander();
+        } else {
+            expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
+        }
     } else {
         furi_bsp_show_error_message_main_expander();
     }
