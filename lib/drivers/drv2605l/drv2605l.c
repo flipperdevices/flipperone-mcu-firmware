@@ -290,6 +290,19 @@ static bool drv2605l_load_settings(Drv2605l* instance) {
     return ret >= PICO_OK;
 }
 
+bool drv2605l_reset(Drv2605l* instance) {
+    furi_check(instance);
+
+    Drv2605lMode mode_reg = {
+        .device_reset = 1, //Software reset
+    };
+
+    int ret = drv2605l_write_reg(instance, Drv2605lRegMode, (uint8_t*)&mode_reg);
+    furi_delay_ms(1); // Datasheet: >= 1 ms after reset before further commands
+
+    return ret >= PICO_OK;
+}
+
 Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pin_en, const GpioPin* pin_trigger, uint8_t address) {
     Drv2605l* instance = (Drv2605l*)malloc(sizeof(Drv2605l));
     instance->i2c_handle = i2c_handle;
@@ -311,6 +324,10 @@ Drv2605l* drv2605l_init(const FuriHalI2cBusHandle* i2c_handle, const GpioPin* pi
 
     if(ret) {
         drv2605l_enable(instance);
+
+        if(!drv2605l_reset(instance)) {
+            FURI_LOG_E(TAG, "Failed to reset device");
+        }
 
         if(!drv2605l_load_settings(instance)) {
             FURI_LOG_E(TAG, "Failed to load settings");

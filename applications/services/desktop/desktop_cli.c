@@ -7,14 +7,12 @@
 #include <cli/cli_command.h>
 #include <furi_hal.h>
 
-
 typedef struct {
     const char* name;
     const char* arg_spec;
     const char* description;
     bool (*execute)(PipeSide*, FuriString*);
-} DesktopCmd; 
-
+} DesktopCmd;
 
 static bool desktop_cli_list_apps(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
@@ -41,8 +39,7 @@ static bool desktop_cli_start_app(PipeSide* pipe, FuriString* args) {
 
         const char* name = furi_string_get_cstr(app_name);
         for(size_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
-            if(strcmp(name, FLIPPER_APPS[i].name) == 0 ||
-               strcmp(name, FLIPPER_APPS[i].appid) == 0) {
+            if(strcmp(name, FLIPPER_APPS[i].name) == 0 || strcmp(name, FLIPPER_APPS[i].appid) == 0) {
                 target = &FLIPPER_APPS[i];
                 break;
             }
@@ -55,10 +52,7 @@ static bool desktop_cli_start_app(PipeSide* pipe, FuriString* args) {
 
         if(!desktop_start_app(target)) {
             const char* running = desktop_get_running_app_id();
-            printf(
-                "failed to start %s: %s is already running\r\n",
-                target->appid,
-                running ? running : "unknown app");
+            printf("failed to start %s: %s is already running\r\n", target->appid, running ? running : "unknown app");
             break;
         }
 
