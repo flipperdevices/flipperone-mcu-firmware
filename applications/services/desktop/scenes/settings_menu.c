@@ -21,15 +21,6 @@ typedef struct {
     FuriStateSub* brightness_state_sub;
 } SettingsMenuData;
 
-extern int32_t self_check_app(void* p);
-static const FlipperInternalApplication test_app = {
-    .app = self_check_app,
-    .name = "Self Check",
-    .appid = "self_check",
-    .stack_size = 2048,
-    .flags = FlipperInternalApplicationFlagDefault,
-};
-
 static void settings_menu_item_callback(MenuItem* item, size_t item_id, void* context) {
     furi_check(context);
     Scene* scene = context;
@@ -43,7 +34,7 @@ static void settings_menu_item_callback(MenuItem* item, size_t item_id, void* co
     } else if(item_id == SettingsMenuItemPower) {
         desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterPowerSettings, scene);
     } else if(item_id == SettingsMenuItemSelfCheck) {
-        desktop_start_app(&test_app);
+        desktop_start_app_by_id("self_check");
     } else if(item_id == SettingsMenuItemMaskrom) {
         desktop_start_cpu(true);
     } else if(item_id == SettingsMenuItemTesting) {

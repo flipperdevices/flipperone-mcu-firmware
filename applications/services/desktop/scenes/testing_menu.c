@@ -17,34 +17,6 @@ typedef struct {
     Menu* menu;
 } TestingMenuData;
 
-extern int32_t keypad_test_app(void* p);
-extern int32_t touchpad_test_app(void* p);
-extern int32_t haptic_test_app(void* p);
-
-static const FlipperInternalApplication test_keypad_app = {
-    .app = keypad_test_app,
-    .name = "Keypad Test",
-    .appid = "keypad_test",
-    .stack_size = 2048,
-    .flags = FlipperInternalApplicationFlagDefault,
-};
-
-static const FlipperInternalApplication test_touchpad_app = {
-    .app = touchpad_test_app,
-    .name = "Touchpad Test",
-    .appid = "touchpad_test",
-    .stack_size = 2048,
-    .flags = FlipperInternalApplicationFlagDefault,
-};
-
-static const FlipperInternalApplication test_haptic_app = {
-    .app = haptic_test_app,
-    .name = "Haptic Test",
-    .appid = "haptic_test",
-    .stack_size = 2048,
-    .flags = FlipperInternalApplicationFlagDefault,
-};
-
 static void testing_menu_callback(MenuItem* item, size_t item_id, void* context) {
     furi_check(context);
     Scene* scene = context;
@@ -55,11 +27,11 @@ static void testing_menu_callback(MenuItem* item, size_t item_id, void* context)
     } else if(item_id == TestingMenuItemLeds) {
         desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterLedsMenu, scene);
     } else if(item_id == TestingMenuItemKeypad) {
-        desktop_start_app(&test_keypad_app);
+        desktop_start_app_by_id("keypad_test");
     } else if(item_id == TestingMenuItemTouchpad) {
-        desktop_start_app(&test_touchpad_app);
+        desktop_start_app_by_id("touchpad_test");
     } else if(item_id == TestingMenuItemHaptic) {
-        desktop_start_app(&test_haptic_app);
+        desktop_start_app_by_id("haptic_test");
     }
 }
 

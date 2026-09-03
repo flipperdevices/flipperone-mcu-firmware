@@ -9,6 +9,7 @@
 #include <pd/pd.h>
 #include <usb_mux/usb_mux.h>
 #include <assets.h>
+#include <desktop/desktop.h>
 
 #define TAG "SelfCheck"
 
@@ -220,9 +221,17 @@ static void self_check_app_main(void) {
 static void self_check_app_autorun(void) {
     FURI_LOG_I(TAG, "Starting self check autorun");
 
+    // Occupy the desktop app slot right away: no other app can be started
+    // via desktop while we are running (and desktop can stop us on demand).
+    if(!desktop_register_app("self_check", furi_thread_get_current())) {
+        FURI_LOG_E(TAG, "Failed to register with desktop");
+    }
+
     if(!self_check_process(NULL)) {
         self_check_app_main();
     }
+
+    desktop_unregister_app("self_check");
 }
 
 int32_t self_check_app(void* p) {

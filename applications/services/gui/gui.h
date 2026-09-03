@@ -56,6 +56,15 @@ size_t gui_get_height(Gui* gui);
 void gui_push_frame(Gui* gui, const uint8_t* data);
 
 /**
+ * Drop the pending full-screen frame (if any) and request a redraw.
+ *
+ * Call this when the frame source goes away (e.g. the owning app exits or
+ * the device feeding frames is reset) so the next redraw falls back to the
+ * normal Clay compositing instead of blitting a stale frame.
+ */
+void gui_clear_frame(Gui* gui);
+
+/**
  * Register the popup menu used as an overlay on top of pushed frames.
  *
  * The GUI checks its visibility to decide between the fast direct-blit path

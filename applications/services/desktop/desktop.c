@@ -18,13 +18,18 @@
 
 typedef enum {
     DesktopMessageTypeAppStart,
+    DesktopMessageTypeAppStop,
     DesktopMessageTypeAppClosed,
+    DesktopMessageTypeAppRegister,
+    DesktopMessageTypeAppUnregister,
 } DesktopMessageType;
 
 typedef struct {
     DesktopMessageType type;
     const FlipperInternalApplication* app;
     const char* args;
+    const char* appid;
+    FuriThread* thread;
 } DesktopAppMessage;
 
 typedef struct {
@@ -34,8 +39,11 @@ typedef struct {
 
 typedef struct {
     bool running;
+    bool external;
     char* args;
     FuriThread* thread;
+    const char* name;
+    const char* appid;
 } DesktopApp;
 
 struct Desktop {
@@ -112,8 +120,46 @@ static void desktop_do_app_closed(Desktop* desktop) {
 
     furi_thread_free(desktop->app.thread);
     desktop->app.thread = NULL;
+    desktop->app.name = NULL;
+    desktop->app.appid = NULL;
 
     FURI_LOG_I(TAG, "Application stopped. Free heap: %zu", memmgr_get_free_heap());
+}
+
+/* Join/free of an external app thread is deferred to the timer daemon: the
+ * external app calls desktop_unregister_app() from its own thread before it
+ * has fully stopped, so joining synchronously would block the desktop event
+ * loop until the thread completes its shutdown. */
+typedef struct {
+    FuriThread* thread;
+    char* args;
+} DesktopAppCleanupContext;
+
+static void desktop_app_cleanup_callback(void* context, uint32_t arg) {
+    UNUSED(arg);
+    DesktopAppCleanupContext* cleanup = context;
+
+    furi_thread_join(cleanup->thread);
+    FURI_LOG_I(TAG, "App returned: %li", furi_thread_get_return_code(cleanup->thread));
+
+    if(cleanup->args) {
+        free(cleanup->args);
+    }
+
+    furi_thread_free(cleanup->thread);
+    free(cleanup);
+
+    FURI_LOG_I(TAG, "Application stopped. Free heap: %zu", memmgr_get_free_heap());
+}
+
+static bool desktop_is_known_appid(const char* appid) {
+    for(size_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
+        if(strcmp(FLIPPER_APPS[i].appid, appid) == 0) return true;
+    }
+    for(size_t i = 0; i < FLIPPER_AUTORUN_APPS_COUNT; i++) {
+        if(strcmp(FLIPPER_AUTORUN_APPS[i].appid, appid) == 0) return true;
+    }
+    return false;
 }
 
 static void desktop_app_message_logic(FuriEventLoopObject* object, void* context) {
@@ -130,13 +176,78 @@ static void desktop_app_message_logic(FuriEventLoopObject* object, void* context
             FURI_LOG_E(TAG, "App start requested, but another app is already running");
         } else {
             desktop->app.running = true;
+            desktop->app.external = false;
+            desktop->app.name = message.app->name;
+            desktop->app.appid = message.app->appid;
             desktop_start_internal_app(desktop, message.app, message.args);
+        }
+        break;
+    case DesktopMessageTypeAppStop:
+        if(desktop->app.running) {
+            FURI_LOG_I(TAG, "App stop requested, sending exit signal");
+            if(!furi_thread_signal(desktop->app.thread, FuriSignalExit, NULL)) {
+                FURI_LOG_W(TAG, "App did not consume the exit signal");
+            }
         }
         break;
     case DesktopMessageTypeAppClosed:
         furi_check(desktop->app.running);
         desktop_do_app_closed(desktop);
         desktop->app.running = false;
+        desktop->app.external = false;
+        break;
+    case DesktopMessageTypeAppRegister:
+        if(desktop->app.running) {
+            FURI_LOG_E(TAG, "App register requested, but another app is already running: %s", message.appid);
+        } else if(!desktop_is_known_appid(message.appid)) {
+            FURI_LOG_E(TAG, "App register requested for unknown appid: %s", message.appid);
+        } else if(strcmp(furi_thread_get_appid(message.thread), message.appid) != 0) {
+            FURI_LOG_E(
+                TAG,
+                "App register requested for %s, but thread appid is %s",
+                message.appid,
+                furi_thread_get_appid(message.thread));
+        } else {
+            desktop->app.running = true;
+            desktop->app.external = true;
+            desktop->app.thread = message.thread;
+            desktop->app.name = message.appid;
+            desktop->app.appid = message.appid;
+            FURI_LOG_I(TAG, "App registered as running: %s", message.appid);
+        }
+        break;
+    case DesktopMessageTypeAppUnregister:
+        if(desktop->app.running && desktop->app.external) {
+            if(strcmp(desktop->app.appid, message.appid) != 0) {
+                FURI_LOG_W(
+                    TAG,
+                    "Unregister appid mismatch: registered %s, requested %s",
+                    desktop->app.appid,
+                    message.appid);
+            } else {
+                FURI_LOG_I(TAG, "Registered app exiting: %s", message.appid);
+
+                // Hand the thread over to the timer daemon for join/free so
+                // the desktop event loop is not blocked while the app thread
+                // is still finishing its shutdown.
+                DesktopAppCleanupContext* cleanup = malloc(sizeof(DesktopAppCleanupContext));
+                cleanup->thread = desktop->app.thread;
+                cleanup->args = desktop->app.args;
+
+                desktop->app.thread = NULL;
+                desktop->app.args = NULL;
+                desktop->app.running = false;
+                desktop->app.external = false;
+                desktop->app.name = NULL;
+                desktop->app.appid = NULL;
+
+                furi_timer_pending_callback(desktop_app_cleanup_callback, cleanup, 0);
+            }
+        } else if(desktop->app.running) {
+            FURI_LOG_W(TAG, "Unregister requested for desktop-managed app %s, ignoring", message.appid);
+        } else {
+            FURI_LOG_W(TAG, "Unregister requested for %s, but no app is running", message.appid);
+        }
         break;
     default:
         furi_assert(false);
@@ -234,6 +345,9 @@ static Desktop* desktop_alloc(void) {
     desktop->power_update_timer =
         furi_event_loop_timer_alloc(desktop->event_loop, desktop_power_update_timer_callback, FuriEventLoopTimerTypePeriodic, desktop);
 
+    desktop->app.running = false;
+    desktop->app.external = false;
+
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->app_message_queue, FuriEventLoopEventIn, desktop_app_message_logic, desktop);
     furi_event_loop_subscribe_message_queue(desktop->event_loop, desktop->scene_event_message_queue, FuriEventLoopEventIn, desktop_scene_event_logic, desktop);
 
@@ -281,6 +395,14 @@ bool desktop_start_app(const FlipperInternalApplication* app) {
     furi_assert(app);
 
     Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+
+    if(desktop->app.running) {
+        FURI_LOG_E(
+            TAG, "App start requested for %s, but %s is already running", app->appid, desktop->app.name);
+        furi_record_close(RECORD_DESKTOP);
+        return false;
+    }
+
     DesktopAppMessage message = {
         .type = DesktopMessageTypeAppStart,
         .app = app,
@@ -293,28 +415,116 @@ bool desktop_start_app(const FlipperInternalApplication* app) {
     return true;
 }
 
-extern int32_t cpu_app(void* p);
+const char* desktop_get_running_app_name(void) {
+    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+    const char* name = desktop->app.running ? desktop->app.name : NULL;
+    furi_record_close(RECORD_DESKTOP);
 
-static const FlipperInternalApplication cpu_app_start = {
-    .app = cpu_app,
-    .name = "CPU App",
-    .appid = "cpu",
-    .stack_size = 1024 * 4,
-    .flags = FlipperInternalApplicationFlagDefault,
-    .args = "start",
-};
+    return name;
+}
 
-static const FlipperInternalApplication cpu_app_maskrom = {
-    .app = cpu_app,
-    .name = "CPU App",
-    .appid = "cpu",
-    .stack_size = 1024 * 4,
-    .flags = FlipperInternalApplicationFlagDefault,
-    .args = "maskrom",
-};
+const char* desktop_get_running_app_id(void) {
+    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+    const char* appid = desktop->app.running ? desktop->app.appid : NULL;
+    furi_record_close(RECORD_DESKTOP);
+
+    return appid;
+}
+
+bool desktop_stop_app(void) {
+    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+
+    bool running = desktop->app.running;
+
+    DesktopAppMessage message = {
+        .type = DesktopMessageTypeAppStop,
+    };
+    furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
+    furi_record_close(RECORD_DESKTOP);
+
+    return running;
+}
+
+bool desktop_register_app(const char* appid, FuriThread* thread) {
+    furi_check(appid);
+    furi_check(thread);
+
+    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+
+    if(desktop->app.running) {
+        FURI_LOG_E(TAG, "App register requested for %s, but %s is already running", appid, desktop->app.name);
+        furi_record_close(RECORD_DESKTOP);
+        return false;
+    }
+
+    if(!desktop_is_known_appid(appid)) {
+        FURI_LOG_E(TAG, "App register requested for unknown appid: %s", appid);
+        furi_record_close(RECORD_DESKTOP);
+        return false;
+    }
+
+    if(strcmp(furi_thread_get_appid(thread), appid) != 0) {
+        FURI_LOG_E(TAG, "App register requested for %s, but thread appid is %s", appid, furi_thread_get_appid(thread));
+        furi_record_close(RECORD_DESKTOP);
+        return false;
+    }
+
+    DesktopAppMessage message = {
+        .type = DesktopMessageTypeAppRegister,
+        .appid = appid,
+        .thread = thread,
+    };
+    furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
+    furi_record_close(RECORD_DESKTOP);
+
+    return true;
+}
+
+bool desktop_unregister_app(const char* appid) {
+    furi_check(appid);
+
+    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+
+    bool registered = desktop->app.running && desktop->app.external &&
+                      desktop->app.appid && strcmp(desktop->app.appid, appid) == 0;
+
+    if(!registered) {
+        FURI_LOG_W(TAG, "Unregister requested for %s, but no matching external app is running", appid);
+        furi_record_close(RECORD_DESKTOP);
+        return false;
+    }
+
+    DesktopAppMessage message = {
+        .type = DesktopMessageTypeAppUnregister,
+        .appid = appid,
+    };
+    furi_message_queue_put(desktop->app_message_queue, &message, FuriWaitForever);
+    furi_record_close(RECORD_DESKTOP);
+
+    return true;
+}
 
 void desktop_start_cpu(bool to_maskrom) {
-    desktop_start_app(to_maskrom ? &cpu_app_maskrom : &cpu_app_start);
+    desktop_start_app_by_id(to_maskrom ? "cpu_app_maskrom" : "cpu_app_start");
+}
+
+bool desktop_start_app_by_id(const char* appid) {
+    furi_assert(appid);
+
+    const FlipperInternalApplication* entry = NULL;
+    for(size_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
+        if(strcmp(FLIPPER_APPS[i].appid, appid) == 0) {
+            entry = &FLIPPER_APPS[i];
+            break;
+        }
+    }
+
+    if(!entry) {
+        FURI_LOG_E(TAG, "App not found in FLIPPER_APPS: %s", appid);
+        return false;
+    }
+
+    return desktop_start_app(entry);
 }
 
 void desktop_power_off(void) {
