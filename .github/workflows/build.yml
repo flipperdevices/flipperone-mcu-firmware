@@ -245,7 +245,7 @@ jobs:
         # One line per entry of the build matrix
         body: |
           **Compiled firmware for commit `${{needs.firmware.outputs.commit_sha}}`:**
-          - [Partition table](https://update.flipperzero.one/builds/flipper-one-mcu/${{steps.names.outputs.branch_name}}/flipper-one-mcu-partition-table-${{steps.names.outputs.suffix}}.uf2)
+          - [Partition table](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-partition-table-${{needs.firmware.outputs.suffix}}.uf2)
           - [🍓 f1 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-f1-firmware-${{needs.firmware.outputs.suffix}}.uf2)
           - [🍓 f2 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-f2-firmware-${{needs.firmware.outputs.suffix}}.uf2)
         edit-mode: replace

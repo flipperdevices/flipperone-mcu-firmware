@@ -10,9 +10,9 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_JSON = "targets/f100/partition_table.json"
-DEFAULT_LD = "targets/f100/pico_flash_region.ld"
-DEFAULT_TCL = "targets/f100/flash.tcl"
+DEFAULT_JSON = "targets/f1/partition_table.json"
+DEFAULT_LD = "targets/f1/pico_flash_region.ld"
+DEFAULT_TCL = "targets/flash.tcl"
 FLASH_BASE = 0x10000000
 
 def get_stripped(d, key, default=None):
