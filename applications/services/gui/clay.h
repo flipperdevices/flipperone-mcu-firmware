@@ -1069,10 +1069,10 @@ typedef struct {
     bool maxRenderCommandsExceeded;
     bool maxTextMeasureCacheExceeded;
     bool textMeasurementFunctionNotSet;
-    // Trips when more element ids are live at the same time (declared within the
-    // last couple of frames) than layoutElementsHashMapInternal can hold; the
-    // overflowing element fails hashmap lookups (e.g. floating element parent
-    // attachment) until the map drains.
+    // Trips when more distinct element ids are declared within a single frame
+    // than layoutElementsHashMapInternal can hold (stale entries are reclaimed
+    // on demand before this fires); the overflowing element fails hashmap
+    // lookups (e.g. floating element parent attachment) for that frame.
     bool maxHashMapItemsExceeded;
 } Clay_BooleanWarnings;
 
@@ -1759,6 +1759,8 @@ bool Clay__PointIsInsideRect(Clay_Vector2 point, Clay_BoundingBox rect) {
     return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
 }
 
+void Clay__EvictStaleLayoutElementHashMapItems(Clay_Context* context, int32_t minStaleGenerations);
+
 Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Clay_LayoutElement* layoutElement) {
     Clay_Context* context = Clay_GetCurrentContext();
     Clay_LayoutElementHashMapItem item = { .elementId = elementId, .layoutElement = layoutElement, .nextIndex = -1, .generation = context->generation + 1 };
@@ -1797,6 +1799,21 @@ Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Cl
     // A new id: reuse a slot reclaimed by Clay__EvictStaleLayoutElementHashMapItems
     // when one is available, otherwise append. The capacity check applies only to
     // genuinely new entries - existing ids above were updated unconditionally.
+    if (context->layoutElementsHashMapFreeList.length == 0 &&
+        context->layoutElementsHashMapInternal.length == context->layoutElementsHashMapInternal.capacity - 1) {
+        // The map is transiently full mid-frame (e.g. a screen transition keeps
+        // the previous screen's ids until the end-of-frame sweep ages them out).
+        // Reclaim everything not declared in the current frame before giving up,
+        // so the capacity only ever has to cover a single frame's ids.
+        Clay__EvictStaleLayoutElementHashMapItems(context, 0);
+        // The eviction rewrites bucket chains; recompute this bucket's tail so
+        // the new entry is linked at a valid position.
+        hashItemPrevious = -1;
+        for (int32_t itemIndex = context->layoutElementsHashMap.internalArray[hashBucket]; itemIndex != -1;) {
+            hashItemPrevious = itemIndex;
+            itemIndex = Clay__LayoutElementHashMapItemArray_Get(&context->layoutElementsHashMapInternal, itemIndex)->nextIndex;
+        }
+    }
     Clay_LayoutElementHashMapItem *hashItem;
     int32_t newItemIndex;
     if (context->layoutElementsHashMapFreeList.length > 0) {
@@ -1813,7 +1830,7 @@ Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Cl
                 context->booleanWarnings.maxHashMapItemsExceeded = true;
                 context->errorHandler.errorHandlerFunction(CLAY__INIT(Clay_ErrorData) {
                         .errorType = CLAY_ERROR_TYPE_ELEMENTS_CAPACITY_EXCEEDED,
-                        .errorText = CLAY_STRING("Clay ran out of capacity in its element-id hashmap (layoutElementsHashMapInternal). Entries are recycled once an id has not been declared for a few frames, so this means too many distinct element ids are live at the same time. Try using Clay_SetMaxElementIdCount() with a higher value (before Clay_Initialize())."),
+                        .errorText = CLAY_STRING("Clay ran out of capacity in its element-id hashmap (layoutElementsHashMapInternal). Stale entries are recycled on demand, so this means too many distinct element ids were declared within a single frame. Try using Clay_SetMaxElementIdCount() with a higher value (before Clay_Initialize())."),
                         .userData = context->errorHandler.userData });
             }
             return NULL;
@@ -1830,11 +1847,14 @@ Clay_LayoutElementHashMapItem* Clay__AddHashMapItem(Clay_ElementId elementId, Cl
     return hashItem;
 }
 
-// Reclaims hashmap entries whose element has not been declared for over two
-// frames (the same generation criterion as the text measurement cache), so id
-// churn between frames/screens cannot permanently exhaust the map. Freed slots
-// are unlinked from their bucket chain and reused by Clay__AddHashMapItem.
-void Clay__EvictStaleLayoutElementHashMapItems(Clay_Context* context) {
+// Reclaims hashmap entries whose element has not been declared for at least
+// minStaleGenerations frames, so id churn between frames/screens cannot
+// permanently exhaust the map. The end-of-frame sweep uses 3 (the same
+// criterion as the text measurement cache); Clay__AddHashMapItem passes 0 to
+// reclaim everything not declared in the current frame when the map fills
+// mid-frame. Freed slots are unlinked from their bucket chain and reused by
+// Clay__AddHashMapItem.
+void Clay__EvictStaleLayoutElementHashMapItems(Clay_Context* context, int32_t minStaleGenerations) {
     for (int32_t hashBucket = 0; hashBucket < context->layoutElementsHashMap.capacity; ++hashBucket) {
         int32_t previousIndex = -1;
         int32_t itemIndex = context->layoutElementsHashMap.internalArray[hashBucket];
@@ -1842,7 +1862,7 @@ void Clay__EvictStaleLayoutElementHashMapItems(Clay_Context* context) {
             Clay_LayoutElementHashMapItem *item = Clay__LayoutElementHashMapItemArray_Get(&context->layoutElementsHashMapInternal, itemIndex);
             int32_t nextIndex = item->nextIndex;
             // Signed comparison: an item touched this frame carries generation + 1.
-            if ((int32_t)(context->generation - item->generation) > 2) {
+            if ((int32_t)(context->generation - item->generation) >= minStaleGenerations) {
                 if (previousIndex != -1) {
                     Clay__LayoutElementHashMapItemArray_Get(&context->layoutElementsHashMapInternal, previousIndex)->nextIndex = nextIndex;
                 } else {
@@ -4400,7 +4420,7 @@ Clay_RenderCommandArray Clay_EndLayout(void) {
                 .userData = context->errorHandler.userData });
     }
     Clay__CalculateFinalLayout();
-    Clay__EvictStaleLayoutElementHashMapItems(context);
+    Clay__EvictStaleLayoutElementHashMapItems(context, 3);
     return context->renderCommands;
 }
 

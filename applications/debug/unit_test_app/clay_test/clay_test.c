@@ -3,17 +3,14 @@
  * @brief Tests for the vendored Clay fork's element-id hashmap lifecycle
  *        (services/gui/clay.h).
  *
- * The persistent element-id hashmap (layoutElementsHashMapInternal) is never
- * reset for the whole session, so element IDs that churn between frames
- * consume slots permanently and eventually break lookups for the rest of the
- * session. These tests pin down both the behavior that must keep working
- * (stable IDs, duplicate-ID diagnostics, parent-scoped local IDs) and the
- * behavior we intend to fix.
- *
- * NOTE: the three tests marked EXPECTED-TO-FAIL document the current defect
- * and must fail until clay.h reclaims stale hashmap entries (generation-based
- * eviction, the same scheme Clay__MeasureTextCached already uses). Once the
- * fix lands they must all pass unmodified.
+ * The element-id hashmap (layoutElementsHashMapInternal) reclaims entries
+ * whose id has not been declared for a few frames (generation-based eviction,
+ * the same scheme Clay__MeasureTextCached uses), so id churn between
+ * frames/screens must never permanently exhaust it. Historically the map was
+ * append-only for the whole session and churning ids broke lookups until
+ * reboot; the eviction-focused tests below were written against that defect
+ * (TDD red) and now guard the eviction mechanism against regressions - every
+ * test here must always pass.
  *
  * Each test runs against its own small Clay context so overflow is cheap to
  * reach; the GUI service's context is parked (and its redraw thread blocked
@@ -181,12 +178,12 @@ MU_TEST(clay_local_id_scoped_to_parent) {
     mu_assert_int_eq(0, err_total);
 }
 
-/* ── EXPECTED-TO-FAIL until id-hashmap eviction is implemented ──────────── */
+/* ── Regression tests for id-hashmap eviction ───────────────────────────── */
 
 /* IDs that churn between frames (one new distinct ID per frame) must not
  * permanently exhaust the hashmap: entries whose elements are gone must be
- * reclaimed. Today every distinct ID ever seen occupies a slot forever, so
- * this overflows after TEST_MAX_ELEMENT_ID_COUNT frames. */
+ * reclaimed. Without eviction every distinct ID ever seen occupies a slot
+ * forever and this overflows after TEST_MAX_ELEMENT_ID_COUNT frames. */
 MU_TEST(clay_id_churn_does_not_exhaust_hashmap) {
     for(int frame = 0; frame < TEST_MAX_ELEMENT_ID_COUNT * 3; frame++) {
         Clay_BeginLayout();
@@ -200,8 +197,9 @@ MU_TEST(clay_id_churn_does_not_exhaust_hashmap) {
 }
 
 /* After a long session of churning IDs, a brand-new element must still get a
- * working hashmap entry. Today Clay__AddHashMapItem returns NULL once the map
- * is full, so the new element is invisible to Clay_GetElementData forever. */
+ * working hashmap entry. Without eviction Clay__AddHashMapItem returns NULL
+ * once the map is full and the new element stays invisible to
+ * Clay_GetElementData forever. */
 MU_TEST(clay_new_ids_resolvable_after_long_session) {
     for(int frame = 0; frame < TEST_MAX_ELEMENT_ID_COUNT * 2; frame++) {
         Clay_BeginLayout();
@@ -222,12 +220,46 @@ MU_TEST(clay_new_ids_resolvable_after_long_session) {
     mu_assert_int_eq(77, (int)data.boundingBox.width);
 }
 
+/* A screen transition must survive an id budget that fits either screen but
+ * not both at once: the previous screen's ids stay in the map until the
+ * end-of-frame sweep ages them out (3 frames), so mid-transition the map fills
+ * up and Clay__AddHashMapItem must reclaim stale entries on demand instead of
+ * failing. */
+MU_TEST(clay_screen_transition_survives_tight_id_budget) {
+    /* "Screen A": 10 ids + Clay's root = 11 of the 15 usable slots. */
+    for(int frame = 0; frame < 2; frame++) {
+        Clay_BeginLayout();
+        for(int i = 0; i < 10; i++) {
+            clay_test_declare_box(CLAY_IDI("ScreenA", i), 20);
+        }
+        Clay_EndLayout();
+    }
+
+    /* "Screen B": 10 fresh ids while all of screen A's are still resident -
+     * the union (21) exceeds capacity, so this only passes if the map evicts
+     * screen A's entries the moment it runs out of room. */
+    for(int frame = 0; frame < 2; frame++) {
+        Clay_BeginLayout();
+        for(int i = 0; i < 10; i++) {
+            clay_test_declare_box(CLAY_IDI("ScreenB", i), 40);
+        }
+        Clay_EndLayout();
+    }
+
+    mu_assert_int_eq(0, err_capacity);
+    mu_assert_int_eq(0, err_total);
+
+    Clay_ElementData data = Clay_GetElementData(CLAY_IDI("ScreenB", 9));
+    mu_check(data.found);
+    mu_assert_int_eq(40, (int)data.boundingBox.width);
+}
+
 /* A full hashmap must not freeze elements that were known before it filled.
- * Today the capacity bail-out in Clay__AddHashMapItem also skips the
- * existing-entry update path, so a known element's item keeps a stale
+ * Without eviction the capacity bail-out in Clay__AddHashMapItem also skipped
+ * the existing-entry update path, so a known element's item kept a stale
  * layoutElement pointer into the per-frame element array; anything resolved
  * through the hashmap (here: a floating element sizing itself to its parent)
- * silently reads whatever element occupies that slot in the current frame. */
+ * silently read whatever element occupied that slot in the current frame. */
 MU_TEST(clay_floating_attachment_survives_full_hashmap) {
     Clay_ElementId tracked = CLAY_ID("Tracked");
     Clay_ElementId floater = CLAY_ID("Floater");
@@ -274,6 +306,7 @@ MU_TEST_SUITE(clay_hashmap_suite) {
 
     MU_RUN_TEST(clay_id_churn_does_not_exhaust_hashmap);
     MU_RUN_TEST(clay_new_ids_resolvable_after_long_session);
+    MU_RUN_TEST(clay_screen_transition_survives_tight_id_budget);
     MU_RUN_TEST(clay_floating_attachment_survives_full_hashmap);
 }
 

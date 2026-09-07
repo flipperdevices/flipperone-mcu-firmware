@@ -97,9 +97,9 @@ Clay_String clay_helper_string_from_chars(const char* chars) {
     return clay_string;
 }
 
-void clay_fixed_image(const Image* image) {
+void clay_fixed_image(Clay_ElementId id, const Image* image) {
     CLAY(
-        CLAY_ID_LOCAL("FixedImage"),
+        id,
         {
             .layout =
                 {
