@@ -88,10 +88,9 @@ static void menu_draw_item(MenuItem* item, size_t line_index, bool selected) {
         if(selected) {
             /* Explicit, menu/row-independent IDs: only one item can ever be
              * selected at a time, so these always occupy the same fixed slot
-             * in Clay's persistent element-id hashmap instead of a new one
-             * derived from (row index, sibling offset) - the latter churns
-             * through unique IDs as different rows/menus get selected over
-             * the session and eventually exhausts that hashmap for good. */
+             * in Clay's element-id hashmap instead of a new one derived from
+             * (row index, sibling offset) - the latter churns through unique
+             * IDs as different rows/menus get selected. */
             CLAY(
                 CLAY_ID("MenuSelectionBorder"),
                 {

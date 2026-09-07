@@ -12,6 +12,10 @@
 
 #define TAG "GuiSrv"
 
+/* Logs the live-entry high-water mark of Clay's element-id hashmap whenever a
+ * new peak is reached - real data for sizing CLAY_MAX_ELEMENT_ID_COUNT. */
+// #define GUI_CLAY_DEBUG_ENABLE
+
 #define GUI_INPUT_EVENT_QUEUE_SIZE       32
 #define GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE 32
 
@@ -21,11 +25,12 @@
  * - CLAY_MAX_ELEMENT_COUNT: per-frame ephemeral arrays (layoutElements,
  *   renderCommands, per-element configs) - reset every frame, so only the
  *   busiest single screen matters.
- * - CLAY_MAX_ELEMENT_ID_COUNT: session-persistent ID-keyed arrays (the
- *   element-id hashmap, text measurement cache) - never reset, so this must
- *   cover every distinct element ID ever seen across ALL screens/apps. */
+ * - CLAY_MAX_ELEMENT_ID_COUNT: ID-keyed arrays (the element-id hashmap, text
+ *   measurement cache). Hashmap entries are recycled once an id has not been
+ *   declared for a couple of frames, so this bounds ids live at the same time
+ *   (roughly: the busiest screen plus whatever composites over it). */
 #define CLAY_MAX_ELEMENT_COUNT            80
-#define CLAY_MAX_ELEMENT_ID_COUNT         256
+#define CLAY_MAX_ELEMENT_ID_COUNT         128
 #define CLAY_MAX_MEASURE_TEXT_CACHE_WORDS 256
 
 typedef struct {
@@ -192,6 +197,17 @@ static void gui_redraw(Gui* gui) {
         }
 
         Clay_RenderCommandArray renderCommands = Clay_EndLayout();
+
+#ifdef GUI_CLAY_DEBUG_ENABLE
+        /* Clay_EndLayout has just evicted stale entries, so this is the live
+         * count. Logging only upward moves keeps the log quiet in steady state. */
+        static int32_t clay_hashmap_high_water = 0;
+        int32_t clay_hashmap_live = Clay_GetLayoutElementHashMapLength();
+        if(clay_hashmap_live > clay_hashmap_high_water) {
+            clay_hashmap_high_water = clay_hashmap_live;
+            FURI_LOG_I(TAG, "clay id hashmap high water: %d/%d", (int)clay_hashmap_high_water, (int)Clay_GetLayoutElementHashMapCapacity());
+        }
+#endif
 
         clay_render_do_render(gui->render_canvas, &renderCommands);
 
@@ -374,16 +390,10 @@ static void gui_handle_clay_errors(Clay_ErrorData errorData) {
         }
     }
 
-    /* Dump the persistent element-id hashmap fill level so capacity overflows
-     * are diagnosable from the device log alone: once
-     * layoutElementsHashMapInternal fills up it stays full for the rest of the
-     * session, so the reported counts show how far CLAY_MAX_ELEMENT_ID_COUNT
-     * needs to grow. */
-    FURI_LOG_E(
-        TAG,
-        "clay state: hashmap=%d/%d",
-        (int)Clay_GetLayoutElementHashMapLength(),
-        (int)Clay_GetLayoutElementHashMapCapacity());
+    /* Dump the element-id hashmap fill level so capacity overflows are
+     * diagnosable from the device log alone: the reported live count shows how
+     * far CLAY_MAX_ELEMENT_ID_COUNT needs to grow. */
+    FURI_LOG_E(TAG, "clay state: hashmap=%d/%d", (int)Clay_GetLayoutElementHashMapLength(), (int)Clay_GetLayoutElementHashMapCapacity());
 }
 
 static void gui_input_logic(FuriEventLoopObject* object, void* context) {
