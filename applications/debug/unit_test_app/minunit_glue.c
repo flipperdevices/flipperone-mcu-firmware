@@ -1,6 +1,7 @@
 #include "minunit_vars_ex.h"
 
 #include <furi.h>
+#include <pico/stdio.h>
 
 void minunit_print_progress(void) {
     static const char progress[] = {'\\', '|', '/', '-'};
@@ -10,7 +11,7 @@ void minunit_print_progress(void) {
     if(current_tick - last_tick > 20) {
         last_tick = current_tick;
         printf("[%c]\033[3D", progress[++progress_counter % COUNT_OF(progress)]);
-        fflush(stdout);
+        stdio_flush();
     }
 }
 
