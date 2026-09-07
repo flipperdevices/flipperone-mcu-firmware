@@ -66,6 +66,7 @@ extern "C" {
 #endif
 
 #include <stdio.h>
+#include <pico/stdio.h>
 #include <math.h>
 
 /*  Maximum length of last message */
@@ -117,7 +118,7 @@ void minunit_printf_warning(const char* format, ...);
             minunit_fail++;                                      \
             minunit_print_fail(minunit_last_message);            \
             minunit_status = 0;                                  \
-        } fflush(stdout);                                        \
+        } stdio_flush();                                         \
         if(minunit_teardown)(*minunit_teardown)();)
 
 #define MU_RUN_TEST_1(test, arg_1)                               \
@@ -134,7 +135,7 @@ void minunit_printf_warning(const char* format, ...);
             minunit_fail++;                                      \
             minunit_print_fail(minunit_last_message);            \
             minunit_status = 0;                                  \
-        } fflush(stdout);                                        \
+        } stdio_flush();                                         \
         if(minunit_teardown)(*minunit_teardown)();)
 
 /*  Report */
