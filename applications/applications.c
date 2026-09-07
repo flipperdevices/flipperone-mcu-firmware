@@ -29,7 +29,6 @@ extern int32_t cli_on_system_start(void* p);
 extern int32_t rpc_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
 
-
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void led_cli(PipeSide* pipe, FuriString* args, void* context);
@@ -259,7 +258,7 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = unit_tests_cli_command,
         .name = "unit_tests",
-        .stack_size = 1024 * 2,
+        .stack_size = 1024 * 8,
         .flags = CliCommandFlagParallelSafe,
     },
 };
