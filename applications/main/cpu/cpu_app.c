@@ -98,10 +98,12 @@ static bool cpu_app_layout(void* _model) {
             }) {
             if(model->frame.data) {
                 Image* image = &model->frame;
-                CLAY_AUTO_ID({
-                    .layout = {.sizing = layout_screen},
-                    .image = {.imageData = image},
-                }) {
+                CLAY(
+                    CLAY_APP_ID("FrameImage"),
+                    {
+                        .layout = {.sizing = layout_screen},
+                        .image = {.imageData = image},
+                    }) {
                 }
             }
         }

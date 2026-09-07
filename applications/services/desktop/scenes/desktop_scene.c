@@ -29,14 +29,16 @@ static bool desktop_layout(void* _model) {
                 },
             .clip = {.vertical = true, .childOffset = Clay_GetScrollOffset()},
         }) {
-        CLAY_AUTO_ID({
-            .layout =
-                {
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                },
-        }) {
-            clay_fixed_image(&desktop_face_sleep);
+        CLAY(
+            CLAY_APP_ID("FaceWrapper"),
+            {
+                .layout =
+                    {
+                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                        .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                    },
+            }) {
+            clay_fixed_image(CLAY_ID_LOCAL("Face"), &desktop_face_sleep);
         }
 
         elements_softkey_button_element(1, "Help", false, model->help_pressed);
