@@ -12,9 +12,11 @@
 
 #define TAG "GuiSrv"
 
-/* Logs the live-entry high-water mark of Clay's element-id hashmap whenever a
- * new peak is reached - real data for sizing CLAY_MAX_ELEMENT_ID_COUNT. */
-// #define GUI_CLAY_DEBUG_ENABLE
+/* Logs high watermarks of Clay's capacity consumers whenever a new peak is
+ * reached: live element-id hashmap entries (for sizing
+ * CLAY_MAX_ELEMENT_ID_COUNT), per-frame layout elements (for sizing
+ * CLAY_MAX_ELEMENT_COUNT) and per-frame render commands. */
+// #define GUI_CLAY_DEBUG_WATERMARK_ENABLE
 
 #define GUI_INPUT_EVENT_QUEUE_SIZE       32
 #define GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE 32
@@ -198,14 +200,30 @@ static void gui_redraw(Gui* gui) {
 
         Clay_RenderCommandArray renderCommands = Clay_EndLayout();
 
-#ifdef GUI_CLAY_DEBUG_ENABLE
+#ifdef GUI_CLAY_DEBUG_WATERMARK_ENABLE
         /* Clay_EndLayout has just evicted stale entries, so this is the live
          * count. Logging only upward moves keeps the log quiet in steady state. */
-        static int32_t clay_hashmap_high_water = 0;
+        static int32_t clay_hashmap_high_watermark = 0;
         int32_t clay_hashmap_live = Clay_GetLayoutElementHashMapLength();
-        if(clay_hashmap_live > clay_hashmap_high_water) {
-            clay_hashmap_high_water = clay_hashmap_live;
-            FURI_LOG_I(TAG, "clay id hashmap high water: %d/%d", (int)clay_hashmap_high_water, (int)Clay_GetLayoutElementHashMapCapacity());
+        if(clay_hashmap_live > clay_hashmap_high_watermark) {
+            clay_hashmap_high_watermark = clay_hashmap_live;
+            FURI_LOG_I(TAG, "clay id hashmap high watermark: %d/%d", (int)clay_hashmap_high_watermark, (int)Clay_GetLayoutElementHashMapCapacity());
+        }
+
+        /* Per-frame arrays, valid until the next Clay_BeginLayout. On overflow
+         * the element count saturates at capacity - the real demand is higher
+         * than the logged peak (a "clay error" line accompanies it). */
+        static int32_t clay_elements_high_watermark = 0;
+        int32_t clay_elements = Clay_GetLayoutElementCount();
+        if(clay_elements > clay_elements_high_watermark) {
+            clay_elements_high_watermark = clay_elements;
+            FURI_LOG_I(TAG, "clay elements high watermark: %d/%d", (int)clay_elements_high_watermark, (int)Clay_GetMaxElementCount());
+        }
+
+        static int32_t clay_commands_high_watermark = 0;
+        if(renderCommands.length > clay_commands_high_watermark) {
+            clay_commands_high_watermark = renderCommands.length;
+            FURI_LOG_I(TAG, "clay render commands high watermark: %d/%d", (int)clay_commands_high_watermark, (int)renderCommands.capacity);
         }
 #endif
 

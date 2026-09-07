@@ -863,6 +863,10 @@ CLAY_DLL_EXPORT void Clay_SetCurrentContext(Clay_Context* context);
 // these are useful for diagnosing capacity overflow from an error handler.
 CLAY_DLL_EXPORT int32_t Clay_GetLayoutElementHashMapLength(void);
 CLAY_DLL_EXPORT int32_t Clay_GetLayoutElementHashMapCapacity(void);
+// Returns the number of layout elements declared in the most recent frame.
+// layoutElements is a per-frame array reset by Clay_BeginLayout, so read this
+// after Clay_EndLayout; useful for sizing Clay_SetMaxElementCount().
+CLAY_DLL_EXPORT int32_t Clay_GetLayoutElementCount(void);
 // Updates the state of Clay's internal scroll data, updating scroll content positions if scrollDelta is non zero, and progressing momentum scrolling.
 // - enableDragScrolling when set to true will enable mobile device like "touch drag" scroll of scroll containers, including momentum scrolling after the touch has ended.
 // - scrollDelta is the amount to scroll this frame on each axis in pixels.
@@ -2095,10 +2099,12 @@ bool Clay__MemCmp(const char *s1, const char *s2, int32_t length);
     }
 #endif
 
-// Fires the error handler exactly once, the moment an element gets silently
-// dropped because context->layoutElements ran out of capacity. Without this,
-// the caller has no way of knowing that Clay__Open*Element() returned early
-// and skipped creating the element.
+// Fires the error handler once per frame (the latch lives in booleanWarnings,
+// which Clay_BeginLayout resets), the moment an element gets silently dropped
+// because context->layoutElements ran out of capacity. Without this, the
+// caller has no way of knowing that Clay__Open*Element() returned early and
+// skipped creating the element. A screen that keeps exceeding the capacity
+// re-fires on every layout pass for as long as it is displayed.
 void Clay__WarnElementCapacityExceeded(Clay_Context *context) {
     if (!context->booleanWarnings.maxElementsExceeded) {
         context->booleanWarnings.maxElementsExceeded = true;
@@ -4203,6 +4209,11 @@ int32_t Clay_GetLayoutElementHashMapLength(void) {
 CLAY_WASM_EXPORT("Clay_GetLayoutElementHashMapCapacity")
 int32_t Clay_GetLayoutElementHashMapCapacity(void) {
     return Clay_GetCurrentContext()->layoutElementsHashMapInternal.capacity;
+}
+
+CLAY_WASM_EXPORT("Clay_GetLayoutElementCount")
+int32_t Clay_GetLayoutElementCount(void) {
+    return Clay_GetCurrentContext()->layoutElements.length;
 }
 
 CLAY_WASM_EXPORT("Clay_GetScrollOffset")
