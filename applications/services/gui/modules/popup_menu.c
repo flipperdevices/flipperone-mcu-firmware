@@ -54,41 +54,49 @@ static void popup_menu_draw_item(PopupMenuItem* item, size_t line_index, bool se
             }));
 
         if(selected) {
-            CLAY_AUTO_ID({
-                .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(MENU_LINE_HEIGHT + 1)}},
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-                .border =
-                    {
-                        .color = COLOR_BLACK,
-                        .width = {.bottom = 2, .top = 1},
-                    },
-            }){};
+            /* Explicit, item-independent IDs: only one popup item can ever be
+             * selected at a time, mirroring the same fix applied to menu.c. */
+            CLAY(
+                CLAY_ID("PopupMenuSelectionBorder"),
+                {
+                    .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(MENU_LINE_HEIGHT + 1)}},
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                    .border =
+                        {
+                            .color = COLOR_BLACK,
+                            .width = {.bottom = 2, .top = 1},
+                        },
+                }){};
 
             const Image* left_border = &popup_menu_border_left;
             const Image* right_border = &popup_menu_border_right;
 
-            CLAY_AUTO_ID({
-                .layout = {.sizing = {.height = CLAY_SIZING_FIXED(left_border->height), .width = CLAY_SIZING_FIXED(left_border->width)}},
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-                .image = {.imageData = (void*)left_border},
-            }){};
-            CLAY_AUTO_ID({
-                .layout = {.sizing = {.height = CLAY_SIZING_FIXED(right_border->height), .width = CLAY_SIZING_FIXED(right_border->width)}},
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-                .image = {.imageData = (void*)right_border},
-            }){};
+            CLAY(
+                CLAY_ID("PopupMenuSelectionLeftCorner"),
+                {
+                    .layout = {.sizing = {.height = CLAY_SIZING_FIXED(left_border->height), .width = CLAY_SIZING_FIXED(left_border->width)}},
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                    .image = {.imageData = (void*)left_border},
+                }){};
+            CLAY(
+                CLAY_ID("PopupMenuSelectionRightCorner"),
+                {
+                    .layout = {.sizing = {.height = CLAY_SIZING_FIXED(right_border->height), .width = CLAY_SIZING_FIXED(right_border->width)}},
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                    .image = {.imageData = (void*)right_border},
+                }){};
         }
     }
 }
@@ -120,15 +128,17 @@ static void popup_menu_draw_item_list(PopupMenuViewModel* model) {
 
 static void popup_menu_draw_title(const char* title) {
     if(title) {
-        CLAY_AUTO_ID({
-            .backgroundColor = (Clay_Color){0xFF, 0xFF, 0xFF, 0xFF / 2},
-            .layout =
-                {
-                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                    .padding = {.left = 8, .right = 7, .top = 1, .bottom = 0},
-                },
-        }) {
+        CLAY(
+            CLAY_APP_ID("Title"),
+            {
+                .backgroundColor = (Clay_Color){0xFF, 0xFF, 0xFF, 0xFF / 2},
+                .layout =
+                    {
+                        .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                        .padding = {.left = 8, .right = 7, .top = 1, .bottom = 0},
+                    },
+            }) {
             CLAY_TEXT(clay_helper_string_from_chars(title), CLAY_TEXT_CONFIG({.fontId = FontBig, .textColor = COLOR_BLACK}));
         }
     }
@@ -142,38 +152,42 @@ static bool popup_menu_layout_callback(void* _model) {
         return false;
     }
 
-    CLAY_AUTO_ID({
-        .backgroundColor = (Clay_Color){0xFF, 0xFF, 0xFF, 0xFF / 2},
-        .layout =
-            {
-                .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
-            },
-        .floating =
-            {
-                .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
-                .attachTo = CLAY_ATTACH_TO_ROOT,
-            },
-    }) {
-        CLAY_AUTO_ID({
-            .backgroundColor = COLOR_WHITE,
+    CLAY(
+        CLAY_APP_ID("Overlay"),
+        {
+            .backgroundColor = (Clay_Color){0xFF, 0xFF, 0xFF, 0xFF / 2},
             .layout =
                 {
                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
-                    .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0)},
-                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
-                    .padding = {.left = 7, .right = 7, .top = 3, .bottom = 3},
-                    .childGap = 4,
+                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_TOP},
                 },
             .floating =
                 {
-                    .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
+                    .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
                     .attachTo = CLAY_ATTACH_TO_ROOT,
                 },
-            .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
-            .cornerRadius = CLAY_CORNER_RADIUS(5),
         }) {
+        CLAY(
+            CLAY_APP_ID("Dialog"),
+            {
+                .backgroundColor = COLOR_WHITE,
+                .layout =
+                    {
+                        .layoutDirection = CLAY_TOP_TO_BOTTOM,
+                        .sizing = {.width = CLAY_SIZING_FIT(0), .height = CLAY_SIZING_FIT(0)},
+                        .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
+                        .padding = {.left = 7, .right = 7, .top = 3, .bottom = 3},
+                        .childGap = 4,
+                    },
+                .floating =
+                    {
+                        .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
+                        .attachTo = CLAY_ATTACH_TO_ROOT,
+                    },
+                .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
+                .cornerRadius = CLAY_CORNER_RADIUS(5),
+            }) {
             popup_menu_draw_title(model->title);
             popup_menu_draw_item_list(model);
         }
