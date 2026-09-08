@@ -30,10 +30,10 @@ static bool desktop_cli_start_app(PipeSide* pipe, FuriString* args) {
 
     FuriString* app_name = furi_string_alloc();
     const FlipperInternalApplication* target = NULL;
+    bool success = false;
 
     do {
         if(!args_read_probably_quoted_string_and_trim(args, app_name)) {
-            printf("usage: desktop start_app <appid|\"app name\">\r\n");
             break;
         }
 
@@ -57,10 +57,11 @@ static bool desktop_cli_start_app(PipeSide* pipe, FuriString* args) {
         }
 
         printf("started %s (%s)\r\n", target->name, target->appid);
+        success = true;
     } while(false);
 
     furi_string_free(app_name);
-    return true;
+    return success;
 }
 
 static bool desktop_cli_stop_app(PipeSide* pipe, FuriString* args) {
@@ -74,6 +75,7 @@ static bool desktop_cli_stop_app(PipeSide* pipe, FuriString* args) {
     } else {
         printf("stop requested: %s\r\n", appid ? appid : "unknown app");
     }
+
     return true;
 }
 
