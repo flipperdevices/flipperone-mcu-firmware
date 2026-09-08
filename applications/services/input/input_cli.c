@@ -1,4 +1,5 @@
 #include <furi/furi.h>
+#include <pico/stdio.h>
 
 #include <input/input.h>
 #include <input_touch/input_touch.h>
@@ -87,7 +88,7 @@ static void input_cli_dump(PipeSide* pipe) {
                     ev.event.touch.y,
                     ev.event.touch.pressure);
             }
-            fflush(stdout);
+            stdio_flush();
         }
     }
 
