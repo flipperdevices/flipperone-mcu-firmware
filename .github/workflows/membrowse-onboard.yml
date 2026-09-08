@@ -14,7 +14,7 @@ on:
 env:
   BUILD_TYPE: Release
   ARM_NONE_EABI_GCC_VERSION: 14.2.1-1.1
-  PICO_SDK_VERSION: 2.2.0
+  PICO_SDK_VERSION: 2.3.1
 
 jobs:
   onboard:
