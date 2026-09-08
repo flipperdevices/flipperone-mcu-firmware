@@ -23,7 +23,7 @@ static void power_menu_item_selected(size_t item_id, void* context) {
         FURI_LOG_I(TAG, "Exit");
         desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, desktop);
     } else if(item_id == PowerMenuItemStartCpu) {
-        desktop_start_cpu(false);
+        desktop_send_scene_event(desktop, DesktopSceneEventTypeEnterCpuStartApp, desktop);
         desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, desktop);
     } else if(item_id == PowerMenuItemPowerOff) {
         desktop_power_off();

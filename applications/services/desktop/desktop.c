@@ -366,6 +366,30 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         scene_enter(desktop->debug_menu_scene, desktop);
         consumed = true;
         break;
+    case DesktopSceneEventTypeEnterSelfCheckApp:
+        desktop_start_app_by_id("self_check");
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterMaskromApp:
+        desktop_start_app_by_id("cpu_app_maskrom");
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterCpuStartApp:
+        desktop_start_app_by_id("cpu_app_start");
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterKeypadApp:
+        desktop_start_app_by_id("keypad_test");
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterTouchpadApp:
+        desktop_start_app_by_id("touchpad_test");
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeEnterHapticApp:
+        desktop_start_app_by_id("haptic_test");
+        consumed = true;
+        break;
     }
 
     if(!consumed) {
@@ -530,12 +554,12 @@ bool desktop_unregister_app(const char* appid) {
     return result;
 }
 
-void desktop_start_cpu(bool to_maskrom) {
-    desktop_start_app_by_id(to_maskrom ? "cpu_app_maskrom" : "cpu_app_start");
-}
-
 bool desktop_start_app_by_id(const char* appid) {
     furi_assert(appid);
+
+    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+
+    bool result = false;
 
     const FlipperInternalApplication* entry = NULL;
     for(size_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
@@ -544,13 +568,27 @@ bool desktop_start_app_by_id(const char* appid) {
             break;
         }
     }
+    do {
+        if(!entry) {
+            FURI_LOG_E(TAG, "App not found in FLIPPER_APPS: %s", appid);
+            break;
+        }
 
-    if(!entry) {
-        FURI_LOG_E(TAG, "App not found in FLIPPER_APPS: %s", appid);
-        return false;
-    }
+        if(desktop->app.running) {
+            FURI_LOG_E(TAG, "App start requested for %s, but %s is already running", entry->appid, desktop->app.name);
+        } else {
+            desktop->app.running = true;
+            desktop->app.external = false;
+            desktop->app.name = entry->name;
+            desktop->app.appid = entry->appid;
+            desktop_start_internal_app(desktop, entry, entry->args);
+            result = true;
+        };
 
-    return desktop_start_app(entry);
+    } while(false);
+
+    furi_record_close(RECORD_DESKTOP);
+    return result;
 }
 
 void desktop_power_off(void) {

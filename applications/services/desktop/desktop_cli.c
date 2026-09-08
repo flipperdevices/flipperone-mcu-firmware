@@ -95,7 +95,7 @@ static bool desktop_cli_get_run_app(PipeSide* pipe, FuriString* args) {
 }
 
 static const DesktopCmd desktop_cmds[] = {
-    {"start_app", "<\"app_name\"|appid>", "Start an application by name or appid", desktop_cli_start_app},
+    {"start_app", "<\"app name\"|appid>", "Start an application by name or appid", desktop_cli_start_app},
     {"stop_app", "", "Request graceful exit of the running app", desktop_cli_stop_app},
     {"list_apps", "", "List available apps", desktop_cli_list_apps},
     {"get_run_app", "", "Get the appid of the currently running app", desktop_cli_get_run_app},

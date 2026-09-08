@@ -27,11 +27,11 @@ static void testing_menu_callback(MenuItem* item, size_t item_id, void* context)
     } else if(item_id == TestingMenuItemLeds) {
         desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterLedsMenu, scene);
     } else if(item_id == TestingMenuItemKeypad) {
-        desktop_start_app_by_id("keypad_test");
+        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterKeypadApp, scene);
     } else if(item_id == TestingMenuItemTouchpad) {
-        desktop_start_app_by_id("touchpad_test");
+        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterTouchpadApp, scene);
     } else if(item_id == TestingMenuItemHaptic) {
-        desktop_start_app_by_id("haptic_test");
+        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterHapticApp, scene);
     }
 }
 
