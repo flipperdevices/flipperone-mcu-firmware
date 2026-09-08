@@ -60,10 +60,20 @@ jobs:
             PICO_SDK_PATH=${{ github.workspace }}/pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
             cmake --build . --config $BUILD_TYPE --parallel $(nproc) &&
             mkdir -p ldscripts &&
-            cp ${{ github.workspace }}/pico-sdk/src/rp2_common/pico_crt0/rp2350/memmap_default.ld ldscripts/ &&
-            cp "$(find . -name pico_flash_region.ld -print -quit)" ldscripts/
+            cp ${{ github.workspace }}/pico-sdk/src/rp2350/pico_platform/memmap_default.ld ldscripts/ &&
+            cp ${{ github.workspace }}/pico-sdk/src/rp2_common/pico_standard_link/script_include/*.incl ldscripts/ &&
+            cp ${{ github.workspace }}/pico-sdk/src/rp2350/pico_platform/script_include/*.incl ldscripts/ &&
+            (cp generated/pico_standard_link/*/*.incl ldscripts/ 2>/dev/null || true) &&
+            cp pico-sdk/src/rp2_common/pico_standard_link/pico_psram_region.ld ldscripts/ &&
+            cp pico_flash_region.ld ldscripts/
           elf: build/flipperone-mcu-firmware.elf
+          # See build.yml for why the tree is flattened and the regions passed by hand
           ld: build/ldscripts/memmap_default.ld
+          linker_vars: >-
+            RAM_ORIGIN=0x20000000 RAM_LENGTH=512k
+            SCRATCH_X_ORIGIN=0x20080000 SCRATCH_X_LENGTH=4k
+            SCRATCH_Y_ORIGIN=0x20081000 SCRATCH_Y_LENGTH=4k
+            XIP_RAM_ORIGIN=0x13FFC000 XIP_RAM_LENGTH=16k
           map_file: build/flipperone-mcu-firmware.elf.map
           binary_search: 'true'
           api_key: ${{ secrets.MEMBROWSE_API_KEY }}
