@@ -259,7 +259,7 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = unit_tests_cli_command,
         .name = "unit_tests",
-        .stack_size = 1024 * 2,
+        .stack_size = 1024 * 8,
         .flags = CliCommandFlagParallelSafe,
     },
     {
