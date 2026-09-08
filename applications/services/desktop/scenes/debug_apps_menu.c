@@ -68,7 +68,7 @@ static bool debug_menu_input(InputEvent* event, void* context) {
     if(event->type == InputTypePress && event->key == InputKeyOk) {
         uint32_t selected_index;
         with_view_model(view, DebugMenuViewModel * model, { selected_index = model->selected_index; }, false);
-        desktop_start_app(&FLIPPER_APPS[selected_index]);
+        desktop_start_app_by_id(desktop, FLIPPER_APPS[selected_index].appid);
         consumed = true;
     } else if(event->type == InputTypePress && event->key == InputKeyBack) {
         scene_exit(scene, desktop);

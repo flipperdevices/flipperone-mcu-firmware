@@ -367,27 +367,27 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         consumed = true;
         break;
     case DesktopSceneEventTypeEnterSelfCheckApp:
-        desktop_start_app_by_id("self_check");
+        desktop_start_app_by_id(desktop, "self_check");
         consumed = true;
         break;
     case DesktopSceneEventTypeEnterMaskromApp:
-        desktop_start_app_by_id("cpu_app_maskrom");
+        desktop_start_app_by_id(desktop, "cpu_app_maskrom");
         consumed = true;
         break;
     case DesktopSceneEventTypeEnterCpuStartApp:
-        desktop_start_app_by_id("cpu_app_start");
+        desktop_start_app_by_id(desktop, "cpu_app_start");
         consumed = true;
         break;
     case DesktopSceneEventTypeEnterKeypadApp:
-        desktop_start_app_by_id("keypad_test");
+        desktop_start_app_by_id(desktop, "keypad_test");
         consumed = true;
         break;
     case DesktopSceneEventTypeEnterTouchpadApp:
-        desktop_start_app_by_id("touchpad_test");
+        desktop_start_app_by_id(desktop, "touchpad_test");
         consumed = true;
         break;
     case DesktopSceneEventTypeEnterHapticApp:
-        desktop_start_app_by_id("haptic_test");
+        desktop_start_app_by_id(desktop, "haptic_test");
         consumed = true;
         break;
     }
@@ -554,10 +554,9 @@ bool desktop_unregister_app(const char* appid) {
     return result;
 }
 
-bool desktop_start_app_by_id(const char* appid) {
+bool desktop_start_app_by_id(Desktop* desktop, const char* appid) {
     furi_assert(appid);
-
-    Desktop* desktop = furi_record_open(RECORD_DESKTOP);
+    furi_assert(desktop);
 
     bool result = false;
 
@@ -587,7 +586,6 @@ bool desktop_start_app_by_id(const char* appid) {
 
     } while(false);
 
-    furi_record_close(RECORD_DESKTOP);
     return result;
 }
 
