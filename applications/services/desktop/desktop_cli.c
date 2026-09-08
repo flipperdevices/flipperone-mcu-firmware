@@ -79,10 +79,26 @@ static bool desktop_cli_stop_app(PipeSide* pipe, FuriString* args) {
     return true;
 }
 
+static bool desktop_cli_get_run_app(PipeSide* pipe, FuriString* args) {
+    UNUSED(pipe);
+    UNUSED(args);
+
+    const char* appid = desktop_get_running_app_id();
+
+    if(appid) {
+        printf("running app: %s\r\n", appid);
+    } else {
+        printf("no app is running\r\n");
+    }
+
+    return true;
+}
+
 static const DesktopCmd desktop_cmds[] = {
     {"start_app", "<app_name|appid>", "Start an application by name or appid", desktop_cli_start_app},
     {"stop_app", "", "Request graceful exit of the running app", desktop_cli_stop_app},
     {"list_apps", "", "List available apps", desktop_cli_list_apps},
+    {"get_run_app", "", "Get the appid of the currently running app", desktop_cli_get_run_app},
 };
 
 static void desktop_command_cli_print_usage(void) {
