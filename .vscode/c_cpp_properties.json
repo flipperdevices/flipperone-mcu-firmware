@@ -4,11 +4,11 @@
             "name": "Pico",
             "includePath": [
                 "${workspaceFolder}/**",
-                "${userHome}/.pico-sdk/sdk/2.2.0/**"
+                "${userHome}/.pico-sdk/sdk/2.3.1/**"
             ],
             "forcedInclude": [
-                "${userHome}/.pico-sdk/sdk/2.2.0/src/common/pico_base_headers/include/pico.h",
-                "${workspaceFolder}/build/generated/pico_base/pico/config_autogen.h"
+                "${workspaceFolder}/build/generated/pico_base/pico/config_autogen.h",
+                "${userHome}/.pico-sdk/sdk/2.3.1/src/common/pico_base_headers/include/pico.h"
             ],
             "defines": [],
             "compilerPath": "${userHome}/.pico-sdk/toolchain/14_2_Rel1/bin/arm-none-eabi-gcc",

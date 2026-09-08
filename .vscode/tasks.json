@@ -18,7 +18,7 @@
         {
             "label": "Run Project",
             "type": "process",
-            "command": "${env:HOME}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool",
+            "command": "${env:HOME}/.pico-sdk/picotool/2.3.1/picotool/picotool",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
@@ -32,7 +32,7 @@
             },
             "problemMatcher": [],
             "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool.exe"
+                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe"
             }
         },
         {
