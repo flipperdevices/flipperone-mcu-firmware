@@ -312,6 +312,41 @@ bool furi_crash_handler(bool debug) {
     return false; // Always false for this development stage
 }
 
+static bool desktop_start_app_by_id(Desktop* desktop, const char* appid) {
+    furi_assert(appid);
+    furi_assert(desktop);
+
+    bool result = false;
+
+    const FlipperInternalApplication* entry = NULL;
+    for(size_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
+        if(strcmp(FLIPPER_APPS[i].appid, appid) == 0) {
+            entry = &FLIPPER_APPS[i];
+            break;
+        }
+    }
+    do {
+        if(!entry) {
+            FURI_LOG_E(TAG, "App not found in FLIPPER_APPS: %s", appid);
+            break;
+        }
+
+        if(desktop->app.running) {
+            FURI_LOG_E(TAG, "App start requested for %s, but %s is already running", entry->appid, desktop->app.name);
+        } else {
+            desktop->app.running = true;
+            desktop->app.external = false;
+            desktop->app.name = entry->name;
+            desktop->app.appid = entry->appid;
+            desktop_start_internal_app(desktop, entry, entry->args);
+            result = true;
+        };
+
+    } while(false);
+
+    return result;
+}
+
 static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     Desktop* desktop = context;
@@ -366,30 +401,37 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         scene_enter(desktop->debug_menu_scene, desktop);
         consumed = true;
         break;
-    case DesktopSceneEventTypeEnterSelfCheckApp:
+    case DesktopSceneEventTypeStartSelfCheckApp:
         desktop_start_app_by_id(desktop, "self_check");
         consumed = true;
         break;
-    case DesktopSceneEventTypeEnterMaskromApp:
+    case DesktopSceneEventTypeStartMaskromApp:
         desktop_start_app_by_id(desktop, "cpu_app_maskrom");
         consumed = true;
         break;
-    case DesktopSceneEventTypeEnterCpuStartApp:
+    case DesktopSceneEventTypeStartCpuApp:
         desktop_start_app_by_id(desktop, "cpu_app_start");
         consumed = true;
         break;
-    case DesktopSceneEventTypeEnterKeypadApp:
+    case DesktopSceneEventTypeStartKeypadApp:
         desktop_start_app_by_id(desktop, "keypad_test");
         consumed = true;
         break;
-    case DesktopSceneEventTypeEnterTouchpadApp:
+    case DesktopSceneEventTypeStartTouchpadApp:
         desktop_start_app_by_id(desktop, "touchpad_test");
         consumed = true;
         break;
-    case DesktopSceneEventTypeEnterHapticApp:
+    case DesktopSceneEventTypeStartHapticApp:
         desktop_start_app_by_id(desktop, "haptic_test");
         consumed = true;
         break;
+    case DesktopSceneEventTypeStartAppById: {
+        const char* appid = (const char*)message.data;
+        furi_check(appid);
+        desktop_start_app_by_id(desktop, appid);
+        consumed = true;
+        break;
+    }
     }
 
     if(!consumed) {
@@ -550,41 +592,6 @@ bool desktop_unregister_app(const char* appid) {
     };
     desktop_send_message(desktop, &message);
     furi_record_close(RECORD_DESKTOP);
-
-    return result;
-}
-
-bool desktop_start_app_by_id(Desktop* desktop, const char* appid) {
-    furi_assert(appid);
-    furi_assert(desktop);
-
-    bool result = false;
-
-    const FlipperInternalApplication* entry = NULL;
-    for(size_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
-        if(strcmp(FLIPPER_APPS[i].appid, appid) == 0) {
-            entry = &FLIPPER_APPS[i];
-            break;
-        }
-    }
-    do {
-        if(!entry) {
-            FURI_LOG_E(TAG, "App not found in FLIPPER_APPS: %s", appid);
-            break;
-        }
-
-        if(desktop->app.running) {
-            FURI_LOG_E(TAG, "App start requested for %s, but %s is already running", entry->appid, desktop->app.name);
-        } else {
-            desktop->app.running = true;
-            desktop->app.external = false;
-            desktop->app.name = entry->name;
-            desktop->app.appid = entry->appid;
-            desktop_start_internal_app(desktop, entry, entry->args);
-            result = true;
-        };
-
-    } while(false);
 
     return result;
 }

@@ -34,9 +34,9 @@ static void settings_menu_item_callback(MenuItem* item, size_t item_id, void* co
     } else if(item_id == SettingsMenuItemPower) {
         desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterPowerSettings, scene);
     } else if(item_id == SettingsMenuItemSelfCheck) {
-        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterSelfCheckApp, scene);
+        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeStartSelfCheckApp, scene);
     } else if(item_id == SettingsMenuItemMaskrom) {
-        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterMaskromApp, scene);
+        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeStartMaskromApp, scene);
     } else if(item_id == SettingsMenuItemTesting) {
         desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeEnterTestingMenu, scene);
     } else if(item_id == SettingsMenuItemInfo) {
