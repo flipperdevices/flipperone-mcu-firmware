@@ -46,8 +46,8 @@ if (EXISTS ${picoVscode})
 endif()
 # ====================================================================================
 # TODO: custom board with RP2350_B_
-set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/targets/ CACHE STRING "Board header directories")
-set(PICO_BOARD "board_mcu_2350" CACHE STRING "Board type")
+set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/targets/ CACHE STRING "Board header directories" FORCE)
+set(PICO_BOARD "board_mcu_2350" CACHE STRING "Board type" FORCE)
 set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
