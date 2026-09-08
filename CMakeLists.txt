@@ -46,13 +46,20 @@ if (EXISTS ${picoVscode})
 endif()
 # ====================================================================================
 # TODO: custom board with RP2350_B_
-set(PICO_BOARD pimoroni_pga2350 CACHE STRING "Board type")
+set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/targets/ CACHE STRING "Board header directories")
+set(PICO_BOARD "board_mcu_2350" CACHE STRING "Board type")
 set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include("lib/sdk/pico_sdk_import.cmake")
 
 project(flipperone-mcu-firmware C CXX ASM)
+
+# Get the flash partition size from the partition table
+execute_process(
+    COMMAND python3 "${CMAKE_CURRENT_LIST_DIR}/scripts/get_partition_size.py" "${CMAKE_CURRENT_LIST_DIR}/targets/partition_table.json"
+    OUTPUT_VARIABLE PICO_FLASH_SIZE_BYTES
+)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
@@ -172,8 +179,8 @@ pico_add_extra_outputs(${PROJECT_NAME})
 pico_init_picotool()
 if(picotool_FOUND)
     add_custom_target(partition_table ALL
-        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/f1/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.bin
-        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/f1/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
+        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.bin
+        COMMAND picotool partition create ${CMAKE_CURRENT_LIST_DIR}/targets/partition_table.json ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
         BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/partition_table.bin
         BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
         COMMENT "Building partition table"

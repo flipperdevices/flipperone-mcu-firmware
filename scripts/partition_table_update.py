@@ -10,8 +10,8 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_JSON = "targets/f1/partition_table.json"
-DEFAULT_LD = "targets/f1/pico_flash_region.ld"
+DEFAULT_JSON = "targets/partition_table.json"
+DEFAULT_LD = None  # "targets/pico_flash_region.ld"
 DEFAULT_TCL = "targets/flash.tcl"
 FLASH_BASE = 0x10000000
 
@@ -198,7 +198,8 @@ def main():
 
         size_bytes = parse_size(size_raw)
 
-        write_ld(args.ld_path, size_bytes)
+        if (args.ld_path is not None):
+            write_ld(args.ld_path, size_bytes)
 
         new_offset = FLASH_BASE + 0x2000 + size_bytes
         new_offset_hex = f"0x{new_offset:x}"
