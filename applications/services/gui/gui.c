@@ -12,12 +12,27 @@
 
 #define TAG "GuiSrv"
 
+/* Logs high watermarks of Clay's capacity consumers whenever a new peak is
+ * reached: live element-id hashmap entries (for sizing
+ * CLAY_MAX_ELEMENT_ID_COUNT), per-frame layout elements (for sizing
+ * CLAY_MAX_ELEMENT_COUNT) and per-frame render commands. */
+// #define GUI_CLAY_DEBUG_WATERMARK_ENABLE
+
 #define GUI_INPUT_EVENT_QUEUE_SIZE       32
 #define GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE 32
 
 #define GUI_EVENT_FLAG_REDRAW (1U << 0)
 
-#define CLAY_MAX_ELEMENT_COUNT            144
+/* Clay has two separate capacity limits:
+ * - CLAY_MAX_ELEMENT_COUNT: per-frame ephemeral arrays (layoutElements,
+ *   renderCommands, per-element configs) - reset every frame, so only the
+ *   busiest single screen matters.
+ * - CLAY_MAX_ELEMENT_ID_COUNT: ID-keyed arrays (the element-id hashmap, text
+ *   measurement cache). Hashmap entries are recycled once an id has not been
+ *   declared for a couple of frames, so this bounds ids live at the same time
+ *   (roughly: the busiest screen plus whatever composites over it). */
+#define CLAY_MAX_ELEMENT_COUNT            80
+#define CLAY_MAX_ELEMENT_ID_COUNT         128
 #define CLAY_MAX_MEASURE_TEXT_CACHE_WORDS 256
 
 typedef struct {
@@ -184,6 +199,33 @@ static void gui_redraw(Gui* gui) {
         }
 
         Clay_RenderCommandArray renderCommands = Clay_EndLayout();
+
+#ifdef GUI_CLAY_DEBUG_WATERMARK_ENABLE
+        /* Clay_EndLayout has just evicted stale entries, so this is the live
+         * count. Logging only upward moves keeps the log quiet in steady state. */
+        static int32_t clay_hashmap_high_watermark = 0;
+        int32_t clay_hashmap_live = Clay_GetLayoutElementHashMapLength();
+        if(clay_hashmap_live > clay_hashmap_high_watermark) {
+            clay_hashmap_high_watermark = clay_hashmap_live;
+            FURI_LOG_I(TAG, "clay id hashmap high watermark: %d/%d", (int)clay_hashmap_high_watermark, (int)Clay_GetLayoutElementHashMapCapacity());
+        }
+
+        /* Per-frame arrays, valid until the next Clay_BeginLayout. On overflow
+         * the element count saturates at capacity - the real demand is higher
+         * than the logged peak (a "clay error" line accompanies it). */
+        static int32_t clay_elements_high_watermark = 0;
+        int32_t clay_elements = Clay_GetLayoutElementCount();
+        if(clay_elements > clay_elements_high_watermark) {
+            clay_elements_high_watermark = clay_elements;
+            FURI_LOG_I(TAG, "clay elements high watermark: %d/%d", (int)clay_elements_high_watermark, (int)Clay_GetMaxElementCount());
+        }
+
+        static int32_t clay_commands_high_watermark = 0;
+        if(renderCommands.length > clay_commands_high_watermark) {
+            clay_commands_high_watermark = renderCommands.length;
+            FURI_LOG_I(TAG, "clay render commands high watermark: %d/%d", (int)clay_commands_high_watermark, (int)renderCommands.capacity);
+        }
+#endif
 
         clay_render_do_render(gui->render_canvas, &renderCommands);
 
@@ -353,6 +395,23 @@ void gui_remove_view(Gui* gui, View* view) {
 
 static void gui_handle_clay_errors(Clay_ErrorData errorData) {
     FURI_LOG_E(TAG, "clay error: %s", errorData.errorText.chars);
+
+    if(errorData.errorType == CLAY_ERROR_TYPE_DUPLICATE_ID) {
+        FURI_LOG_E(
+            TAG,
+            "clay duplicate element id: %lu (base=%lu, offset=%lu)",
+            (unsigned long)errorData.elementId,
+            (unsigned long)errorData.elementBaseId,
+            (unsigned long)errorData.elementOffset);
+        if(errorData.elementStringId.chars) {
+            FURI_LOG_E(TAG, "clay duplicate string id: %.*s", (int)errorData.elementStringId.length, errorData.elementStringId.chars);
+        }
+    }
+
+    /* Dump the element-id hashmap fill level so capacity overflows are
+     * diagnosable from the device log alone: the reported live count shows how
+     * far CLAY_MAX_ELEMENT_ID_COUNT needs to grow. */
+    FURI_LOG_E(TAG, "clay state: hashmap=%d/%d", (int)Clay_GetLayoutElementHashMapLength(), (int)Clay_GetLayoutElementHashMapCapacity());
 }
 
 static void gui_input_logic(FuriEventLoopObject* object, void* context) {
@@ -399,11 +458,11 @@ static Gui* gui_alloc(void) {
     gui->redraw_flag = furi_event_flag_alloc();
     gui->input_queue = furi_message_queue_alloc(GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent));
     FURI_LOG_I(
-        TAG, "InputEvent: %zu bytes x %u → queue ~%zu bytes", sizeof(InputEvent), GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent) * GUI_INPUT_EVENT_QUEUE_SIZE);
+        TAG, "InputEvent: %zu bytes x %u -> queue ~%zu bytes", sizeof(InputEvent), GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent) * GUI_INPUT_EVENT_QUEUE_SIZE);
     gui->input_touch_queue = furi_message_queue_alloc(GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE, sizeof(InputTouchEvent));
     FURI_LOG_I(
         TAG,
-        "InputTouchEvent: %zu bytes x %u → queue ~%zu bytes",
+        "InputTouchEvent: %zu bytes x %u -> queue ~%zu bytes",
         sizeof(InputTouchEvent),
         GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE,
         sizeof(InputTouchEvent) * GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE);
@@ -419,14 +478,16 @@ static Gui* gui_alloc(void) {
 
     // Clay initialization
     Clay_SetMaxElementCount(CLAY_MAX_ELEMENT_COUNT);
+    Clay_SetMaxElementIdCount(CLAY_MAX_ELEMENT_ID_COUNT);
     Clay_SetMaxMeasureTextCacheWordCount(CLAY_MAX_MEASURE_TEXT_CACHE_WORDS);
     uint64_t clay_memory = Clay_MinMemorySize();
     FURI_LOG_I(
         TAG,
-        "Clay arena: %llu bytes (~%llu KiB), elements=%u, text_cache=%u words",
+        "Clay arena: %llu bytes (~%llu KiB), elements=%u, ids=%u, text_cache=%u words",
         clay_memory,
         clay_memory / 1024,
         CLAY_MAX_ELEMENT_COUNT,
+        CLAY_MAX_ELEMENT_ID_COUNT,
         CLAY_MAX_MEASURE_TEXT_CACHE_WORDS);
     Clay_Arena arena = Clay_CreateArenaWithCapacityAndMemory(clay_memory, malloc(clay_memory));
     Clay_Initialize(arena, (Clay_Dimensions){JD9853_WIDTH, JD9853_HEIGHT}, (Clay_ErrorHandler){gui_handle_clay_errors, gui});
@@ -474,6 +535,16 @@ void gui_push_frame(Gui* gui, const uint8_t* data) {
 
     gui_lock(gui);
     gui->pending_frame = data;
+    gui_unlock(gui);
+
+    gui_update(gui);
+}
+
+void gui_clear_frame(Gui* gui) {
+    furi_check(gui);
+
+    gui_lock(gui);
+    gui->pending_frame = NULL;
     gui_unlock(gui);
 
     gui_update(gui);

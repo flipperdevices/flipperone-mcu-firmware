@@ -37,9 +37,9 @@ if(WIN32)
 else()
     set(USERHOME $ENV{HOME})
 endif()
-set(sdkVersion 2.2.0)
+set(sdkVersion 2.3.1)
 set(toolchainVersion 14_2_Rel1)
-set(picotoolVersion 2.2.0-a4)
+set(picotoolVersion 2.3.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
 if (EXISTS ${picoVscode})
     include(${picoVscode})
@@ -115,6 +115,19 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
 fw_find_file(linker_symbols.ld LINKER_SYMBOLS_LD)
 target_link_options(${PROJECT_NAME} PRIVATE "LINKER:-T,${LINKER_SYMBOLS_LD}")
 set_target_properties(${PROJECT_NAME} PROPERTIES LINK_DEPENDS ${LINKER_SYMBOLS_LD})
+
+# Route newlib's reentrant allocators (_malloc_r and friends) to the Furi heap.
+# pico_malloc only wraps malloc/free/calloc/realloc. Newlib internal users
+# (stdio buffering via __smakebuf_r, %f formatting via _dtoa_r, strdup, fopen,
+# etc.) go through the _r variants, which otherwise fall back to _sbrk over
+# the .heap section that overlaps the start of the Furi heap. memmgr.c already
+# provides __wrap__malloc_r/__wrap__free_r/__wrap__calloc_r/__wrap__realloc_r.
+target_link_options(${PROJECT_NAME} PRIVATE
+    "LINKER:--wrap=_malloc_r"
+    "LINKER:--wrap=_free_r"
+    "LINKER:--wrap=_calloc_r"
+    "LINKER:--wrap=_realloc_r"
+)
 
 include(lib/corelibs/lib/version/CMakeLists.txt)
 
