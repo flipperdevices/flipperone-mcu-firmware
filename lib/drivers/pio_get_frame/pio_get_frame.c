@@ -34,7 +34,7 @@
 #define PIO_GET_FRAME_LOOP_END    5
 
 typedef struct {
-    uint8_t data[PIO_GET_FRAME_SIZE];
+    uint8_t data[PIO_GET_FRAME_SIZE + PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND];
 } PioGetFrameBuffer;
 
 struct PioGetFrame {
@@ -44,7 +44,7 @@ struct PioGetFrame {
     PIO pio;
     uint sm;
     uint offset;
-    PioGetFrameBuffer frame_buffers[PIO_GET_FRAME_COUNT + PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND];
+    PioGetFrameBuffer frame_buffers[PIO_GET_FRAME_COUNT];
     size_t current_frame; /* buffer DMA is (re)armed to write into */
     int dma_rx_channel;
     PioGetFrameCallbackRx callback_rx;
@@ -89,10 +89,15 @@ static void __isr __not_in_flash_func(pio_get_frame_cs_isr)(void* context) {
     dma_channel_abort(instance->dma_rx_channel);
     size_t received = PIO_GET_FRAME_SIZE - dma_channel_hw_addr(instance->dma_rx_channel)->transfer_count;
 
-    /* Drain any bytes still sitting in the PIO RX FIFO for an exact count */
+    /* Drain any bytes still sitting in the PIO RX FIFO for an exact count.
+     * Written at the same +PIXEL_SHIFT_BUG_WORKAROUND offset the DMA uses,
+     * so the drained tail lines up with the DMA-written head instead of
+     * overlapping it. */
     while(!pio_sm_is_rx_fifo_empty(instance->pio, instance->sm)) {
         if(received < PIO_GET_FRAME_SIZE) {
-            instance->frame_buffers[instance->current_frame].data[received++] = (uint8_t)pio_sm_get(instance->pio, instance->sm);
+            instance->frame_buffers[instance->current_frame].data[PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND + received] =
+                (uint8_t)pio_sm_get(instance->pio, instance->sm);
+            received++;
         } else {
             pio_sm_get(instance->pio, instance->sm); /* discard overflow */
         }
@@ -118,6 +123,13 @@ PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck,
     instance->current_frame = 0;
     instance->callback_rx = NULL;
     instance->callback_context = NULL;
+
+    /* The DMA/drain write path never touches data[0] (it starts at
+     * +PIXEL_SHIFT_BUG_WORKAROUND), so it must be cleared explicitly instead
+     * of being left with whatever malloc() handed us. */
+    for(size_t i = 0; i < PIO_GET_FRAME_COUNT; i++) {
+        instance->frame_buffers[i].data[0] = 0;
+    }
 
     /* Build the program at runtime with the actual GPIO numbers. The bus pins
      * are not contiguous, so a static .pio cannot be pin-agnostic; the SDK
