@@ -124,15 +124,6 @@ PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck,
     instance->callback_rx = NULL;
     instance->callback_context = NULL;
 
-    /* The DMA/drain write path never touches data[0] (it starts at
-     * +PIXEL_SHIFT_BUG_WORKAROUND), so it must be cleared explicitly instead
-     * of being left with whatever malloc() handed us. */
-    for(size_t i = 0; i < PIO_GET_FRAME_COUNT; i++) {
-        for(size_t j = 0; j < PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND; j++) {
-            instance->frame_buffers[i].data[j] = 0;
-        }
-    }
-
     /* Build the program at runtime with the actual GPIO numbers. The bus pins
      * are not contiguous, so a static .pio cannot be pin-agnostic; the SDK
      * relocates the jmp target automatically when the program is installed. */
