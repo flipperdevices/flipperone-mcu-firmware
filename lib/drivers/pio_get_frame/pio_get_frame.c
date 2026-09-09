@@ -128,7 +128,9 @@ PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck,
      * +PIXEL_SHIFT_BUG_WORKAROUND), so it must be cleared explicitly instead
      * of being left with whatever malloc() handed us. */
     for(size_t i = 0; i < PIO_GET_FRAME_COUNT; i++) {
-        instance->frame_buffers[i].data[0] = 0;
+        for(size_t j = 0; j < PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND; j++) {
+            instance->frame_buffers[i].data[j] = 0;
+        }
     }
 
     /* Build the program at runtime with the actual GPIO numbers. The bus pins
