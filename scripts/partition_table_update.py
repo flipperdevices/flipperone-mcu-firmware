@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updates partition offset/size in flash.tcl and pico_flash_region.ld based on partition_table.json.
+Updates partition offset/size in flash.tcl and memory_flash.incl based on partition_table.json.
 Run this after changing partition_table.json to update the build scripts.
 """
 
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 DEFAULT_JSON = "targets/partition_table.json"
-DEFAULT_LD = None  # "targets/pico_flash_region.ld"
+DEFAULT_LD = "targets/memory_flash.incl"
 DEFAULT_TCL = "targets/flash.tcl"
 FLASH_BASE = 0x10000000
 
@@ -111,9 +111,9 @@ def parse_size(value):
 
 def write_ld(path: Path, size: int):
     """
-    Create pico_flash_region.ld with required FLASH region.
+    Create memory_flash.incl with required FLASH region.
     """
-    content = f"FLASH(rx) : ORIGIN = 0x{FLASH_BASE:x}, LENGTH = 0x{size:x}\n"
+    content = f"MEMORY {{FLASH(rx) : ORIGIN = 0x{FLASH_BASE:x}, LENGTH = 0x{size:x}}}\n"
     path.write_text(content, encoding="utf-8")
 
 
@@ -153,7 +153,7 @@ def update_tcl(path: Path, var_name: str, new_value_hex: str):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate pico_flash_region.ld and update flash.tcl using data from partition_table.json"
+        description="Generate memory_flash.incl and update flash.tcl using data from partition_table.json"
     )
 
     parser.add_argument(

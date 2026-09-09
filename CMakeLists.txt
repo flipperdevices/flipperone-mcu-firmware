@@ -55,12 +55,6 @@ include("lib/sdk/pico_sdk_import.cmake")
 
 project(flipperone-mcu-firmware C CXX ASM)
 
-# Get the flash partition size from the partition table
-execute_process(
-    COMMAND python3 "${CMAKE_CURRENT_LIST_DIR}/scripts/get_partition_size.py" "${CMAKE_CURRENT_LIST_DIR}/targets/partition_table.json"
-    OUTPUT_VARIABLE PICO_FLASH_SIZE_BYTES
-)
-
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
@@ -108,6 +102,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     PICO_CRT0_IMAGE_TYPE_TBYB=0
 )
 
+pico_add_linker_script_override_path(${PROJECT_NAME} "${CMAKE_CURRENT_LIST_DIR}/targets")
 # Link-time heap symbols (__heap_start__, __heap_end__, __heap_size__).
 # Must come after the SDK's --script= so that __heap_start/__heap_end and
 # .stack_dummy (all defined in memmap_default.ld) are already resolved.
