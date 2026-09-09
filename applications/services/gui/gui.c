@@ -182,8 +182,6 @@ static void gui_redraw(Gui* gui) {
                     {
                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                        // workaround for the pixel shift bug
-                        .padding = {.left = 1, .top = 0, .right = 1, .bottom = 0},
                     },
             }) {
             if(gui_view_find_opaque_from_top(gui->views, &it)) {
