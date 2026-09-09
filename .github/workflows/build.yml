@@ -155,7 +155,7 @@ jobs:
         cp "$SDK"/src/rp2_common/pico_standard_link/script_include/*.incl ldscripts/
         cp "$SDK"/src/rp2350/pico_platform/script_include/*.incl ldscripts/
         cp generated/pico_standard_link/*/*.incl ldscripts/ 2>/dev/null || true
-        cp "$SDK"/src/rp2_common/pico_standard_link/pico_psram_region.ld ldscripts/
+        cp pico-sdk/src/rp2_common/pico_standard_link/pico_psram_region.ld ldscripts/
         cp ${{github.workspace}}/firmware/targets/memory_flash.incl ldscripts/
 
     # TODO: MemBrowse still tracks f1 only, under its original target name.
