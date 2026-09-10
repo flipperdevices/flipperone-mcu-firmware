@@ -29,16 +29,37 @@ env:
   # them from the header of CMakeLists.txt.
 
 jobs:
+  # The list of hardware targets: every directory under targets/ with a
+  # target.cmake. Everything below fans out over this list, so adding a target is
+  # adding a directory — nothing in this file has to change.
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        sparse-checkout: targets
+
+    - name: List targets
+      id: list
+      run: |
+        list=$(for d in targets/*/; do
+          [ -f "$d/target.cmake" ] && basename "$d"
+        done | jq -R . | jq -sc .)
+        echo "targets: $list"
+        echo "list=$list" >> $GITHUB_OUTPUT
+
   firmware:
     runs-on: ubuntu-latest
+    needs: targets
 
     strategy:
       # One target failing to build says nothing about the others, so let them finish
       fail-fast: false
       matrix:
-        # Every directory under targets/ that has a target.cmake.
-        # Keep in sync with the links posted by the 'comment' job below.
-        target: [f1, f2]
+        target: ${{ fromJson(needs.targets.outputs.list) }}
 
     # Identical across the matrix — the targets only differ in what they build
     outputs:
@@ -187,10 +208,26 @@ jobs:
   # comment, so the links for all of them are collected here instead.
   comment:
     runs-on: ubuntu-latest
-    needs: [firmware, publish]
+    needs: [targets, firmware, publish]
     if: ${{ !github.event.pull_request.head.repo.fork && github.event.pull_request }}
 
     steps:
+    # One line per target, in the same naming as the 'Move upload files' step
+    - name: 'Compose comment'
+      env:
+        BASE: https://update.flipperzero.one/builds/flipper-one-mcu/${{ needs.firmware.outputs.branch_name }}
+        SUFFIX: ${{ needs.firmware.outputs.suffix }}
+        TARGETS: ${{ needs.targets.outputs.list }}
+      run: |
+        {
+          echo "**Compiled firmware for commit \`${{ needs.firmware.outputs.commit_sha }}\`:**"
+          echo "- [Partition table]($BASE/flipper-one-mcu-partition-table-$SUFFIX.uf2)"
+          for t in $(echo "$TARGETS" | jq -r '.[]'); do
+            echo "- [🍓 $t UF2 file]($BASE/flipper-one-mcu-$t-firmware-$SUFFIX.uf2)"
+          done
+        } > comment.md
+        cat comment.md
+
     - name: 'Find previous comment'
       uses: peter-evans/find-comment@v3
       id: find-comment
@@ -204,12 +241,7 @@ jobs:
       with:
         comment-id: ${{ steps.find-comment.outputs.comment-id }}
         issue-number: ${{ github.event.pull_request.number }}
-        # One line per entry of the build matrix
-        body: |
-          **Compiled firmware for commit `${{needs.firmware.outputs.commit_sha}}`:**
-          - [Partition table](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-partition-table-${{needs.firmware.outputs.suffix}}.uf2)
-          - [🍓 f1 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-f1-firmware-${{needs.firmware.outputs.suffix}}.uf2)
-          - [🍓 f2 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-f2-firmware-${{needs.firmware.outputs.suffix}}.uf2)
+        body-path: comment.md
         edit-mode: replace
 
   release:
