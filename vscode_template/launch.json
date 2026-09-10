@@ -21,7 +21,7 @@
             // Also works fine for flash binaries
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "load \"${command:raspberry-pi-pico.launchTargetPath}\""
+                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000"
             ],
             "openOCDLaunchCommands": [
                 "adapter speed 5000"
@@ -97,7 +97,7 @@
             // Also works fine for flash binaries
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "load \"${command:raspberry-pi-pico.launchTargetPath}\""
+                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000"
             ],
             "openOCDLaunchCommands": [
                 "adapter speed 5000"

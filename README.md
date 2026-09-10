@@ -38,7 +38,7 @@ Builds run automatically on every push to the `dev` branch, on tag pushes, and o
 
 ## How to build
 
-Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). The extension automatically downloads the ARM toolchain, CMake, Ninja, and Pico SDK. Open the project folder and use the extension's compile button.
+Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). The extension automatically downloads the ARM toolchain, CMake, Ninja, and Pico SDK. Open the project folder, copy `vscode_template` folder contents to `.vscode` and use the extension's compile button.
 
 ### Hardware targets
 

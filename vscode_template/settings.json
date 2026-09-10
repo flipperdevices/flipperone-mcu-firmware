@@ -36,5 +36,12 @@
     "raspberry-pi-pico.useCmakeTools": false,
     "raspberry-pi-pico.cmakePath": "${HOME}/.pico-sdk/cmake/v3.31.5/bin/cmake",
     "raspberry-pi-pico.ninjaPath": "${HOME}/.pico-sdk/ninja/v1.12.1/ninja",
-    "cortex-debug.variableUseNaturalFormat": true
+    "cortex-debug.variableUseNaturalFormat": true,
+    "python-envs.pythonProjects": [
+        {
+            "path": ".",
+            "envManager": "ms-python.python:venv",
+            "packageManager": "ms-python.python:pip"
+        }
+    ]
 }

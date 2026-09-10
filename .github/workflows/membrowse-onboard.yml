@@ -65,7 +65,7 @@ jobs:
             cp ${{ github.workspace }}/pico-sdk/src/rp2350/pico_platform/script_include/*.incl ldscripts/ &&
             (cp generated/pico_standard_link/*/*.incl ldscripts/ 2>/dev/null || true) &&
             cp pico-sdk/src/rp2_common/pico_standard_link/pico_psram_region.ld ldscripts/ &&
-            cp pico_flash_region.ld ldscripts/
+            cp ${{github.workspace}}/firmware/targets/memory_flash.incl ldscripts/
           elf: build/flipperone-mcu-firmware.elf
           # See build.yml for why the tree is flattened and the regions passed by hand
           ld: build/ldscripts/memmap_default.ld
