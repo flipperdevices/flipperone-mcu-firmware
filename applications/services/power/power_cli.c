@@ -123,12 +123,19 @@ static bool power_cli_boot(PipeSide* pipe, FuriString* args) {
     return true;
 }
 
-static bool power_cli_maskrom(PipeSide* pipe, FuriString* args) {
+static bool power_cli_maskrom_on(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
     UNUSED(args);
     power_cli_reset_pd_and_charger();
     furi_bsp_linux_reset();
-    furi_bsp_linux_maskrom();
+    furi_bsp_linux_maskrom(true);
+    return true;
+}
+
+static bool power_cli_maskrom_off(PipeSide* pipe, FuriString* args) {
+    UNUSED(pipe);
+    UNUSED(args);
+    furi_bsp_linux_maskrom(false);
     return true;
 }
 
@@ -226,7 +233,8 @@ static const PowerCmd power_cmds[] = {
     {"ship", "", "Enter ship mode", power_cli_ship_mode},
     {"reboot", "", "Reboot the device", power_cli_reboot},
     {"boot", "", "Boot MCU to bootloader", power_cli_boot},
-    {"maskrom", "", "Boot CPU to maskrom", power_cli_maskrom},
+    {"maskrom_on", "", "Boot CPU to maskrom", power_cli_maskrom_on},
+    {"maskrom_off", "", "Exit maskrom mode", power_cli_maskrom_off},
 };
 
 static void power_cli_print_usage(void) {
