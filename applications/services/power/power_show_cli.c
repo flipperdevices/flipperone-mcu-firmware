@@ -8,25 +8,25 @@
 
 static char* power_show_cli_get_charger_status1_vbus_str(uint8_t stat) {
     switch(stat) {
-    case Bq25792ChargerStatus1VbusNoInput:
+    case Bq2579xChargerStatus1VbusNoInput:
         return "No Input";
-    case Bq25792ChargerStatus1VbusSdp:
+    case Bq2579xChargerStatus1VbusSdp:
         return "USB SDP (500mA)";
-    case Bq25792ChargerStatus1VbusCdp:
+    case Bq2579xChargerStatus1VbusCdp:
         return "USB CDP (1.5A)";
-    case Bq25792ChargerStatus1VbusDcp:
+    case Bq2579xChargerStatus1VbusDcp:
         return "USB DCP (3.25A)";
-    case Bq25792ChargerStatus1VbusHVDCP:
+    case Bq2579xChargerStatus1VbusHVDCP:
         return "DCP (HVDCP) (1.5A)";
-    case Bq25792ChargerStatus1VbusUnknown:
+    case Bq2579xChargerStatus1VbusUnknown:
         return "Unknown adaptor (3A)";
-    case Bq25792ChargerStatus1VbusNonStandard:
+    case Bq2579xChargerStatus1VbusNonStandard:
         return "Non-Standard Adapter (1A/2A/2.1A/2.4A)";
-    case Bq25792ChargerStatus1VbusOtg:
+    case Bq2579xChargerStatus1VbusOtg:
         return "In OTG mode";
-    case Bq25792ChargerStatus1VbusNotQualified:
+    case Bq2579xChargerStatus1VbusNotQualified:
         return "Not qualified adaptor";
-    case Bq25792ChargerStatus1VbusVbus:
+    case Bq2579xChargerStatus1VbusVbus:
         return "Device directly powered from VBUS";
     default:
         return "Unknown";
@@ -35,19 +35,19 @@ static char* power_show_cli_get_charger_status1_vbus_str(uint8_t stat) {
 
 static char* power_show_cli_get_status1_charger_str(uint8_t stat) {
     switch(stat) {
-    case Bq25792ChargerStatus1ChargeNot:
+    case Bq2579xChargerStatus1ChargeNot:
         return "Not Charging";
-    case Bq25792ChargerStatus1ChargeTrickle:
+    case Bq2579xChargerStatus1ChargeTrickle:
         return "Trickle Charge";
-    case Bq25792ChargerStatus1ChargePre:
+    case Bq2579xChargerStatus1ChargePre:
         return "Pre-charge";
-    case Bq25792ChargerStatus1ChargeFast:
+    case Bq2579xChargerStatus1ChargeFast:
         return "Fast charge (CC mode)";
-    case Bq25792ChargerStatus1ChargeTaper:
+    case Bq2579xChargerStatus1ChargeTaper:
         return "Taper Charge (CV mode)";
-    case Bq25792ChargerStatus1ChargeTopOff:
+    case Bq2579xChargerStatus1ChargeTopOff:
         return "Top-off Timer Active Charging";
-    case Bq25792ChargerStatus1ChargeTermination:
+    case Bq2579xChargerStatus1ChargeTermination:
         return "Charge Termination Done";
     default:
         return "Unknown";
@@ -56,11 +56,11 @@ static char* power_show_cli_get_status1_charger_str(uint8_t stat) {
 
 static char* power_show_cli_get_status2_ico_str(uint8_t stat) {
     switch(stat) {
-    case Bq25792ChargerStatus2IcoDisabled:
+    case Bq2579xChargerStatus2IcoDisabled:
         return "ICO disabled";
-    case Bq25792ChargerStatus2IcoOptimization:
+    case Bq2579xChargerStatus2IcoOptimization:
         return "ICO optimization in progress";
-    case Bq25792ChargerStatus2IcoMaximum:
+    case Bq2579xChargerStatus2IcoMaximum:
         return "Maximum input current detected";
     default:
         return "Unknown";
@@ -87,7 +87,7 @@ static void power_show_cli_print_ina219(Power* power) {
     // clang-format on
 }
 
-static void power_show_cli_print_bq25792(Power* power) {
+static void power_show_cli_print_bq2579x(Power* power) {
     int16_t ibus_ma = 0;
     int16_t ibat_ma = 0;
     uint16_t vbus_mv = 0;
@@ -100,21 +100,21 @@ static void power_show_cli_print_bq25792(Power* power) {
     uint16_t charge_current_limit_ma = 0;
     uint16_t ico_current_limit_ma = 0;
 
-    power_bq25792_get_ibus_ma(power, &ibus_ma);
-    power_bq25792_get_ibat_ma(power, &ibat_ma);
-    power_bq25792_get_vbus_mv(power, &vbus_mv);
-    power_bq25792_get_vbat_mv(power, &vbat_mv);
-    power_bq25792_get_vsys_mv(power, &vsys_mv);
-    power_bq25792_get_charger_temperature(power, &charger_temp);
-    power_bq25792_get_temperature_battery_celsius(power, &battery_temp);
-    power_bq25792_get_input_current_limit_ma(power, &input_current_limit_ma);
-    power_bq25792_get_charge_voltage_limit_ma(power, &charge_voltage_limit_mv);
-    power_bq25792_get_charge_current_limit_ma(power, &charge_current_limit_ma);
-    power_bq25792_get_ico_current_limit_ma(power, &ico_current_limit_ma);
+    power_bq2579x_get_ibus_ma(power, &ibus_ma);
+    power_bq2579x_get_ibat_ma(power, &ibat_ma);
+    power_bq2579x_get_vbus_mv(power, &vbus_mv);
+    power_bq2579x_get_vbat_mv(power, &vbat_mv);
+    power_bq2579x_get_vsys_mv(power, &vsys_mv);
+    power_bq2579x_get_charger_temperature(power, &charger_temp);
+    power_bq2579x_get_temperature_battery_celsius(power, &battery_temp);
+    power_bq2579x_get_input_current_limit_ma(power, &input_current_limit_ma);
+    power_bq2579x_get_charge_voltage_limit_ma(power, &charge_voltage_limit_mv);
+    power_bq2579x_get_charge_current_limit_ma(power, &charge_current_limit_ma);
+    power_bq2579x_get_ico_current_limit_ma(power, &ico_current_limit_ma);
 
     // clang-format off
     printf(
-        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "BQ25792:\r\n" 
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "BQ2579X:\r\n" 
         ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VSYS:    %.3fV\r\n" 
         ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VBUS:    %.3fV\r\n" 
         ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IBUS:    %dmA\r\n" 
@@ -124,7 +124,7 @@ static void power_show_cli_print_bq25792(Power* power) {
         ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  BatTemp: %.2fC\r\n"
         ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  IINDPM:  %dmA\r\n"
         ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  VREG:    %dmV\r\n"
-        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICHG:    %dmV\r\n"
+        ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICHG:    %dmA\r\n"
         ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  ICO:     %dmA\r\n\r\n",
         (float_t)vsys_mv / 1000.0f,
         (float_t)vbus_mv / 1000.0f,
@@ -234,8 +234,8 @@ static void power_show_cli_print_bq28z620(Power* power) {
 }
 
 static void power_show_cli_print_charger_status(Power* power, FuriString* arena) {
-    Bq25792ChargerStatusReg s = {0};
-    power_bq25792_get_charger_status(power, &s);
+    Bq2579xChargerStatusReg s = {0};
+    power_bq2579x_get_charger_status(power, &s);
     furi_string_set(arena, "");
 
     printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Status0: 0x%02X", s.data[0]);
@@ -290,8 +290,8 @@ static void power_show_cli_print_charger_status(Power* power, FuriString* arena)
 }
 
 static void power_show_cli_print_charger_faults(Power* power, FuriString* arena) {
-    Bq25792FaultStatusReg f = {0};
-    power_bq25792_get_charger_fault(power, &f);
+    Bq2579xFaultStatusReg f = {0};
+    power_bq2579x_get_charger_fault(power, &f);
 
     printf(ANSI_ERASE_LINE(ANSI_ERASE_ENTIRE) "  Fault0:  0x%02X", f.data[0]);
     furi_string_set(arena, "");
@@ -394,7 +394,7 @@ bool power_show_cli(PipeSide* pipe, FuriString* args) {
     while(!cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
         printf(ANSI_CURSOR_POS("1", "1")); // Return to 0, but don't clear (faster and less flickery)
         power_show_cli_print_ina219(power);
-        power_show_cli_print_bq25792(power);
+        power_show_cli_print_bq2579x(power);
         power_show_cli_print_charger_status(power, arena);
         power_show_cli_print_charger_faults(power, arena);
 

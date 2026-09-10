@@ -1,6 +1,7 @@
 #include "spi_get_frame.h"
 #include <drivers/display/display_jd9853_reg.h>
 
+#include <furi.h>
 #include <furi_hal_resources.h>
 #include <furi_hal_gpio.h>
 
@@ -24,16 +25,33 @@ struct SpiGetFrame {
     int dma_rx_channel;
     SpiGetFrameCallbackRx callback_rx;
     void* callback_context;
+#ifdef SPI_SHOW_FPS
+    volatile uint32_t frames_received; /* frames delivered to callback (ISR) */
+    FuriTimer* fps_timer; /* periodic FPS logger */
+#endif
 };
 
 static SpiGetFrame* spi_get_frame_instance = NULL;
+
+#ifdef SPI_SHOW_FPS
+static void spi_get_frame_fps_timer_callback(void* ctx) {
+    UNUSED(ctx);
+    SpiGetFrame* instance = spi_get_frame_instance;
+    if(!instance) return;
+    uint32_t fps = instance->frames_received;
+    instance->frames_received = 0;
+    FURI_LOG_W(TAG, "SPI RX: %lu FPS", (unsigned long)fps);
+}
+#endif
 
 static void __isr __not_in_flash_func(spi_get_frame_rx_callback)(void) {
     if(spi_get_frame_instance->callback_rx) {
         spi_get_frame_instance->callback_rx(
             spi_get_frame_instance->frame_buffers[spi_get_frame_instance->current_frame].data, SPI_GET_FRAME_SIZE, spi_get_frame_instance->callback_context);
     }
-
+#ifdef SPI_SHOW_FPS
+    spi_get_frame_instance->frames_received++;
+#endif
     dma_hw->ints2 = 1u << spi_get_frame_instance->dma_rx_channel;
 }
 
@@ -58,7 +76,12 @@ SpiGetFrame* spi_get_frame_init(void) {
     spi_get_frame_instance = instance;
     instance->spi_periph = SPI_GET_FRAME_SPI1_HANDLE;
     instance->current_frame = 0;
+#ifdef SPI_SHOW_FPS
+    instance->frames_received = 0;
 
+    instance->fps_timer = furi_timer_alloc(spi_get_frame_fps_timer_callback, FuriTimerTypePeriodic, NULL);
+    furi_timer_start(instance->fps_timer, 1000);
+#endif
     // Initialize SPI peripheral
     int baundrate = spi_init(instance->spi_periph, SPI_GET_FRAME_BAUDRATE);
     spi_set_slave(instance->spi_periph, true);
@@ -117,7 +140,12 @@ void spi_get_frame_deinit(SpiGetFrame* instance) {
 
     // Deinitialize SPI peripheral
     spi_deinit(instance->spi_periph);
-
+#ifdef SPI_SHOW_FPS
+    if(instance->fps_timer) {
+        furi_timer_free(instance->fps_timer);
+        instance->fps_timer = NULL;
+    }
+#endif
     free(instance);
     spi_get_frame_instance = NULL;
 }

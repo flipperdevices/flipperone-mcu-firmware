@@ -44,10 +44,12 @@ Clay_String clay_helper_string_from(FuriString* furi_string);
 Clay_String clay_helper_string_from_chars(const char* chars);
 
 /**
- * @brief Place an image in the CLAY layout with an automatic id and a fixed size based on the image dimensions.
+ * @brief Place an image in the CLAY layout with a fixed size based on the image dimensions.
+ * @param id The element id; the caller keeps it unique among siblings
+ *           (e.g. CLAY_ID_LOCAL for a single image, CLAY_IDI_LOCAL in loops).
  * @param image The image to display.
  */
-void clay_fixed_image(const Image* image);
+void clay_fixed_image(Clay_ElementId id, const Image* image);
 
 #ifdef __cplusplus
 }
