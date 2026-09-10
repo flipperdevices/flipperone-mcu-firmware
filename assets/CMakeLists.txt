@@ -23,10 +23,7 @@ else()
 endif()
 set(ASSETS_COMMAND "${VENV_PYTHON}")
 
-# Prepare the venv in a single prerequisite step: creating it and installing
-# packages is not safe to do from several generation commands racing in a
-# parallel build. Re-runs whenever requirements.txt changes; `python -m venv` on
-# an existing venv is a no-op apart from refreshing its scripts.
+# Prepare the venv in a single prerequisite step
 set(VENV_REQUIREMENTS "${PYTHON_DIR}/requirements.txt")
 set(VENV_STAMP "${CMAKE_CURRENT_BINARY_DIR}/venv.stamp")
 add_custom_command(
@@ -88,10 +85,7 @@ foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
     list(APPEND IMAGE_NAMES    ${IMAGE_NAME})
 endforeach()
 
-# Generate assets.h with extern declarations for all images. file(GENERATE)
-# rewrites the header only when its content changes, unlike file(WRITE), which
-# bumped the mtime on every configure and dragged every TU including assets.h
-# into a rebuild after each reconfigure.
+# Generate assets.h with extern declarations for all images
 set(IMAGES_HEADER_CONTENT "#pragma once\n#include <gui/image.h>\n\n")
 foreach(IMAGE ${IMAGE_NAMES})
     string(APPEND IMAGES_HEADER_CONTENT "extern const Image ${IMAGE};\n")

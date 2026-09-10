@@ -2,8 +2,9 @@
     // Tool paths: picotool and openocd are resolved by the Pico extension from the
     // sdkVersion/toolchainVersion/picotoolVersion header in CMakeLists.txt, which
     // is the single place those versions live. The extension has no such command
-    // for cmake and ninja, so their paths below still carry a version and have to
-    // be kept in sync with settings.json by hand.
+    // for cmake and ninja, and ${config:raspberry-pi-pico.ninjaPath} does not work
+    // either: VS Code does not expand the ${HOME} inside that setting. So their
+    // paths below carry a version and have to match settings.json by hand.
     "version": "2.0.0",
     "tasks": [
         {
@@ -15,9 +16,6 @@
                 "-C",
                 "${workspaceFolder}/build"
             ],
-            "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe"
-            },
             "problemMatcher": []
         },
         {
@@ -95,10 +93,7 @@
                 "reveal": "always",
                 "panel": "dedicated"
             },
-            "problemMatcher": [],
-            "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/cmake/v3.31.5/bin/cmake.exe"
-            }
+            "problemMatcher": []
         }
     ],
     "inputs": [
