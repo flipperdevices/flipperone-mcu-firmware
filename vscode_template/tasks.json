@@ -1,4 +1,9 @@
 {
+    // Tool paths: picotool and openocd are resolved by the Pico extension from the
+    // sdkVersion/toolchainVersion/picotoolVersion header in CMakeLists.txt, which
+    // is the single place those versions live. The extension has no such command
+    // for cmake and ninja, so their paths below still carry a version and have to
+    // be kept in sync with settings.json by hand.
     "version": "2.0.0",
     "tasks": [
         {
@@ -13,12 +18,12 @@
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe"
             },
-            "problemMatcher": [ ]
+            "problemMatcher": []
         },
         {
             "label": "Run Project",
             "type": "process",
-            "command": "${env:HOME}/.pico-sdk/picotool/2.3.1/picotool/picotool",
+            "command": "${command:raspberry-pi-pico.getPicotoolPath}",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
@@ -30,15 +35,12 @@
                 "reveal": "always",
                 "panel": "dedicated"
             },
-            "problemMatcher": [ ],
-            "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe"
-            }
+            "problemMatcher": []
         },
         {
             "label": "Write partition table",
             "type": "process",
-            "command": "${env:HOME}/.pico-sdk/picotool/2.3.1/picotool/picotool",
+            "command": "${command:raspberry-pi-pico.getPicotoolPath}",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
@@ -50,20 +52,17 @@
                 "reveal": "always",
                 "panel": "dedicated"
             },
-            "problemMatcher": [ ],
-            "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe"
-            }
+            "problemMatcher": []
         },
         {
             "label": "Flash",
             "type": "process",
-            "command": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd",
+            "command": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
                 "-s",
-                "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+                "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
                 "-f",
                 "interface/cmsis-dap.cfg",
                 "-f",
@@ -71,10 +70,7 @@
                 "-f",
                 "targets/flash.tcl"
             ],
-            "problemMatcher": [ ],
-            "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe"
-            }
+            "problemMatcher": []
         },
         {
             // Reconfigures the one build directory for another board. Everything
