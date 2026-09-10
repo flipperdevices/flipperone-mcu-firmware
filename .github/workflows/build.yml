@@ -26,7 +26,11 @@ env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
   ARM_NONE_EABI_GCC_VERSION: 14.2.1-1.1
+  # Also selects the prebuilt picotool: raspberrypi/pico-sdk-tools publishes one
+  # per SDK release, versioned identically, under the tag v<PICO_SDK_VERSION>-<N>.
   PICO_SDK_VERSION: 2.3.1
+  # <N> above — bumped by upstream when a tools release is rebuilt for the same SDK
+  PICO_SDK_TOOLS_BUILD: 0
 
 jobs:
   firmware:
@@ -53,20 +57,22 @@ jobs:
         rm -rf "${{ github.workspace }}"
         mkdir -p "${{ github.workspace }}"
 
-    - name: Restore cached toolchain and pico-sdk
+    - name: Restore cached toolchain, pico-sdk and picotool
       id: cache
       uses: actions/cache/restore@v5
       with:
         path: |
           arm-none-eabi-gcc
           pico-sdk
-        key: gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-pico-sdk-${{ env.PICO_SDK_VERSION }}
+          picotool
+        key: gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-pico-sdk-${{ env.PICO_SDK_VERSION }}-tools-${{ env.PICO_SDK_TOOLS_BUILD }}
 
-    - name: Install cmake
+    # libusb-1.0-0 is a runtime dependency of the prebuilt picotool below
+    - name: Install cmake and libusb
       run: |
-        sudo apt-get install cmake
+        sudo apt-get install cmake libusb-1.0-0
 
-    - name: Install ARM GCC {{ env.ARM_NONE_EABI_GCC_VERSION }}
+    - name: Install ARM GCC ${{ env.ARM_NONE_EABI_GCC_VERSION }}
       if: steps.cache.outputs.cache-hit != 'true'
       run: |
         wget https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${{ env.ARM_NONE_EABI_GCC_VERSION }}/xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
@@ -78,6 +84,19 @@ jobs:
         export PATH=$PWD/arm-none-eabi-gcc/bin:$PATH
         echo "$PWD/arm-none-eabi-gcc/bin" >> $GITHUB_PATH
         arm-none-eabi-gcc --version
+
+    # Without an installed picotool the SDK's pico_init_picotool() falls back to
+    # cloning and building it from source with the host compiler at configure
+    # time, in every matrix job. The prebuilt archive ships the same
+    # picotoolConfig.cmake layout that find_package(picotool CONFIG) expects.
+    - name: Install picotool ${{ env.PICO_SDK_VERSION }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      run: |
+        wget https://github.com/raspberrypi/pico-sdk-tools/releases/download/v${{ env.PICO_SDK_VERSION }}-${{ env.PICO_SDK_TOOLS_BUILD }}/picotool-${{ env.PICO_SDK_VERSION }}-x86_64-lin.tar.gz
+        tar -xzf picotool-${{ env.PICO_SDK_VERSION }}-x86_64-lin.tar.gz picotool
+
+    - name: Check picotool
+      run: picotool/picotool version
 
     - name: Checkout firmware
       uses: actions/checkout@v6
@@ -126,7 +145,7 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf.map"
+      run: PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -Dpicotool_DIR=${{github.workspace}}/picotool -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf.map"
 
     - name: Get core count
       id: core_count
@@ -190,6 +209,7 @@ jobs:
         path: |
           arm-none-eabi-gcc
           pico-sdk
+          picotool
         key: ${{ steps.cache.outputs.cache-primary-key }}
 
     - name: 'Make artifacts directory'
