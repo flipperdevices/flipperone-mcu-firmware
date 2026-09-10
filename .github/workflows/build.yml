@@ -157,36 +157,23 @@ jobs:
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build . --config $BUILD_TYPE --parallel $(nproc)
 
-    # pico-sdk 2.3+ splits the linker script into memmap_default.ld plus a tree of
-    # INCLUDE'd .incl fragments (see the tree comment inside memmap_default.ld), and
-    # MemBrowse resolves INCLUDE relative to the including file. Flatten the whole
-    # tree into one directory. Order matters: SDK defaults first, then per-target
-    # generated fragments (if any), then our restricted FLASH region written by
-    # CMakeLists.txt (not the SDK's full-size copy under build/pico-sdk/).
+    # MemBrowse needs the linker script tree flattened into one directory; see
+    # scripts/membrowse_ldscripts.sh for why and for what goes in.
     - name: Collect linker script for MemBrowse
-      if: matrix.target == 'f1'
-      working-directory: ${{github.workspace}}/firmware/build
-      env:
-        SDK: ${{github.workspace}}/pico-sdk
-      run: |
-        mkdir -p ldscripts
-        cp "$SDK/src/rp2350/pico_platform/memmap_default.ld" ldscripts/
-        cp "$SDK"/src/rp2_common/pico_standard_link/script_include/*.incl ldscripts/
-        cp "$SDK"/src/rp2350/pico_platform/script_include/*.incl ldscripts/
-        cp generated/pico_standard_link/*/*.incl ldscripts/ 2>/dev/null || true
-        cp pico-sdk/src/rp2_common/pico_standard_link/pico_psram_region.ld ldscripts/
-        cp ${{github.workspace}}/firmware/targets/memory_flash.incl ldscripts/
+      run: >
+        ${{github.workspace}}/firmware/scripts/membrowse_ldscripts.sh
+        ${{github.workspace}}/firmware
+        ${{github.workspace}}/firmware/build
+        ${{github.workspace}}/pico-sdk
 
-    # TODO: MemBrowse still tracks f1 only, under its original target name.
-    # Reporting the other targets needs a separate MemBrowse-side target per board.
+    # One MemBrowse target per board, named after the firmware artifact
     - name: Run MemBrowse analysis
-      if: matrix.target == 'f1'
       uses: membrowse/membrowse-action@v1
       env:
         GIT_DIR: ${{github.workspace}}/firmware/.git
         GIT_WORK_TREE: ${{github.workspace}}/firmware
       with:
-        target_name: rp2350-flipperone
+        target_name: flipper-one-mcu-${{ matrix.target }}
         elf: firmware/build/flipperone-mcu-firmware.elf
         ld: firmware/build/ldscripts/memmap_default.ld
         map_file: firmware/build/flipperone-mcu-firmware.elf.map
