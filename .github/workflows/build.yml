@@ -25,20 +25,41 @@ permissions:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
-  ARM_NONE_EABI_GCC_VERSION: 14.2.1-1.1
-  PICO_SDK_VERSION: 2.3.1
+  # Tool versions are not configured here: .github/actions/setup-toolchain reads
+  # them from the header of CMakeLists.txt.
 
 jobs:
+  # The list of hardware targets: every directory under targets/ with a
+  # target.cmake. Everything below fans out over this list, so adding a target is
+  # adding a directory — nothing in this file has to change.
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+
+    steps:
+    - uses: actions/checkout@v6
+      with:
+        sparse-checkout: targets
+
+    - name: List targets
+      id: list
+      run: |
+        list=$(for d in targets/*/; do
+          [ -f "$d/target.cmake" ] && basename "$d"
+        done | jq -R . | jq -sc .)
+        echo "targets: $list"
+        echo "list=$list" >> $GITHUB_OUTPUT
+
   firmware:
     runs-on: ubuntu-latest
+    needs: targets
 
     strategy:
       # One target failing to build says nothing about the others, so let them finish
       fail-fast: false
       matrix:
-        # Every directory under targets/ that has a target.cmake.
-        # Keep in sync with the links posted by the 'comment' job below.
-        target: [f1, f2]
+        target: ${{ fromJson(needs.targets.outputs.list) }}
 
     # Identical across the matrix — the targets only differ in what they build
     outputs:
@@ -52,32 +73,6 @@ jobs:
         echo "Cleaning up previous run"
         rm -rf "${{ github.workspace }}"
         mkdir -p "${{ github.workspace }}"
-
-    - name: Restore cached toolchain and pico-sdk
-      id: cache
-      uses: actions/cache/restore@v5
-      with:
-        path: |
-          arm-none-eabi-gcc
-          pico-sdk
-        key: gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-pico-sdk-${{ env.PICO_SDK_VERSION }}
-
-    - name: Install cmake
-      run: |
-        sudo apt-get install cmake
-
-    - name: Install ARM GCC {{ env.ARM_NONE_EABI_GCC_VERSION }}
-      if: steps.cache.outputs.cache-hit != 'true'
-      run: |
-        wget https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${{ env.ARM_NONE_EABI_GCC_VERSION }}/xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
-        tar -xzf xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
-        mv xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }} arm-none-eabi-gcc
-
-    - name: Add ARM GCC to PATH
-      run: |
-        export PATH=$PWD/arm-none-eabi-gcc/bin:$PATH
-        echo "$PWD/arm-none-eabi-gcc/bin" >> $GITHUB_PATH
-        arm-none-eabi-gcc --version
 
     - name: Checkout firmware
       uses: actions/checkout@v6
@@ -99,18 +94,12 @@ jobs:
         python3 firmware/scripts/get_env.py "--event_file=${{ github.event_path }}" "--type=$TYPE"
         echo "event_type=$TYPE" >> $GITHUB_OUTPUT
 
-    - name: Checkout pico-sdk/${{ env.PICO_SDK_VERSION }}
-      if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/checkout@v6
+    # Arm GCC, pico-sdk, picotool, cmake — versions come from CMakeLists.txt
+    - name: Set up toolchain
+      id: toolchain
+      uses: ./firmware/.github/actions/setup-toolchain
       with:
-        repository: raspberrypi/pico-sdk
-        ref: ${{ env.PICO_SDK_VERSION }}
-        path: pico-sdk
-
-    - name: Checkout pico-sdk submodules
-      if: steps.cache.outputs.cache-hit != 'true'
-      working-directory: ${{github.workspace}}/pico-sdk
-      run: git submodule update --init
+        firmware_dir: ${{ github.workspace }}/firmware
 
     - name: Create Build Environment
       # Some projects don't allow in-source building, so create a separate build directory
@@ -126,7 +115,7 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf.map"
+      run: PICO_SDK_PATH=${{ steps.toolchain.outputs.pico_sdk_path }} cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -Dpicotool_DIR=${{ steps.toolchain.outputs.picotool_dir }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf.map"
 
     - name: Get core count
       id: core_count
@@ -138,36 +127,23 @@ jobs:
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build . --config $BUILD_TYPE --parallel $(nproc)
 
-    # pico-sdk 2.3+ splits the linker script into memmap_default.ld plus a tree of
-    # INCLUDE'd .incl fragments (see the tree comment inside memmap_default.ld), and
-    # MemBrowse resolves INCLUDE relative to the including file. Flatten the whole
-    # tree into one directory. Order matters: SDK defaults first, then per-target
-    # generated fragments (if any), then our restricted FLASH region written by
-    # CMakeLists.txt (not the SDK's full-size copy under build/pico-sdk/).
+    # MemBrowse needs the linker script tree flattened into one directory; see
+    # scripts/membrowse_ldscripts.sh for why and for what goes in.
     - name: Collect linker script for MemBrowse
-      if: matrix.target == 'f1'
-      working-directory: ${{github.workspace}}/firmware/build
-      env:
-        SDK: ${{github.workspace}}/pico-sdk
-      run: |
-        mkdir -p ldscripts
-        cp "$SDK/src/rp2350/pico_platform/memmap_default.ld" ldscripts/
-        cp "$SDK"/src/rp2_common/pico_standard_link/script_include/*.incl ldscripts/
-        cp "$SDK"/src/rp2350/pico_platform/script_include/*.incl ldscripts/
-        cp generated/pico_standard_link/*/*.incl ldscripts/ 2>/dev/null || true
-        cp pico-sdk/src/rp2_common/pico_standard_link/pico_psram_region.ld ldscripts/
-        cp ${{github.workspace}}/firmware/targets/memory_flash.incl ldscripts/
+      run: >
+        ${{github.workspace}}/firmware/scripts/membrowse_ldscripts.sh
+        ${{github.workspace}}/firmware
+        ${{github.workspace}}/firmware/build
+        ${{ steps.toolchain.outputs.pico_sdk_path }}
 
-    # TODO: MemBrowse still tracks f1 only, under its original target name.
-    # Reporting the other targets needs a separate MemBrowse-side target per board.
+    # One MemBrowse target per board, named after the firmware artifact
     - name: Run MemBrowse analysis
-      if: matrix.target == 'f1'
       uses: membrowse/membrowse-action@v1
       env:
         GIT_DIR: ${{github.workspace}}/firmware/.git
         GIT_WORK_TREE: ${{github.workspace}}/firmware
       with:
-        target_name: rp2350-flipperone
+        target_name: flipper-one-mcu-${{ matrix.target }}
         elf: firmware/build/flipperone-mcu-firmware.elf
         ld: firmware/build/ldscripts/memmap_default.ld
         map_file: firmware/build/flipperone-mcu-firmware.elf.map
@@ -181,16 +157,6 @@ jobs:
           XIP_RAM_ORIGIN=0x13FFC000 XIP_RAM_LENGTH=16k
         api_key: ${{ secrets.MEMBROWSE_API_KEY }}
         api_url: ${{ vars.MEMBROWSE_API_URL }}
-
-    - name: Save Cache
-      id: cache-save
-      if: steps.cache.outputs.cache-hit != 'true'
-      uses: actions/cache/save@v5
-      with:
-        path: |
-          arm-none-eabi-gcc
-          pico-sdk
-        key: ${{ steps.cache.outputs.cache-primary-key }}
 
     - name: 'Make artifacts directory'
       if: ${{ !github.event.pull_request.head.repo.fork }}
@@ -242,10 +208,26 @@ jobs:
   # comment, so the links for all of them are collected here instead.
   comment:
     runs-on: ubuntu-latest
-    needs: [firmware, publish]
+    needs: [targets, firmware, publish]
     if: ${{ !github.event.pull_request.head.repo.fork && github.event.pull_request }}
 
     steps:
+    # One line per target, in the same naming as the 'Move upload files' step
+    - name: 'Compose comment'
+      env:
+        BASE: https://update.flipperzero.one/builds/flipper-one-mcu/${{ needs.firmware.outputs.branch_name }}
+        SUFFIX: ${{ needs.firmware.outputs.suffix }}
+        TARGETS: ${{ needs.targets.outputs.list }}
+      run: |
+        {
+          echo "**Compiled firmware for commit \`${{ needs.firmware.outputs.commit_sha }}\`:**"
+          echo "- [Partition table]($BASE/flipper-one-mcu-partition-table-$SUFFIX.uf2)"
+          for t in $(echo "$TARGETS" | jq -r '.[]'); do
+            echo "- [🍓 $t UF2 file]($BASE/flipper-one-mcu-$t-firmware-$SUFFIX.uf2)"
+          done
+        } > comment.md
+        cat comment.md
+
     - name: 'Find previous comment'
       uses: peter-evans/find-comment@v3
       id: find-comment
@@ -259,12 +241,7 @@ jobs:
       with:
         comment-id: ${{ steps.find-comment.outputs.comment-id }}
         issue-number: ${{ github.event.pull_request.number }}
-        # One line per entry of the build matrix
-        body: |
-          **Compiled firmware for commit `${{needs.firmware.outputs.commit_sha}}`:**
-          - [Partition table](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-partition-table-${{needs.firmware.outputs.suffix}}.uf2)
-          - [🍓 f1 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-f1-firmware-${{needs.firmware.outputs.suffix}}.uf2)
-          - [🍓 f2 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-f2-firmware-${{needs.firmware.outputs.suffix}}.uf2)
+        body-path: comment.md
         edit-mode: replace
 
   release:

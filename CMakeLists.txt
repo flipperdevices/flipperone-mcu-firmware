@@ -1,17 +1,32 @@
-# Generated Cmake Pico project filecorelibs
-
 cmake_minimum_required(VERSION 3.13)
 
-# Automatically initialise required git submodules if not done yet
+# Make sure every git submodule the build needs is checked out.
 find_package(Git QUIET)
 if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    # Check the status of git submodules first so a routine configure never hits the network.
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} submodule update --init --depth 1
+        COMMAND ${GIT_EXECUTABLE} submodule status --recursive
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        RESULT_VARIABLE GIT_SUBMOD_RESULT
+        OUTPUT_VARIABLE _fw_submodules
+        RESULT_VARIABLE _fw_git_status
+        ERROR_QUIET
     )
-    if(NOT GIT_SUBMOD_RESULT EQUAL "0")
-        message(WARNING "git submodule update --init failed (${GIT_SUBMOD_RESULT})")
+
+    # A line starting with '-' is a submodule that has not been initialised
+    if(NOT _fw_git_status EQUAL 0 OR _fw_submodules MATCHES "(^|\n)-")
+        message(STATUS "Fetching missing git submodules")
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive --depth 1
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            RESULT_VARIABLE _fw_git_status
+        )
+
+        # Error out here, not in the build step (on empty globs)
+        if(NOT _fw_git_status EQUAL 0)
+            message(FATAL_ERROR
+                "git submodule update --init --recursive failed (${_fw_git_status}). "
+                "Run it by hand in ${CMAKE_CURRENT_SOURCE_DIR} and re-run cmake.")
+        endif()
     endif()
 endif()
 
@@ -45,7 +60,8 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-# TODO: custom board with RP2350_B_
+
+# Define our board
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/targets/ CACHE STRING "Board header directories" FORCE)
 set(PICO_BOARD "board_mcu_2350" CACHE STRING "Board type" FORCE)
 set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
@@ -124,7 +140,9 @@ target_link_options(${PROJECT_NAME} PRIVATE
     "LINKER:--wrap=_realloc_r"
 )
 
-include(lib/corelibs/lib/version/CMakeLists.txt)
+# Build metadata for version.c (commit, branch, dirty flag...). Not the
+# configure-time corelibs/lib/version/CMakeLists.txt: see scripts/cmake/version.cmake.
+include(scripts/cmake/version.cmake)
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 pico_set_program_version(${PROJECT_NAME} "0.1")
