@@ -9,49 +9,66 @@ typedef struct {
 } I2cSlave;
 
 static I2cSlave i2c_slaves[2];
+static bool i2c_started[2] = {false, false};
 
 static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
-    FURI_CRITICAL_ENTER();
     uint i2c_index = __get_current_exception() - VTABLE_FIRST_IRQ - I2C0_IRQ;
     I2cSlave* slave = &i2c_slaves[i2c_index];
     i2c_inst_t* i2c = i2c_get_instance(i2c_index);
     i2c_hw_t* hw = i2c_get_hw(i2c);
+    bool* is_started = &i2c_started[i2c_index];
 
     uint32_t intr_stat = hw->intr_stat;
     if(intr_stat == 0) {
-        FURI_CRITICAL_EXIT();
         return;
     }
-    bool do_finish_transfer = false;
-    if(intr_stat & I2C_IC_INTR_STAT_R_TX_ABRT_BITS) { //
-        hw->clr_tx_abrt;
-        do_finish_transfer = true;
+
+    // Handle events in different order depending on previous transaction state
+    if(*is_started) {
+        if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
+            (void)hw->clr_restart_det;
+            slave->callback(i2c, I2cSlaveEventRepeatedStart);
+        }
+        if(intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
+            slave->callback(i2c, I2cSlaveEventReceive);
+        }
+        if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
+            (void)hw->clr_rd_req;
+            slave->callback(i2c, I2cSlaveEventRequest);
+        }
+        if(intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) {
+            (void)hw->clr_stop_det;
+            slave->callback(i2c, I2cSlaveEventStop);
+            *is_started = false;
+        }
+        if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
+            (void)hw->clr_start_det;
+            slave->callback(i2c, I2cSlaveEventStart);
+            *is_started = true;
+        }
+    } else {
+        if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
+            (void)hw->clr_start_det;
+            slave->callback(i2c, I2cSlaveEventStart);
+            *is_started = true;
+            if(intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
+                slave->callback(i2c, I2cSlaveEventReceive);
+            }
+            if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
+                (void)hw->clr_rd_req;
+                slave->callback(i2c, I2cSlaveEventRequest);
+            }
+            if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
+                (void)hw->clr_restart_det;
+                slave->callback(i2c, I2cSlaveEventRepeatedStart);
+            }
+            if(intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) {
+                (void)hw->clr_stop_det;
+                slave->callback(i2c, I2cSlaveEventStop);
+                *is_started = false;
+            }
+        }
     }
-    if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
-        hw->clr_start_det;
-        if(!slave->start_detected) slave->callback(i2c, I2cSlaveEventStart);
-        slave->start_detected = true;
-    }
-    if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
-        hw->clr_restart_det;
-        slave->callback(i2c, I2cSlaveEventRepeatedStart);
-    }
-    if(intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) {
-        hw->clr_stop_det;
-        do_finish_transfer = true;
-    }
-    if(!do_finish_transfer && (intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS)) {
-        slave->callback(i2c, I2cSlaveEventReceive);
-    }
-    if(!do_finish_transfer && (intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS)) {
-        hw->clr_rd_req;
-        slave->callback(i2c, I2cSlaveEventRequest);
-    }
-    if(do_finish_transfer && slave->start_detected) {
-        slave->callback(i2c, I2cSlaveEventStop);
-        slave->start_detected = false;
-    }
-    FURI_CRITICAL_EXIT();
 }
 
 void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback) {
@@ -72,14 +89,15 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_RD_REQ_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS | I2C_IC_INTR_MASK_M_STOP_DET_BITS |
                     I2C_IC_INTR_MASK_M_START_DET_BITS | I2C_IC_INTR_MASK_M_RESTART_DET_BITS;
 
-    // Set Rx FIFO threshold to 16 bytes to reduce number of interrupts when receiving data from master.
-    // This is the max number of bytes that can be read from the FIFO in the interrupt
+    // Set Rx FIFO threshold to 2 bytes and enable clock stretching on Rx FIFO full
     i2c->hw->enable = 0;
-    i2c->hw->rx_tl = 16;
+    i2c->hw->rx_tl = 1;
+    i2c->hw->con |= I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS; // Enable clock stretching
     i2c->hw->enable = 1;
     // enable interrupt for current core
     uint32_t num = I2C0_IRQ + i2c_index;
     irq_set_exclusive_handler(num, i2c_slave_irq_callback);
+    irq_set_priority(num, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - __NVIC_PRIO_BITS));
     irq_set_enabled(num, true);
 }
 

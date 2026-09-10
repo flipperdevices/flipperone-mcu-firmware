@@ -32,13 +32,33 @@
             },
             "problemMatcher": [ ],
             "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool.exe"
+                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1-a4/picotool/picotool.exe"
             }
         },
         {
             "label": "Write partition table",
             "type": "process",
-            "command": "${env:HOME}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool",
+            "command": "${env:HOME}/.pico-sdk/picotool/2.3.1-a4/picotool/picotool",
+            "group": "build",
+            "dependsOn": "Compile Project",
+            "args": [
+                "load",
+                "build/partition_table.uf2",
+                "-fvx"
+            ],
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
+            },
+            "problemMatcher": [ ],
+            "windows": {
+                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1-a4/picotool/picotool.exe"
+            }
+        },
+        {
+            "label": "Write partition table",
+            "type": "process",
+            "command": "${env:HOME}/.pico-sdk/picotool/2.3.1-a4/picotool/picotool",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
