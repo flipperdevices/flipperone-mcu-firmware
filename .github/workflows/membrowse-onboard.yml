@@ -5,8 +5,7 @@ name: Onboard to MemBrowse
 #
 # The onboard action checks out each commit in place and runs `git clean -fdx`
 # before every build, so everything the build needs and that is not part of the
-# repository lives outside the checkout: pico-sdk survives as a nested git repo,
-# the rest goes to $RUNNER_TEMP.
+# repository must live outside the checkout or survive git clean.
 on:
   workflow_dispatch:
     inputs:
@@ -18,10 +17,7 @@ on:
 
 env:
   BUILD_TYPE: Release
-  ARM_NONE_EABI_GCC_VERSION: 14.2.1-1.1
-  # Also selects the prebuilt picotool, see build.yml
-  PICO_SDK_VERSION: 2.3.1
-  PICO_SDK_TOOLS_BUILD: 0
+  # Tool versions come from the CMakeLists.txt header, see setup-toolchain
 
 jobs:
   onboard:
@@ -34,23 +30,6 @@ jobs:
         target: [f1, f2]
 
     steps:
-      - name: Install cmake and libusb
-        run: sudo apt-get update && sudo apt-get install -y cmake libusb-1.0-0
-
-      - name: Install ARM GCC ${{ env.ARM_NONE_EABI_GCC_VERSION }}
-        run: |
-          wget -q https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${{ env.ARM_NONE_EABI_GCC_VERSION }}/xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
-          tar -xzf xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
-          mv xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }} "$HOME/arm-none-eabi-gcc"
-          echo "$HOME/arm-none-eabi-gcc/bin" >> $GITHUB_PATH
-
-      - name: Install picotool ${{ env.PICO_SDK_VERSION }}
-        working-directory: ${{ runner.temp }}
-        run: |
-          wget -q https://github.com/raspberrypi/pico-sdk-tools/releases/download/v${{ env.PICO_SDK_VERSION }}-${{ env.PICO_SDK_TOOLS_BUILD }}/picotool-${{ env.PICO_SDK_VERSION }}-x86_64-lin.tar.gz
-          tar -xzf picotool-${{ env.PICO_SDK_VERSION }}-x86_64-lin.tar.gz picotool
-          picotool/picotool version
-
       # Checked out at the workspace root so the onboard action can walk history.
       - name: Checkout firmware
         uses: actions/checkout@v6
@@ -58,17 +37,14 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # A nested git repo, which `git clean -fdx` leaves alone.
-      - name: Checkout pico-sdk/${{ env.PICO_SDK_VERSION }}
-        uses: actions/checkout@v6
+      # Toolchain and picotool go to runner.temp, out of reach of `git clean`.
+      # pico-sdk lands in the workspace as a nested git repo, which git clean
+      # leaves alone.
+      - name: Set up toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
         with:
-          repository: raspberrypi/pico-sdk
-          ref: ${{ env.PICO_SDK_VERSION }}
-          path: pico-sdk
-
-      - name: Checkout pico-sdk submodules
-        working-directory: ${{ github.workspace }}/pico-sdk
-        run: git submodule update --init
+          install_dir: ${{ runner.temp }}
 
       # Taken from HEAD once: historical commits may not have the script at all.
       - name: Stash helper script outside the checkout
@@ -86,9 +62,9 @@ jobs:
             ([ "${{ matrix.target }}" = f1 ] || test -f targets/${{ matrix.target }}/target.cmake) &&
             cmake -E make_directory build &&
             cd build &&
-            PICO_SDK_PATH=${{ github.workspace }}/pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -Dpicotool_DIR=${{ runner.temp }}/picotool -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
+            PICO_SDK_PATH=${{ steps.toolchain.outputs.pico_sdk_path }} cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -Dpicotool_DIR=${{ steps.toolchain.outputs.picotool_dir }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
             cmake --build . --config $BUILD_TYPE --parallel $(nproc) &&
-            ${{ runner.temp }}/membrowse_ldscripts.sh ${{ github.workspace }} $PWD ${{ github.workspace }}/pico-sdk
+            ${{ runner.temp }}/membrowse_ldscripts.sh ${{ github.workspace }} $PWD ${{ steps.toolchain.outputs.pico_sdk_path }}
           elf: build/flipperone-mcu-firmware.elf
           ld: build/ldscripts/memmap_default.ld
           map_file: build/flipperone-mcu-firmware.elf.map
