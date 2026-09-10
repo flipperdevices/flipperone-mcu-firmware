@@ -16,6 +16,7 @@
 #define TAG "CpuApp"
 
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
+#define CPU_APP_MASKROM_TIMER_INTERVAL 1000
 
 #define CPU_ARG_START   "start"
 #define CPU_ARG_MASKROM "maskrom"
@@ -56,6 +57,7 @@ typedef struct {
     FuriMessageQueue* app_queue;
     PioGetFrame* pio_get_frame;
     size_t skip_frames;
+    FuriEventLoopTimer* maskrom_timer_off;
 } CpuApp;
 
 static void furi_hal_reset_pd_and_charger(void) {
@@ -167,6 +169,13 @@ static void __isr __not_in_flash_func(cpu_app_pio_get_frame_isr)(uint8_t* data, 
     }
 }
 
+static void cpu_app_timer_callback(void* context) {
+    furi_assert(context);
+    UNUSED(context);
+
+    furi_bsp_linux_maskrom(false);
+}
+
 static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     CpuApp* instance = context;
@@ -199,7 +208,9 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
         case CpuAppMessageTypeMaskrom:
             furi_hal_reset_pd_and_charger();
             furi_bsp_linux_reset();
-            furi_bsp_linux_maskrom();
+            furi_bsp_linux_maskrom(true);
+            // Start a timer to automatically exit maskrom mode after the interval
+            furi_event_loop_timer_start(instance->maskrom_timer_off, CPU_APP_MASKROM_TIMER_INTERVAL);
             break;
         case CpuAppMessageTypeNewFrame:
             if(instance->skip_frames > 0) {
@@ -250,6 +261,7 @@ static CpuApp* cpu_app_alloc(void) {
     pio_get_frame_set_callback_rx(instance->pio_get_frame, cpu_app_pio_get_frame_isr, instance);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->app_queue, FuriEventLoopEventIn, cpu_app_message_logic, instance);
+    instance->maskrom_timer_off = furi_event_loop_timer_alloc(instance->event_loop, cpu_app_timer_callback, FuriEventLoopTimerTypeOnce, instance);
 
     instance->display_view = view_alloc();
     view_allocate_model(instance->display_view, ViewModelTypeLockFree, sizeof(CpuAppModel));
@@ -284,8 +296,13 @@ static void cpu_app_free(CpuApp* instance) {
     view_free(instance->menu_view);
 
     furi_event_loop_unsubscribe(instance->event_loop, instance->app_queue);
+    if(furi_event_loop_timer_is_running(instance->maskrom_timer_off)) {
+        furi_event_loop_timer_stop(instance->maskrom_timer_off);
+    }
+    furi_event_loop_timer_free(instance->maskrom_timer_off);
     furi_event_loop_free(instance->event_loop);
     furi_message_queue_free(instance->app_queue);
+
     pio_get_frame_deinit(instance->pio_get_frame);
 
     gui_clear_frame(instance->gui);
