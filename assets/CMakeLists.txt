@@ -30,7 +30,7 @@ add_custom_command(
 )
 
 # Nanopb .proto → .pb.h/.pb.c generation
-file(GLOB PROTO_SOURCES "${NANOPB_PROTO_DIR}/*.proto")
+file(GLOB PROTO_SOURCES CONFIGURE_DEPENDS "${NANOPB_PROTO_DIR}/*.proto")
 foreach(PROTO_FILE ${PROTO_SOURCES})
     get_filename_component(PROTO_NAME ${PROTO_FILE} NAME_WE)
     set(PB_HEADER "${NANOPB_OUTPUT_DIR}/${PROTO_NAME}.pb.h")
@@ -55,7 +55,7 @@ foreach(PROTO_FILE ${PROTO_SOURCES})
     list(APPEND PROTO_GENERATED_SOURCES ${PB_SOURCE})
 endforeach()
 
-file(GLOB IMAGE_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/*/*.png")
+file(GLOB IMAGE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*/*.png")
 
 # Generate a C source file for each image
 foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
