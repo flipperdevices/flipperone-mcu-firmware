@@ -240,7 +240,13 @@ static void display_jd9853_qspi_clear(DisplayJd9853QSPI* display) {
 static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
     DisplayJd9853QSPI* display = (DisplayJd9853QSPI*)ctx;
     furi_hal_gpio_write(&gpio_display_cs, false);
-    display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
+
+    if(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS) {
+        dma_channel_set_read_addr(display->dma_tx_channel, (uint8_t*)&display->buffer_header, false);
+        dma_channel_set_transfer_count(display->dma_tx_channel, sizeof(display->buffer_header) / 4, false);
+        dma_channel_start(display->dma_tx_channel);
+    }
+    // FIXME: what to do if FIFO is not empty? 
 }
 
 static int64_t __isr __not_in_flash_func(display_jd9853_end_tx_hstx_callback)(alarm_id_t id, __unused void* user_data) {
