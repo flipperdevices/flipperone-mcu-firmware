@@ -78,14 +78,15 @@ foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
     list(APPEND IMAGE_NAMES    ${IMAGE_NAME})
 endforeach()
 
-# Generate assets.h with extern declarations for all images
-file(WRITE ${IMAGES_HEADER}
-    "#pragma once\n"
-    "#include <gui/image.h>\n\n"
-)
+# Generate assets.h with extern declarations for all images. file(GENERATE)
+# rewrites the header only when its content changes, unlike file(WRITE), which
+# bumped the mtime on every configure and dragged every TU including assets.h
+# into a rebuild after each reconfigure.
+set(IMAGES_HEADER_CONTENT "#pragma once\n#include <gui/image.h>\n\n")
 foreach(IMAGE ${IMAGE_NAMES})
-    file(APPEND ${IMAGES_HEADER} "extern const Image ${IMAGE};\n")
+    string(APPEND IMAGES_HEADER_CONTENT "extern const Image ${IMAGE};\n")
 endforeach()
+file(GENERATE OUTPUT ${IMAGES_HEADER} CONTENT "${IMAGES_HEADER_CONTENT}")
 
 add_library(assets STATIC ${ASSETS_SOURCES} ${PROTO_GENERATED_SOURCES})
 target_include_directories(assets PUBLIC
