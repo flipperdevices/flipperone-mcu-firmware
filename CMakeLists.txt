@@ -124,7 +124,9 @@ target_link_options(${PROJECT_NAME} PRIVATE
     "LINKER:--wrap=_realloc_r"
 )
 
-include(lib/corelibs/lib/version/CMakeLists.txt)
+# Build metadata for version.c (commit, branch, dirty flag...). Not the
+# configure-time corelibs/lib/version/CMakeLists.txt: see scripts/cmake/version.cmake.
+include(scripts/cmake/version.cmake)
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 pico_set_program_version(${PROJECT_NAME} "0.1")
