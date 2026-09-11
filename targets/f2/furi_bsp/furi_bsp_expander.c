@@ -168,24 +168,22 @@ void furi_bsp_main_reset(void) {
     furi_check(expander_main != NULL);
     furi_check(furi_mutex_acquire(expander_main->handle_mutex, FuriWaitForever) == FuriStatusOk);
     if(expander_main->handle) {
-        pcal6416_deinit(expander_main->handle);
-        expander_main->handle = NULL;
-
+        // Reset main expander
         furi_hal_gpio_write_open_drain(&gpio_main_board_reset, false);
         furi_delay_ms(50);
         furi_hal_gpio_write_open_drain(&gpio_main_board_reset, true);
         furi_delay_ms(10);
 
-        expander_main->handle = pcal6416_init(&furi_hal_i2c_handle_main, &gpio_main_board_reset, &gpio_main_expander_int, PCAL6416_ADDRESS_A0);
-        if(expander_main->handle) {
-            pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
-            expander_main->control_state = FuriBspControlExpanderMainMcu;
+        pcal6416_set_input_callback(expander_main->handle, furi_bsp_expander_main_interrupt_handler, expander_main);
+        expander_main->control_state = FuriBspControlExpanderMainMcu;
 
-            pcal6416_write_output(expander_main->handle, OutputExpMainNMuxEn & OutputExpMainMask);
+        const bool ok =
+            pcal6416_write_output(expander_main->handle, OutputExpMainNMuxEn & OutputExpMainMask) &&
             pcal6416_write_mode(expander_main->handle, InputExpMainInputMask);
-            expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
-        } else {
+        if(!ok) {
             furi_bsp_show_error_message_main_expander();
+        } else {
+            expander_main->input_mask_old = ~pcal6416_read_input(expander_main->handle) & InputExpMainInputMask;
         }
     } else {
         furi_bsp_show_error_message_main_expander();

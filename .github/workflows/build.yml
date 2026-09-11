@@ -26,7 +26,7 @@ env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
   ARM_NONE_EABI_GCC_VERSION: 14.2.1-1.1
-  PICO_SDK_VERSION: 2.2.0
+  PICO_SDK_VERSION: 2.3.1
 
 jobs:
   firmware:
@@ -138,16 +138,25 @@ jobs:
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build . --config $BUILD_TYPE --parallel $(nproc)
 
-    # memmap_default.ld does `INCLUDE "pico_flash_region.ld"` (the FLASH region),
-    # but that file is generated into the build dir. Co-locate both so MemBrowse
-    # can resolve the include — passing them separately drops the FLASH region.
+    # pico-sdk 2.3+ splits the linker script into memmap_default.ld plus a tree of
+    # INCLUDE'd .incl fragments (see the tree comment inside memmap_default.ld), and
+    # MemBrowse resolves INCLUDE relative to the including file. Flatten the whole
+    # tree into one directory. Order matters: SDK defaults first, then per-target
+    # generated fragments (if any), then our restricted FLASH region written by
+    # CMakeLists.txt (not the SDK's full-size copy under build/pico-sdk/).
     - name: Collect linker script for MemBrowse
       if: matrix.target == 'f1'
       working-directory: ${{github.workspace}}/firmware/build
+      env:
+        SDK: ${{github.workspace}}/pico-sdk
       run: |
         mkdir -p ldscripts
-        cp ../../pico-sdk/src/rp2_common/pico_crt0/rp2350/memmap_default.ld ldscripts/
-        cp "$(find . -name pico_flash_region.ld -print -quit)" ldscripts/
+        cp "$SDK/src/rp2350/pico_platform/memmap_default.ld" ldscripts/
+        cp "$SDK"/src/rp2_common/pico_standard_link/script_include/*.incl ldscripts/
+        cp "$SDK"/src/rp2350/pico_platform/script_include/*.incl ldscripts/
+        cp generated/pico_standard_link/*/*.incl ldscripts/ 2>/dev/null || true
+        cp pico-sdk/src/rp2_common/pico_standard_link/pico_psram_region.ld ldscripts/
+        cp ${{github.workspace}}/firmware/targets/memory_flash.incl ldscripts/
 
     # TODO: MemBrowse still tracks f1 only, under its original target name.
     # Reporting the other targets needs a separate MemBrowse-side target per board.
@@ -162,6 +171,14 @@ jobs:
         elf: firmware/build/flipperone-mcu-firmware.elf
         ld: firmware/build/ldscripts/memmap_default.ld
         map_file: firmware/build/flipperone-mcu-firmware.elf.map
+        # RAM/SCRATCH/XIP_RAM come from default_locations.ld (a separate --script)
+        # via `X = DEFINED(X) ? X : X_DEFAULT` in set_memory_locations.incl, which
+        # MemBrowse's parser can't evaluate. Feed the RP2350 values directly.
+        linker_vars: >-
+          RAM_ORIGIN=0x20000000 RAM_LENGTH=512k
+          SCRATCH_X_ORIGIN=0x20080000 SCRATCH_X_LENGTH=4k
+          SCRATCH_Y_ORIGIN=0x20081000 SCRATCH_Y_LENGTH=4k
+          XIP_RAM_ORIGIN=0x13FFC000 XIP_RAM_LENGTH=16k
         api_key: ${{ secrets.MEMBROWSE_API_KEY }}
         api_url: ${{ vars.MEMBROWSE_API_URL }}
 
@@ -185,6 +202,7 @@ jobs:
       if: ${{ !github.event.pull_request.head.repo.fork }}
       run: |
         mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.uf2
+        mv ${{github.workspace}}/firmware/build/partition_table.uf2 artifacts/flipper-one-mcu-partition-table-${SUFFIX}.uf2
 
     # Hand the .uf2 over to the jobs below, which need every target at once —
     # neither the update server nor the release can be fed from inside the matrix.
@@ -244,6 +262,7 @@ jobs:
         # One line per entry of the build matrix
         body: |
           **Compiled firmware for commit `${{needs.firmware.outputs.commit_sha}}`:**
+          - [Partition table](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-partition-table-${{needs.firmware.outputs.suffix}}.uf2)
           - [🍓 f1 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-f1-firmware-${{needs.firmware.outputs.suffix}}.uf2)
           - [🍓 f2 UF2 file](https://update.flipperzero.one/builds/flipper-one-mcu/${{needs.firmware.outputs.branch_name}}/flipper-one-mcu-f2-firmware-${{needs.firmware.outputs.suffix}}.uf2)
         edit-mode: replace

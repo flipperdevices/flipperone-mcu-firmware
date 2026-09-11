@@ -182,8 +182,6 @@ static void gui_redraw(Gui* gui) {
                     {
                         .layoutDirection = CLAY_TOP_TO_BOTTOM,
                         .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                        // workaround for the pixel shift bug
-                        .padding = {.left = 1, .top = 0, .right = 1, .bottom = 0},
                     },
             }) {
             if(gui_view_find_opaque_from_top(gui->views, &it)) {
@@ -458,11 +456,11 @@ static Gui* gui_alloc(void) {
     gui->redraw_flag = furi_event_flag_alloc();
     gui->input_queue = furi_message_queue_alloc(GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent));
     FURI_LOG_I(
-        TAG, "InputEvent: %zu bytes x %u → queue ~%zu bytes", sizeof(InputEvent), GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent) * GUI_INPUT_EVENT_QUEUE_SIZE);
+        TAG, "InputEvent: %zu bytes x %u -> queue ~%zu bytes", sizeof(InputEvent), GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent) * GUI_INPUT_EVENT_QUEUE_SIZE);
     gui->input_touch_queue = furi_message_queue_alloc(GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE, sizeof(InputTouchEvent));
     FURI_LOG_I(
         TAG,
-        "InputTouchEvent: %zu bytes x %u → queue ~%zu bytes",
+        "InputTouchEvent: %zu bytes x %u -> queue ~%zu bytes",
         sizeof(InputTouchEvent),
         GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE,
         sizeof(InputTouchEvent) * GUI_INPUT_TOUCH_EVENT_QUEUE_SIZE);
@@ -535,6 +533,16 @@ void gui_push_frame(Gui* gui, const uint8_t* data) {
 
     gui_lock(gui);
     gui->pending_frame = data;
+    gui_unlock(gui);
+
+    gui_update(gui);
+}
+
+void gui_clear_frame(Gui* gui) {
+    furi_check(gui);
+
+    gui_lock(gui);
+    gui->pending_frame = NULL;
     gui_unlock(gui);
 
     gui_update(gui);

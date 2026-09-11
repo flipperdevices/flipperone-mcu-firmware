@@ -3,6 +3,7 @@
 #include <gui/clay_helper.h>
 #include <gui/modules/elements.h>
 #include <furi_hal_power.h>
+#include <furi_hal_flash.h>
 #include "../scene.h"
 #include "../desktop_i.h"
 
@@ -54,6 +55,7 @@ static bool debug_menu_layout(void* _model) {
         }
     }
 
+    elements_softkey_button_element(0, "Rollback", false, false);
     elements_softkey_button_element(4, "DFU", false, false);
 
     return false;
@@ -68,13 +70,18 @@ static bool debug_menu_input(InputEvent* event, void* context) {
     if(event->type == InputTypePress && event->key == InputKeyOk) {
         uint32_t selected_index;
         with_view_model(view, DebugMenuViewModel * model, { selected_index = model->selected_index; }, false);
-        desktop_start_app(&FLIPPER_APPS[selected_index]);
+        const char* appid = FLIPPER_APPS[selected_index].appid;
+        desktop_send_scene_event(desktop, DesktopSceneEventTypeStartAppById, (void*)appid);
         consumed = true;
     } else if(event->type == InputTypePress && event->key == InputKeyBack) {
         scene_exit(scene, desktop);
         consumed = true;
     } else if(event->type == InputTypePress && event->key == InputKey5) {
         furi_hal_power_enter_bootsel();
+        consumed = true;
+    } else if(event->type == InputTypePress && event->key == InputKey1) {
+        furi_hal_flash_rollback();
+        furi_hal_power_reset();
         consumed = true;
     } else if((event->type == InputTypePress) || (event->type == InputTypeRepeat)) {
         switch(event->key) {

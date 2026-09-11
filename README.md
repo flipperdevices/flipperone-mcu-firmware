@@ -38,7 +38,7 @@ Builds run automatically on every push to the `dev` branch, on tag pushes, and o
 
 ## How to build
 
-Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). The extension automatically downloads the ARM toolchain, CMake, Ninja, and Pico SDK. Open the project folder and use the extension's compile button.
+Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). The extension automatically downloads the ARM toolchain, CMake, Ninja, and Pico SDK. Open the project folder, copy `vscode_template` folder contents to `.vscode` and use the extension's compile button.
 
 ### Hardware targets
 
@@ -49,7 +49,7 @@ See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and 
 <details>
 <summary>Manual build (Linux / macOS)</summary>
 
-Prerequisites: [ARM GCC toolchain](https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases) (tested with 14.2.1), CMake 3.13+, [Pico SDK 2.2.0](https://github.com/raspberrypi/pico-sdk).
+Prerequisites: [ARM GCC toolchain](https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases) (tested with 14.2.1), CMake 3.13+, [Pico SDK 2.3.1](https://github.com/raspberrypi/pico-sdk).
 
 On macOS, the ARM toolchain can be installed via Homebrew:
 
@@ -61,7 +61,7 @@ brew install --cask gcc-arm-embedded
 git clone --recursive https://github.com/flipperdevices/flipperone-mcu-firmware.git
 cd flipperone-mcu-firmware
 
-git clone -b 2.2.0 https://github.com/raspberrypi/pico-sdk.git ../pico-sdk
+git clone -b 2.3.1 https://github.com/raspberrypi/pico-sdk.git ../pico-sdk
 cd ../pico-sdk && git submodule update --init && cd ../flipperone-mcu-firmware
 
 mkdir -p build && cd build

@@ -13,6 +13,9 @@
 #define PIO_GET_FRAME_SIZE  (JD9853_WIDTH * JD9853_HEIGHT)
 #define PIO_GET_FRAME_COUNT 2
 
+// workaround for the pixel shift bug
+#define PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND 1
+
 /* Runtime-assembled program layout (pins are passed via init, so the PIO
  * program is built at runtime with the actual GPIO numbers). SCK is sampled
  * on its rising edge (the capture edge for both SPI Mode 0 and Mode 3). The
@@ -31,7 +34,7 @@
 #define PIO_GET_FRAME_LOOP_END    5
 
 typedef struct {
-    uint8_t data[PIO_GET_FRAME_SIZE];
+    uint8_t data[PIO_GET_FRAME_SIZE + PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND];
 } PioGetFrameBuffer;
 
 struct PioGetFrame {
@@ -66,7 +69,8 @@ static void __not_in_flash_func(pio_get_frame_rearm)(PioGetFrame* instance) {
     /* Force the PC to the program start (pio_sm_restart clears the PC to 0,
      * which is only correct when the program happens to sit at offset 0). */
     pio_sm_exec(instance->pio, instance->sm, pio_encode_jmp(instance->offset));
-    dma_channel_set_write_addr(instance->dma_rx_channel, instance->frame_buffers[instance->current_frame].data, false);
+    dma_channel_set_write_addr(
+        instance->dma_rx_channel, (instance->frame_buffers[instance->current_frame].data + PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND), false);
     dma_channel_set_trans_count(instance->dma_rx_channel, PIO_GET_FRAME_SIZE, false);
     dma_channel_start(instance->dma_rx_channel);
     pio_sm_set_enabled(instance->pio, instance->sm, true); /* waits for CS low */
@@ -85,10 +89,15 @@ static void __isr __not_in_flash_func(pio_get_frame_cs_isr)(void* context) {
     dma_channel_abort(instance->dma_rx_channel);
     size_t received = PIO_GET_FRAME_SIZE - dma_channel_hw_addr(instance->dma_rx_channel)->transfer_count;
 
-    /* Drain any bytes still sitting in the PIO RX FIFO for an exact count */
+    /* Drain any bytes still sitting in the PIO RX FIFO for an exact count.
+     * Written at the same +PIXEL_SHIFT_BUG_WORKAROUND offset the DMA uses,
+     * so the drained tail lines up with the DMA-written head instead of
+     * overlapping it. */
     while(!pio_sm_is_rx_fifo_empty(instance->pio, instance->sm)) {
         if(received < PIO_GET_FRAME_SIZE) {
-            instance->frame_buffers[instance->current_frame].data[received++] = (uint8_t)pio_sm_get(instance->pio, instance->sm);
+            instance->frame_buffers[instance->current_frame].data[PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND + received] =
+                (uint8_t)pio_sm_get(instance->pio, instance->sm);
+            received++;
         } else {
             pio_sm_get(instance->pio, instance->sm); /* discard overflow */
         }
@@ -186,7 +195,12 @@ PioGetFrame* pio_get_frame_init(const GpioPin* gpio_cs, const GpioPin* gpio_sck,
      * register configuration, zero recurring CPU cost. */
     channel_config_set_high_priority(&dc, true);
     dma_channel_configure(
-        instance->dma_rx_channel, &dc, instance->frame_buffers[instance->current_frame].data, &instance->pio->rxf[instance->sm], PIO_GET_FRAME_SIZE, false);
+        instance->dma_rx_channel,
+        &dc,
+        (instance->frame_buffers[instance->current_frame].data + PIO_GET_FRAME_PIXEL_SHIFT_BUG_WORKAROUND),
+        &instance->pio->rxf[instance->sm],
+        PIO_GET_FRAME_SIZE,
+        false);
 
     /* CS rising edge = frame complete -> switch DMA buffer */
     furi_hal_gpio_add_int_callback(gpio_cs, GpioConditionRise, pio_get_frame_cs_isr, instance);
