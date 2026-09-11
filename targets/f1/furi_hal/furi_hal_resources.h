@@ -131,7 +131,7 @@ extern const GpioPin gpio_cpu_int;
 extern const GpioPin gpio_cpu_i3c0_sda;
 extern const GpioPin gpio_cpu_i3c0_scl;
 
-extern const GpioPin gpio_cpu_adc_in0_boot;
+extern const GpioPin gpio_cpu_adc_in1_boot;
 
 extern const GpioPin gpio_m40;
 extern const GpioPin gpio_m41;

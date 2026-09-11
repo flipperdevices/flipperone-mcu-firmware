@@ -10,4 +10,5 @@ void furi_bsp_init(void) {
     furi_bsp_expander_init();
     furi_bsp_vci_init();
     furi_bsp_stdio_init();
+    furi_bsp_saradc_alloc();
 }
