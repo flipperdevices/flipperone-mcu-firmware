@@ -122,7 +122,7 @@ bool i2c_negotiator_input_sw_button_event(SwInputKey key, bool pressed, void* co
 
 //Cpu state register
 void i2c_negotiator_cpu_state(I2CNegotiator* instance, uint16_t value) {
-    cpu_mode_set_cpu_mode(instance->cpu_mode, (CpuState)value);
+    cpu_mode_set_cpu_state(instance->cpu_mode, (CpuState)value);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_cpu_state);
 

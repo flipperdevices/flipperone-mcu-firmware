@@ -23,8 +23,8 @@ typedef enum {
 extern "C" {
 #endif
 
-bool cpu_mode_set_cpu_mode(CpuMode* instance, CpuState cpu_state);
-bool cpu_mode_get_cpu_mode(CpuMode* instance, CpuState* cpu_state);
+bool cpu_mode_set_cpu_state(CpuMode* instance, CpuState cpu_state);
+bool cpu_mode_get_cpu_state(CpuMode* instance, CpuState* cpu_state);
 
 #ifdef __cplusplus
 }

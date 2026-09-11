@@ -1,6 +1,7 @@
 #include "cpu_mode.h"
 
 #include <api_lock.h>
+#include <desktop/desktop.h>
 
 #define TAG "CpuMode"
 
@@ -17,8 +18,8 @@ struct CpuMode {
 };
 
 typedef enum {
-    CpuModeMessageTypeSetCpuMode,
-    CpuModeMessageTypeGetCpuMode,
+    CpuModeMessageTypeSetCpuState,
+    CpuModeMessageTypeGetCpuState,
 } CpuModeMessageType;
 
 typedef struct {
@@ -43,12 +44,23 @@ static void cpu_mode_message_queue_callback(FuriEventLoopObject* object, void* c
     bool result = false;
 
     switch(msg.type) {
-    case CpuModeMessageTypeSetCpuMode:
+    case CpuModeMessageTypeSetCpuState:
         instance->status.cpu_state = *msg.as.cpu_state.cpu_state;
-        FURI_LOG_I(TAG, "CPU mode: %d", instance->status.cpu_state);
+        FURI_LOG_D(TAG, "CPU State: %d", instance->status.cpu_state);
+
+        if(instance->status.cpu_state == CpuStatePoweredOff) {
+            const char* appid = desktop_get_running_app_id();
+            if(!strcmp(appid, "cpu_app_start") || !strcmp(appid, "cpu_app_maskrom")) {
+                FURI_LOG_D(TAG, "Cpu_app stopping due to CPU State: %d", instance->status.cpu_state);
+                // We introduce a short delay to allow the CPU enough time to turn off the PMIC.
+                furi_delay_ms(300);
+                desktop_stop_app();
+            }
+        }
+
         result = true;
         break;
-    case CpuModeMessageTypeGetCpuMode:
+    case CpuModeMessageTypeGetCpuState:
         if(msg.as.cpu_state.cpu_state) {
             *msg.as.cpu_state.cpu_state = instance->status.cpu_state;
             result = true;
@@ -97,36 +109,40 @@ int32_t cpu_mode_srv(void* p) {
     return 0;
 }
 
-bool cpu_mode_set_cpu_mode(CpuMode* instance, CpuState cpu_state) {
+bool cpu_mode_set_cpu_state(CpuMode* instance, CpuState cpu_state) {
     furi_check(instance);
     bool result = false;
     const CpuModeMessage msg = {
-        .type = CpuModeMessageTypeSetCpuMode,
+        .type = CpuModeMessageTypeSetCpuState,
         .result = &result,
         .lock = api_lock_alloc_locked(),
-        .as = {
-            .cpu_state = {
-                .cpu_state = &cpu_state,
+        .as =
+            {
+                .cpu_state =
+                    {
+                        .cpu_state = &cpu_state,
+                    },
             },
-        },
     };
 
     cpu_mode_send_message(instance, &msg);
     return result;
 }
 
-bool cpu_mode_get_cpu_mode(CpuMode* instance, CpuState* cpu_state) {
+bool cpu_mode_get_cpu_state(CpuMode* instance, CpuState* cpu_state) {
     furi_check(instance);
     bool result = false;
     const CpuModeMessage msg = {
-        .type = CpuModeMessageTypeGetCpuMode,
+        .type = CpuModeMessageTypeGetCpuState,
         .result = &result,
         .lock = api_lock_alloc_locked(),
-        .as = {
-            .cpu_state = {
-                .cpu_state = cpu_state,
+        .as =
+            {
+                .cpu_state =
+                    {
+                        .cpu_state = cpu_state,
+                    },
             },
-        },
     };
 
     cpu_mode_send_message(instance, &msg);
