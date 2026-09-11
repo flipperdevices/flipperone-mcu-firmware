@@ -5,7 +5,8 @@
 
 #define TAG "CpuMode"
 
-#define CPU_MODE_MAX_MESSAGES (8)
+#define CPU_MODE_MAX_MESSAGES       (8)
+#define CPU_MODE_POWER_OFF_DELAY_MS (300)
 
 typedef struct {
     CpuState cpu_state;
@@ -15,6 +16,7 @@ struct CpuMode {
     FuriEventLoop* event_loop;
     FuriMessageQueue* message_queue;
     CpuModeStatus status;
+    FuriEventLoopTimer* shutdown_timer;
 };
 
 typedef enum {
@@ -44,22 +46,24 @@ static void cpu_mode_message_queue_callback(FuriEventLoopObject* object, void* c
     bool result = false;
 
     switch(msg.type) {
-    case CpuModeMessageTypeSetCpuState:
-        instance->status.cpu_state = *msg.as.cpu_state.cpu_state;
+    case CpuModeMessageTypeSetCpuState: {
+        CpuState cpu_state = *msg.as.cpu_state.cpu_state;
+        if(cpu_state >= CpuStateNumStates) {
+            // Ignore garbage from the I2C link (bus glitch, protocol/version
+            FURI_LOG_E(TAG, "Invalid CPU state from I2C: %u", cpu_state);
+            break;
+        }
+
+        instance->status.cpu_state = cpu_state;
         FURI_LOG_D(TAG, "CPU State: %d", instance->status.cpu_state);
 
         if(instance->status.cpu_state == CpuStatePoweredOff) {
-            const char* appid = desktop_get_running_app_id();
-            if(!strcmp(appid, "cpu_app_start") || !strcmp(appid, "cpu_app_maskrom")) {
-                FURI_LOG_D(TAG, "Cpu_app stopping due to CPU State: %d", instance->status.cpu_state);
-                // We introduce a short delay to allow the CPU enough time to turn off the PMIC.
-                furi_delay_ms(300);
-                desktop_stop_app();
-            }
+            furi_event_loop_timer_start(instance->shutdown_timer, CPU_MODE_POWER_OFF_DELAY_MS);
         }
 
         result = true;
         break;
+    }
     case CpuModeMessageTypeGetCpuState:
         if(msg.as.cpu_state.cpu_state) {
             *msg.as.cpu_state.cpu_state = instance->status.cpu_state;
@@ -88,10 +92,24 @@ static void cpu_mode_send_message(CpuMode* instance, const CpuModeMessage* messa
     }
 }
 
+static void cpu_mode_shutdown_timer_callback(void* context) {
+    furi_check(context);
+    CpuMode* instance = context;
+    if(instance->status.cpu_state == CpuStatePoweredOff) {
+        const char* appid = desktop_get_running_app_id();
+        if(appid && (!strcmp(appid, "cpu_app_start") || !strcmp(appid, "cpu_app_maskrom"))) {
+            FURI_LOG_D(TAG, "Cpu_app stopping due to CPU State: %d", instance->status.cpu_state);
+            desktop_stop_app();
+        }
+    }
+}
+
 static CpuMode* cpu_mode_alloc(void) {
     CpuMode* instance = (CpuMode*)malloc(sizeof(CpuMode));
+    instance->status.cpu_state = CpuStateUnknown;
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(CPU_MODE_MAX_MESSAGES, sizeof(CpuModeMessage));
+    instance->shutdown_timer = furi_event_loop_timer_alloc(instance->event_loop, cpu_mode_shutdown_timer_callback, FuriEventLoopTimerTypeOnce, instance);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, cpu_mode_message_queue_callback, instance);
 
