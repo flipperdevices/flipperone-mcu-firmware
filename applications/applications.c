@@ -283,6 +283,10 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = saradc_test_command_cli,
         .name = "saradc_test",
+        .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
         .callback = desktop_command_cli,
         .name = "desktop",
         .stack_size = 1024 * 2,
