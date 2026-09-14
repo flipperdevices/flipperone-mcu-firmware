@@ -44,42 +44,48 @@ static bool font_test_layout(void* _model) {
              .padding = {4, 4, 4, 4},
              .childGap = 2,
          }}) {
-        CLAY_AUTO_ID({
-            .layout =
-                {
-                    .sizing = {.width = CLAY_SIZING_GROW(0)},
-                    .childAlignment = {.x = CLAY_ALIGN_X_LEFT},
-                },
-        }) {
+        CLAY(
+            CLAY_APP_ID("FontNameRow"),
+            {
+                .layout =
+                    {
+                        .sizing = {.width = CLAY_SIZING_GROW(0)},
+                        .childAlignment = {.x = CLAY_ALIGN_X_LEFT},
+                    },
+            }) {
             CLAY_TEXT(clay_helper_string_from_chars(font_test_names[font]), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
         }
 
         /* Separator */
-        CLAY_AUTO_ID({
-            .backgroundColor = COLOR_BLACK,
-            .layout = {.sizing = {.height = CLAY_SIZING_FIXED(1), .width = CLAY_SIZING_GROW(0)}},
-        }) {
+        CLAY(
+            CLAY_APP_ID("Separator"),
+            {
+                .backgroundColor = COLOR_BLACK,
+                .layout = {.sizing = {.height = CLAY_SIZING_FIXED(1), .width = CLAY_SIZING_GROW(0)}},
+            }) {
         }
 
         /* Glyph rows rendered with the selected font */
         for(size_t i = 0; i < COUNT_OF(font_test_rows); i++) {
-            CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(0)}}}) {
+            CLAY(CLAY_IDI(TAG "GlyphRow", i), {.layout = {.sizing = {.width = CLAY_SIZING_GROW(0)}}}) {
                 CLAY_TEXT(font_test_rows[i], CLAY_TEXT_CONFIG({.fontId = font, .textColor = COLOR_BLACK}));
             }
         }
 
         /* Footer: navigation hint */
-        CLAY_AUTO_ID({
-            .layout =
-                {
-                    .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                    .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(1)},
-                    .childAlignment = {.y = CLAY_ALIGN_Y_BOTTOM},
-                    .childGap = 4,
-                },
-        }) {
+        CLAY(
+            CLAY_APP_ID("Footer"),
+            {
+                .layout =
+                    {
+                        .layoutDirection = CLAY_LEFT_TO_RIGHT,
+                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(1)},
+                        .childAlignment = {.y = CLAY_ALIGN_Y_BOTTOM},
+                        .childGap = 4,
+                    },
+            }) {
             CLAY_TEXT(CLAY_STRING("<  >  switch"), CLAY_TEXT_CONFIG({.fontId = FontBusy9, .textColor = COLOR_BLACK}));
-            CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(1)}}}) {
+            CLAY(CLAY_APP_ID("FooterSpacer"), {.layout = {.sizing = {.width = CLAY_SIZING_GROW(1)}}}) {
             }
             CLAY_TEXT(CLAY_STRING("Back exit"), CLAY_TEXT_CONFIG({.fontId = FontBusy9, .textColor = COLOR_BLACK}));
         }

@@ -1,0 +1,4 @@
+pyserial>=3.5
+protobuf>=4.21
+grpcio-tools>=1.48
+Pillow>=10.0

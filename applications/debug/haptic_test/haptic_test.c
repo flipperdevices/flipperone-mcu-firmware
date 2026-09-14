@@ -25,18 +25,20 @@ typedef struct {
     Haptic* haptic;
 } HapticTest;
 
-static void keypad_test_app_create_keypad_button(Clay_String text, bool inverted) {
-    CLAY_AUTO_ID({
-        .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
-        .layout =
-            {
-                .padding = {8, 8, 4, 4},
-                .sizing = {.width = KEYPAD_BUTTON_WIDTH},
-                .childAlignment = {.x = CLAY_ALIGN_X_CENTER},
-            },
-        .backgroundColor = inverted ? COLOR_WHITE : COLOR_BLACK,
-        .cornerRadius = CLAY_CORNER_RADIUS(4),
-    }) {
+static void keypad_test_app_create_keypad_button(Clay_ElementId id, Clay_String text, bool inverted) {
+    CLAY(
+        id,
+        {
+            .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
+            .layout =
+                {
+                    .padding = {8, 8, 4, 4},
+                    .sizing = {.width = KEYPAD_BUTTON_WIDTH},
+                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER},
+                },
+            .backgroundColor = inverted ? COLOR_WHITE : COLOR_BLACK,
+            .cornerRadius = CLAY_CORNER_RADIUS(4),
+        }) {
         CLAY_TEXT(text, CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = inverted ? COLOR_BLACK : COLOR_WHITE}));
     }
 }
@@ -64,7 +66,7 @@ static bool haptic_test_layout(void* _model) {
                         .childAlignment = {.x = CLAY_ALIGN_X_CENTER, .y = CLAY_ALIGN_Y_CENTER},
                     },
             }) {
-            CLAY_AUTO_ID({.layout = {.padding = {8, 8, 4, 4}}}) {
+            CLAY(CLAY_APP_ID("HeaderText"), {.layout = {.padding = {8, 8, 4, 4}}}) {
                 CLAY_TEXT(CLAY_STRING("Haptic Test"), CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = COLOR_BLACK}));
             }
         }
@@ -129,10 +131,10 @@ static bool haptic_test_layout(void* _model) {
                 },
         }) {
         /* spacer grows to push button to the right */
-        CLAY_AUTO_ID({.layout = {.sizing = {.width = CLAY_SIZING_GROW(1)}}}) {
+        CLAY(CLAY_APP_ID("FooterSpacer"), {.layout = {.sizing = {.width = CLAY_SIZING_GROW(1)}}}) {
         }
-        CLAY_AUTO_ID({.layout = {.sizing = {.width = KEYPAD_BUTTON_WIDTH}}}) {
-            keypad_test_app_create_keypad_button(CLAY_STRING("Calb_Key_Sw"), model->sw_key_pressed);
+        CLAY(CLAY_APP_ID("FooterButtonWrapper"), {.layout = {.sizing = {.width = KEYPAD_BUTTON_WIDTH}}}) {
+            keypad_test_app_create_keypad_button(CLAY_APP_ID("CalibKeySwButton"), CLAY_STRING("Calb_Key_Sw"), model->sw_key_pressed);
         }
     }
     return false;

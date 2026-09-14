@@ -21,11 +21,18 @@ typedef enum {
 
     DesktopSceneEventTypePowerUpdate,
 
+    DesktopSceneEventTypeStartSelfCheckApp,
+    DesktopSceneEventTypeStartMaskromApp,
+    DesktopSceneEventTypeStartCpuApp,
+    DesktopSceneEventTypeStartKeypadApp,
+    DesktopSceneEventTypeStartTouchpadApp,
+    DesktopSceneEventTypeStartHapticApp,
+
+    DesktopSceneEventTypeStartAppById,
+
 } DesktopSceneEvent;
 
 void desktop_send_scene_event(Desktop* desktop, uint32_t event, void* data);
-
-void desktop_start_cpu(bool to_maskrom);
 
 void desktop_power_off(void);
 

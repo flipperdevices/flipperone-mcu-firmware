@@ -1,14 +1,14 @@
 #include "display_jd9853_qspi.h"
 #include "display_jd9853_reg.h"
 
+#include <furi.h>
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
-#include <drivers/tps62868x/tps62868x.h>
-#include <furi_hal_i2c_config.h>
 
 #include <hardware/structs/clocks.h>
 #include <hardware/structs/hstx_ctrl.h>
 #include <hardware/structs/hstx_fifo.h>
+#include <pico/time.h>
 #include <pico/types.h>
 #include <hardware/dma.h>
 
@@ -28,12 +28,27 @@ typedef struct {
 struct DisplayJd9853QSPI {
     FuriSemaphore* busy;
     uint32_t dma_tx_channel;
-    Tps62868x* power_supply;
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
+#ifdef DISPLAY_JD9853_SHOW_FPS
+    volatile uint32_t frames_written; /* frames queued to the display */
+    FuriTimer* fps_timer; /* periodic FPS logger */
+#endif
 };
 
 static DisplayJd9853QSPI* display_instance = NULL;
+
+#ifdef DISPLAY_JD9853_SHOW_FPS
+static void display_jd9853_fps_timer_callback(void* ctx) {
+    UNUSED(ctx);
+    DisplayJd9853QSPI* display = display_instance;
+    if(!display) return;
+    uint32_t fps = display->frames_written;
+    display->frames_written = 0;
+
+    FURI_LOG_W(TAG, "Display TX: %lu FPS", (unsigned long)fps);
+}
+#endif
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853QSPI* display) {
     UNUSED(display);
@@ -178,14 +193,14 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
     if(!display->display_is_connected) {
         return; // Don't attempt to write if display is not connected
     }
+#ifdef DISPLAY_JD9853_SHOW_FPS
+    display->frames_written++;
+#endif
 
-    while(furi_semaphore_get_space(display->busy)) {
-        furi_thread_yield();
-    };
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
 
     memcpy(display->buffer_header.data, buffer, size);
 
-    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     furi_hal_gpio_enable_int_callback(&gpio_display_te);
 }
 
@@ -271,18 +286,16 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     DisplayJd9853QSPI* display = malloc(sizeof(DisplayJd9853QSPI));
     display_instance = display;
     display->busy = furi_semaphore_alloc(1, 1);
+#ifdef DISPLAY_JD9853_SHOW_FPS
+    display->frames_written = 0;
 
+    display->fps_timer = furi_timer_alloc(display_jd9853_fps_timer_callback, FuriTimerTypePeriodic, NULL);
+    furi_timer_start(display->fps_timer, 1000);
+#endif
     display->buffer_header.cmd[0] = JD9853_QSPI_CMD_4_LINE_MODE;
     display->buffer_header.cmd[1] = 0;
     display->buffer_header.cmd[2] = JD9853_QSPI_CMD_4_LINE_RAMWR;
     display->buffer_header.cmd[3] = 0;
-
-    //tps62868x init
-    display->power_supply = tps62868x_init(&furi_hal_i2c_handle_control, TPS62868_ADDRESS);
-    if(display->power_supply) {
-        tps62868x_set_voltage(display->power_supply, 3.3f);
-        tps62868x_get_voltage(display->power_supply);
-    }
 
     //dma init
     display->dma_tx_channel = dma_claim_unused_channel(true);
@@ -362,8 +375,6 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     hw_clear_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
     dma_channel_unclaim(display->dma_tx_channel);
 
-    if(display->power_supply) tps62868x_deinit(display->power_supply);
-
     free(display);
     display_instance = NULL;
 }
@@ -377,17 +388,6 @@ void display_jd9853_qspi_eco_mode(DisplayJd9853QSPI* display, bool enable) {
         display_jd9853_write_reg(display, idmoff);
     }
     display_jd9853_hstx_init_4_line(display);
-}
-
-void display_jd9853_qspi_set_vci(DisplayJd9853QSPI* display, float_t voltage) {
-    furi_check(display);
-    if(display->power_supply) tps62868x_set_voltage(display->power_supply, voltage);
-}
-
-float_t display_jd9853_qspi_get_vci(DisplayJd9853QSPI* display) {
-    furi_check(display);
-    if(display->power_supply) return tps62868x_get_voltage(display->power_supply);
-    return 0.0f;
 }
 
 bool display_jd9853_qspi_is_init(void) {

@@ -19,6 +19,9 @@ struct CliShellLine {
 CliShellLine* cli_shell_line_alloc(CliShell* shell) {
     CliShellLine* line = malloc(sizeof(CliShellLine));
     line->shell = shell;
+    line->history_position = 0;
+    line->line_position = 0;
+    line->about_to_exit = false;
 
     line->history[0] = furi_string_alloc();
     line->history_entries = 1;
@@ -304,7 +307,7 @@ static bool cli_shell_line_input_bksp(CliKeyCombo combo, void* context) {
     FuriString* editing_line = cli_shell_line_get_editing(line);
     cli_shell_line_clamp_position(line, editing_line);
     if(line->line_position == 0) {
-        putc(CliKeyBell, stdout);
+        putchar(CliKeyBell);
         stdio_flush();
         return true;
     }

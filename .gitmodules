@@ -14,3 +14,9 @@
 [submodule "lib/corelibs"]
 	path = lib/corelibs
 	url = https://github.com/flipperdevices/fbtng-corelibs.git
+[submodule "lib/nanopb"]
+	path = lib/nanopb
+	url = https://github.com/nanopb/nanopb.git
+[submodule "assets/proto"]
+	path = assets/proto
+	url = https://github.com/flipperdevices/flipperone-mcu-protobuf.git

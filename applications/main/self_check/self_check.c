@@ -9,6 +9,7 @@
 #include <pd/pd.h>
 #include <usb_mux/usb_mux.h>
 #include <assets.h>
+#include <desktop/desktop.h>
 
 #define TAG "SelfCheck"
 
@@ -50,23 +51,25 @@ static bool self_check_layout(void* _model) {
                     },
             }) {
             // image wrapper with floating position
-            CLAY_AUTO_ID({
-                .layout =
-                    {
-                        .sizing = {.height = CLAY_SIZING_FIT(0), .width = CLAY_SIZING_FIT(0)},
-                        .padding = {.left = 0, .right = 3, .top = 3, .bottom = 0},
-                    },
-                .floating =
-                    {
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
-                        .attachTo = CLAY_ATTACH_TO_PARENT,
-                    },
-            }) {
-                clay_fixed_image(&logo_head);
+            CLAY(
+                CLAY_APP_ID("LogoWrapper"),
+                {
+                    .layout =
+                        {
+                            .sizing = {.height = CLAY_SIZING_FIT(0), .width = CLAY_SIZING_FIT(0)},
+                            .padding = {.left = 0, .right = 3, .top = 3, .bottom = 0},
+                        },
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                }) {
+                clay_fixed_image(CLAY_ID_LOCAL("Logo"), &logo_head);
             }
 
             // text
-            CLAY_AUTO_ID() {
+            CLAY(CLAY_APP_ID("StatusText")) {
                 CLAY_TEXT(clay_helper_string_from(model->status_str), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
         }
@@ -168,7 +171,7 @@ static bool self_check_process(FuriString* status_str) {
         furi_string_cat_printf(status_str, "Expander main: %s\n", (expander_device & FuriBspDeviceExpanderMain) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Haptic: %s\n", (haptic_device & HapticDeviceDrv2605l) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "PD: %s\n", (pd_device & PdDeviceFusb302) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Charger: %s\n", (power_device & PowerDeviceBq25792) ? "ok" : "NOT FOUND");
+        furi_string_cat_printf(status_str, "Charger: %s\n", (power_device & PowerDeviceBq2579x) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Gauge: %s\n", (power_device & PowerDeviceBq28z620) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "Touchpad: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "ok" : "NOT FOUND");
         furi_string_cat_printf(status_str, "USB Mux: %s\n", (usb_mux_device & UsbMuxDeviceHd3ss3220) ? "ok" : "NOT FOUND");
@@ -220,9 +223,17 @@ static void self_check_app_main(void) {
 static void self_check_app_autorun(void) {
     FURI_LOG_I(TAG, "Starting self check autorun");
 
+    // Occupy the desktop app slot right away: no other app can be started
+    // via desktop while we are running (and desktop can stop us on demand).
+    if(!desktop_register_app("self_check", furi_thread_get_current())) {
+        FURI_LOG_E(TAG, "Failed to register with desktop");
+    }
+
     if(!self_check_process(NULL)) {
         self_check_app_main();
     }
+
+    desktop_unregister_app("self_check");
 }
 
 int32_t self_check_app(void* p) {

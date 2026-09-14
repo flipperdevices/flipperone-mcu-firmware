@@ -3,7 +3,7 @@
 // all leds off
 
 const LedItem led_batch_all_off_items[] = {
-    {.type = LedTypeLineAllOff},
+    {.type = FuriBspLedTypeAllOff},
 };
 
 const LedBatch led_batch_all_off = {
@@ -14,7 +14,7 @@ const LedBatch led_batch_all_off = {
 // power red
 
 const LedItem led_batch_power_red_items[] = {
-    {.type = LedTypePower, .color = LED_COLOR_RED},
+    {.type = FuriBspLedTypePower, .color = LED_COLOR_RED},
 };
 
 const LedBatch led_batch_power_red = {
@@ -25,22 +25,22 @@ const LedBatch led_batch_power_red = {
 // all leds on
 
 const LedItem led_batch_all_on_items[] = {
-    {.type = LedTypeNet, .color = LED_COLOR_BLUE},
-    {.type = LedTypeWiFi, .color = LED_COLOR_BLUE},
-    {.type = LedTypeEth2, .color = LED_COLOR_BLUE},
-    {.type = LedTypeEth1, .color = LED_COLOR_BLUE},
-    {.type = LedTypePower, .color = LED_COLOR_GREEN},
-    {.type = LedTypeBatteryOutline, .color = LED_COLOR_GREEN},
-    {.type = LedTypeBatteryWatt1, .color = LED_COLOR_RED},
-    {.type = LedTypeBatteryWatt2, .color = LED_COLOR_RED},
-    {.type = LedTypeBatteryWatt3, .color = LED_COLOR_YELLOW},
-    {.type = LedTypeBatteryWatt4, .color = LED_COLOR_GREEN},
-    {.type = LedTypeUsbCharging, .color = LED_COLOR_RED},
-    {.type = LedTypeUsbWatt1, .color = LED_COLOR_RED},
-    {.type = LedTypeUsbWatt2, .color = LED_COLOR_RED},
-    {.type = LedTypeUsbWatt3, .color = LED_COLOR_YELLOW},
-    {.type = LedTypeUsbWatt4, .color = LED_COLOR_GREEN},
-    {.type = LedTypeBatteryCenter, .color = LED_COLOR_GREEN},
+    {.type = FuriBspLedTypeNet, .color = LED_COLOR_BLUE},
+    {.type = FuriBspLedTypeWiFi, .color = LED_COLOR_BLUE},
+    {.type = FuriBspLedTypeEth2, .color = LED_COLOR_BLUE},
+    {.type = FuriBspLedTypeEth1, .color = LED_COLOR_BLUE},
+    {.type = FuriBspLedTypePower, .color = LED_COLOR_GREEN},
+    {.type = FuriBspLedTypeBatteryOutline, .color = LED_COLOR_GREEN},
+    {.type = FuriBspLedTypeBatteryWatt1, .color = LED_COLOR_RED},
+    {.type = FuriBspLedTypeBatteryWatt2, .color = LED_COLOR_RED},
+    {.type = FuriBspLedTypeBatteryWatt3, .color = LED_COLOR_YELLOW},
+    {.type = FuriBspLedTypeBatteryWatt4, .color = LED_COLOR_GREEN},
+    {.type = FuriBspLedTypeUsbCharging, .color = LED_COLOR_RED},
+    {.type = FuriBspLedTypeUsbWatt1, .color = LED_COLOR_RED},
+    {.type = FuriBspLedTypeUsbWatt2, .color = LED_COLOR_RED},
+    {.type = FuriBspLedTypeUsbWatt3, .color = LED_COLOR_YELLOW},
+    {.type = FuriBspLedTypeUsbWatt4, .color = LED_COLOR_GREEN},
+    {.type = FuriBspLedTypeBatteryCenter, .color = LED_COLOR_GREEN},
 };
 
 const LedBatch led_batch_all_on = {
@@ -51,22 +51,22 @@ const LedBatch led_batch_all_on = {
 // all leds white
 
 const LedItem led_batch_all_white_items[] = {
-    {.type = LedTypeNet, .color = LED_COLOR_WHITE},
-    {.type = LedTypeWiFi, .color = LED_COLOR_WHITE},
-    {.type = LedTypeEth2, .color = LED_COLOR_WHITE},
-    {.type = LedTypeEth1, .color = LED_COLOR_WHITE},
-    {.type = LedTypePower, .color = LED_COLOR_WHITE},
-    {.type = LedTypeBatteryOutline, .color = LED_COLOR_WHITE},
-    {.type = LedTypeBatteryWatt1, .color = LED_COLOR_WHITE},
-    {.type = LedTypeBatteryWatt2, .color = LED_COLOR_WHITE},
-    {.type = LedTypeBatteryWatt3, .color = LED_COLOR_WHITE},
-    {.type = LedTypeBatteryWatt4, .color = LED_COLOR_WHITE},
-    {.type = LedTypeUsbCharging, .color = LED_COLOR_WHITE},
-    {.type = LedTypeUsbWatt1, .color = LED_COLOR_WHITE},
-    {.type = LedTypeUsbWatt2, .color = LED_COLOR_WHITE},
-    {.type = LedTypeUsbWatt3, .color = LED_COLOR_WHITE},
-    {.type = LedTypeUsbWatt4, .color = LED_COLOR_WHITE},
-    {.type = LedTypeBatteryCenter, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeNet, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeWiFi, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeEth2, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeEth1, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypePower, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeBatteryOutline, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeBatteryWatt1, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeBatteryWatt2, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeBatteryWatt3, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeBatteryWatt4, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeUsbCharging, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeUsbWatt1, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeUsbWatt2, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeUsbWatt3, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeUsbWatt4, .color = LED_COLOR_WHITE},
+    {.type = FuriBspLedTypeBatteryCenter, .color = LED_COLOR_WHITE},
 };
 
 const LedBatch led_batch_all_white = {
