@@ -3,6 +3,7 @@
 #include <furi_bsp_expander.h>
 #include <furi_bsp_vci.h>
 #include <furi_bsp_led.h>
+#include <furi_bsp_saradc.h>
 
 #ifdef __cplusplus
 extern "C" {
