@@ -219,9 +219,14 @@ static void desktop_app_message_logic(FuriEventLoopObject* object, void* context
         break;
     case DesktopMessageTypeAppStop:
         if(desktop->app.running) {
-            FURI_LOG_I(TAG, "App stop requested, sending exit signal");
-            if(!furi_thread_signal(desktop->app.thread, FuriSignalExit, NULL)) {
-                FURI_LOG_W(TAG, "App did not consume the exit signal");
+            if(message.appid && strcmp(desktop->app.appid, message.appid) == 0) {
+                FURI_LOG_I(TAG, "App stop requested, sending exit signal");
+                if(!furi_thread_signal(desktop->app.thread, FuriSignalExit, NULL)) {
+                    FURI_LOG_W(TAG, "App did not consume the exit signal");
+                }
+                result = true;
+            } else {
+                FURI_LOG_W(TAG, "Stop appid mismatch: running %s, requested %s", desktop->app.appid, message.appid ? message.appid : "none");
             }
         }
         break;
@@ -544,18 +549,21 @@ const char* desktop_get_running_app_id(void) {
     return appid;
 }
 
-bool desktop_stop_app(void) {
+bool desktop_stop_app(const char* appid) {
     Desktop* desktop = furi_record_open(RECORD_DESKTOP);
 
-    bool running = desktop->app.running;
+    bool result = false;
 
     DesktopAppMessage message = {
         .type = DesktopMessageTypeAppStop,
+        .appid = appid,
+        .lock = api_lock_alloc_locked(),
+        .result = &result,
     };
     desktop_send_message(desktop, &message);
     furi_record_close(RECORD_DESKTOP);
 
-    return running;
+    return result;
 }
 
 bool desktop_register_app(const char* appid, FuriThread* thread) {
