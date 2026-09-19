@@ -102,6 +102,7 @@ typedef enum FURI_PACKED {
     CliKeyDown,
     CliKeyHome,
     CliKeyEnd,
+    CliKeyDelete,
 } CliKey;
 static_assert(sizeof(CliKey) == sizeof(char));
 

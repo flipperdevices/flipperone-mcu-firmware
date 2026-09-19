@@ -424,7 +424,7 @@ static bool cli_shell_line_input_normal(CliKeyCombo combo, void* context) {
 
 CliShellKeyComboSet cli_shell_line_key_combo_set = {
     .fallback = cli_shell_line_input_normal,
-    .count = 14,
+    .count = 16,
     .records =
         {
             {{CliModKeyNo, CliKeyETX}, cli_shell_line_input_ctrl_c},
@@ -437,7 +437,8 @@ CliShellKeyComboSet cli_shell_line_key_combo_set = {
             {{CliModKeyNo, CliKeyHome}, cli_shell_line_input_home},
             {{CliModKeyNo, CliKeyEnd}, cli_shell_line_input_end},
             {{CliModKeyNo, CliKeyBackspace}, cli_shell_line_input_bksp},
-            {{CliModKeyNo, CliKeyDEL}, cli_shell_line_input_delete},
+            {{CliModKeyNo, CliKeyDEL}, cli_shell_line_input_bksp},
+            {{CliModKeyNo, CliKeyDelete}, cli_shell_line_input_delete},
             {{CliModKeyNo, CliKeyFF}, cli_shell_line_input_ctrl_l},
             {{CliModKeyCtrl, CliKeyLeft}, cli_shell_line_input_ctrl_left_right},
             {{CliModKeyCtrl, CliKeyRight}, cli_shell_line_input_ctrl_left_right},

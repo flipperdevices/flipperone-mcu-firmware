@@ -7,17 +7,20 @@ typedef enum {
     CliAnsiParserStateEscapeBraceOne,
     CliAnsiParserStateEscapeBraceOneSemicolon,
     CliAnsiParserStateEscapeBraceOneSemicolonModifiers,
+    CliAnsiParserStateEscapeBraceNumber,
 } CliAnsiParserState;
 
 struct CliAnsiParser {
     CliAnsiParserState state;
     CliModKey modifiers;
+    uint8_t number;
 };
 
 CliAnsiParser* cli_ansi_parser_alloc(void) {
     CliAnsiParser* parser = malloc(sizeof(CliAnsiParser));
     parser->state = CliAnsiParserStateInitial;
     parser->modifiers = CliModKeyNo;
+    parser->number = 0;
     return parser;
 }
 
@@ -43,6 +46,19 @@ static CliKey cli_ansi_key_from_mnemonic(char c) {
         return CliKeyEnd;
     case 'H':
         return CliKeyHome;
+    default:
+        return CliKeyUnrecognized;
+    }
+}
+
+/**
+ * @brief Converts the numeric parameter of a `<ESC> [ <n> ~` sequence into
+ * the enum representation
+ */
+static CliKey cli_ansi_key_from_number(uint8_t n) {
+    switch(n) {
+    case 3:
+        return CliKeyDelete;
     default:
         return CliKeyUnrecognized;
     }
@@ -81,12 +97,35 @@ CliAnsiParserResult cli_ansi_parser_feed(CliAnsiParser* parser, char c) {
         break;
 
     case CliAnsiParserStateEscapeBrace:
-        // <ESC> [ <key mnemonic> -> <key>
-        if(c != '1') PARSER_RESET_AND_RETURN(parser, CliModKeyNo, cli_ansi_key_from_mnemonic(c));
+        // <ESC> [ 1 ; ... -> arrow/home/end key with modifiers
+        if(c == '1') {
+            parser->state = CliAnsiParserStateEscapeBraceOne;
+            break;
+        }
 
-        // <ESC> [ 1 ...
-        parser->state = CliAnsiParserStateEscapeBraceOne;
-        break;
+        // <ESC> [ <digit> ... ~ -> special key, e.g. <ESC> [ 3 ~ for Delete
+        if(c >= '0' && c <= '9') {
+            parser->number = (uint8_t)(c - '0');
+            parser->state = CliAnsiParserStateEscapeBraceNumber;
+            break;
+        }
+
+        // <ESC> [ <key mnemonic> -> <key>
+        PARSER_RESET_AND_RETURN(parser, CliModKeyNo, cli_ansi_key_from_mnemonic(c));
+
+    case CliAnsiParserStateEscapeBraceNumber:
+        // <ESC> [ <digits> <more digits> -> keep accumulating (e.g. function keys)
+        if(c >= '0' && c <= '9') {
+            parser->number = (uint8_t)(parser->number * 10 + (c - '0'));
+            break;
+        }
+
+        // <ESC> [ <digits> ~ -> special key
+        if(c == '~')
+            PARSER_RESET_AND_RETURN(parser, CliModKeyNo, cli_ansi_key_from_number(parser->number));
+
+        // <ESC> [ <digits> ; ... -> modifiers on numeric sequences aren't supported yet
+        PARSER_RESET_AND_RETURN(parser, CliModKeyNo, CliKeyUnrecognized);
 
     case CliAnsiParserStateEscapeBraceOne:
         // <ESC> [ 1 <non-;> -> error
