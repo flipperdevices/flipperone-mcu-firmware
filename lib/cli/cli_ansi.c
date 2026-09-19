@@ -4,10 +4,9 @@ typedef enum {
     CliAnsiParserStateInitial,
     CliAnsiParserStateEscape,
     CliAnsiParserStateEscapeBrace,
-    CliAnsiParserStateEscapeBraceOne,
+    CliAnsiParserStateEscapeBraceNumber,
     CliAnsiParserStateEscapeBraceOneSemicolon,
     CliAnsiParserStateEscapeBraceOneSemicolonModifiers,
-    CliAnsiParserStateEscapeBraceNumber,
 } CliAnsiParserState;
 
 struct CliAnsiParser {
@@ -97,13 +96,10 @@ CliAnsiParserResult cli_ansi_parser_feed(CliAnsiParser* parser, char c) {
         break;
 
     case CliAnsiParserStateEscapeBrace:
-        // <ESC> [ 1 ; ... -> arrow/home/end key with modifiers
-        if(c == '1') {
-            parser->state = CliAnsiParserStateEscapeBraceOne;
-            break;
-        }
-
-        // <ESC> [ <digit> ... ~ -> special key, e.g. <ESC> [ 3 ~ for Delete
+        // <ESC> [ <digit> ... -> numeric CSI sequence, e.g. <ESC> [ 3 ~ for
+        // Delete, or <ESC> [ 1 ; <modifiers> <key mnemonic> for a modified
+        // arrow/home/end key. Which of the two it is can only be told apart
+        // once we see what follows the accumulated digits.
         if(c >= '0' && c <= '9') {
             parser->number = (uint8_t)(c - '0');
             parser->state = CliAnsiParserStateEscapeBraceNumber;
@@ -124,16 +120,14 @@ CliAnsiParserResult cli_ansi_parser_feed(CliAnsiParser* parser, char c) {
         if(c == '~')
             PARSER_RESET_AND_RETURN(parser, CliModKeyNo, cli_ansi_key_from_number(parser->number));
 
-        // <ESC> [ <digits> ; ... -> modifiers on numeric sequences aren't supported yet
+        // <ESC> [ 1 ; ... -> arrow/home/end key with modifiers (only "1" supports this form)
+        if(c == ';' && parser->number == 1) {
+            parser->state = CliAnsiParserStateEscapeBraceOneSemicolon;
+            break;
+        }
+
+        // anything else -> malformed/unsupported sequence, discard
         PARSER_RESET_AND_RETURN(parser, CliModKeyNo, CliKeyUnrecognized);
-
-    case CliAnsiParserStateEscapeBraceOne:
-        // <ESC> [ 1 <non-;> -> error
-        if(c != ';') PARSER_RESET_AND_RETURN(parser, CliModKeyNo, CliKeyUnrecognized);
-
-        // <ESC> [ 1 ; ...
-        parser->state = CliAnsiParserStateEscapeBraceOneSemicolon;
-        break;
 
     case CliAnsiParserStateEscapeBraceOneSemicolon:
         // <ESC> [ 1 ; <modifiers> ...
