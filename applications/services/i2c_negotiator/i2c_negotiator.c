@@ -7,6 +7,7 @@
 #include <led/led.h>
 #include <haptic/haptic.h>
 #include <drivers/drv2605l/drv2605l.h>
+#include <cpu_mode/cpu_mode.h>
 
 #define TAG "I2CNegotiator"
 
@@ -19,6 +20,7 @@ typedef struct {
     I2CIntercom* intercom;
     Led* led;
     Haptic* haptic;
+    CpuMode* cpu_mode;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -120,7 +122,7 @@ bool i2c_negotiator_input_sw_button_event(SwInputKey key, bool pressed, void* co
 
 //Cpu state register
 void i2c_negotiator_cpu_state(I2CNegotiator* instance, uint16_t value) {
-    FURI_LOG_I(TAG, "CPU state register write: 0x%04X", value);
+    cpu_mode_set_cpu_state(instance->cpu_mode, (CpuState)value);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_cpu_state);
 
@@ -255,6 +257,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
     instance->intercom = furi_record_open(RECORD_I2C_INTERCOM);
     instance->led = furi_record_open(RECORD_LEDS);
     instance->haptic = furi_record_open(RECORD_HAPTIC);
+    instance->cpu_mode = furi_record_open(RECORD_CPU_MODE);
     instance->event_loop = furi_event_loop_alloc();
 
     instance->negotiator_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
