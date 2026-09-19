@@ -325,6 +325,31 @@ static bool cli_shell_line_input_bksp(CliKeyCombo combo, void* context) {
     return true;
 }
 
+static bool cli_shell_line_input_delete(CliKeyCombo combo, void* context) {
+    UNUSED(combo);
+    CliShellLine* line = context;
+    // erase the character under the cursor (cursor position does not move)
+    cli_shell_line_ensure_not_overwriting_history(line);
+    FuriString* editing_line = cli_shell_line_get_editing(line);
+    cli_shell_line_clamp_position(line, editing_line);
+    if(line->line_position == furi_string_size(editing_line)) {
+        putchar(CliKeyBell);
+        stdio_flush();
+        return true;
+    }
+    furi_string_replace_at(editing_line, line->line_position, 1, "");
+
+    // print the rest of the line, restore cursor
+    printf(
+        "%s" ANSI_ERASE_LINE(ANSI_ERASE_FROM_CURSOR_TO_END),
+        furi_string_get_cstr(editing_line) + line->line_position);
+    size_t left_by = furi_string_size(editing_line) - line->line_position;
+    if(left_by) // apparently LEFT_BY("0") still shifts left by one ._ .
+        printf(ANSI_CURSOR_LEFT_BY("%zu"), left_by);
+    stdio_flush();
+    return true;
+}
+
 static bool cli_shell_line_input_ctrl_l(CliKeyCombo combo, void* context) {
     UNUSED(combo);
     CliShellLine* line = context;
@@ -399,7 +424,7 @@ static bool cli_shell_line_input_normal(CliKeyCombo combo, void* context) {
 
 CliShellKeyComboSet cli_shell_line_key_combo_set = {
     .fallback = cli_shell_line_input_normal,
-    .count = 14,
+    .count = 16,
     .records =
         {
             {{CliModKeyNo, CliKeyETX}, cli_shell_line_input_ctrl_c},
@@ -413,6 +438,7 @@ CliShellKeyComboSet cli_shell_line_key_combo_set = {
             {{CliModKeyNo, CliKeyEnd}, cli_shell_line_input_end},
             {{CliModKeyNo, CliKeyBackspace}, cli_shell_line_input_bksp},
             {{CliModKeyNo, CliKeyDEL}, cli_shell_line_input_bksp},
+            {{CliModKeyNo, CliKeyDelete}, cli_shell_line_input_delete},
             {{CliModKeyNo, CliKeyFF}, cli_shell_line_input_ctrl_l},
             {{CliModKeyCtrl, CliKeyLeft}, cli_shell_line_input_ctrl_left_right},
             {{CliModKeyCtrl, CliKeyRight}, cli_shell_line_input_ctrl_left_right},
