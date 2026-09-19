@@ -19,8 +19,10 @@ bool furi_bsp_linux_is_load(void);
 /** Start Linux booting via the expander. */
 void furi_bsp_linux_start(void);
 
-/** Set the expander to mask ROM mode. */
-void furi_bsp_linux_maskrom(void);
+/** Set the expander to mask ROM mode.
+ * @param enable true to enable mask ROM mode, false to disable it.
+ */
+void furi_bsp_linux_maskrom(bool enable);
 
 #ifdef __cplusplus
 }
