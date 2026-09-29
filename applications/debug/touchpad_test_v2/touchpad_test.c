@@ -15,6 +15,18 @@
 // visualization, the gray-fill-on-hit behavior below is always active.
 #define TOUCHPAD_SHOW_HIT_ZONES (1)
 
+// Set to 1 to make every new touch-down act like pressing "Clear" first, so
+// the test restarts from scratch on each touch; 0 for the track to keep
+// accumulating across touches (only the "Clear"/5 key resets it).
+#define TOUCHPAD_RESET_ON_TOUCH (1)
+
+// Caps how often the canvas is actually re-rendered and pushed to the GUI.
+// Without this, every touch/input event redraws immediately, which can run
+// as fast as the input source delivers events (~80 FPS observed); a periodic
+// timer decouples rendering from input rate instead.
+#define TOUCHPAD_TARGET_FPS (60)
+#define TOUCHPAD_FRAME_INTERVAL_MS (1000 / TOUCHPAD_TARGET_FPS)
+
 #if TOUCHPAD_CLAMP_TO_OVAL
 #include <math.h>
 #endif
@@ -56,7 +68,7 @@
 // (diamond area = pitch^2 / 2 for this isotropic 45-degree grid).
 // side = sqrt(0.20 * pitch^2 / 2) = pitch * sqrt(0.10) ~= pitch * 0.3162;
 // for TOUCHPAD_GRID_PITCH == 30 that works out to ~9.5, rounded to 9.
-#define TOUCHPAD_HIT_ZONE_SIZE (9)
+#define TOUCHPAD_HIT_ZONE_SIZE (12)
 #define TOUCHPAD_MAX_HIT_DIAMONDS (64)
 
 typedef struct TouchpadTestLine {
@@ -90,6 +102,12 @@ typedef struct {
 
     bool reset_pressed; // for the on-screen reset button's pressed/highlight state
 
+    // set whenever something changes that needs a redraw; the periodic timer
+    // clears it after rendering. Without this, the redraw timer would rewrite
+    // the canvas buffer unconditionally on every tick even while idle, which
+    // fights with the display's own refresh and tears the frame.
+    bool dirty;
+
     FuriPubSub* event_pubsub; // not owned; copy of TouchpadTestApp's, so model-side
                               // code (e.g. touchpad_test_v2_app_model_push_line) can publish
 
@@ -101,6 +119,7 @@ typedef struct {
     FuriEventLoop* event_loop;
     FuriThread* thread;
     FuriPubSub* event_pubsub;
+    FuriEventLoopTimer* redraw_timer;
 } TouchpadTestApp;
 
 /**
@@ -495,6 +514,32 @@ void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
     }
 }
 
+/**
+ * @brief Periodic redraw tick (at most TOUCHPAD_TARGET_FPS): input handlers
+ * only update model state and set model->dirty; this is the only place that
+ * actually re-renders the canvas and pushes it to the GUI, so the redraw
+ * rate stays capped instead of running once per input event (as fast as
+ * ~80/s from the touchscreen). It skips the render entirely when nothing is
+ * dirty, so an idle screen isn't rewritten every tick for no reason - doing
+ * that constantly fought with the display's own refresh and tore the frame.
+ */
+static void touchpad_test_v2_app_redraw_timer_callback(void* context) {
+    furi_assert(context);
+    TouchpadTestApp* instance = context;
+    bool needs_render = false;
+    with_view_model(
+        instance->view,
+        TouchpadTestModel * model,
+        {
+            needs_render = model->dirty;
+            if(needs_render) {
+                touchpad_test_v2_app_update_frame(model);
+                model->dirty = false;
+            }
+        },
+        needs_render);
+}
+
 static bool touchpad_test_v2_app_input(InputEvent* event, void* context) {
     furi_check(context);
     TouchpadTestApp* instance = context;
@@ -512,9 +557,9 @@ static bool touchpad_test_v2_app_input(InputEvent* event, void* context) {
                     TouchpadTestLineArray_reset(model->lines);
                     model->hit_diamond_count = 0;
                     model->reset_pressed = true;
-                    touchpad_test_v2_app_update_frame(model);
+                    model->dirty = true;
                 },
-                true);
+                false);
             TouchpadTestEvent evt = {.tp_status = TouchpadTestStatusCleared};
             furi_pubsub_publish(instance->event_pubsub, &evt);
             consumed = true;
@@ -526,9 +571,9 @@ static bool touchpad_test_v2_app_input(InputEvent* event, void* context) {
                 TouchpadTestModel * model,
                 {
                     model->reset_pressed = false;
-                    touchpad_test_v2_app_update_frame(model);
+                    model->dirty = true;
                 },
-                true);
+                false);
             consumed = true;
         }
     }
@@ -615,6 +660,11 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
             instance->view,
             TouchpadTestModel * model,
             {
+#if TOUCHPAD_RESET_ON_TOUCH
+                // start a fresh track on every new touch-down, same as the "Clear" key
+                TouchpadTestLineArray_reset(model->lines);
+                model->hit_diamond_count = 0;
+#endif
                 model->pressed = true;
                 model->last_x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
                 model->last_y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
@@ -622,9 +672,15 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
                 touchpad_test_v2_clamp_to_oval(&model->last_x, &model->last_y);
 #endif
                 model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
-                touchpad_test_v2_app_update_frame(model);
+                model->dirty = true;
             },
-            true);
+            false);
+#if TOUCHPAD_RESET_ON_TOUCH
+        {
+            TouchpadTestEvent evt = {.tp_status = TouchpadTestStatusCleared};
+            furi_pubsub_publish(instance->event_pubsub, &evt);
+        }
+#endif
         consumed = true;
         break;
     case InputTouchTypeMove:
@@ -643,9 +699,9 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
                 model->last_x = new_x;
                 model->last_y = new_y;
                 model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
-                touchpad_test_v2_app_update_frame(model);
+                model->dirty = true;
             },
-            true);
+            false);
         consumed = true;
         break;
     case InputTouchTypeEnd:
@@ -655,9 +711,9 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
             {
                 model->pressed = false;
                 model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
-                touchpad_test_v2_app_update_frame(model);
+                model->dirty = true;
             },
-            true);
+            false);
         consumed = true;
         break;
     default:
@@ -692,6 +748,7 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
             model->canvas = canvas_alloc(TOUCHPAD_CANVAS_WIDTH, TOUCHPAD_CANVAS_HEIGHT);
             model->image = canvas_to_image(model->canvas);
             touchpad_test_v2_app_update_frame(model);
+            model->dirty = false;
         },
         false);
 
@@ -699,6 +756,10 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
     view_set_input_callback(instance->view, touchpad_test_v2_app_input, instance);
     view_set_input_touch_callback(instance->view, touchpad_test_v2_app_input_touch, instance);
     gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
+
+    instance->redraw_timer = furi_event_loop_timer_alloc(
+        instance->event_loop, touchpad_test_v2_app_redraw_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
+    furi_event_loop_timer_start(instance->redraw_timer, TOUCHPAD_FRAME_INTERVAL_MS);
 
     furi_record_create(RECORD_TOUCHPAD_TEST, instance->event_pubsub);
 
@@ -741,6 +802,7 @@ static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
         furi_pubsub_free(instance->event_pubsub);
     }
     view_free(instance->view);
+    furi_event_loop_timer_free(instance->redraw_timer);
     furi_event_loop_free(instance->event_loop);
     free(instance);
 }
