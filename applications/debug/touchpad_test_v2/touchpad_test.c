@@ -8,7 +8,7 @@
 // Set to 1 to additionally clamp mapped touch points to the capsule outline
 // (so touches near the rounded ends can't land in the corners of its
 // bounding box); 0 to only map coordinates into the oval's bounding box.
-#define TOUCHPAD_CLAMP_TO_OVAL (1)
+#define TOUCHPAD_CLAMP_TO_OVAL (0)
 
 // Show a marker outline at every diamond's center hit-zone; purely a debug
 // visualization, the gray-fill-on-hit behavior below is always active.
@@ -29,7 +29,9 @@
 // of diamonds, matching the reference mock-up.
 #define TOUCHPAD_OVAL_WIDTH    (180)
 #define TOUCHPAD_OVAL_HEIGHT   (120)
-#define TOUCHPAD_OVAL_MARGIN_X ((TOUCHPAD_CANVAS_WIDTH - TOUCHPAD_OVAL_WIDTH) / 2)
+// Shifted 30px left of center to leave room for the reset button in the
+// bottom-right corner.
+#define TOUCHPAD_OVAL_MARGIN_X (((TOUCHPAD_CANVAS_WIDTH - TOUCHPAD_OVAL_WIDTH) / 2) - 30)
 #define TOUCHPAD_OVAL_MARGIN_Y ((TOUCHPAD_CANVAS_HEIGHT - TOUCHPAD_OVAL_HEIGHT) / 2)
 #define TOUCHPAD_OVAL_RADIUS   (TOUCHPAD_OVAL_HEIGHT / 2)
 #define TOUCHPAD_GRID_PITCH    (TOUCHPAD_OVAL_HEIGHT / 4)
@@ -83,6 +85,8 @@ typedef struct {
     int32_t hit_diamond_cx[TOUCHPAD_MAX_HIT_DIAMONDS];
     int32_t hit_diamond_cy[TOUCHPAD_MAX_HIT_DIAMONDS];
     size_t hit_diamond_count;
+
+    bool reset_pressed; // for the on-screen reset button's pressed/highlight state
 
 } TouchpadTestModel;
 
@@ -254,6 +258,25 @@ static void touchpad_test_v2_draw_diag_slash(
     render_draw_line(canvas, xs, c - xs, xe, c - xe, color);
 }
 
+/** Button styled the same way as keypad_test.c's keypad buttons. */
+static void touchpad_test_v2_app_create_reset_button(Clay_ElementId id, Clay_String text, bool inverted) {
+    CLAY(
+        id,
+        {
+            .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
+            .layout =
+                {
+                    .padding = {8, 8, 4, 4},
+                    .sizing = {.width = CLAY_SIZING_FIXED(40)},
+                    .childAlignment = {.x = CLAY_ALIGN_X_CENTER},
+                },
+            .backgroundColor = inverted ? COLOR_WHITE : COLOR_BLACK,
+            .cornerRadius = CLAY_CORNER_RADIUS(4),
+        }) {
+        CLAY_TEXT(text, CLAY_TEXT_CONFIG({.fontId = FontButton, .textColor = inverted ? COLOR_BLACK : COLOR_WHITE}));
+    }
+}
+
 static bool touchpad_test_v2_app_layout(void* _model) {
     furi_assert(_model);
     TouchpadTestModel* model = _model;
@@ -293,7 +316,7 @@ static bool touchpad_test_v2_app_layout(void* _model) {
                             .attachTo = CLAY_ATTACH_TO_PARENT,
                         },
                 }) {
-                CLAY_TEXT(CLAY_STRING("Ok to clear"), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
+                CLAY_TEXT(CLAY_STRING("5 to clear"), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
         }
         CLAY(
@@ -308,6 +331,21 @@ static bool touchpad_test_v2_app_layout(void* _model) {
                     },
                 .image = {.imageData = &model->image},
             }) {
+            CLAY(
+                CLAY_APP_ID("ResetButtonSlot"),
+                {
+                    .layout =
+                        {
+                            .padding = {8, 8, 8, 8},
+                        },
+                    .floating =
+                        {
+                            .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_BOTTOM, .parent = CLAY_ATTACH_POINT_RIGHT_BOTTOM},
+                            .attachTo = CLAY_ATTACH_TO_PARENT,
+                        },
+                }) {
+                touchpad_test_v2_app_create_reset_button(CLAY_APP_ID("ResetButton"), CLAY_STRING("Clear"), model->reset_pressed);
+            }
         }
     }
 
@@ -317,7 +355,7 @@ static bool touchpad_test_v2_app_layout(void* _model) {
 void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
     canvas_clear(model->canvas, 0xFF);
 
-    ColorA color_gray = {.color = 220, .alpha = 255};
+    ColorA color_gray = {.color = 160, .alpha = 255};
     ColorA color_black = {.color = 0x00, .alpha = 255};
 
     // diagonal (45-degree) diamond grid, clipped to the capsule's bounding box
@@ -331,15 +369,11 @@ void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
     const int32_t c_slash0 = TOUCHPAD_LATTICE_V0;
     const int32_t n_max = (box_x1 - box_x0 + box_y1 - box_y0) / TOUCHPAD_GRID_PITCH + 1;
 
-    for(int32_t n = -n_max; n <= n_max; n++) {
-        touchpad_test_v2_draw_diag_backslash(
-            model->canvas, c_backslash0 + n * TOUCHPAD_GRID_PITCH, box_x0, box_y0, box_x1, box_y1, color_gray);
-        touchpad_test_v2_draw_diag_slash(
-            model->canvas, c_slash0 + n * TOUCHPAD_GRID_PITCH, box_x0, box_y0, box_x1, box_y1, color_gray);
-    }
-
 #if TOUCHPAD_SHOW_HIT_ZONES
-    // debug: mark every diamond's center hit-zone
+    // debug: mark every diamond's center hit-zone. Drawn before the fill
+    // below so a filled diamond's marker gets painted over (hidden), while
+    // still drawn before the grid lines so those remain visible on top of
+    // the (lighter) fill instead of being painted over.
     for(int32_t m = -TOUCHPAD_LATTICE_RANGE; m <= TOUCHPAD_LATTICE_RANGE; m++) {
         for(int32_t k = -TOUCHPAD_LATTICE_RANGE; k <= TOUCHPAD_LATTICE_RANGE; k++) {
             int32_t cx, cy;
@@ -354,10 +388,19 @@ void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
 #endif
 
     // fill diamonds whose center hit-zone the track has crossed
-    ColorA color_hit = {.color = 180, .alpha = 255};
+    ColorA color_hit = {.color = 235, .alpha = 255};
     for(size_t i = 0; i < model->hit_diamond_count; i++) {
         touchpad_test_v2_fill_diamond(
             model->canvas, model->hit_diamond_cx[i], model->hit_diamond_cy[i], TOUCHPAD_GRID_PITCH / 2, color_hit);
+    }
+
+    // grid lines drawn last (of these three) so they stay visible on top of
+    // the fill instead of being painted over
+    for(int32_t n = -n_max; n <= n_max; n++) {
+        touchpad_test_v2_draw_diag_backslash(
+            model->canvas, c_backslash0 + n * TOUCHPAD_GRID_PITCH, box_x0, box_y0, box_x1, box_y1, color_gray);
+        touchpad_test_v2_draw_diag_slash(
+            model->canvas, c_slash0 + n * TOUCHPAD_GRID_PITCH, box_x0, box_y0, box_x1, box_y1, color_gray);
     }
 
     // the grid/fills above were only clipped to the bounding box (or not at
@@ -410,13 +453,26 @@ static bool touchpad_test_v2_app_input(InputEvent* event, void* context) {
         if(event->key == InputKeyBack) {
             furi_thread_signal(instance->thread, FuriSignalExit, NULL);
             consumed = true;
-        } else if(event->key == InputKeyOk) {
+        } else if(event->key == InputKey5) {
             with_view_model(
                 instance->view,
                 TouchpadTestModel * model,
                 {
                     TouchpadTestLineArray_reset(model->lines);
                     model->hit_diamond_count = 0;
+                    model->reset_pressed = true;
+                    touchpad_test_v2_app_update_frame(model);
+                },
+                true);
+            consumed = true;
+        }
+    } else if(event->type == InputTypeRelease) {
+        if(event->key == InputKey5) {
+            with_view_model(
+                instance->view,
+                TouchpadTestModel * model,
+                {
+                    model->reset_pressed = false;
                     touchpad_test_v2_app_update_frame(model);
                 },
                 true);
@@ -494,9 +550,6 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
             instance->view,
             TouchpadTestModel * model,
             {
-                // start a fresh track on every new touch-down, discarding the previous one
-                TouchpadTestLineArray_reset(model->lines);
-                model->hit_diamond_count = 0;
                 model->pressed = true;
                 model->last_x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
                 model->last_y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
@@ -567,6 +620,7 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
             model->last_y = TOUCHPAD_CANVAS_HEIGHT / 2;
             model->pressed = false;
             model->hit_diamond_count = 0;
+            model->reset_pressed = false;
             model->canvas = canvas_alloc(TOUCHPAD_CANVAS_WIDTH, TOUCHPAD_CANVAS_HEIGHT);
             model->image = canvas_to_image(model->canvas);
             touchpad_test_v2_app_update_frame(model);
