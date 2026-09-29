@@ -4,6 +4,7 @@
 #include <m-array.h>
 #include <m-algo.h>
 #include <input_touch/input_touch.h>
+#include "touchpad_test.h"
 
 // Set to 1 to additionally clamp mapped touch points to the capsule outline
 // (so touches near the rounded ends can't land in the corners of its
@@ -12,7 +13,7 @@
 
 // Show a marker outline at every diamond's center hit-zone; purely a debug
 // visualization, the gray-fill-on-hit behavior below is always active.
-#define TOUCHPAD_SHOW_HIT_ZONES (1)
+#define TOUCHPAD_SHOW_HIT_ZONES (0)
 
 #if TOUCHPAD_CLAMP_TO_OVAL
 #include <math.h>
@@ -85,8 +86,12 @@ typedef struct {
     int32_t hit_diamond_cx[TOUCHPAD_MAX_HIT_DIAMONDS];
     int32_t hit_diamond_cy[TOUCHPAD_MAX_HIT_DIAMONDS];
     size_t hit_diamond_count;
+    size_t total_diamond_count; // computed once at alloc; for the "all filled" event
 
     bool reset_pressed; // for the on-screen reset button's pressed/highlight state
+
+    FuriPubSub* event_pubsub; // not owned; copy of TouchpadTestApp's, so model-side
+                              // code (e.g. touchpad_test_v2_app_model_push_line) can publish
 
 } TouchpadTestModel;
 
@@ -95,6 +100,7 @@ typedef struct {
     View* view;
     FuriEventLoop* event_loop;
     FuriThread* thread;
+    FuriPubSub* event_pubsub;
 } TouchpadTestApp;
 
 /**
@@ -113,7 +119,8 @@ static bool touchpad_test_v2_oval_contains(int32_t x, int32_t y) {
     } else if(x > right_cx) {
         cx = right_cx;
     } else {
-        return true; // straight midsection: always inside vertically here
+        // straight midsection: inside iff y is within the capsule's vertical extent
+        return y >= TOUCHPAD_OVAL_MARGIN_Y && y <= TOUCHPAD_OVAL_MARGIN_Y + TOUCHPAD_OVAL_HEIGHT;
     }
 
     int32_t dx = x - cx;
@@ -169,6 +176,40 @@ static void touchpad_test_v2_diamond_center(int32_t m, int32_t k, int32_t* cx, i
     int32_t c2 = TOUCHPAD_LATTICE_V0 + k * TOUCHPAD_GRID_PITCH;
     *cx = (c1 + c2 + TOUCHPAD_GRID_PITCH) / 2;
     *cy = (c2 - c1) / 2;
+}
+
+/**
+ * @brief Counts how many diamonds are actually reachable by touch: a
+ * diamond "counts" iff at least one pixel of its center hit-zone lies
+ * within the true capsule outline (matching what touchpad_test_v2_app_model_push_line
+ * can ever register a hit for). Used to detect when every diamond has been
+ * filled at least once.
+ */
+static size_t touchpad_test_v2_count_total_diamonds(void) {
+    size_t count = 0;
+    const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
+
+    for(int32_t m = -TOUCHPAD_LATTICE_RANGE; m <= TOUCHPAD_LATTICE_RANGE; m++) {
+        for(int32_t k = -TOUCHPAD_LATTICE_RANGE; k <= TOUCHPAD_LATTICE_RANGE; k++) {
+            int32_t cx, cy;
+            touchpad_test_v2_diamond_center(m, k, &cx, &cy);
+            if(cx < TOUCHPAD_BOX_X0 - TOUCHPAD_GRID_PITCH || cx > TOUCHPAD_BOX_X1 + TOUCHPAD_GRID_PITCH) continue;
+            if(cy < TOUCHPAD_BOX_Y0 - TOUCHPAD_GRID_PITCH || cy > TOUCHPAD_BOX_Y1 + TOUCHPAD_GRID_PITCH) continue;
+
+            bool reachable = false;
+            for(int32_t dy = -half; dy <= half && !reachable; dy++) {
+                for(int32_t dx = -half; dx <= half; dx++) {
+                    if(touchpad_test_v2_oval_contains(cx + dx, cy + dy)) {
+                        reachable = true;
+                        break;
+                    }
+                }
+            }
+            if(reachable) count++;
+        }
+    }
+
+    return count;
 }
 
 /** Whether the segment (x0, y0)-(x1, y1) intersects the axis-aligned box [bx0, bx1] x [by0, by1]. */
@@ -464,6 +505,8 @@ static bool touchpad_test_v2_app_input(InputEvent* event, void* context) {
                     touchpad_test_v2_app_update_frame(model);
                 },
                 true);
+            TouchpadTestEvent evt = {.tp_status = TouchpadTestStatusCleared};
+            furi_pubsub_publish(instance->event_pubsub, &evt);
             consumed = true;
         }
     } else if(event->type == InputTypeRelease) {
@@ -526,6 +569,18 @@ static void touchpad_test_v2_app_model_push_line(TouchpadTestModel* model, int32
                 model->hit_diamond_cx[model->hit_diamond_count] = cx;
                 model->hit_diamond_cy[model->hit_diamond_count] = cy;
                 model->hit_diamond_count++;
+
+                TouchpadTestEvent evt = {
+                    .tp_status = TouchpadTestStatusDiamondFilled,
+                    .diamond_x = cx,
+                    .diamond_y = cy,
+                };
+                furi_pubsub_publish(model->event_pubsub, &evt);
+
+                if(model->hit_diamond_count == model->total_diamond_count) {
+                    TouchpadTestEvent all_filled_evt = {.tp_status = TouchpadTestStatusAllFilled};
+                    furi_pubsub_publish(model->event_pubsub, &all_filled_evt);
+                }
             }
         }
     }
@@ -607,6 +662,7 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
     instance->thread = furi_thread_get_current();
+    instance->event_pubsub = furi_pubsub_alloc();
 
     instance->view = view_alloc();
     view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(TouchpadTestModel));
@@ -620,7 +676,9 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
             model->last_y = TOUCHPAD_CANVAS_HEIGHT / 2;
             model->pressed = false;
             model->hit_diamond_count = 0;
+            model->total_diamond_count = touchpad_test_v2_count_total_diamonds();
             model->reset_pressed = false;
+            model->event_pubsub = instance->event_pubsub;
             model->canvas = canvas_alloc(TOUCHPAD_CANVAS_WIDTH, TOUCHPAD_CANVAS_HEIGHT);
             model->image = canvas_to_image(model->canvas);
             touchpad_test_v2_app_update_frame(model);
@@ -631,10 +689,17 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
     view_set_input_callback(instance->view, touchpad_test_v2_app_input, instance);
     view_set_input_touch_callback(instance->view, touchpad_test_v2_app_input_touch, instance);
     gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
+
+    furi_record_create(RECORD_TOUCHPAD_TEST, instance->event_pubsub);
+
+    TouchpadTestEvent evt = {.tp_status = TouchpadTestStatusStarted};
+    furi_pubsub_publish(instance->event_pubsub, &evt);
+
     return instance;
 }
 
 static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
+    furi_record_destroy(RECORD_TOUCHPAD_TEST);
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
     with_view_model(
@@ -645,6 +710,7 @@ static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
             TouchpadTestLineArray_clear(model->lines);
         },
         false);
+    furi_pubsub_free(instance->event_pubsub);
     view_free(instance->view);
     furi_event_loop_free(instance->event_loop);
     free(instance);
