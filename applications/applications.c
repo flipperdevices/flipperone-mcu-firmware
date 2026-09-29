@@ -22,6 +22,7 @@ extern int32_t cli_vcp_srv(void* p);
 // applications
 extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
+extern int32_t touchpad_test_v2_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
 extern int32_t font_test_app(void* p);
@@ -175,6 +176,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .app = touchpad_test_app,
         .name = "Touchpad Test",
         .appid = "touchpad_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+        {
+        .app = touchpad_test_v2_app,
+        .name = "Touchpad Test V2",
+        .appid = "touchpad_test_v2",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
