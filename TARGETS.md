@@ -23,12 +23,14 @@ what `version.c` reports as `TARGET`.
 
 ## Building for a target
 
-The default is `f1`. To build another one:
+`make` defaults to `f2`, CMake on its own to `f1`. To build another one:
 
 * **VSCode** — `Terminal → Run Task → Select Target`, then compile as usual. Nothing
   else changes: the executable is always named after `project()`, so the compile,
   flash and debug entries never mention a target.
-* **Command line** — `cmake .. -DFW_TARGET=f2`.
+* **Command line** — `make FW_TARGET=f2`. The build directory remembers the
+  choice, so a plain `make` afterwards keeps building f2. When driving CMake by
+  hand: `cmake .. -DFW_TARGET=f2`.
 
 There is one build directory, so switching targets means a full rebuild. CI builds
 every target of the matrix in [.github/workflows/build.yml](.github/workflows/build.yml)

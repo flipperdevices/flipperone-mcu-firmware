@@ -25,10 +25,6 @@ Builds run automatically on every push to the `dev` branch, on tag pushes, and o
 ### [`📥 Download latest dev firmware →`](https://update.flipperzero.one/builds/flipper-one-mcu/dev/)
 **⚠️ TODO:** make a proper build server address and folder structure instead of using `flipperzero.one`
 
-## Manual build 
-
-**⚠️ TODO:** how to build manually? 
-
 ## Join development
 
 * Check the public task tracker: [MCU Firmware Project](https://github.com/orgs/flipperdevices/projects/8)
@@ -38,39 +34,53 @@ Builds run automatically on every push to the `dev` branch, on tag pushes, and o
 
 ## How to build
 
-Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). The extension automatically downloads the ARM toolchain, CMake, Ninja, and Pico SDK. Open the project folder, copy `vscode_template` folder contents to `.vscode` and use the extension's compile button.
+### Command line (Ubuntu 24.04+, macOS)
 
-### Hardware targets
-
-Each board is described by `targets/<name>/target.cmake`, and a target can be based on another one. The default is `f1`; to build a different board, run the **Select Target** task in VSCode (`Terminal → Run Task`) or pass `-DFW_TARGET=<name>` to CMake.
-
-See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
-
-<details>
-<summary>Manual build (Linux / macOS)</summary>
-
-Prerequisites: [ARM GCC toolchain](https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases) (tested with 14.2.1), CMake 3.13+, [Pico SDK 2.3.1](https://github.com/raspberrypi/pico-sdk).
-
-On macOS, the ARM toolchain can be installed via Homebrew:
+Install the host tools once:
 
 ```shell
-brew install --cask gcc-arm-embedded
+# Ubuntu
+sudo apt install build-essential cmake ninja-build git curl python3-venv
+
+# macOS
+xcode-select --install
+brew install cmake ninja
 ```
+
+Then clone and build:
 
 ```shell
 git clone --recursive https://github.com/flipperdevices/flipperone-mcu-firmware.git
 cd flipperone-mcu-firmware
-
-git clone -b 2.3.1 https://github.com/raspberrypi/pico-sdk.git ../pico-sdk
-cd ../pico-sdk && git submodule update --init && cd ../flipperone-mcu-firmware
-
-mkdir -p build && cd build
-PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release --parallel
+make
 ```
 
-The output firmware file will be at `build/flipperone-mcu-firmware.uf2`.
-</details>
+The first run fetches the ARM GCC toolchain and the Pico SDK — the versions CI builds with, about 1.5 GB unpacked — into `~/.cache/flipperone-mcu-firmware` (change it with `TOOLCHAIN_DIR=...`). If the VS Code extension has already installed them under `~/.pico-sdk`, those are used and nothing is downloaded. To build with your own copies: `make PICO_SDK_PATH=... PICO_TOOLCHAIN_PATH=...`.
+
+The firmware is `build/flipperone-mcu-firmware.uf2`, the partition table `build/partition_table.uf2`.
+
+| Command | Effect |
+| --- | --- |
+| `make` | Configure on first run, then build |
+| `make FW_TARGET=f2` | Reconfigure for another board, see [Hardware targets](#hardware-targets) |
+| `make flash` | Write the partition table and firmware over SWD with openocd (CMSIS-DAP probe) |
+| `make load` | Write the firmware over USB with picotool (board in BOOTSEL mode) |
+| `make clean`, `make distclean` | Remove the build outputs, or the whole build directory |
+| `make help` | All targets and the paths in use |
+
+`make flash` needs an openocd that knows the RP2350: [Raspberry Pi's build](https://github.com/raspberrypi/openocd), or the one installed by the VS Code extension, which is picked up automatically. `make load` needs [picotool](https://github.com/raspberrypi/picotool) (`brew install picotool` on macOS).
+
+### VS Code
+
+Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). The extension automatically downloads the ARM toolchain, CMake, Ninja, and Pico SDK. Open the project folder, copy `vscode_template` folder contents to `.vscode` and use the extension's compile button.
+
+Both ways share the `build/` directory, so switching between them needs no reconfiguration.
+
+### Hardware targets
+
+Each board is described by `targets/<name>/target.cmake`, and a target can be based on another one. `make` builds `f2` unless told otherwise; CMake on its own, and so VS Code, defaults to `f1`. To build a different board, run `make FW_TARGET=<name>`, the **Select Target** task in VSCode (`Terminal → Run Task`), or pass `-DFW_TARGET=<name>` to CMake.
+
+See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
 
 ## How to update MCU firmware
 

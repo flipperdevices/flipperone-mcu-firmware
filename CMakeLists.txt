@@ -41,7 +41,10 @@ set(sdkVersion 2.3.1)
 set(toolchainVersion 14_2_Rel1)
 set(picotoolVersion 2.3.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
-if (EXISTS ${picoVscode})
+# The hook points the build at the extension's SDK, toolchain and picotool. A
+# caller that names the SDK itself (the Makefile does, through the environment)
+# must not have that overridden, so the hook only runs when nothing was given.
+if (EXISTS ${picoVscode} AND NOT DEFINED ENV{PICO_SDK_PATH})
     include(${picoVscode})
 endif()
 # ====================================================================================
