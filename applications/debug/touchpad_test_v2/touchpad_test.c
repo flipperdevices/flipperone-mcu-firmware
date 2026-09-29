@@ -13,7 +13,7 @@
 
 // Show a marker outline at every diamond's center hit-zone; purely a debug
 // visualization, the gray-fill-on-hit behavior below is always active.
-#define TOUCHPAD_SHOW_HIT_ZONES (0)
+#define TOUCHPAD_SHOW_HIT_ZONES (1)
 
 #if TOUCHPAD_CLAMP_TO_OVAL
 #include <math.h>
@@ -30,9 +30,9 @@
 // of diamonds, matching the reference mock-up.
 #define TOUCHPAD_OVAL_WIDTH    (180)
 #define TOUCHPAD_OVAL_HEIGHT   (120)
-// Shifted 30px left of center to leave room for the reset button in the
-// bottom-right corner.
-#define TOUCHPAD_OVAL_MARGIN_X (((TOUCHPAD_CANVAS_WIDTH - TOUCHPAD_OVAL_WIDTH) / 2) - 30)
+// Shifted 15px left of center (30px left, then shifted back 15px right) to
+// leave room for the reset button in the bottom-right corner.
+#define TOUCHPAD_OVAL_MARGIN_X (((TOUCHPAD_CANVAS_WIDTH - TOUCHPAD_OVAL_WIDTH) / 2) - 15)
 #define TOUCHPAD_OVAL_MARGIN_Y ((TOUCHPAD_CANVAS_HEIGHT - TOUCHPAD_OVAL_HEIGHT) / 2)
 #define TOUCHPAD_OVAL_RADIUS   (TOUCHPAD_OVAL_HEIGHT / 2)
 #define TOUCHPAD_GRID_PITCH    (TOUCHPAD_OVAL_HEIGHT / 4)
@@ -357,7 +357,12 @@ static bool touchpad_test_v2_app_layout(void* _model) {
                             .attachTo = CLAY_ATTACH_TO_PARENT,
                         },
                 }) {
-                CLAY_TEXT(CLAY_STRING("5 to clear"), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
+                CLAY_TEXT(
+                    clay_helper_string_from_chars(
+                        (model->total_diamond_count > 0 && model->hit_diamond_count >= model->total_diamond_count) ?
+                            "test OK" :
+                            "testing"),
+                    CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
             }
         }
         CLAY(
@@ -458,16 +463,21 @@ void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
         }
     }
 
-    // capsule outline (drawn last so the mask above doesn't eat into it)
-    render_draw_round_rectangle(
-        model->canvas,
-        TOUCHPAD_OVAL_MARGIN_X,
-        TOUCHPAD_OVAL_MARGIN_Y,
-        TOUCHPAD_OVAL_WIDTH,
-        TOUCHPAD_OVAL_HEIGHT,
-        TOUCHPAD_OVAL_RADIUS,
-        1,
-        color_black);
+    // capsule outline (drawn last so the mask above doesn't eat into it);
+    // drawn bolder once every diamond has been filled ("test ok"). The
+    // border_width param to render_draw_round_rectangle only thickens the
+    // straight top/bottom edges - its rounded corners are drawn via
+    // render_draw_arc, which always renders 1px regardless of border_width.
+    // So for a uniformly thick outline we instead stack several 1px-wide
+    // capsules, each inset by one more pixel (radius shrunk to match).
+    bool test_ok = model->total_diamond_count > 0 && model->hit_diamond_count >= model->total_diamond_count;
+    const int32_t border_thickness = test_ok ? 3 : 1;
+    for(int32_t i = 0; i < border_thickness; i++) {
+        int32_t w = TOUCHPAD_OVAL_WIDTH - 2 * i;
+        int32_t h = TOUCHPAD_OVAL_HEIGHT - 2 * i;
+        render_draw_round_rectangle(
+            model->canvas, TOUCHPAD_OVAL_MARGIN_X + i, TOUCHPAD_OVAL_MARGIN_Y + i, w, h, h / 2, 1, color_black);
+    }
 
     // touch lines
     for(size_t i = 0; i < TouchpadTestLineArray_size(model->lines); i++) {
@@ -702,7 +712,21 @@ static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
     TouchpadTestEvent ended_evt = {.tp_status = TouchpadTestStatusEnded};
     furi_pubsub_publish(instance->event_pubsub, &ended_evt);
 
-    furi_record_destroy(RECORD_TOUCHPAD_TEST);
+    // Give subscribers (e.g. a CLI dump command running on its own thread) a
+    // chance to react to the "Ended" event and unsubscribe + furi_record_close()
+    // before we tear down the pubsub. furi_record_destroy() only succeeds once
+    // nobody still holds the record open, and furi_pubsub_free() requires an
+    // empty subscriber list - without this wait, both would race a subscriber
+    // that hasn't had a chance to run yet and furi_check() would crash.
+    bool record_destroyed = false;
+    for(int i = 0; i < 100 && !record_destroyed; i++) {
+        record_destroyed = furi_record_destroy(RECORD_TOUCHPAD_TEST);
+        if(!record_destroyed) furi_delay_ms(10);
+    }
+    if(!record_destroyed) {
+        FURI_LOG_W(TAG, "RECORD_TOUCHPAD_TEST still held by a subscriber; leaking its pubsub");
+    }
+
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
     with_view_model(
@@ -713,7 +737,9 @@ static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
             TouchpadTestLineArray_clear(model->lines);
         },
         false);
-    furi_pubsub_free(instance->event_pubsub);
+    if(record_destroyed) {
+        furi_pubsub_free(instance->event_pubsub);
+    }
     view_free(instance->view);
     furi_event_loop_free(instance->event_loop);
     free(instance);
