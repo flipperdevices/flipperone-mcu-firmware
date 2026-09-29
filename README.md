@@ -74,7 +74,7 @@ The firmware is `build/flipperone-mcu-firmware.uf2`, the partition table `build/
 
 Install [VSCode](https://code.visualstudio.com/) with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico). The extension automatically downloads the ARM toolchain, CMake, Ninja, and Pico SDK. Open the project folder, copy `vscode_template` folder contents to `.vscode` and use the extension's compile button.
 
-Both ways share the `build/` directory, so switching between them needs no reconfiguration.
+On Linux and macOS the VS Code tasks run `make`, so both ways resolve the SDK and toolchain the same way and share the `build/` directory.
 
 ### Hardware targets
 

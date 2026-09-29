@@ -41,11 +41,17 @@ set(sdkVersion 2.3.1)
 set(toolchainVersion 14_2_Rel1)
 set(picotoolVersion 2.3.1)
 set(picoVscode ${USERHOME}/.pico-sdk/cmake/pico-vscode.cmake)
-# The hook points the build at the extension's SDK, toolchain and picotool. A
-# caller that names the SDK itself (the Makefile does, through the environment)
-# must not have that overridden, so the hook only runs when nothing was given.
+# The hook points the build at the extension's SDK, toolchain and picotool. It
+# yields when the caller names the SDK itself (the Makefile does, through the
+# environment), and when the extension has not installed the version pinned
+# above yet: replacing a working cached path with a missing directory helps nobody.
 if (EXISTS ${picoVscode} AND NOT DEFINED ENV{PICO_SDK_PATH})
-    include(${picoVscode})
+    if (EXISTS ${USERHOME}/.pico-sdk/sdk/${sdkVersion})
+        include(${picoVscode})
+    else()
+        message(WARNING "Pico SDK ${sdkVersion} is not installed under ${USERHOME}/.pico-sdk: "
+            "let the Pico extension install it, or set PICO_SDK_PATH. Using the cached SDK path, if any.")
+    endif()
 endif()
 # ====================================================================================
 # TODO: custom board with RP2350_B_

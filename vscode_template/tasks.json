@@ -2,78 +2,96 @@
     "version": "2.0.0",
     "tasks": [
         {
+            // On Linux and macOS every task goes through the Makefile, which
+            // resolves the SDK, toolchain and flashing tools the same way a
+            // terminal build does. Windows calls the tools installed by the Pico
+            // extension directly.
             "label": "Compile Project",
-            "type": "process",
+            "type": "shell",
             "isBuildCommand": true,
-            "command": "${userHome}/.pico-sdk/ninja/v1.12.1/ninja",
-            "args": [
-                "-C",
-                "${workspaceFolder}/build"
-            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "command": "make",
+            "args": [],
             "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe"
+                "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe",
+                "args": [
+                    "-C",
+                    "${workspaceFolder}/build"
+                ]
             },
             "problemMatcher": [ ]
         },
         {
             "label": "Run Project",
-            "type": "process",
-            "command": "${env:HOME}/.pico-sdk/picotool/2.3.1/picotool/picotool",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "load"
+            ],
             "group": "build",
             "dependsOn": "Compile Project",
-            "args": [
-                "load",
-                "${command:raspberry-pi-pico.launchTargetPath}",
-                "-fx"
-            ],
             "presentation": {
                 "reveal": "always",
                 "panel": "dedicated"
             },
             "problemMatcher": [ ],
             "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool.exe"
+                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe",
+                "args": [
+                    "load",
+                    "${command:raspberry-pi-pico.launchTargetPath}",
+                    "-fx"
+                ]
             }
         },
         {
             "label": "Write partition table",
-            "type": "process",
-            "command": "${env:HOME}/.pico-sdk/picotool/2.2.0-a4/picotool/picotool",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "load-partition-table"
+            ],
             "group": "build",
             "dependsOn": "Compile Project",
-            "args": [
-                "load",
-                "build/partition_table.uf2",
-                "-fvx"
-            ],
             "presentation": {
                 "reveal": "always",
                 "panel": "dedicated"
             },
             "problemMatcher": [ ],
             "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe"
+                "command": "${env:USERPROFILE}/.pico-sdk/picotool/2.3.1/picotool/picotool.exe",
+                "args": [
+                    "load",
+                    "build/partition_table.uf2",
+                    "-fvx"
+                ]
             }
         },
         {
             "label": "Flash",
-            "type": "process",
-            "command": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd",
+            "type": "shell",
+            "command": "make",
+            "args": [
+                "flash"
+            ],
             "group": "build",
             "dependsOn": "Compile Project",
-            "args": [
-                "-s",
-                "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
-                "-f",
-                "interface/cmsis-dap.cfg",
-                "-f",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg",
-                "-f",
-                "targets/flash.tcl"
-            ],
             "problemMatcher": [ ],
             "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe"
+                "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+                "args": [
+                    "-s",
+                    "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/scripts",
+                    "-f",
+                    "interface/cmsis-dap.cfg",
+                    "-f",
+                    "target/${command:raspberry-pi-pico.getTarget}.cfg",
+                    "-f",
+                    "targets/flash.tcl"
+                ]
             }
         },
         {
@@ -83,25 +101,29 @@
             // target. Switching costs a full rebuild.
             "label": "Select Target",
             "detail": "Reconfigure the build for a different hardware target",
-            "type": "process",
-            "command": "${userHome}/.pico-sdk/cmake/v3.31.5/bin/cmake",
-            "group": "build",
+            "type": "shell",
+            "command": "make",
             "args": [
-                "-S",
-                "${workspaceFolder}",
-                "-B",
-                "${workspaceFolder}/build",
-                "-G",
-                "Ninja",
-                "-DFW_TARGET=${input:fwTarget}"
+                "configure",
+                "FW_TARGET=${input:fwTarget}"
             ],
+            "group": "build",
             "presentation": {
                 "reveal": "always",
                 "panel": "dedicated"
             },
             "problemMatcher": [],
             "windows": {
-                "command": "${env:USERPROFILE}/.pico-sdk/cmake/v3.31.5/bin/cmake.exe"
+                "command": "${env:USERPROFILE}/.pico-sdk/cmake/v3.31.5/bin/cmake.exe",
+                "args": [
+                    "-S",
+                    "${workspaceFolder}",
+                    "-B",
+                    "${workspaceFolder}/build",
+                    "-G",
+                    "Ninja",
+                    "-DFW_TARGET=${input:fwTarget}"
+                ]
             }
         }
     ],
@@ -113,7 +135,7 @@
             "id": "fwTarget",
             "type": "pickString",
             "description": "Hardware target",
-            "default": "f1",
+            "default": "f2",
             "options": [
                 "f1",
                 "f2"
