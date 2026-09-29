@@ -10,6 +10,10 @@
 // bounding box); 0 to only map coordinates into the oval's bounding box.
 #define TOUCHPAD_CLAMP_TO_OVAL (1)
 
+// Show a marker outline at every diamond's center hit-zone; purely a debug
+// visualization, the gray-fill-on-hit behavior below is always active.
+#define TOUCHPAD_SHOW_HIT_ZONES (1)
+
 #if TOUCHPAD_CLAMP_TO_OVAL
 #include <math.h>
 #endif
@@ -29,6 +33,28 @@
 #define TOUCHPAD_OVAL_MARGIN_Y ((TOUCHPAD_CANVAS_HEIGHT - TOUCHPAD_OVAL_HEIGHT) / 2)
 #define TOUCHPAD_OVAL_RADIUS   (TOUCHPAD_OVAL_HEIGHT / 2)
 #define TOUCHPAD_GRID_PITCH    (TOUCHPAD_OVAL_HEIGHT / 4)
+
+// Lattice coordinates (u = x - y, v = x + y): grid lines sit at u/v = LATTICE_U0/V0
+// + n * TOUCHPAD_GRID_PITCH, and a lattice vertex is anchored exactly at the
+// capsule's center. Kept as macros (rather than locals) so both the frame
+// renderer and the touch/hit-testing code agree on the same lattice.
+#define TOUCHPAD_BOX_X0    (TOUCHPAD_OVAL_MARGIN_X)
+#define TOUCHPAD_BOX_Y0    (TOUCHPAD_OVAL_MARGIN_Y)
+#define TOUCHPAD_BOX_X1    (TOUCHPAD_OVAL_MARGIN_X + TOUCHPAD_OVAL_WIDTH)
+#define TOUCHPAD_BOX_Y1    (TOUCHPAD_OVAL_MARGIN_Y + TOUCHPAD_OVAL_HEIGHT)
+#define TOUCHPAD_BOX_CX    ((TOUCHPAD_BOX_X0 + TOUCHPAD_BOX_X1) / 2)
+#define TOUCHPAD_BOX_CY    ((TOUCHPAD_BOX_Y0 + TOUCHPAD_BOX_Y1) / 2)
+#define TOUCHPAD_LATTICE_U0 (TOUCHPAD_BOX_CX - TOUCHPAD_BOX_CY)
+#define TOUCHPAD_LATTICE_V0 (TOUCHPAD_BOX_CX + TOUCHPAD_BOX_CY)
+// generous bound on |m|, |k| covering the whole capsule bounding box
+#define TOUCHPAD_LATTICE_RANGE (6)
+
+// Center hit-zone per diamond: a square with area ~20% of the diamond's area
+// (diamond area = pitch^2 / 2 for this isotropic 45-degree grid).
+// side = sqrt(0.20 * pitch^2 / 2) = pitch * sqrt(0.10) ~= pitch * 0.3162;
+// for TOUCHPAD_GRID_PITCH == 30 that works out to ~9.5, rounded to 9.
+#define TOUCHPAD_HIT_ZONE_SIZE (9)
+#define TOUCHPAD_MAX_HIT_DIAMONDS (64)
 
 typedef struct TouchpadTestLine {
     int32_t x0;
@@ -52,6 +78,11 @@ typedef struct {
     int32_t last_y;
     float pressure;
     bool pressed;
+
+    // centers of diamonds whose center hit-zone the track has crossed
+    int32_t hit_diamond_cx[TOUCHPAD_MAX_HIT_DIAMONDS];
+    int32_t hit_diamond_cy[TOUCHPAD_MAX_HIT_DIAMONDS];
+    size_t hit_diamond_count;
 
 } TouchpadTestModel;
 
@@ -117,6 +148,79 @@ static void touchpad_test_v2_clamp_to_oval(int32_t* x, int32_t* y) {
     float scale = (float)TOUCHPAD_OVAL_RADIUS / dist;
     *x = cx + (int32_t)((float)dx * scale);
     *y = cy + (int32_t)((float)dy * scale);
+}
+#endif
+
+/** Floor division, assuming a positive divisor (unlike C's truncating '/'). */
+static int32_t touchpad_test_v2_floor_div(int32_t a, int32_t b) {
+    int32_t q = a / b;
+    int32_t r = a % b;
+    if(r != 0 && r < 0) q--;
+    return q;
+}
+
+/** Center, in canvas coordinates, of the diamond at lattice indices (m, k). */
+static void touchpad_test_v2_diamond_center(int32_t m, int32_t k, int32_t* cx, int32_t* cy) {
+    int32_t c1 = TOUCHPAD_LATTICE_U0 + m * TOUCHPAD_GRID_PITCH;
+    int32_t c2 = TOUCHPAD_LATTICE_V0 + k * TOUCHPAD_GRID_PITCH;
+    *cx = (c1 + c2 + TOUCHPAD_GRID_PITCH) / 2;
+    *cy = (c2 - c1) / 2;
+}
+
+/** Whether the segment (x0, y0)-(x1, y1) intersects the axis-aligned box [bx0, bx1] x [by0, by1]. */
+static bool touchpad_test_v2_segment_intersects_box(
+    int32_t x0,
+    int32_t y0,
+    int32_t x1,
+    int32_t y1,
+    int32_t bx0,
+    int32_t by0,
+    int32_t bx1,
+    int32_t by1) {
+    // Liang-Barsky line clipping, used here purely as an intersection test
+    float t0 = 0.0f, t1 = 1.0f;
+    float dx = (float)(x1 - x0);
+    float dy = (float)(y1 - y0);
+    float p[4] = {-dx, dx, -dy, dy};
+    float q[4] = {
+        (float)(x0 - bx0),
+        (float)(bx1 - x0),
+        (float)(y0 - by0),
+        (float)(by1 - y0),
+    };
+    for(int i = 0; i < 4; i++) {
+        if(p[i] == 0.0f) {
+            if(q[i] < 0.0f) return false; // parallel to this edge and outside it
+        } else {
+            float r = q[i] / p[i];
+            if(p[i] < 0.0f) {
+                if(r > t1) return false;
+                if(r > t0) t0 = r;
+            } else {
+                if(r < t0) return false;
+                if(r < t1) t1 = r;
+            }
+        }
+    }
+    return t0 <= t1;
+}
+
+/** Fills the diamond (rhombus) centered at (cx, cy) with the given half-size (tip-to-center distance). */
+static void touchpad_test_v2_fill_diamond(Canvas* canvas, int32_t cx, int32_t cy, int32_t half_size, ColorA color) {
+    for(int32_t dy = -half_size; dy <= half_size; dy++) {
+        int32_t half_width = half_size - (dy < 0 ? -dy : dy);
+        render_draw_line(canvas, cx - half_width, cy + dy, cx + half_width, cy + dy, color);
+    }
+}
+
+#if TOUCHPAD_SHOW_HIT_ZONES
+/** Draws the outline of a diamond's center hit-zone, for debugging. */
+static void touchpad_test_v2_draw_zone_marker(Canvas* canvas, int32_t cx, int32_t cy, ColorA color) {
+    int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
+    render_draw_line(canvas, cx - half, cy - half, cx + half, cy - half, color);
+    render_draw_line(canvas, cx - half, cy + half, cx + half, cy + half, color);
+    render_draw_line(canvas, cx - half, cy - half, cx - half, cy + half, color);
+    render_draw_line(canvas, cx + half, cy - half, cx + half, cy + half, color);
 }
 #endif
 
@@ -217,16 +321,14 @@ void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
     ColorA color_black = {.color = 0x00, .alpha = 255};
 
     // diagonal (45-degree) diamond grid, clipped to the capsule's bounding box
-    const int32_t box_x0 = TOUCHPAD_OVAL_MARGIN_X;
-    const int32_t box_y0 = TOUCHPAD_OVAL_MARGIN_Y;
-    const int32_t box_x1 = TOUCHPAD_OVAL_MARGIN_X + TOUCHPAD_OVAL_WIDTH;
-    const int32_t box_y1 = TOUCHPAD_OVAL_MARGIN_Y + TOUCHPAD_OVAL_HEIGHT;
-    const int32_t box_cx = (box_x0 + box_x1) / 2;
-    const int32_t box_cy = (box_y0 + box_y1) / 2;
+    const int32_t box_x0 = TOUCHPAD_BOX_X0;
+    const int32_t box_y0 = TOUCHPAD_BOX_Y0;
+    const int32_t box_x1 = TOUCHPAD_BOX_X1;
+    const int32_t box_y1 = TOUCHPAD_BOX_Y1;
 
     // anchor a lattice vertex exactly at the capsule's center
-    const int32_t c_backslash0 = box_cx - box_cy;
-    const int32_t c_slash0 = box_cx + box_cy;
+    const int32_t c_backslash0 = TOUCHPAD_LATTICE_U0;
+    const int32_t c_slash0 = TOUCHPAD_LATTICE_V0;
     const int32_t n_max = (box_x1 - box_x0 + box_y1 - box_y0) / TOUCHPAD_GRID_PITCH + 1;
 
     for(int32_t n = -n_max; n <= n_max; n++) {
@@ -236,18 +338,39 @@ void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
             model->canvas, c_slash0 + n * TOUCHPAD_GRID_PITCH, box_x0, box_y0, box_x1, box_y1, color_gray);
     }
 
-    // the grid above was only clipped to the bounding box, which is wider than
-    // the capsule's rounded ends; mask the excess back to the background color
+#if TOUCHPAD_SHOW_HIT_ZONES
+    // debug: mark every diamond's center hit-zone
+    for(int32_t m = -TOUCHPAD_LATTICE_RANGE; m <= TOUCHPAD_LATTICE_RANGE; m++) {
+        for(int32_t k = -TOUCHPAD_LATTICE_RANGE; k <= TOUCHPAD_LATTICE_RANGE; k++) {
+            int32_t cx, cy;
+            touchpad_test_v2_diamond_center(m, k, &cx, &cy);
+            // loose reject, purely to skip cells far outside the visible area;
+            // the full-canvas mask below cleans up any remaining overshoot
+            if(cx < box_x0 - TOUCHPAD_GRID_PITCH || cx > box_x1 + TOUCHPAD_GRID_PITCH) continue;
+            if(cy < box_y0 - TOUCHPAD_GRID_PITCH || cy > box_y1 + TOUCHPAD_GRID_PITCH) continue;
+            touchpad_test_v2_draw_zone_marker(model->canvas, cx, cy, color_black);
+        }
+    }
+#endif
+
+    // fill diamonds whose center hit-zone the track has crossed
+    ColorA color_hit = {.color = 180, .alpha = 255};
+    for(size_t i = 0; i < model->hit_diamond_count; i++) {
+        touchpad_test_v2_fill_diamond(
+            model->canvas, model->hit_diamond_cx[i], model->hit_diamond_cy[i], TOUCHPAD_GRID_PITCH / 2, color_hit);
+    }
+
+    // the grid/fills above were only clipped to the bounding box (or not at
+    // all, for edge diamonds whose fill spills past it); mask the whole
+    // canvas back to the background color outside the true capsule outline,
+    // so anything drawn anywhere gets cleaned up regardless of how far it
+    // overshoots
     Color* data = canvas_get_data(model->canvas);
     size_t canvas_width = canvas_get_width(model->canvas);
-    int32_t left_cx = TOUCHPAD_OVAL_MARGIN_X + TOUCHPAD_OVAL_RADIUS;
-    int32_t right_cx = TOUCHPAD_OVAL_MARGIN_X + TOUCHPAD_OVAL_WIDTH - TOUCHPAD_OVAL_RADIUS;
-    for(int32_t y = box_y0; y < box_y1; y++) {
-        for(int32_t x = box_x0; x < left_cx; x++) {
-            if(!touchpad_test_v2_oval_contains(x, y)) data[y * canvas_width + x] = 0xFF;
-        }
-        for(int32_t x = right_cx; x < box_x1; x++) {
-            if(!touchpad_test_v2_oval_contains(x, y)) data[y * canvas_width + x] = 0xFF;
+    size_t canvas_height = canvas_get_height(model->canvas);
+    for(size_t y = 0; y < canvas_height; y++) {
+        for(size_t x = 0; x < canvas_width; x++) {
+            if(!touchpad_test_v2_oval_contains((int32_t)x, (int32_t)y)) data[y * canvas_width + x] = 0xFF;
         }
     }
 
@@ -293,6 +416,7 @@ static bool touchpad_test_v2_app_input(InputEvent* event, void* context) {
                 TouchpadTestModel * model,
                 {
                     TouchpadTestLineArray_reset(model->lines);
+                    model->hit_diamond_count = 0;
                     touchpad_test_v2_app_update_frame(model);
                 },
                 true);
@@ -309,6 +433,45 @@ static void touchpad_test_v2_app_model_push_line(TouchpadTestModel* model, int32
 
     while(TouchpadTestLineArray_size(model->lines) > TOUCHPAD_MAX_LINES_COUNT) {
         TouchpadTestLineArray_pop_at(NULL, model->lines, 0);
+    }
+
+    // check which diamonds' center hit-zones this new segment crosses, over
+    // the rectangular range of lattice cells spanned by its two endpoints
+    int32_t m0 = touchpad_test_v2_floor_div(x0 - y0 - TOUCHPAD_LATTICE_U0, TOUCHPAD_GRID_PITCH);
+    int32_t m1 = touchpad_test_v2_floor_div(x1 - y1 - TOUCHPAD_LATTICE_U0, TOUCHPAD_GRID_PITCH);
+    int32_t k0 = touchpad_test_v2_floor_div(x0 + y0 - TOUCHPAD_LATTICE_V0, TOUCHPAD_GRID_PITCH);
+    int32_t k1 = touchpad_test_v2_floor_div(x1 + y1 - TOUCHPAD_LATTICE_V0, TOUCHPAD_GRID_PITCH);
+    int32_t m_lo = MIN(m0, m1), m_hi = MAX(m0, m1);
+    int32_t k_lo = MIN(k0, k1), k_hi = MAX(k0, k1);
+
+    for(int32_t m = m_lo; m <= m_hi; m++) {
+        for(int32_t k = k_lo; k <= k_hi; k++) {
+            int32_t cx, cy;
+            touchpad_test_v2_diamond_center(m, k, &cx, &cy);
+
+            // edge diamonds (center on/beyond the bounding box) are allowed
+            // to register a hit too: touchpad_test_v2_app_update_frame now
+            // masks the whole canvas against the true capsule outline, so
+            // their fill is cleaned up correctly even if it spills past the
+            // box on the side that's outside the capsule
+            const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
+            if(!touchpad_test_v2_segment_intersects_box(
+                   x0, y0, x1, y1, cx - half, cy - half, cx + half, cy + half))
+                continue;
+
+            bool already_hit = false;
+            for(size_t i = 0; i < model->hit_diamond_count; i++) {
+                if(model->hit_diamond_cx[i] == cx && model->hit_diamond_cy[i] == cy) {
+                    already_hit = true;
+                    break;
+                }
+            }
+            if(!already_hit && model->hit_diamond_count < TOUCHPAD_MAX_HIT_DIAMONDS) {
+                model->hit_diamond_cx[model->hit_diamond_count] = cx;
+                model->hit_diamond_cy[model->hit_diamond_count] = cy;
+                model->hit_diamond_count++;
+            }
+        }
     }
 }
 
@@ -333,6 +496,7 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
             {
                 // start a fresh track on every new touch-down, discarding the previous one
                 TouchpadTestLineArray_reset(model->lines);
+                model->hit_diamond_count = 0;
                 model->pressed = true;
                 model->last_x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
                 model->last_y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
@@ -402,6 +566,7 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
             model->last_x = TOUCHPAD_CANVAS_WIDTH / 2;
             model->last_y = TOUCHPAD_CANVAS_HEIGHT / 2;
             model->pressed = false;
+            model->hit_diamond_count = 0;
             model->canvas = canvas_alloc(TOUCHPAD_CANVAS_WIDTH, TOUCHPAD_CANVAS_HEIGHT);
             model->image = canvas_to_image(model->canvas);
             touchpad_test_v2_app_update_frame(model);
