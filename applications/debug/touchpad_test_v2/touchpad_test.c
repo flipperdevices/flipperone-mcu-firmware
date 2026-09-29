@@ -18,7 +18,7 @@
 // Set to 1 to make every new touch-down act like pressing "Clear" first, so
 // the test restarts from scratch on each touch; 0 for the track to keep
 // accumulating across touches (only the "Clear"/5 key resets it).
-#define TOUCHPAD_RESET_ON_TOUCH (1)
+#define TOUCHPAD_RESET_ON_TOUCH (0)
 
 // Caps how often the canvas is actually re-rendered and pushed to the GUI.
 // Without this, every touch/input event redraws immediately, which can run
@@ -198,15 +198,33 @@ static void touchpad_test_v2_diamond_center(int32_t m, int32_t k, int32_t* cx, i
 }
 
 /**
- * @brief Counts how many diamonds are actually reachable by touch: a
- * diamond "counts" iff at least one pixel of its center hit-zone lies
- * within the true capsule outline (matching what touchpad_test_v2_app_model_push_line
- * can ever register a hit for). Used to detect when every diamond has been
- * filled at least once.
+ * @brief Whether at least one pixel of the diamond centered at (cx, cy)'s
+ * center hit-zone lies within the true capsule outline. This is the single
+ * source of truth for which diamonds "exist": touchpad_test_v2_count_total_diamonds()
+ * uses it to build the total, and touchpad_test_v2_app_model_push_line() uses
+ * it to reject hits on cells outside the capsule (touches aren't clamped to
+ * the oval, so a drawn segment can otherwise reach a hit-zone that's
+ * entirely off the capsule - without this check, that inflates
+ * hit_diamond_count past total_diamond_count without covering every real
+ * diamond, so "all filled" could fire early).
+ */
+static bool touchpad_test_v2_diamond_is_reachable(int32_t cx, int32_t cy) {
+    const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
+    for(int32_t dy = -half; dy <= half; dy++) {
+        for(int32_t dx = -half; dx <= half; dx++) {
+            if(touchpad_test_v2_oval_contains(cx + dx, cy + dy)) return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @brief Counts how many diamonds are actually reachable by touch (see
+ * touchpad_test_v2_diamond_is_reachable()). Used to detect when every
+ * diamond has been filled at least once.
  */
 static size_t touchpad_test_v2_count_total_diamonds(void) {
     size_t count = 0;
-    const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
 
     for(int32_t m = -TOUCHPAD_LATTICE_RANGE; m <= TOUCHPAD_LATTICE_RANGE; m++) {
         for(int32_t k = -TOUCHPAD_LATTICE_RANGE; k <= TOUCHPAD_LATTICE_RANGE; k++) {
@@ -215,16 +233,7 @@ static size_t touchpad_test_v2_count_total_diamonds(void) {
             if(cx < TOUCHPAD_BOX_X0 - TOUCHPAD_GRID_PITCH || cx > TOUCHPAD_BOX_X1 + TOUCHPAD_GRID_PITCH) continue;
             if(cy < TOUCHPAD_BOX_Y0 - TOUCHPAD_GRID_PITCH || cy > TOUCHPAD_BOX_Y1 + TOUCHPAD_GRID_PITCH) continue;
 
-            bool reachable = false;
-            for(int32_t dy = -half; dy <= half && !reachable; dy++) {
-                for(int32_t dx = -half; dx <= half; dx++) {
-                    if(touchpad_test_v2_oval_contains(cx + dx, cy + dy)) {
-                        reachable = true;
-                        break;
-                    }
-                }
-            }
-            if(reachable) count++;
+            if(touchpad_test_v2_diamond_is_reachable(cx, cy)) count++;
         }
     }
 
@@ -607,7 +616,14 @@ static void touchpad_test_v2_app_model_push_line(TouchpadTestModel* model, int32
             // to register a hit too: touchpad_test_v2_app_update_frame now
             // masks the whole canvas against the true capsule outline, so
             // their fill is cleaned up correctly even if it spills past the
-            // box on the side that's outside the capsule
+            // box on the side that's outside the capsule. But reject cells
+            // that aren't reachable at all (touches aren't clamped to the
+            // oval, so a segment can reach a hit-zone that's entirely off
+            // the capsule) - otherwise those inflate hit_diamond_count
+            // without matching anything counted in total_diamond_count,
+            // letting "all filled" fire before every real diamond is hit.
+            if(!touchpad_test_v2_diamond_is_reachable(cx, cy)) continue;
+
             const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
             if(!touchpad_test_v2_segment_intersects_box(
                    x0, y0, x1, y1, cx - half, cy - half, cx + half, cy + half))
