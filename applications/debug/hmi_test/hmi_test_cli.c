@@ -10,6 +10,7 @@
 #include <toolbox/strint.h>
 #include <cli/cli_ansi.h>
 #include <cli/cli_command.h>
+#include <cli/cli_status.h>
 #include <furi_hal.h>
 
 typedef struct {
@@ -50,6 +51,7 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
     printf("Starting touch test...\r\n");
     if(!desktop_start_app(target)) {
         printf(ANSI_FG_RED "Failed to start touch test application." ANSI_RESET "\r\n");
+        printf(CLI_STATUS_ERROR);
         return true;
     }
 
@@ -63,15 +65,21 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
 
     printf("Subscribed to touchpad test events. Press CTRL+C to stop.\r\n");
 
+    // the app can also close itself (e.g. the Back button on the device), in
+    // which case it publishes TouchpadTestStatusEnded from its own teardown;
+    // stop waiting right away instead of sitting on a dead app until Ctrl+C
+    bool app_running = true;
+    bool test_ok = false;
     TouchpadTestEvent event;
-    while(!cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
+    while(!test_ok && app_running && !cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
         if(furi_message_queue_get(event_queue, &event, 100) == FuriStatusOk) {
             switch(event.tp_status) {
             case TouchpadTestStatusStarted:
-                printf(ANSI_FG_GREEN "test started" ANSI_RESET "\r\n");
+                printf(ANSI_FG_YELLOW "test started" ANSI_RESET "\r\n");
                 break;
             case TouchpadTestStatusEnded:
-                printf(ANSI_FG_GREEN "test ended" ANSI_RESET "\r\n");
+                printf(ANSI_FG_RED "test ended (app closed itself)" ANSI_RESET "\r\n");
+                app_running = false;
                 break;
             case TouchpadTestStatusCleared:
                 printf(ANSI_FG_YELLOW "cleared" ANSI_RESET "\r\n");
@@ -81,6 +89,7 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
                 break;
             case TouchpadTestStatusAllFilled:
                 printf(ANSI_FG_GREEN "all diamonds filled!" ANSI_RESET "\r\n");
+                test_ok = true;
                 break;
             default:
                 printf("unknown event: %d\r\n", (int)event.tp_status);
@@ -94,8 +103,17 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
     furi_record_close(RECORD_TOUCHPAD_TEST);
     furi_message_queue_free(event_queue);
 
-    printf("Stopping touch test...\r\n");
-    desktop_stop_app();
+    if(app_running) {
+        // still running - we're the ones stopping it (Ctrl+C)
+        printf("Stopping touch test...\r\n");
+        desktop_stop_app();
+    }
+
+    if(test_ok) {
+        printf(CLI_STATUS_OK);
+    } else {
+        printf(CLI_STATUS_ERROR);
+    }
 
     return true;
 }
