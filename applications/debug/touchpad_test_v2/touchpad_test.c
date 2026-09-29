@@ -699,6 +699,9 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
 }
 
 static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
+    TouchpadTestEvent ended_evt = {.tp_status = TouchpadTestStatusEnded};
+    furi_pubsub_publish(instance->event_pubsub, &ended_evt);
+
     furi_record_destroy(RECORD_TOUCHPAD_TEST);
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);

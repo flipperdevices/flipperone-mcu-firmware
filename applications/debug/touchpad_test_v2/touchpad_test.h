@@ -9,6 +9,7 @@
 
 typedef enum {
     TouchpadTestStatusStarted, // test view has been created and is ready
+    TouchpadTestStatusEnded, // test app is shutting down
     TouchpadTestStatusCleared, // the "Clear" button/key was pressed
     TouchpadTestStatusDiamondFilled, // a new diamond was filled; see diamond_x/y
     TouchpadTestStatusAllFilled, // every diamond in the oval is now filled
