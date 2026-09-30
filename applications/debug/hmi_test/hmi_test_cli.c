@@ -5,6 +5,7 @@
 #include <applications.h>
 #include <desktop/desktop.h>
 #include <debug/touchpad_test_v2/touchpad_test.h>
+#include <haptic/haptic.h>
 
 #include <cli/args.h>
 #include <toolbox/strint.h>
@@ -162,9 +163,49 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
     return true;
 }
 
+static bool hmi_test_cli_haptic(PipeSide* pipe, FuriString* args) {
+    UNUSED(pipe);
+
+    int effect_id = 0;
+    if(!args_read_int_and_trim(args, &effect_id) || effect_id < 0 ||
+       effect_id >= Drv2605lEffectCountMax) {
+        printf(CLI_STATUS_ERROR);
+        return false;
+    }
+
+    int duration = 0;
+    if(!furi_string_empty(args)) {
+        if(!args_read_int_and_trim(args, &duration) || duration < 0) {
+            printf(CLI_STATUS_ERROR);
+            return false;
+        }
+        if(duration == 1) {
+            duration = 2;
+        }
+    }
+
+    printf("Testing haptic effect %d for duration %d ms\r\n", effect_id, duration);
+
+    Haptic* haptic = furi_record_open(RECORD_HAPTIC);
+    bool played = haptic_play_effect(haptic, (Drv2605lEffect)effect_id, duration);
+    furi_record_close(RECORD_HAPTIC);
+
+    if(!played) {
+        // the service only reports false when its device isn't initialised -
+        // the arguments were fine, so keep the caller from printing usage here
+        printf(ANSI_FG_RED "Haptic device not ready" ANSI_RESET "\r\n");
+        printf(CLI_STATUS_ERROR);
+        return true;
+    }
+
+    printf("Haptic effect played.\r\n");
+    printf(CLI_STATUS_OK);
+    return true;
+}
+
 static const HmiTestCmd hmi_test_cmds[] = {
     {"touch", "", "Start an application test touchpad", hmi_test_cli_start_touch},
-
+    {"haptic", "<effect_id> [duration]", "test haptic, effect_id = 0..123, duration = 0 (service default, 3s) or play time in ms (min 2)", hmi_test_cli_haptic}
 };
 
 static void hmi_test_command_cli_print_usage(void) {
