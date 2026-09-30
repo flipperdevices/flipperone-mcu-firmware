@@ -55,6 +55,26 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
         return true;
     }
 
+    // furi_record_open() blocks forever until the record becomes ready - fine
+    // if touchpad_test_v2 is merely slow to start, but if it never reaches
+    // furi_record_create() (crashed, or exited and tore the record back down
+    // before we get here) nothing will ever set that flag and we'd hang for
+    // good, with no way for Ctrl+C to break out since the wait loop below
+    // isn't even entered yet. Poll furi_record_exists() with a bounded budget
+    // instead, so a dead/never-started app fails with a message rather than
+    // wedging the CLI thread permanently.
+    const int record_wait_budget_ms = 2000;
+    int record_waited_ms = 0;
+    while(!furi_record_exists(RECORD_TOUCHPAD_TEST) && record_waited_ms < record_wait_budget_ms) {
+        furi_delay_ms(20);
+        record_waited_ms += 20;
+    }
+    if(!furi_record_exists(RECORD_TOUCHPAD_TEST)) {
+        printf(ANSI_FG_RED "Touch test app never became ready." ANSI_RESET "\r\n");
+        printf(CLI_STATUS_ERROR);
+        return true;
+    }
+
     // furi_pubsub_publish() runs subscriber callbacks synchronously on the
     // publisher's (touchpad_test_v2's) thread, not ours - so the callback
     // just forwards events into a queue, and this loop (on our own thread,

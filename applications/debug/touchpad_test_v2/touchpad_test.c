@@ -346,9 +346,27 @@ static void touchpad_test_v2_app_create_reset_button(Clay_ElementId id, Clay_Str
     }
 }
 
+void touchpad_test_v2_app_update_frame(TouchpadTestModel* model);
+
 static bool touchpad_test_v2_app_layout(void* _model) {
     furi_assert(_model);
     TouchpadTestModel* model = _model;
+
+    // Render here, synchronously on the GUI thread, while view_layout() still
+    // holds the model lock: model->image (below) is just a raw pointer into
+    // model->canvas's pixel buffer, and gui_redraw() reads through it (via
+    // clay_render_do_render(), copying pixels into the display's own canvas)
+    // *after* this callback returns and the model lock has already been
+    // released (view_layout() -> view_unlock_model() happens before
+    // Clay_EndLayout()/clay_render_do_render()). Rendering from a separate
+    // app-thread timer, as before, could still be mid-write into that same
+    // buffer while the GUI thread was reading it for the blit - an
+    // unsynchronized race the model lock never actually covered, and the
+    // real cause of the frame corruption seen while dragging.
+    if(model->dirty) {
+        touchpad_test_v2_app_update_frame(model);
+        model->dirty = false;
+    }
 
     Clay_Sizing layoutExpand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
     Clay_BorderElementConfig contentBorders = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}};
@@ -525,12 +543,13 @@ void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
 
 /**
  * @brief Periodic redraw tick (at most TOUCHPAD_TARGET_FPS): input handlers
- * only update model state and set model->dirty; this is the only place that
- * actually re-renders the canvas and pushes it to the GUI, so the redraw
+ * only update model state and set model->dirty. This timer's only job is to
+ * ask the GUI for a redraw when there's something new to show, so the redraw
  * rate stays capped instead of running once per input event (as fast as
- * ~80/s from the touchscreen). It skips the render entirely when nothing is
- * dirty, so an idle screen isn't rewritten every tick for no reason - doing
- * that constantly fought with the display's own refresh and tore the frame.
+ * ~80/s from the touchscreen). The actual canvas render happens in
+ * touchpad_test_v2_app_layout() (see the comment there for why it has to run
+ * there and not here): with_view_model()'s `update` flag below just requests
+ * that view_layout() run again soon; it does not touch model->canvas itself.
  */
 static void touchpad_test_v2_app_redraw_timer_callback(void* context) {
     furi_assert(context);
@@ -539,13 +558,7 @@ static void touchpad_test_v2_app_redraw_timer_callback(void* context) {
     with_view_model(
         instance->view,
         TouchpadTestModel * model,
-        {
-            needs_render = model->dirty;
-            if(needs_render) {
-                touchpad_test_v2_app_update_frame(model);
-                model->dirty = false;
-            }
-        },
+        { needs_render = model->dirty; },
         needs_render);
 }
 
@@ -612,6 +625,15 @@ static void touchpad_test_v2_app_model_push_line(TouchpadTestModel* model, int32
             int32_t cx, cy;
             touchpad_test_v2_diamond_center(m, k, &cx, &cy);
 
+            // Cheap test first: does the segment even cross this cell's hit-zone
+            // box? Only then pay for the expensive reachability check below -
+            // this runs per candidate cell on every touch-move event (up to
+            // ~80 Hz), so order matters.
+            const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
+            if(!touchpad_test_v2_segment_intersects_box(
+                   x0, y0, x1, y1, cx - half, cy - half, cx + half, cy + half))
+                continue;
+
             // edge diamonds (center on/beyond the bounding box) are allowed
             // to register a hit too: touchpad_test_v2_app_update_frame now
             // masks the whole canvas against the true capsule outline, so
@@ -623,11 +645,6 @@ static void touchpad_test_v2_app_model_push_line(TouchpadTestModel* model, int32
             // without matching anything counted in total_diamond_count,
             // letting "all filled" fire before every real diamond is hit.
             if(!touchpad_test_v2_diamond_is_reachable(cx, cy)) continue;
-
-            const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
-            if(!touchpad_test_v2_segment_intersects_box(
-                   x0, y0, x1, y1, cx - half, cy - half, cx + half, cy + half))
-                continue;
 
             bool already_hit = false;
             for(size_t i = 0; i < model->hit_diamond_count; i++) {
@@ -747,7 +764,15 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
     instance->event_pubsub = furi_pubsub_alloc();
 
     instance->view = view_alloc();
-    view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(TouchpadTestModel));
+    // Locking, not lock-free: the model is written both from view_input[_touch]()
+    // (touchpad_test_v2_app_input[_touch](), called on the GUI thread) and from
+    // the app thread (touchpad_test_v2_app_redraw_timer_callback(), which only
+    // flips model->dirty - the actual canvas render lives in
+    // touchpad_test_v2_app_layout() so it stays on the GUI thread, see there).
+    // With a lock-free model, model->lines (an m-array that reallocs on
+    // growth) could be torn mid-push/mid-read - a real use-after-free, not
+    // just a cosmetic tear.
+    view_allocate_model(instance->view, ViewModelTypeLocking, sizeof(TouchpadTestModel));
 
     with_view_model(
         instance->view,
@@ -777,6 +802,14 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
         instance->event_loop, touchpad_test_v2_app_redraw_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
     furi_event_loop_timer_start(instance->redraw_timer, TOUCHPAD_FRAME_INTERVAL_MS);
 
+    // If a previous instance's teardown timed out waiting for a subscriber to
+    // close the record (see touchpad_test_v2_app_free()), the record is still
+    // here with a non-NULL (now orphaned) data pointer, and furi_record_create()
+    // would hit an unexplained furi_check() assert below. Fail loudly with a
+    // clear reason instead.
+    if(furi_record_exists(RECORD_TOUCHPAD_TEST)) {
+        furi_crash("RECORD_TOUCHPAD_TEST still open from a previous run (a subscriber never closed it in time)");
+    }
     furi_record_create(RECORD_TOUCHPAD_TEST, instance->event_pubsub);
 
     TouchpadTestEvent evt = {.tp_status = TouchpadTestStatusStarted};
@@ -795,13 +828,20 @@ static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
     // nobody still holds the record open, and furi_pubsub_free() requires an
     // empty subscriber list - without this wait, both would race a subscriber
     // that hasn't had a chance to run yet and furi_check() would crash.
+    // Budget is generous (3s) because a subscriber may itself be printing one
+    // line per event to a CLI pipe (up to ~50 diamonds) before it gets to
+    // unsubscribe, and a slow/blocked console host can stall that.
     bool record_destroyed = false;
-    for(int i = 0; i < 100 && !record_destroyed; i++) {
+    for(int i = 0; i < 300 && !record_destroyed; i++) {
         record_destroyed = furi_record_destroy(RECORD_TOUCHPAD_TEST);
         if(!record_destroyed) furi_delay_ms(10);
     }
     if(!record_destroyed) {
-        FURI_LOG_W(TAG, "RECORD_TOUCHPAD_TEST still held by a subscriber; leaking its pubsub");
+        // Leaving the record behind with a non-NULL data pointer would crash
+        // the *next* launch's furi_record_create() with an unexplained assert
+        // (see the furi_record_exists() check in touchpad_test_v2_app_alloc());
+        // fail loudly here instead, where the cause is clear.
+        furi_crash("RECORD_TOUCHPAD_TEST still held by a subscriber after timeout");
     }
 
     gui_remove_view(instance->gui, instance->view);
@@ -814,9 +854,7 @@ static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
             TouchpadTestLineArray_clear(model->lines);
         },
         false);
-    if(record_destroyed) {
-        furi_pubsub_free(instance->event_pubsub);
-    }
+    furi_pubsub_free(instance->event_pubsub);
     view_free(instance->view);
     furi_event_loop_timer_free(instance->redraw_timer);
     furi_event_loop_free(instance->event_loop);
