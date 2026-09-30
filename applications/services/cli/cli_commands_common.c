@@ -177,7 +177,7 @@ static void cli_command_expander_ext_help(PipeSide* pipe, FuriString* args, void
     UNUSED(args);
     UNUSED(context);
     printf(
-        "Usage: expander_ext <GPIO_OUT_NUMBER> <VALUE>\r\n"
+        "Usage:  <GPIO_OUT_NUMBER> <VALUE>\r\n"
         "Where <GPIO_OUT_NUMBER> is:\r\n"
         "\tUSB2.0_SEL \t\t0 \r\n"
         "\tHUB_PWR_EN \t\t1\r\n"
@@ -187,10 +187,10 @@ static void cli_command_expander_ext_help(PipeSide* pipe, FuriString* args, void
         "\tGPIO_5V0_EN \t\t5 \r\n"
         "\tGPIO_3V3_EN \t\t6 \r\n"
         "\tEXPANDER_P17 \t\t7 \r\n"
-        "\tnMUX_EN \t\t\t8 \r\n"
+        "\tnMUX_EN \t\t8 \r\n"
         "Where <VALUE> is:\r\n"
         "\tSet output low \t\t0 \r\n"
-        "\tSet output high \t\t1\r\n");
+        "\tSet output high \t1\r\n");
 }
 
 static OutputExpMain cli_command_expander_ext_set(OutputExpMain expander_gpio_out_read, OutputExpMain expander_gpio_out, int expander_gpio_out_value) {
