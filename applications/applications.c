@@ -39,6 +39,7 @@ extern void input_cli_command(PipeSide* pipe, FuriString* args, void* context);
 extern void unit_tests_cli_command(PipeSide* pipe, FuriString* args, void* context);
 extern void saradc_command_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void desktop_command_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void load_image_test_command_cli(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -290,6 +291,12 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
         .callback = desktop_command_cli,
         .name = "desktop",
         .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = load_image_test_command_cli,
+        .name = "load_image_test",
+        .stack_size = 1024 * 4,
         .flags = CliCommandFlagParallelSafe,
     },
 };
