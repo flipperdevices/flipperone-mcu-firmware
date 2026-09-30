@@ -29,22 +29,42 @@ static const FlipperInternalApplication* hmi_test_find_app_by_appid(const char* 
     return NULL;
 }
 
+typedef struct {
+    FuriMessageQueue* queue;
+    uint32_t dropped;
+} HmiTestTouchpadEventCtx;
+
 static void hmi_test_touchpad_event_callback(const void* value, void* ctx) {
     furi_assert(value);
     furi_assert(ctx);
-    FuriMessageQueue* event_queue = ctx;
+    HmiTestTouchpadEventCtx* event_ctx = ctx;
     TouchpadTestEvent event = *(const TouchpadTestEvent*)value;
-    furi_message_queue_put(event_queue, &event, FuriWaitForever);
+    // furi_pubsub_publish() holds the pubsub's mutex for the duration of this
+    // call, and for events published from touchpad_test_v2's touch handlers
+    // that's on the GUI thread, under gui->mutex and view->mutex too - so a
+    // FuriWaitForever put here, if the queue were ever full, could deadlock
+    // against whichever thread would otherwise drain it (e.g. us, if we're
+    // blocked in furi_pubsub_unsubscribe() waiting on that same mutex). Bound
+    // the wait and just count drops instead; in practice the queue (16 deep)
+    // shouldn't fill since duplicate diamond hits are already deduplicated
+    // before this is invoked.
+    if(furi_message_queue_put(event_ctx->queue, &event, 20) != FuriStatusOk) {
+        event_ctx->dropped++;
+    }
 }
 
 static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
-    UNUSED(args);
+    furi_string_trim(args);
+    if(furi_string_size(args) > 0) {
+        return false;
+    }
 
     const char* appid = "touchpad_test_v2";
 
     const FlipperInternalApplication* target = hmi_test_find_app_by_appid(appid);
     if(!target) {
         printf(ANSI_FG_RED "Application not found: %s" ANSI_RESET "\r\n", appid);
+        printf(CLI_STATUS_ERROR);
         return true;
     }
 
@@ -79,9 +99,12 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
     // publisher's (touchpad_test_v2's) thread, not ours - so the callback
     // just forwards events into a queue, and this loop (on our own thread,
     // where stdio is bound to `pipe`) does the actual printing.
-    FuriMessageQueue* event_queue = furi_message_queue_alloc(16, sizeof(TouchpadTestEvent));
+    HmiTestTouchpadEventCtx event_ctx = {
+        .queue = furi_message_queue_alloc(16, sizeof(TouchpadTestEvent)),
+        .dropped = 0,
+    };
     FuriPubSub* pubsub = furi_record_open(RECORD_TOUCHPAD_TEST);
-    FuriPubSubSubscription* subscription = furi_pubsub_subscribe(pubsub, hmi_test_touchpad_event_callback, event_queue);
+    FuriPubSubSubscription* subscription = furi_pubsub_subscribe(pubsub, hmi_test_touchpad_event_callback, &event_ctx);
 
     printf("Subscribed to touchpad test events. Press CTRL+C to stop.\r\n");
 
@@ -92,11 +115,8 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
     bool test_ok = false;
     TouchpadTestEvent event;
     while(!test_ok && app_running && !cli_is_pipe_broken_or_is_etx_next_char(pipe)) {
-        if(furi_message_queue_get(event_queue, &event, 100) == FuriStatusOk) {
+        if(furi_message_queue_get(event_ctx.queue, &event, 100) == FuriStatusOk) {
             switch(event.tp_status) {
-            case TouchpadTestStatusStarted:
-                printf(ANSI_FG_YELLOW "test started" ANSI_RESET "\r\n");
-                break;
             case TouchpadTestStatusEnded:
                 printf(ANSI_FG_RED "test ended (app closed itself)" ANSI_RESET "\r\n");
                 app_running = false;
@@ -121,7 +141,11 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
 
     furi_pubsub_unsubscribe(pubsub, subscription);
     furi_record_close(RECORD_TOUCHPAD_TEST);
-    furi_message_queue_free(event_queue);
+    furi_message_queue_free(event_ctx.queue);
+
+    if(event_ctx.dropped > 0) {
+        printf(ANSI_FG_YELLOW "dropped %lu event(s)" ANSI_RESET "\r\n", (unsigned long)event_ctx.dropped);
+    }
 
     if(app_running) {
         // still running - we're the ones stopping it (Ctrl+C)

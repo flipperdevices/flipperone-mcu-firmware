@@ -8,7 +8,6 @@
 #define RECORD_TOUCHPAD_TEST "touchpad_test"
 
 typedef enum {
-    TouchpadTestStatusStarted, // test view has been created and is ready
     TouchpadTestStatusEnded, // test app is shutting down
     TouchpadTestStatusCleared, // the "Clear" button/key was pressed
     TouchpadTestStatusDiamondFilled, // a new diamond was filled; see diamond_x/y

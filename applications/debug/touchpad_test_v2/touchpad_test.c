@@ -64,10 +64,10 @@
 // generous bound on |m|, |k| covering the whole capsule bounding box
 #define TOUCHPAD_LATTICE_RANGE (6)
 
-// Center hit-zone per diamond: a square with area ~20% of the diamond's area
-// (diamond area = pitch^2 / 2 for this isotropic 45-degree grid).
-// side = sqrt(0.20 * pitch^2 / 2) = pitch * sqrt(0.10) ~= pitch * 0.3162;
-// for TOUCHPAD_GRID_PITCH == 30 that works out to ~9.5, rounded to 9.
+// Center hit-zone per diamond: a square, side TOUCHPAD_HIT_ZONE_SIZE
+// (diamond area = pitch^2 / 2 for this isotropic 45-degree grid; for
+// TOUCHPAD_GRID_PITCH == 30 and size == 12, that's 144 / 450 =~ 32% of the
+// diamond's area).
 #define TOUCHPAD_HIT_ZONE_SIZE (12)
 #define TOUCHPAD_MAX_HIT_DIAMONDS (64)
 
@@ -101,6 +101,7 @@ typedef struct {
     size_t total_diamond_count; // computed once at alloc; for the "all filled" event
 
     bool reset_pressed; // for the on-screen reset button's pressed/highlight state
+    bool touch_on_reset_button; // whether the in-progress touch stroke started on the reset button
 
     // set whenever something changes that needs a redraw; the periodic timer
     // clears it after rendering. Without this, the redraw timer would rewrite
@@ -346,7 +347,26 @@ static void touchpad_test_v2_app_create_reset_button(Clay_ElementId id, Clay_Str
     }
 }
 
-void touchpad_test_v2_app_update_frame(TouchpadTestModel* model);
+/**
+ * @brief Whether (canvas_x, canvas_y) - in the same canvas-pixel coordinate
+ * frame as model->last_x/y (i.e. relative to "MainContent", not the screen)
+ * - falls within the on-screen "Clear" button, so a tap on it can trigger
+ * the same reset as InputKey5. Reads the previous frame's layout via
+ * Clay_GetElementData(), so it can be called from input handling (which
+ * runs after that frame's layout, not during it).
+ */
+static bool touchpad_test_v2_point_in_reset_button(int32_t canvas_x, int32_t canvas_y) {
+    Clay_ElementData main_content = Clay_GetElementData(CLAY_APP_ID("MainContent"));
+    Clay_ElementData button = Clay_GetElementData(CLAY_APP_ID("ResetButton"));
+    if(!main_content.found || !button.found) return false;
+
+    float x = (float)canvas_x + main_content.boundingBox.x;
+    float y = (float)canvas_y + main_content.boundingBox.y;
+    return x >= button.boundingBox.x && x <= button.boundingBox.x + button.boundingBox.width &&
+           y >= button.boundingBox.y && y <= button.boundingBox.y + button.boundingBox.height;
+}
+
+static void touchpad_test_v2_app_update_frame(TouchpadTestModel* model);
 
 static bool touchpad_test_v2_app_layout(void* _model) {
     furi_assert(_model);
@@ -444,7 +464,7 @@ static bool touchpad_test_v2_app_layout(void* _model) {
     return false;
 }
 
-void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
+static void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
     canvas_clear(model->canvas, 0xFF);
 
     ColorA color_gray = {.color = 160, .alpha = 255};
@@ -688,51 +708,72 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
     const int32_t touch_resolution_padding_y = (touch_real_resolution_y - touch_resolution_y) / 2;
 
     switch(event->type) {
-    case InputTouchTypeStart:
+    case InputTouchTypeStart: {
+        bool started_reset = false;
         with_view_model(
             instance->view,
             TouchpadTestModel * model,
             {
+                int32_t x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
+                int32_t y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
+
+                model->touch_on_reset_button = touchpad_test_v2_point_in_reset_button(x, y);
+                if(model->touch_on_reset_button) {
+                    // tapping the on-screen "Clear" button acts the same as pressing the
+                    // InputKey5 physical key: reset the track, don't also start a draw stroke
+                    TouchpadTestLineArray_reset(model->lines);
+                    model->hit_diamond_count = 0;
+                    model->reset_pressed = true;
+                    model->pressed = false;
+                    started_reset = true;
+                } else {
 #if TOUCHPAD_RESET_ON_TOUCH
-                // start a fresh track on every new touch-down, same as the "Clear" key
-                TouchpadTestLineArray_reset(model->lines);
-                model->hit_diamond_count = 0;
+                    // start a fresh track on every new touch-down, same as the "Clear" key
+                    TouchpadTestLineArray_reset(model->lines);
+                    model->hit_diamond_count = 0;
 #endif
-                model->pressed = true;
-                model->last_x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
-                model->last_y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
+                    model->pressed = true;
+                    model->last_x = x;
+                    model->last_y = y;
 #if TOUCHPAD_CLAMP_TO_OVAL
-                touchpad_test_v2_clamp_to_oval(&model->last_x, &model->last_y);
+                    touchpad_test_v2_clamp_to_oval(&model->last_x, &model->last_y);
 #endif
+                }
                 model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
                 model->dirty = true;
             },
             false);
 #if TOUCHPAD_RESET_ON_TOUCH
-        {
+        // every touch-down already resets (see above); the reset button just
+        // did the same thing again, but only publish Cleared once either way
+        started_reset = true;
+#endif
+        if(started_reset) {
             TouchpadTestEvent evt = {.tp_status = TouchpadTestStatusCleared};
             furi_pubsub_publish(instance->event_pubsub, &evt);
         }
-#endif
         consumed = true;
         break;
+    }
     case InputTouchTypeMove:
         with_view_model(
             instance->view,
             TouchpadTestModel * model,
             {
-                int32_t new_x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
-                int32_t new_y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
+                if(!model->touch_on_reset_button) {
+                    int32_t new_x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
+                    int32_t new_y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
 #if TOUCHPAD_CLAMP_TO_OVAL
-                touchpad_test_v2_clamp_to_oval(&new_x, &new_y);
+                    touchpad_test_v2_clamp_to_oval(&new_x, &new_y);
 #endif
-                if(model->pressed) {
-                    touchpad_test_v2_app_model_push_line(model, model->last_x, model->last_y, new_x, new_y);
+                    if(model->pressed) {
+                        touchpad_test_v2_app_model_push_line(model, model->last_x, model->last_y, new_x, new_y);
+                    }
+                    model->last_x = new_x;
+                    model->last_y = new_y;
+                    model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
+                    model->dirty = true;
                 }
-                model->last_x = new_x;
-                model->last_y = new_y;
-                model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
-                model->dirty = true;
             },
             false);
         consumed = true;
@@ -743,6 +784,10 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
             TouchpadTestModel * model,
             {
                 model->pressed = false;
+                if(model->touch_on_reset_button) {
+                    model->reset_pressed = false;
+                    model->touch_on_reset_button = false;
+                }
                 model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
                 model->dirty = true;
             },
@@ -784,6 +829,12 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
             model->pressed = false;
             model->hit_diamond_count = 0;
             model->total_diamond_count = touchpad_test_v2_count_total_diamonds();
+            // touchpad_test_v2_app_model_push_line() silently stops recording new
+            // hits past TOUCHPAD_MAX_HIT_DIAMONDS (hit_diamond_cx/cy[] is fixed-size),
+            // so if a geometry change ever raises total_diamond_count past that same
+            // cap, hit_diamond_count could never reach it and "all filled" would
+            // silently stop firing. Catch that here instead, at the source.
+            furi_check(model->total_diamond_count <= TOUCHPAD_MAX_HIT_DIAMONDS);
             model->reset_pressed = false;
             model->event_pubsub = instance->event_pubsub;
             model->canvas = canvas_alloc(TOUCHPAD_CANVAS_WIDTH, TOUCHPAD_CANVAS_HEIGHT);
@@ -811,9 +862,6 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
         furi_crash("RECORD_TOUCHPAD_TEST still open from a previous run (a subscriber never closed it in time)");
     }
     furi_record_create(RECORD_TOUCHPAD_TEST, instance->event_pubsub);
-
-    TouchpadTestEvent evt = {.tp_status = TouchpadTestStatusStarted};
-    furi_pubsub_publish(instance->event_pubsub, &evt);
 
     return instance;
 }
