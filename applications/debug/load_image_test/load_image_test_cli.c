@@ -40,6 +40,17 @@ typedef enum {
 // elapsed-time bookkeeping around pipe_bytes_available() can.
 #define LOAD_IMAGE_TEST_STALL_TIMEOUT_MS 5000
 
+// Poll interval used while waiting for the next batch of the frame. This single
+// value is what the transfer rate actually measures: pipe_bytes_available() is
+// empty most of the time between two batches (the UART RX path hands the pipe
+// ~32 bytes per interrupt, the USB VCP path ~64 bytes per USB packet), so this
+// is effectively the per-batch latency. At 10ms a full frame measured 12782ms
+// for 74304 hex chars (~5.8 KB/s) - on *both* transports, i.e. 25x slower than
+// the 1.5 Mbaud wire - and long enough that a host which gives up reading after
+// a few seconds calls it a failure while the frame is still arriving. 1ms costs
+// a kilohertz of idle-only wakeups and gets the loop out of the transport's way.
+#define LOAD_IMAGE_TEST_POLL_INTERVAL_MS 1
+
 // How long an already-CTRL+C'd read keeps draining a sender that is still
 // mid-frame. An empty buffer on its own does not mean "nothing left to
 // drain" (the reader is far faster than the wire, so it drains the buffer
@@ -97,14 +108,14 @@ static LoadImageTestReadFrameStatus
                     if(out_hex_chars) *out_hex_chars = hex_chars;
                     return LoadImageTestReadFrameAborted;
                 }
-                furi_delay_ms(10);
+                furi_delay_ms(LOAD_IMAGE_TEST_POLL_INTERVAL_MS);
                 continue;
             }
             if(furi_get_tick() - last_progress >= furi_ms_to_ticks(LOAD_IMAGE_TEST_STALL_TIMEOUT_MS)) {
                 if(out_hex_chars) *out_hex_chars = hex_chars;
                 return LoadImageTestReadFrameTimeout;
             }
-            furi_delay_ms(10);
+            furi_delay_ms(LOAD_IMAGE_TEST_POLL_INTERVAL_MS);
             continue;
         }
         last_progress = furi_get_tick();
