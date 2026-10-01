@@ -35,7 +35,8 @@ static void cli_command_led_help(PipeSide* pipe, FuriString* args, void* context
         "\tyellow \t\t3\r\n"
         "\torange \t\t4\r\n"
         "\tlight_blue \t5\r\n"
-        "\tblack \t\t6\r\n");
+        "\tblack \t\t6\r\n"
+        "\twhite \t\t7\r\n");
 }
 
 FuriBspLedType cli_led_types[] = {
@@ -66,6 +67,7 @@ LedColor cli_led_colors[] = {
     LED_COLOR_ORANGE,
     LED_COLOR_LIGHT_BLUE,
     LED_COLOR_BLACK,
+    LED_COLOR_WHITE,
 };
 
 void led_cli(PipeSide* pipe, FuriString* args, void* context) {
