@@ -345,6 +345,7 @@ explicit-контрактом.
 
 **События**:
 - `PRL: MessageReceived(Accept)` → отменить timer → `PE_SNK_Transition_Sink`.
+- `PRL: MessageReceived(Source_Capabilities)` → `PE_SNK_Evaluate_Capability` (§8.3.3.3.4): Source повторил рекламу, значит нашего Request он не слышал — чаще всего потому, что они столкнулись. Строится новый Request от новых PDO, столкнувшийся выбрасывается (`ucsi_ppm_prl_discard_retry`, см. [`prl-sm.md`](prl-sm.md) §13.1).
 - `PRL: MessageReceived(Reject)` → отменить timer → если был explicit contract → `PE_SNK_Ready` (keeping old); если нет — `PE_SNK_Wait_For_Capabilities` (но обычно spec считает это hard reset).
 - `PRL: MessageReceived(Wait)` → отменить timer → `PE_SNK_Ready` (keeping old); запустить `SinkRequestTimer` (tSinkRequest, ≥100 мс) для retry.
 - `SenderResponseTimer expired` → `PE_SNK_Hard_Reset` (или Send_Soft_Reset как промежуточный).
@@ -941,21 +942,26 @@ PE_*_Unresponsive
 
 ### 13.1 PE → PRL
 
-См. [`prl-sm.md`](prl-sm.md) §11.1. Основное:
-- `tx_request(msg)` — отправить.
-- `cancel_tx`.
-- `send_hard_reset`.
-- `prl_reset(reason)`.
-- `set_sink_tx_ok / set_sink_tx_pretend_ng` (для управления HOST_CUR во время AMS).
+См. [`prl-sm.md`](prl-sm.md) §11.1. Как реализовано:
+- `ucsi_ppm_prl_send_message(msg)` — поставить в очередь; уходит из
+  `ucsi_ppm_prl_flush_tx` после выгребания RX FIFO.
+- `ucsi_ppm_prl_discard_retry()` — выбросить кадр, припаркованный после
+  коллизии, потому что он устарел ([`prl-sm.md`](prl-sm.md) §13.1).
+- `ucsi_ppm_prl_reset()` — перед нашим Soft_Reset (MessageID с нуля).
+- Hard Reset — напрямую в PHY (`ucsi_ppm_phy_send_hard_reset`).
+- ~~`set_sink_tx_ok / pretend_ng`~~ — HOST_CUR ведёт TC по состоянию PE
+  (`ucsi_ppm_tc_update_source_rp`, [`prl-sm.md`](prl-sm.md) §7.2), отдельных
+  команд от PE нет.
 
 ### 13.2 PRL → PE
 
-См. [`prl-sm.md`](prl-sm.md) §11.2:
-- `MessageReceived(msg)`.
-- `MessageSent(header)`.
-- `MessageFailed(reason)`.
-- `HardResetReceived`.
-- `HardResetSent`.
+См. [`prl-sm.md`](prl-sm.md) §11.2. Как реализовано:
+- `ucsi_ppm_pe_handle_message(msg)` — каждое недублированное SOP-сообщение.
+- `ucsi_ppm_pe_handle_phy_event` — `TxRetryFail` (в т.ч. синтезированный PRL
+  после `PRL_COLLISION_RETRY_MAX` коллизий), `HardResetRx`, `HardResetSent`.
+- `ucsi_ppm_pe_on_tx_retried()` — кадр после коллизии ушёл повторно,
+  перезапустить таймер ответа.
+- `MessageSent` как отдельного уведомления нет: `I_TXSENT` PE не нужен.
 
 ---
 

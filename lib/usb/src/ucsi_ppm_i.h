@@ -231,12 +231,29 @@ struct UcsiPpm {
     //                             inside the RX drain and the PHY is half
     //                             duplex, so the answer waits here until the
     //                             receive FIFO is empty.
+    //   prl_tx_inflight_valid / prl_tx_inflight_msg
+    //                           — the frame last handed to the chip, MessageID
+    //                             already stamped, until the chip reports its
+    //                             fate (I_TXSENT, I_RETRYFAIL or I_COLLISION).
+    //                             A collision turns it into the retry below.
+    //   prl_tx_retry_pending / prl_tx_retry_msg / prl_tx_collisions
+    //                           — a frame the chip refused to put on the wire
+    //                             because the partner was transmitting. Goes
+    //                             out again, same MessageID, once the receive
+    //                             side has been drained and nothing else is in
+    //                             flight; see prl-sm.md §13.1. The counter is
+    //                             consecutive collisions of this one frame.
     uint8_t prl_next_tx_msg_id;
     uint8_t prl_last_rx_msg_id;
     bool prl_last_rx_valid;
     uint8_t prl_our_spec_rev;
     bool prl_tx_pending;
     UcsiPpmPhyPdMsg prl_tx_msg;
+    bool prl_tx_inflight_valid;
+    UcsiPpmPhyPdMsg prl_tx_inflight_msg;
+    bool prl_tx_retry_pending;
+    UcsiPpmPhyPdMsg prl_tx_retry_msg;
+    uint8_t prl_tx_collisions;
     uint32_t prl_messages_delivered;
 
     // L3 PE (Policy Engine) — ucsi_ppm_pe.c.

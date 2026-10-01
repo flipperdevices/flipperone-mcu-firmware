@@ -624,6 +624,10 @@ static void pe_send_request(UcsiPpm* ppm) {
     };
     msg.objects[0] = rdo;
 
+    // A Request that collided with the advertisement we are now answering is
+    // obsolete: it was built from the previous one, and the Source is waiting
+    // for exactly one Request.
+    ucsi_ppm_prl_discard_retry(ppm);
     const UcsiPpmStatus s = ucsi_ppm_prl_send_message(ppm, &msg);
     if(s != UcsiPpmStatusOk) {
         pe_to_error(ppm);
@@ -793,12 +797,17 @@ static bool pe_reply_vdm_nak(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
 static void pe_handle_data_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
     const uint8_t type = (uint8_t)(msg->header & PD_HDR_MSG_TYPE_MASK);
 
-    // Source_Capabilities arriving at sink-side WaitForCapabilities, or at
-    // SnkReady — a Source may re-advertise at any time to renegotiate, and PD
-    // R3.0 §8.3.3.3 routes both through PE_SNK_Evaluate_Capability. Refusing
-    // the second case is what made a partner Soft_Reset us mid-contract.
+    // Source_Capabilities arriving at sink-side WaitForCapabilities, at
+    // SnkReady — a Source may re-advertise at any time to renegotiate — or at
+    // WaitForAccept, where PE_SNK_Select_Capability sends it straight back to
+    // Evaluate (PD R3.0 §8.3.3.3.4). All three go through
+    // PE_SNK_Evaluate_Capability. Refusing the second case is what made a
+    // partner Soft_Reset us mid-contract; the third is the everyday collision:
+    // our Request went out just as the Source repeated its advertisement, so
+    // it never heard the Request and the fresh one below is the answer.
     if((ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities ||
-        ppm->pe_state == (int)UcsiPpmPeSnkReady) &&
+        ppm->pe_state == (int)UcsiPpmPeSnkReady ||
+        ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept) &&
        type == PD_MSG_TYPE_SOURCE_CAPS_DATA) {
         ppm->pe_received_pdo_count = (uint8_t)(msg->object_count <= UCSI_PPM_MAX_PDOS ? msg->object_count : UCSI_PPM_MAX_PDOS);
         for(uint8_t i = 0; i < ppm->pe_received_pdo_count; ++i) {
@@ -1210,6 +1219,14 @@ static void pe_run_deferred_ams(UcsiPpm* ppm) {
         if(waited >= UCSI_PPM_PE_SINK_TX_WAIT_MS) {
             UCSI_LOG_W(ppm, "sink tx never became ok, dropping ams %u", (unsigned)kind);
             ppm->pe_deferred_ams = (uint8_t)PeDeferredAmsNone;
+            // The UCSI command that asked for this (SET_PDR, SET_UOR,
+            // SET_POWER_LEVEL) completed when the request was parked, so the
+            // OPM believes it went through. Raise the connector Error change
+            // and leave the reason for GET_ERROR_STATUS: the Source never
+            // released the bus, which is a CC communication failure, not a
+            // refusal by the partner.
+            ppm->error_info |= UCSI_PPM_ERR_CC_COMMUNICATION;
+            ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_ERROR);
         }
         return;
     }
@@ -1377,6 +1394,28 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         }
         break;
     default:
+        break;
+    }
+}
+
+void ucsi_ppm_pe_on_tx_retried(UcsiPpm* ppm) {
+    switch(ppm->pe_state) {
+    // SenderResponseTimer: runs from our message to the partner's reply.
+    case(int)UcsiPpmPeSnkWaitForAccept:
+    case(int)UcsiPpmPeWaitForSoftResetAccept:
+    case(int)UcsiPpmPeWaitForDrSwapResponse:
+    case(int)UcsiPpmPePrSwapSnkSendSwap:
+    // PSTransitionTimer, source side: runs from the Accept we sent.
+    case(int)UcsiPpmPeSrcTransitionSupply:
+    // tTypeCSendSourceCap: spacing between advertisements, so from the one
+    // that actually went out.
+    case(int)UcsiPpmPeSrcSendCapabilities:
+        pe_arm_timer(ppm);
+        break;
+    default:
+        // The other timed states wait on something the partner does on its
+        // own clock (PS_RDY after its Accept, VBUS after PR_Swap), not on an
+        // answer to the retried frame.
         break;
     }
 }

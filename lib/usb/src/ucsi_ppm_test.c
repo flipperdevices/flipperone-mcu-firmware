@@ -6477,6 +6477,266 @@ static bool test_notify_mask_set_via_command_takes_effect(void) {
 
 // --- entry point -----------------------------------------------------------
 
+// --- Collisions (PD R3.0 §5.7, prl-sm.md §13.1) -----------------------------
+//
+// The FUSB302 does not wait for an idle bus. When the partner is already
+// driving CC it aborts our transmit, receives the partner's frame and raises
+// I_COLLISION next to I_GCRCSENT — one pump sees both. The frame is ours to
+// send again.
+
+static void simulate_collision_with_message(
+    UcsiPpm* ppm,
+    uint8_t msg_type,
+    const uint32_t* objects,
+    uint8_t obj_count) {
+    const uint16_t header = make_partner_header_rev(
+        msg_type, obj_count, g_test_partner_msg_id, UCSI_PPM_SPEC_REV_3_0);
+    g_test_partner_msg_id = (uint8_t)((g_test_partner_msg_id + 1u) & 0x07u);
+    uint8_t stream[64];
+    const size_t n = build_rx_stream(stream, FUSB302_RX_TOKEN_SOP, header, objects, obj_count);
+    mock_fifo_load(stream, n);
+
+    const Fusb302InterruptRegBits intr = {.i_collision = 1};
+    g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
+    g_mock_regs[Fusb302RegInterruptA] = 0;
+    const Fusb302InterruptBRegBits intb = {.i_gcrc_sent = 1};
+    g_mock_regs[Fusb302RegInterruptB] = *(const uint8_t*)&intb;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+// The partner acknowledged whatever we last transmitted.
+static void simulate_tx_success(UcsiPpm* ppm) {
+    g_mock_regs[Fusb302RegInterrupt] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptARegBits inta = {.i_tx_sent = 1};
+    g_mock_regs[Fusb302RegInterruptA] = *(const uint8_t*)&inta;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+static unsigned count_fifo_bursts_by_msg_type(uint8_t want_type) {
+    unsigned n = 0;
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len > 7u && t->data[0] == Fusb302RegFifos) {
+            const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+            if((hdr & 0x1Fu) == (uint16_t)want_type) n++;
+        }
+    }
+    return n;
+}
+
+// MessageID (header bits 11:9) of the FIFO burst at transaction index idx.
+static uint8_t fifo_burst_msg_id(int idx) {
+    const MockI2cTxn* t = &g_mock_txns[idx];
+    const uint16_t hdr = (uint16_t)(t->data[6] | ((uint16_t)t->data[7] << 8));
+    return (uint8_t)((hdr >> 9) & 0x07u);
+}
+
+// True if some register store to `reg` had every bit of `mask` set. For
+// self-clearing command bits, where the full value depends on what the
+// read-modify-write found in the register.
+static bool mock_any_write_with_bits(uint8_t reg, uint8_t mask) {
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len == 2u && t->data[0] == reg && (t->data[1] & mask) == mask) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool test_prl_collision_retries_frame_with_same_message_id(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    int idx = find_fifo_burst_by_msg_type(0x02u /* Request */);
+    TEST_ASSERT(idx >= 0);
+    const uint8_t first_id = fifo_burst_msg_id(idx);
+    const uint8_t counter_after_first = ppm->prl_next_tx_msg_id;
+    mock_txns_reset();
+    g_mock_time_ms += 5;
+
+    // Ping: PE neither answers it nor moves on it, so the Request is the only
+    // thing there is to send.
+    simulate_collision_with_message(ppm, 0x05u /* Ping */, NULL, 0);
+
+    // Whatever the chip kept of the aborted frame was flushed first.
+    TEST_ASSERT(mock_any_write_with_bits(Fusb302RegControl0, 1u << 6 /* TX_FLUSH */));
+    // The same frame again — same MessageID, counter untouched — not a new one.
+    idx = find_fifo_burst_by_msg_type(0x02u);
+    TEST_ASSERT(idx >= 0);
+    TEST_ASSERT(fifo_burst_msg_id(idx) == first_id);
+    TEST_ASSERT(ppm->prl_next_tx_msg_id == counter_after_first);
+    TEST_ASSERT(!ppm->prl_tx_retry_pending);
+    TEST_ASSERT(ppm->prl_tx_inflight_valid);
+    // PE did not notice, except that its response window now starts from the
+    // transmission that actually happened.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    TEST_ASSERT(ppm->pe_timer_start_ms == g_mock_time_ms);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_collision_with_source_caps_sends_fresh_request(void) {
+    // The everyday collision: our Request leaves just as the Source repeats
+    // its advertisement (tTypeCSendSourceCap). PD R3.0 §8.3.3.3.4 sends
+    // PE_SNK_Select_Capability back to Evaluate — a Request built from the new
+    // advertisement, and the one that collided is not retried on top of it.
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    mock_txns_reset();
+
+    const uint32_t pdo2 = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_collision_with_message(ppm, 0x01u /* Source_Capabilities */, &pdo2, 1);
+
+    TEST_ASSERT(count_fifo_bursts_by_msg_type(0x02u /* Request */) == 1u);
+    TEST_ASSERT(((sent_request_rdo() >> 10) & 0x3FFu) == 300u); // 3000 mA, from pdo2
+    TEST_ASSERT(!ppm->prl_tx_retry_pending);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_collision_answer_goes_first_then_retry(void) {
+    // Our DR_Swap collides with the Source's Get_Sink_Cap. §7.2: inside the
+    // Source's AMS the Sink only answers, so Sink_Capabilities goes out now
+    // and the DR_Swap follows once that answer has been acknowledged — not
+    // behind it in the same FIFO.
+    UcsiPpm* ppm = mock_snk_ready();
+    mock_txns_reset();
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, !ppm->pe_data_role_is_dfp) == UcsiPpmStatusOk);
+    TEST_ASSERT(count_fifo_bursts_by_msg_type(0x09u /* DR_Swap */) == 1u);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+    mock_txns_reset();
+
+    simulate_collision_with_message(ppm, 0x08u /* Get_Sink_Cap */, NULL, 0);
+
+    TEST_ASSERT(count_fifo_bursts_by_msg_type(0x04u /* Sink_Capabilities */) == 1u);
+    TEST_ASSERT(count_fifo_bursts_by_msg_type(0x09u) == 0u);
+    TEST_ASSERT(ppm->prl_tx_retry_pending);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+
+    simulate_tx_success(ppm);
+
+    TEST_ASSERT(count_fifo_bursts_by_msg_type(0x09u) == 1u);
+    TEST_ASSERT(!ppm->prl_tx_retry_pending);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_collision_limit_escalates_like_retry_fail(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+
+    // Three in a row are retried...
+    for(unsigned i = 0; i < 3u; ++i) {
+        mock_txns_reset();
+        simulate_collision_with_message(ppm, 0x05u /* Ping */, NULL, 0);
+        TEST_ASSERT(count_fifo_bursts_by_msg_type(0x02u /* Request */) == 1u);
+        TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    }
+
+    // ...the fourth is a transmission failure, and from WaitForAccept that
+    // means Soft_Reset — the same road the chip's own retry exhaustion takes.
+    mock_txns_reset();
+    simulate_collision_with_message(ppm, 0x05u /* Ping */, NULL, 0);
+    TEST_ASSERT(count_fifo_bursts_by_msg_type(0x02u) == 0u);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x0Du /* Soft_Reset */) >= 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForSoftResetAccept);
+    TEST_ASSERT(!ppm->prl_tx_retry_pending);
+    TEST_ASSERT(ppm->prl_tx_collisions == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_prl_collision_retry_dropped_by_soft_reset_rx(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    mock_txns_reset();
+
+    // The Request collided with the Source's Soft_Reset. The Accept goes out;
+    // the Request does not — it carries a MessageID from a numbering that the
+    // Soft_Reset just ended.
+    simulate_collision_with_message(ppm, 0x0Du /* Soft_Reset */, NULL, 0);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x03u /* Accept */) >= 0);
+    TEST_ASSERT(count_fifo_bursts_by_msg_type(0x02u /* Request */) == 0u);
+    TEST_ASSERT(!ppm->prl_tx_retry_pending);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_ng_dropped_ams_reports_error_to_opm(void) {
+    // The UCSI command that asked for the AMS completed when the request was
+    // parked. Dropping it later must not be silent: the OPM gets a connector
+    // Error change and GET_ERROR_STATUS names the cause.
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b10u /* SinkTxNG */);
+    TEST_ASSERT(ucsi_ppm_pe_request_renegotiate(ppm, 1500u) == UcsiPpmStatusOk);
+    const unsigned alerts_before = g_mock_alert_calls;
+
+    g_mock_time_ms += 600; // past UCSI_PPM_PE_SINK_TX_WAIT_MS
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->pe_deferred_ams == 0u);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT((ppm->connector_status_change & UCSI_PPM_CSC_ERROR) != 0u);
+    TEST_ASSERT((ppm->error_info & UCSI_PPM_ERR_CC_COMMUNICATION) != 0u);
+    TEST_ASSERT(g_mock_alert_calls > alerts_before);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_rp_never_type_c_default_inside_contract(void) {
+    // §5.6 item 3: inside an Explicit Contract an R3.0 Source's Rp is SinkTxNG
+    // or SinkTxOk and nothing else. A port configured to advertise USB default
+    // current must not leak that value in once a contract exists.
+    UcsiPpm* ppm = mock_attach(true);
+    ppm->config.source_rp_current = UcsiPpmRpCurrentUsbDefault;
+    ppm->tc_source_rp_applied_valid = false;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(source_rp_field() == 0b01u); // honest, no contract yet
+
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message(ppm, 0x02u /* Request */, &rdo, 1);
+    ucsi_ppm_notify_power_supply_ready(ppm);
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+    TEST_ASSERT(source_rp_field() == 0b11u); // SinkTxOk
+
+    // Our own AMS: NG for its duration, Ok again when it is over — and the
+    // configured default never shows at any point in between.
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, false) == UcsiPpmStatusOk);
+    TEST_ASSERT(source_rp_field() == 0b10u); // SinkTxNG
+    g_mock_time_ms += 25;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+    TEST_ASSERT(source_rp_field() == 0b10u);
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+    TEST_ASSERT(source_rp_field() == 0b11u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 typedef struct {
     const char* name;
     bool (*fn)(void);
@@ -6801,6 +7061,15 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_tc_src_ams_waits_out_sink_tx_timer),
     TEST_ENTRY(test_tc_src_rp_released_after_own_ams),
     TEST_ENTRY(test_tc_src_rp_reapplied_after_chip_reinit),
+    TEST_ENTRY(test_tc_src_rp_never_type_c_default_inside_contract),
+
+    // Collisions.
+    TEST_ENTRY(test_prl_collision_retries_frame_with_same_message_id),
+    TEST_ENTRY(test_prl_collision_with_source_caps_sends_fresh_request),
+    TEST_ENTRY(test_prl_collision_answer_goes_first_then_retry),
+    TEST_ENTRY(test_prl_collision_limit_escalates_like_retry_fail),
+    TEST_ENTRY(test_prl_collision_retry_dropped_by_soft_reset_rx),
+    TEST_ENTRY(test_pe_sink_tx_ng_dropped_ams_reports_error_to_opm),
     TEST_ENTRY(test_pe_dr_swap_initiated_same_role_is_no_op),
     TEST_ENTRY(test_cs_partner_type_reflects_data_role_after_dr_swap),
 

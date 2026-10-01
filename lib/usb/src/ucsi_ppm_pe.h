@@ -1,9 +1,9 @@
 #pragma once
 
 // L3 PE (Policy Engine) — PD R3.0 §8 state machines for the connector.
-// v1 implements the Sink contract path:
-//   Idle → WaitForCapabilities → WaitForAccept → WaitForPsRdy → Ready
-// Source path, PR_Swap, DR_Swap and Hard Reset orchestration are TODO.
+// Sink and Source contract paths, DR_Swap both ways, PR_Swap sink→source,
+// Soft/Hard Reset orchestration, SinkTx collision avoidance. PR_Swap
+// source→sink is not implemented (responder Rejects it).
 
 #include "ucsi_ppm.h"
 #include "ucsi_ppm_i.h"
@@ -90,6 +90,12 @@ UcsiPpmStatus ucsi_ppm_pe_request_renegotiate(UcsiPpm* ppm, uint16_t operating_c
 // PRL hands every deduplicated SOP message here. PE inspects msg_type and
 // advances the state machine. Non-SOP messages are dropped.
 void ucsi_ppm_pe_handle_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg);
+
+// PRL just put a frame on the wire that had collided earlier. In the states
+// whose timer measures the partner's answer to that frame (SenderResponse,
+// PSTransition) the timer restarts: it was armed when the frame was first
+// handed over, and the partner only now has something to answer.
+void ucsi_ppm_pe_on_tx_retried(UcsiPpm* ppm);
 
 // Periodic timer-tick — called from ucsi_ppm_tick after TC tick. Drives
 // SenderResponseTimer / PSTransitionTimer / SinkWaitCapTimer expiry.

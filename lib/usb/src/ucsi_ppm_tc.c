@@ -656,24 +656,26 @@ bool ucsi_ppm_tc_sink_tx_allowed(const UcsiPpm* ppm) {
     return level != UCSI_PPM_TC_BC_LVL_SINK_TX_NG;
 }
 
-// The Source's half of the same mechanism (Figure 9.8). PE_SRC_Ready *is* the
-// spec's "end of AMS" notification, so it maps straight onto Rp = SinkTxOk; a
-// source-initiated AMS maps onto Rp = SinkTxNG; and everything before the first
+// The Source's half of the same mechanism (Figure 9.8). Inside an Explicit
+// Contract Rp is a signal and nothing else: SinkTxNG while an AMS of ours is
+// pending or in flight, SinkTxOk the rest of the time — including while we
+// answer the Sink inside *its* AMS, where the spec has the Source leave Rp
+// alone (and §5.6 item 3 allows no third value). Everything before the first
 // contract keeps the honest Type-C Current, because until then that is still
 // what Rp means (§5.6 item 1, mirrored from the Sink side).
 //
-// Note we also fall back to the honest current while answering the partner
-// inside *its* AMS — leaving PE_SRC_Ready for, say, SrcTransitionSupply reads as
-// "not idle" here. The Sink has no business opening a new AMS mid-exchange
-// anyway, so signalling NG through it costs nothing.
+// "Contract" is read off the negotiated voltage, which the source path latches
+// at Accept rather than at PS_RDY. The few milliseconds of SinkTxOk this shows
+// before the first PS_RDY are harmless: the partner is a PD Sink mid-AMS, not a
+// Type-C-only device that would take 3.0 A literally.
 static UcsiPpmRpCurrent tc_desired_source_rp(const UcsiPpm* ppm) {
     if(ppm->tc_state != (int)UcsiPpmTcStateAttachedSrc) return ppm->config.source_rp_current;
     // An R2.0 partner reads Rp as current, full stop.
     if(ppm->prl_our_spec_rev < UCSI_PPM_SPEC_REV_3_0) return ppm->config.source_rp_current;
-    // Ordered before the SrcReady test on purpose: a deferred AMS of ours is
-    // still parked in PE_SRC_Ready, and it is exactly then that Rp must read NG.
+    if(ppm->pe_negotiated_voltage_mv == 0u) return ppm->config.source_rp_current;
+    // A deferred AMS of ours is still parked in PE_SRC_Ready, and it is exactly
+    // then that Rp must read NG.
     if(ucsi_ppm_pe_src_ams_in_progress(ppm)) return UcsiPpmRpCurrent1A5;
-    if(ppm->pe_state != (int)UcsiPpmPeSrcReady) return ppm->config.source_rp_current;
     return UcsiPpmRpCurrent3A;
 }
 

@@ -329,7 +329,10 @@ PD 3.0 ввёл механизм, чтобы Sink не пытался начат
   замолкает *после* того как заметил NG. Вместо этого стоит потолок
   `UCSI_PPM_PE_SINK_TX_WAIT_MS` (500 мс, не из спеки): Source, припаркованный на
   1.5 А, иначе держал бы запрос всё соединение — по истечении запрос
-  выбрасывается с warning.
+  выбрасывается с warning. UCSI-команда, которая его породила (SET_PDR /
+  SET_UOR / SET_POWER_LEVEL), к этому моменту уже завершилась успехом, поэтому
+  OPM получает Connector Status Change с битом Error (15), а GET_ERROR_STATUS
+  показывает `CC communication error`: шину нам так и не отдали.
 - Исключения (обе явные в спеке): `Soft_Reset` уходит «irrespective of the value
   of Rp» (§7.1.1, Figure 9.9 обводит его вокруг проверки Rp), Hard Reset
   Signaling можно всегда (§7.1.3). Ответы внутри AMS партнёра не гейтятся вообще
@@ -357,12 +360,27 @@ only initiate an AMS when it has determined that Rp is set to SinkTxOK». Для
 |:-------------------------------------------------|:--------------------------|
 | не `Attached.SRC`                                | `config.source_rp_current`|
 | партнёр R2.0                                     | `config.source_rp_current`|
+| нет Explicit Contract (`pe_negotiated_voltage_mv == 0`) | `config.source_rp_current`|
 | наша AMS в полёте или отложена                   | 1.5 A (SinkTxNG)          |
-| не `PE_SRC_Ready` (отвечаем внутри AMS партнёра) | `config.source_rp_current`|
-| `PE_SRC_Ready` (idle с Explicit Contract)        | **3.0 A (SinkTxOk)**      |
+| всё остальное внутри контракта, включая ответы внутри AMS партнёра | **3.0 A (SinkTxOk)** |
 
-`PE_SRC_Ready` **и есть** «end of AMS notification» из Figure 9.8, поэтому
-отдельного уведомления от PE не понадобилось — TC читает `pe_state`.
+Внутри Explicit Contract Rp — только сигнал, и §5.6 item 3 не допускает
+третьего значения: ни «честный ток», ни USB default там появиться не могут,
+какой бы ни была конфигурация. Во время AMS партнёра Source по Figure 9.8 Rp не
+трогает — остаётся SinkTxOk. Отдельного «end of AMS notification» от PE не
+понадобилось: TC читает `ucsi_ppm_pe_src_ams_in_progress()`.
+
+Оговорка: source-путь фиксирует `pe_negotiated_voltage_mv` на Accept, а не на
+PS_RDY, так что первые миллисекунды до первого PS_RDY Rp уже показывает
+SinkTxOk. Безвредно — партнёр в этот момент PD-синк посреди своей AMS, а не
+Type-C-only устройство, которое прочтёт 3.0 А буквально.
+
+**Правило для новых source-инициаторов.** Гейт держится на соглашении: каждая
+AMS, которую мы начинаем как Source (сегодня — только DR_Swap; завтра —
+переотправка Source_Caps по source-side SET_POWER_LEVEL, Get_Sink_Cap, Alert,
+PR_Swap src→snk), обязана (1) пройти через `pe_ams_start_allowed` /
+`pe_defer_ams` и (2) быть перечислена в `ucsi_ppm_pe_src_ams_in_progress()`,
+иначе Rp не опустится в NG и tSinkTx не будет выдержан.
 
 **До контракта Rp не поднимаем** — там он всё ещё Type-C Current (§5.6 item 1),
 а у нас OTG на 1.5 А: Type-C-only партнёр законно возьмёт ровно столько, сколько
@@ -586,12 +604,42 @@ RX в PE первым (новые Source_Caps могут означать дру
 после PE-обработки, если PE всё ещё хочет отправить Request, повторить
 TX с новыми параметрами.
 
-Решение: при `I_COLLISION`, не делать automatic retry — отдать в PE
-оригинальную TX-команду как failed с `reason=collision`. PE сама решит
-retry или нет.
+Реализовано в [`ucsi_ppm_prl.c`](../src/ucsi_ppm_prl.c) — **автоматический
+retry в PRL**, а не «отдать PE как failed» (ниже почему):
 
-Альтернатива: автоматический retry в PRL после следующего `I_GCRCSENT`.
-Спека PRL рекомендует первый вариант — пусть PE сама решает. **Так и делаем.**
+- `prl_transmit` хранит копию переданного чипу кадра (`prl_tx_inflight_msg`,
+  MessageID уже проставлен) до вердикта чипа: `I_TXSENT` / `I_RETRYFAIL`
+  снимают его, `I_COLLISION` превращает в `prl_tx_retry_msg`. Перед этим
+  `TX_FLUSH`: даташит говорит лишь «transmit is not done», остались ли байты в
+  FIFO — нет, а повтор, дописанный за ними, ушёл бы одним битым кадром.
+- Повтор уходит из `ucsi_ppm_prl_flush_tx` **с тем же MessageID** (партнёр
+  кадр не видел, счётчик не трогаем — §6.8.1, retry сохраняет ID) и только
+  когда (а) RX FIFO выгребен, (б) PE ничего не поставил в очередь и (в) ничего
+  не ждёт вердикта. Если PE ответил на пришедший кадр (это AMS партнёра — §7.2,
+  синк внутри неё обязан отвечать), ответ идёт первым, а повтор — после его
+  `I_TXSENT`. В один TX FIFO два кадра подряд не пишем.
+- `ucsi_ppm_pe_on_tx_retried` перезапускает таймер ответа PE
+  (SenderResponse / PSTransition / tTypeCSendSourceCap): он был взведён от
+  передачи, которой не было.
+- `ucsi_ppm_prl_discard_retry` — PE выбрасывает припаркованный кадр, когда
+  пришедшее сообщение сделало его неактуальным. Единственный вызов сегодня —
+  `pe_send_request`: Request, столкнувшийся с повтором Source_Capabilities,
+  заменяется свежим (PD §8.3.3.3.4, Select_Capability → Evaluate_Capability).
+- Сброс: `Soft_Reset` на приёме, `ucsi_ppm_prl_reset` (Hard Reset, detach, наш
+  Soft_Reset) выбрасывают повтор — его ID из нумерации, которой больше нет.
+- Лимит `PRL_COLLISION_RETRY_MAX` = 3 подряд на один кадр; четвёртая коллизия
+  отдаётся PE как `TxRetryFail` — тот же путь, что исчерпание аппаратных retry
+  (Soft_Reset из WaitFor*, повтор Source_Caps из SendCapabilities).
+- Второй кадр, столкнувшийся пока первый ждёт повтора, выбрасывается с
+  warning: слот один, старший скорее всего — первое сообщение нашей AMS, его
+  никто за нас не повторит; младший — ответ, и партнёр переспросит по своему
+  SenderResponseTimer.
+
+Почему не «PE решает»: у PE нет понятия «передача не состоялась» — все его
+инициаторы уже перешли в `WaitFor*` и взвели таймер. Единственное решение,
+которое PE реально принимает, это «кадр устарел» — и для него есть
+`discard_retry`. Всё остальное (ждать, пока партнёр договорит, повторить без
+смены ID) — поведение PHY из §5.7, которое FUSB302 не делает сам.
 
 ### 13.2 PRL и Extended Messages на приёме
 

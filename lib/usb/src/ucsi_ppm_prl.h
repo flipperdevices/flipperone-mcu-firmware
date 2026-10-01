@@ -25,8 +25,17 @@ UcsiPpmStatus ucsi_ppm_prl_init(UcsiPpm* ppm);
 UcsiPpmStatus ucsi_ppm_prl_reset(UcsiPpm* ppm);
 
 /** Puts the queued outgoing message, if any, on the wire. Called once the RX
- * FIFO is drained — see ucsi_ppm_prl_send_message for why answers wait. */
+ * FIFO is drained — see ucsi_ppm_prl_send_message for why answers wait.
+ * A frame waiting to be retried after a collision goes out here too, after
+ * anything PE queued and only once nothing else is awaiting the chip's
+ * verdict. */
 void ucsi_ppm_prl_flush_tx(UcsiPpm* ppm);
+
+/** Drops a frame parked for retry after a collision. For PE to call when the
+ * message that just arrived made that frame obsolete — a Source that
+ * re-advertised its capabilities will get a fresh Request, not the one that
+ * collided with the advertisement. Nothing to do when no retry is parked. */
+void ucsi_ppm_prl_discard_retry(UcsiPpm* ppm);
 
 /** Restores the advertised PD revision to R3.0. Belongs to detach only: the
  * revision describes the partner, so it outlives Soft_Reset and Hard Reset and
@@ -39,8 +48,10 @@ void ucsi_ppm_prl_reset_spec_rev(UcsiPpm* ppm);
 UcsiPpmStatus ucsi_ppm_prl_send_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* msg);
 
 // Routes a PHY event to PRL: MessageRx drains the FIFO and dedups; Hard
-// Reset events reset PRL counters; TX outcomes are stashed for PE (TODO).
-// Other event kinds are ignored — they belong to TC or other layers.
+// Reset events reset PRL counters; TxSuccess / TxRetryFail retire the frame
+// in flight; Collision parks it for a retry (or, past PRL_COLLISION_RETRY_MAX,
+// hands PE a TxRetryFail). Other event kinds are ignored — they belong to TC
+// or other layers.
 void ucsi_ppm_prl_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event);
 
 #ifdef __cplusplus

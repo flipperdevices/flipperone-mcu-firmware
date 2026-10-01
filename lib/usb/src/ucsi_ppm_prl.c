@@ -70,10 +70,22 @@ UcsiPpmStatus ucsi_ppm_prl_reset(UcsiPpm* ppm) {
     ppm->prl_last_rx_valid = false;
     // A queued answer belongs to the exchange that just got reset. Sending it
     // afterwards would put a stale MessageID on a counter that restarted at 0.
+    // Same for a frame awaiting the chip's verdict or parked for a retry.
     ppm->prl_tx_pending = false;
+    ppm->prl_tx_inflight_valid = false;
+    ppm->prl_tx_retry_pending = false;
+    ppm->prl_tx_collisions = 0u;
     ppm->prl_messages_delivered = 0u;
     return UcsiPpmStatusOk;
 }
+
+// Consecutive collisions of one frame before we stop trying and tell PE the
+// transmission failed. PD 3.0 avoids collisions through Rp, so a partner that
+// keeps talking over us this many times in a row is either R2.0 and unlucky or
+// not listening to Rp at all; either way the Soft_Reset PE escalates to
+// resynchronises faster than another round. Three mirrors nRetryCount, the
+// budget the chip itself spends on a frame that draws no GoodCRC.
+#define PRL_COLLISION_RETRY_MAX 3u
 
 // Hands one message to the PHY, stamping the MessageID as it goes.
 static UcsiPpmStatus prl_transmit(UcsiPpm* ppm, UcsiPpmPhyPdMsg* msg) {
@@ -95,7 +107,48 @@ static UcsiPpmStatus prl_transmit(UcsiPpm* ppm, UcsiPpmPhyPdMsg* msg) {
     // the retried frame keeps the same MessageID per the spec, but FUSB302
     // handles retry in hardware transparently).
     ppm->prl_next_tx_msg_id = (uint8_t)((ppm->prl_next_tx_msg_id + 1u) % PRL_MSG_ID_WRAP);
+
+    // Kept, stamped, until the chip says what became of it: a collision turns
+    // this copy into the retry.
+    ppm->prl_tx_inflight_msg = *msg;
+    ppm->prl_tx_inflight_valid = true;
     return UcsiPpmStatusOk;
+}
+
+// Puts a frame the chip refused on the wire again, unchanged. Not through
+// prl_transmit: that would stamp a fresh MessageID and advance the counter,
+// and this frame already carries the ID the counter moved past when it was
+// first handed over. The partner never saw it, so reusing the ID cannot be
+// mistaken for a duplicate (PD R3.0 §6.8.1 — a retry keeps its MessageID).
+static void prl_retransmit(UcsiPpm* ppm) {
+    ppm->prl_tx_retry_pending = false;
+    UCSI_LOG_I(
+        ppm,
+        "tx retry after collision type=0x%02X id=%u attempt=%u",
+        (unsigned)(ppm->prl_tx_retry_msg.header & MSG_HDR_MSG_TYPE_MASK),
+        (unsigned)((ppm->prl_tx_retry_msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u),
+        (unsigned)ppm->prl_tx_collisions);
+    const UcsiPpmStatus s = ucsi_ppm_phy_send_message(ppm, &ppm->prl_tx_retry_msg);
+    if(s != UcsiPpmStatusOk) {
+        UCSI_LOG_W(ppm, "tx retry phy_send failed: %d", (int)s);
+        return;
+    }
+    ppm->prl_tx_inflight_msg = ppm->prl_tx_retry_msg;
+    ppm->prl_tx_inflight_valid = true;
+    // The response timer PE armed measured from a transmission that never
+    // happened; this is the one the partner will actually answer.
+    ucsi_ppm_pe_on_tx_retried(ppm);
+}
+
+void ucsi_ppm_prl_discard_retry(UcsiPpm* ppm) {
+    if(!ppm->prl_tx_retry_pending) return;
+    UCSI_LOG_I(
+        ppm,
+        "collided type=0x%02X id=%u superseded, not retried",
+        (unsigned)(ppm->prl_tx_retry_msg.header & MSG_HDR_MSG_TYPE_MASK),
+        (unsigned)((ppm->prl_tx_retry_msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u));
+    ppm->prl_tx_retry_pending = false;
+    ppm->prl_tx_collisions = 0u;
 }
 
 // Queues a message rather than putting it on the wire straight away.
@@ -123,9 +176,21 @@ UcsiPpmStatus ucsi_ppm_prl_send_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* msg) {
 }
 
 void ucsi_ppm_prl_flush_tx(UcsiPpm* ppm) {
-    if(!ppm->prl_tx_pending) return;
-    ppm->prl_tx_pending = false;
-    (void)prl_transmit(ppm, &ppm->prl_tx_msg);
+    if(ppm->prl_tx_pending) {
+        // What PE queued goes first. If it is an answer inside the partner's
+        // AMS, that AMS has to finish before the collided first message of our
+        // own may follow (PD R3.2 §7.2) — and the retry below waits for this
+        // frame's I_TXSENT anyway.
+        ppm->prl_tx_pending = false;
+        (void)prl_transmit(ppm, &ppm->prl_tx_msg);
+        return;
+    }
+    if(!ppm->prl_tx_retry_pending) return;
+    // Never behind a frame still awaiting its verdict: the chip has one
+    // transmit FIFO, and a second frame written while the first is being
+    // clocked out corrupts both.
+    if(ppm->prl_tx_inflight_valid) return;
+    prl_retransmit(ppm);
 }
 
 // Highest Message Type the chip's AUTO_CRC acknowledges on its own.
@@ -227,6 +292,11 @@ static void prl_drain_rx_fifo(UcsiPpm* ppm) {
         if(is_soft_reset && msg.sop_type == UcsiPpmPhySopTypeSop) {
             ppm->prl_next_tx_msg_id = 0u;
             ppm->prl_last_rx_valid = false;
+            // A frame parked for retry was stamped from the counter that just
+            // restarted; sent after the Accept, it would carry a MessageID from
+            // the previous numbering into the new one.
+            ppm->prl_tx_retry_pending = false;
+            ppm->prl_tx_collisions = 0u;
         }
 
         // SOP duplicate detection (PD R3.0 §6.8.1.1). SOP'/SOP'' aren't in
@@ -291,21 +361,79 @@ void ucsi_ppm_prl_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         break;
     case UcsiPpmPhyEventTxSuccess:
     case UcsiPpmPhyEventTxRetryFail:
-    case UcsiPpmPhyEventCollision:
         // Whether the partner acknowledged what we sent is the line between "the
         // chip put a good frame on the wire" and "it did not" — and nothing else
         // in the trace distinguishes those two.
         UCSI_LOG_D(
             ppm,
             "tx outcome: %s",
-            event->kind == UcsiPpmPhyEventTxSuccess ?
-                "goodcrc received" :
-                (event->kind == UcsiPpmPhyEventTxRetryFail ? "retries exhausted" :
-                                                             "collision"));
-        // TX outcomes are PE's concern (continue / Soft Reset / Hard Reset).
-        // PE receives the same phy event via ucsi_ppm_pe_handle_phy_event;
-        // PRL state itself stays put — PE resets it explicitly when it
-        // initiates Soft Reset (so msg_id=0 goes out).
+            event->kind == UcsiPpmPhyEventTxSuccess ? "goodcrc received" : "retries exhausted");
+        // Either way the frame has met its fate and the FIFO is free. A retry
+        // parked meanwhile stays parked: this verdict can only be for the frame
+        // the chip did put on the wire, and it leaves through the next flush.
+        // Its collision count stays too — one pump can carry this verdict for
+        // an earlier frame next to the collision that parked the retry.
+        ppm->prl_tx_inflight_valid = false;
+        if(!ppm->prl_tx_retry_pending) ppm->prl_tx_collisions = 0u;
+        // What to do about a failure is PE's concern (continue / Soft Reset /
+        // Hard Reset). PE receives the same phy event via
+        // ucsi_ppm_pe_handle_phy_event; PRL counters stay put — PE resets them
+        // explicitly when it initiates Soft Reset (so msg_id=0 goes out).
+        break;
+    case UcsiPpmPhyEventCollision:
+        // The partner was already driving CC when the chip went to transmit, so
+        // it did not: our frame is still ours to send, theirs is in the receive
+        // FIFO and gets drained right after this (the pump orders INTERRUPT
+        // before INTERRUPTB). PD 2.0 PHYs are expected to wait for an idle bus
+        // and then transmit (§5.7); the FUSB302 aborts and raises this instead,
+        // so the wait-and-retry is ours to do — prl-sm.md §13.1.
+        if(!ppm->prl_tx_inflight_valid) {
+            UCSI_LOG_W(ppm, "collision with nothing in flight");
+            break;
+        }
+        // The datasheet says only that the transmit "is not done"; whether the
+        // aborted bytes stay in the FIFO it does not say, and a retry appended
+        // behind them would go out as one corrupt frame.
+        (void)ucsi_ppm_phy_flush_tx(ppm);
+        ppm->prl_tx_inflight_valid = false;
+
+        if(ppm->prl_tx_retry_pending) {
+            // A second frame collided while the first still waits — the partner
+            // keeps talking. One slot, so the newer one is dropped; it is a reply
+            // sent out of the flush, and the partner's SenderResponseTimer will
+            // have it ask again. The older one is more likely the first message
+            // of our own AMS, which nobody will repeat for us.
+            UCSI_LOG_W(
+                ppm,
+                "collision type=0x%02X with retry type=0x%02X already parked, dropped",
+                (unsigned)(ppm->prl_tx_inflight_msg.header & MSG_HDR_MSG_TYPE_MASK),
+                (unsigned)(ppm->prl_tx_retry_msg.header & MSG_HDR_MSG_TYPE_MASK));
+            break;
+        }
+
+        ppm->prl_tx_collisions++;
+        if(ppm->prl_tx_collisions > PRL_COLLISION_RETRY_MAX) {
+            UCSI_LOG_W(
+                ppm,
+                "type=0x%02X collided %u times, giving up",
+                (unsigned)(ppm->prl_tx_inflight_msg.header & MSG_HDR_MSG_TYPE_MASK),
+                (unsigned)ppm->prl_tx_collisions);
+            ppm->prl_tx_collisions = 0u;
+            // To PE this is indistinguishable from the chip exhausting its own
+            // retries: the message did not get through. Same event, same
+            // escalation path.
+            const UcsiPpmPhyEvent fail = {.kind = UcsiPpmPhyEventTxRetryFail};
+            ucsi_ppm_pe_handle_phy_event(ppm, &fail);
+            break;
+        }
+
+        ppm->prl_tx_retry_msg = ppm->prl_tx_inflight_msg;
+        ppm->prl_tx_retry_pending = true;
+        UCSI_LOG_I(
+            ppm,
+            "collision, type=0x%02X id=%u will be retried",
+            (unsigned)(ppm->prl_tx_retry_msg.header & MSG_HDR_MSG_TYPE_MASK),
+            (unsigned)((ppm->prl_tx_retry_msg.header >> MSG_HDR_MSG_ID_SHIFT) & 0x07u));
         break;
     default:
         // ToggleDone / VBUS / BC_LVL / Comp — not for PRL.
