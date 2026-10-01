@@ -73,7 +73,6 @@ file(GLOB_RECURSE SOURCES
     "lib/drivers/ina4230/*.c*"
     "lib/drivers/bq25792/*.c*"
     "lib/drivers/bq28z620/*.c*"
-    "lib/drivers/fusb302/*.c*"
     "lib/usb/src/*.c*"
     "lib/usb_v2/src/*.c*"
     "lib/drivers/hd3ss3220/*.c*"

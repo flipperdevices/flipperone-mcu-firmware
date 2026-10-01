@@ -309,7 +309,7 @@ pull-down) + `CONTROL0.HOST_CUR` для уровня Rp:
 | 0x42 | INTERRUPT     | RO/C   | I_BC_LVL, I_COLLISION, I_WAKE, I_ALERT, I_CRC_CHK, I_COMP_CHNG, I_ACTIVITY, I_VBUSOK |
 | 0x43 | FIFOS         | RW     | TX/RX FIFO (одни и те же 256-байтные буферы PD-сообщений)            |
 
-I²C-адрес: `0x22` (`FUSB302_ADDRESS` в [`fusb302.h`](../../drivers/fusb302/fusb302.h)).
+I²C-адрес: `0x22` (`USB_PD_DEFAULT_FUSB302_ADDR` в `lib/usb_v2/src/usb_pd.c`; старый `fusb302.h` удалён).
 
 ---
 
