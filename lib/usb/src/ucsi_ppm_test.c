@@ -1593,6 +1593,29 @@ static bool test_phy_set_rp_current(void) {
         TEST_ASSERT(b.host_cur == 0b01u); // 80 µA — USB Default
     }
 
+    // Rp and the detach comparator move together: the CC voltage a connected
+    // partner produces scales with the pull-up current, so each Rp needs the
+    // threshold that sits between "Rd still there" and "may declare
+    // disconnect" for that current (Type-C R2.5 Table 4-37). MEAS_VBUS must
+    // stay 0 or the comparator watches VBUS instead of CC.
+    {
+        const struct {
+            UcsiPpmRpCurrent rp;
+            uint8_t mdac;
+        } cases[] = {
+            {UcsiPpmRpCurrent3A, 54u}, // 2.310 V, between 2.181 and 2.432
+            {UcsiPpmRpCurrent1A5, 32u}, // 1.386 V, between 1.320 and 1.441
+            {UcsiPpmRpCurrentUsbDefault, 31u}, // 1.344 V, just past 1.320
+        };
+        for(size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+            TEST_ASSERT(ucsi_ppm_phy_set_rp_current(ppm, cases[i].rp) == UcsiPpmStatusOk);
+            const uint8_t m = g_mock_regs[Fusb302RegMeasure];
+            const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
+            TEST_ASSERT(b.mdac == cases[i].mdac);
+            TEST_ASSERT(b.meas_vbus == 0u);
+        }
+    }
+
     ucsi_ppm_free(ppm);
     return true;
 }
@@ -1834,35 +1857,45 @@ static bool test_phy_measure_vbus_threshold_below(void) {
 }
 
 static bool test_phy_measure_vbus_threshold_mdac_calc(void) {
-    // VBUS step is 420 mV.
+    // VBUS step is 420 mV, and the code is one-based: datasheet Table 20 maps
+    // 00_0000 to 42 mV / 420 mV, so threshold = (MDAC + 1) x step.
     UcsiPpm* ppm = mock_make_ppm();
     ucsi_ppm_phy_init(ppm);
     mock_i2c_reset();
 
     bool above = false;
 
-    // vSafe5V (~4500 mV): ceil(4500/420) = 11.
+    // vSafe5V (~4500 mV): ceil(4500/420) - 1 = 10, i.e. 11 x 420 = 4620 mV.
     ucsi_ppm_phy_measure_vbus_threshold(ppm, 4500u, &above);
     {
         const uint8_t m = g_mock_regs[Fusb302RegMeasure];
         const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
-        TEST_ASSERT(b.mdac == 11u);
+        TEST_ASSERT(b.mdac == 10u);
     }
 
-    // vSafe0V (~800 mV): ceil(800/420) = 2.
+    // vSafe0V (~800 mV): ceil(800/420) - 1 = 1, i.e. 2 x 420 = 840 mV.
     ucsi_ppm_phy_measure_vbus_threshold(ppm, 800u, &above);
     {
         const uint8_t m = g_mock_regs[Fusb302RegMeasure];
         const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
-        TEST_ASSERT(b.mdac == 2u);
+        TEST_ASSERT(b.mdac == 1u);
     }
 
-    // 20 V renegotiated rail: ceil(20000/420) = 48.
-    ucsi_ppm_phy_measure_vbus_threshold(ppm, 20000u, &above);
+    // An exact multiple of the step must not round up a whole LSB: 20160 mV is
+    // 48 x 420, so code 47.
+    ucsi_ppm_phy_measure_vbus_threshold(ppm, 20160u, &above);
     {
         const uint8_t m = g_mock_regs[Fusb302RegMeasure];
         const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
-        TEST_ASSERT(b.mdac == 48u);
+        TEST_ASSERT(b.mdac == 47u);
+    }
+
+    // Below one full step there is no lower code to pick.
+    ucsi_ppm_phy_measure_vbus_threshold(ppm, 100u, &above);
+    {
+        const uint8_t m = g_mock_regs[Fusb302RegMeasure];
+        const Fusb302MeasureRegBits b = *((const Fusb302MeasureRegBits*)&m);
+        TEST_ASSERT(b.mdac == 0u);
     }
 
     // Voltage that overflows the 6-bit field gets clamped at 0x3F.
@@ -1896,7 +1929,9 @@ static bool test_phy_arm_vbus_compare(void) {
     const uint8_t measure = g_mock_regs[Fusb302RegMeasure];
     const Fusb302MeasureRegBits m_bits = *((const Fusb302MeasureRegBits*)&measure);
     TEST_ASSERT(m_bits.meas_vbus == 1);
-    TEST_ASSERT(m_bits.mdac == 11u);
+    // Same arithmetic as measure_vbus_threshold: code is one-based, so
+    // 4500 mV -> ceil(4500/420) - 1 = 10, threshold 11 x 420 = 4620 mV.
+    TEST_ASSERT(m_bits.mdac == 10u);
 
     // No read on STATUS0 should have happened.
     for(size_t i = 0; i < g_mock_txn_count; ++i) {
@@ -5530,6 +5565,382 @@ static bool test_pe_pr_swap_initiated_sends_swap(void) {
     return true;
 }
 
+// --- PD 3.0 collision avoidance by Rp (PD R3.2 §7.2, Figure 9.9) -----------
+//
+// The Source licenses Sink-initiated traffic through its Rp: SinkTxOk (3.0 A,
+// BC_LVL 0b11) means the Sink May open an AMS, SinkTxNG (1.5 A, BC_LVL 0b10)
+// means it Shall Not and may only answer. We hold the request in PE rather than
+// in the PRL queue — see pe_defer_ams for why the queue is the wrong place.
+
+// Raises an I_BC_LVL interrupt carrying `bc_lvl`, keeping the rest of STATUS0
+// intact. Unlike simulate_bc_lvl_changed this must not clear VBUSOK: these
+// tests run from an established sink contract, which a VBUS loss would tear
+// down before the assertion under test is reached.
+static void simulate_source_rp(UcsiPpm* ppm, uint8_t bc_lvl) {
+    g_mock_regs[Fusb302RegInterruptA] = 0;
+    g_mock_regs[Fusb302RegInterruptB] = 0;
+    const Fusb302InterruptRegBits intr = {.i_bc_lvl = 1};
+    g_mock_regs[Fusb302RegInterrupt] = *(const uint8_t*)&intr;
+    Fusb302Status0RegBits s0 = *((const Fusb302Status0RegBits*)&g_mock_regs[Fusb302RegStatus0]);
+    s0.bc_lvl = bc_lvl;
+    g_mock_regs[Fusb302RegStatus0] = *(const uint8_t*)&s0;
+    ucsi_ppm_notify_fusb302_irq(ppm);
+    ucsi_ppm_tick(ppm);
+}
+
+static bool test_pe_sink_tx_ng_defers_renegotiate(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b10u /* SinkTxNG */);
+    mock_txns_reset();
+
+    // Accepted, but not on the wire.
+    TEST_ASSERT(ucsi_ppm_pe_request_renegotiate(ppm, 1500u) == UcsiPpmStatusOk);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x02u /* Request */) < 0);
+    // Crucially PE has not moved: had it entered SnkWaitForAccept, the
+    // SenderResponseTimer would be running against a message we never sent and
+    // would escalate to a Hard Reset.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    TEST_ASSERT(ppm->pe_deferred_ams != 0u);
+
+    // And it acted on the raw reading: tPDDebounce has not elapsed, so the
+    // debounced value is still the old one. §7.2 allows only tSinkDelay (5 ms)
+    // to fall silent, which a 10-20 ms debounce would blow through.
+    TEST_ASSERT(ppm->tc_bc_lvl_pending_valid);
+    TEST_ASSERT(ppm->tc_last_bc_lvl != 0b10u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_ok_releases_deferred_ams(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b10u /* SinkTxNG */);
+    TEST_ASSERT(ucsi_ppm_pe_request_renegotiate(ppm, 1500u) == UcsiPpmStatusOk);
+    mock_txns_reset();
+
+    // The Source finished its own AMS and handed the licence back.
+    simulate_source_rp(ppm, 0b11u /* SinkTxOk */);
+
+    const int idx = find_fifo_burst_by_msg_type(0x02u /* Request */);
+    TEST_ASSERT(idx >= 0);
+    const uint8_t* fifo = &g_mock_txns[idx].data[1];
+    const uint32_t rdo = (uint32_t)fifo[7] | ((uint32_t)fifo[8] << 8) |
+                         ((uint32_t)fifo[9] << 16) | ((uint32_t)fifo[10] << 24);
+    // The arguments survived the wait, not just the intent to send something.
+    TEST_ASSERT(((rdo >> 10) & 0x3FFu) == 150u); // 1500 mA / 10
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    TEST_ASSERT(ppm->pe_deferred_ams == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_ng_never_lifted_drops_ams(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b10u /* SinkTxNG */);
+    TEST_ASSERT(ucsi_ppm_pe_request_renegotiate(ppm, 1500u) == UcsiPpmStatusOk);
+    mock_txns_reset();
+
+    // A Source parked at 1.5 A never returns the licence. Holding the request
+    // for the life of the connection would be worse than dropping it.
+    g_mock_time_ms += 600; // past UCSI_PPM_PE_SINK_TX_WAIT_MS
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->pe_deferred_ams == 0u);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x02u) < 0);
+    // Dropping the request must not disturb the contract we already have.
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_ng_ignored_for_pd2_partner(void) {
+    // Collision avoidance arrived with PD 3.0. An R2.0 partner never moves its
+    // Rp for us and expects collide-and-retry, so reading its 1.5 A Rp as a gag
+    // order would lock us out of renegotiation entirely.
+    UcsiPpm* ppm = mock_snk_ready_rev(UCSI_PPM_SPEC_REV_2_0);
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_2_0);
+    simulate_source_rp(ppm, 0b10u);
+    mock_txns_reset();
+
+    TEST_ASSERT(ucsi_ppm_pe_request_renegotiate(ppm, 1500u) == UcsiPpmStatusOk);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x02u) >= 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_ng_defers_pr_swap(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b10u);
+    mock_txns_reset();
+
+    TEST_ASSERT(ucsi_ppm_pe_request_pr_swap_to_source(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x0Au /* PR_Swap */) < 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    simulate_source_rp(ppm, 0b11u);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x0Au) >= 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePrSwapSnkSendSwap);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_ng_defers_dr_swap(void) {
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b10u);
+    mock_txns_reset();
+
+    // Sink attaches as UFP, so DFP is a real change rather than a no-op.
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, true) == UcsiPpmStatusOk);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x09u /* DR_Swap */) < 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+
+    simulate_source_rp(ppm, 0b11u);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x09u) >= 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_ng_does_not_gate_answers(void) {
+    // §7.2: the Sink "Shall only send Messages that are part of a
+    // Source-initiated AMS" — so answers are not merely allowed, they are the
+    // one thing that must still go out. The partner is timing us.
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b10u);
+    mock_txns_reset();
+
+    simulate_pd_message(ppm, 0x08u /* Get_Sink_Cap */, NULL, 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x04u /* Sink_Capabilities */) >= 0);
+
+    simulate_pd_message(ppm, 0x18u /* Get_Revision, unsupported */, NULL, 0);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x10u /* Not_Supported */) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_ng_does_not_gate_soft_reset(void) {
+    // §7.1.1: a Soft_Reset may be sent "irrespective of the value of Rp", and
+    // Figure 9.9 routes it around the SinkTxOk check. Gating recovery on a
+    // licence from the partner we have lost sync with would be self-defeating.
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b10u);
+    mock_txns_reset();
+
+    simulate_tx_retry_fail(ppm);
+
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x0Du /* Soft_Reset */) >= 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForSoftResetAccept);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_sink_tx_rp_default_does_not_gate(void) {
+    // BC_LVL 0b01 is Rp-default: a Source that is not playing the PD 3.0 game
+    // at all. Only SinkTxNG silences us — treating "not SinkTxOk" as a gag
+    // order would lock us out for the whole connection.
+    UcsiPpm* ppm = mock_snk_ready();
+    simulate_source_rp(ppm, 0b01u);
+    mock_txns_reset();
+
+    TEST_ASSERT(ucsi_ppm_pe_request_renegotiate(ppm, 1500u) == UcsiPpmStatusOk);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x02u) >= 0);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+// --- Source half: Rp signalling (PD R3.2 Figure 9.8) -----------------------
+
+// CONTROL0.HOST_CUR as the chip currently holds it.
+static uint8_t source_rp_field(void) {
+    const uint8_t v = g_mock_regs[Fusb302RegControl0];
+    const Fusb302Control0RegBits b = *((const Fusb302Control0RegBits*)&v);
+    return b.host_cur;
+}
+
+// Attached.SRC with an Explicit Contract, advertising an honest 1.5 A. The
+// shared test config claims 3.0 A, which would make "honest Type-C current" and
+// "SinkTxOk" the same register value and hide every bug worth catching here.
+static UcsiPpm* mock_src_ready_rp_1a5(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    ppm->config.source_rp_current = UcsiPpmRpCurrent1A5;
+    ucsi_ppm_tick(ppm);
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message(ppm, 0x02u /* Request */, &rdo, 1);
+    ucsi_ppm_notify_power_supply_ready(ppm);
+    ucsi_ppm_tick(ppm);
+    return ppm;
+}
+
+static bool test_tc_src_rp_honest_before_explicit_contract(void) {
+    // §5.6 item 1: until a contract exists Rp is a Type-C Current
+    // advertisement. Claiming 3.0 A here would invite a Type-C-only partner to
+    // draw 3 A from a supply that only promised 1.5 A.
+    UcsiPpm* ppm = mock_attach(true);
+    ppm->config.source_rp_current = UcsiPpmRpCurrent1A5;
+    ppm->tc_source_rp_applied_valid = false;
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->pe_state != (int)UcsiPpmPeSrcReady);
+    TEST_ASSERT(source_rp_field() == 0b10u); // 1.5 A, the honest value
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_rp_sink_tx_ok_in_src_ready(void) {
+    // Idle in PE_SRC_Ready is the spec's "end of AMS": release the bus so the
+    // partner can renegotiate. Without this a compliant PD 3.0 Sink never
+    // initiates anything at all, which is the bug this whole half fixes.
+    UcsiPpm* ppm = mock_src_ready_rp_1a5();
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+    TEST_ASSERT(source_rp_field() == 0b11u); // 3.0 A — SinkTxOk
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_rp_honest_for_pd2_partner(void) {
+    // An R2.0 partner reads Rp as current, so it must keep meaning current.
+    UcsiPpm* ppm = mock_attach(true);
+    ppm->config.source_rp_current = UcsiPpmRpCurrent1A5;
+    const uint32_t rdo = make_request_rdo(1u, 3000u);
+    simulate_pd_message_rev(ppm, 0x02u, &rdo, 1, UCSI_PPM_SPEC_REV_2_0);
+    ucsi_ppm_notify_power_supply_ready(ppm);
+    ucsi_ppm_tick(ppm);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+    TEST_ASSERT(ppm->prl_our_spec_rev == UCSI_PPM_SPEC_REV_2_0);
+    TEST_ASSERT(source_rp_field() == 0b10u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_rp_drops_to_ng_before_own_ams(void) {
+    UcsiPpm* ppm = mock_src_ready_rp_1a5();
+    TEST_ASSERT(source_rp_field() == 0b11u);
+    mock_txns_reset();
+
+    // Source attaches as DFP, so UFP is a real change.
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, false) == UcsiPpmStatusOk);
+
+    // Rp claims the bus immediately — the tSinkTx we owe the Sink is measured
+    // from this instant, so it cannot wait for the next tick.
+    TEST_ASSERT(source_rp_field() == 0b10u); // SinkTxNG
+    // And nothing on the wire yet: the Sink has not had time to notice.
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x09u /* DR_Swap */) < 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+    TEST_ASSERT(ucsi_ppm_pe_src_ams_in_progress(ppm));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_ams_waits_out_sink_tx_timer(void) {
+    UcsiPpm* ppm = mock_src_ready_rp_1a5();
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, false) == UcsiPpmStatusOk);
+    mock_txns_reset();
+
+    // Still inside tSinkTx (min 16 ms) — sending now would collide with a Sink
+    // that has not seen the new Rp.
+    g_mock_time_ms += 10;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x09u) < 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+
+    // Past it.
+    g_mock_time_ms += 15;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x09u) >= 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+    // Ours until the partner answers, so the bus stays claimed.
+    TEST_ASSERT(source_rp_field() == 0b10u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_rp_released_after_own_ams(void) {
+    UcsiPpm* ppm = mock_src_ready_rp_1a5();
+    TEST_ASSERT(ucsi_ppm_pe_request_dr_swap(ppm, false) == UcsiPpmStatusOk);
+    g_mock_time_ms += 25;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse);
+
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSrcReady);
+    TEST_ASSERT(!ucsi_ppm_pe_src_ams_in_progress(ppm));
+    TEST_ASSERT(source_rp_field() == 0b11u); // released back to SinkTxOk
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_src_rp_reapplied_after_chip_reinit(void) {
+    // ucsi_ppm_phy_init puts CONTROL0 back to its reset value. The cached "we
+    // already wrote that" must not survive it, or Rp silently stops matching
+    // what we believe we are advertising.
+    UcsiPpm* ppm = mock_src_ready_rp_1a5();
+    TEST_ASSERT(source_rp_field() == 0b11u);
+
+    TEST_ASSERT(ucsi_ppm_phy_init(ppm) == UcsiPpmStatusOk);
+    TEST_ASSERT(!ppm->tc_source_rp_applied_valid);
+
+    // The mock does not model SW_RESET clearing registers, so stand in for it:
+    // this is the state the real chip is in after phy_init.
+    g_mock_regs[Fusb302RegControl0] = 0x00u;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(source_rp_field() == 0b11u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_sink_tx_free_outside_explicit_contract(void) {
+    // §5.6 item 1: before an Explicit Contract Rp is a Type-C Current
+    // advertisement and "Shall Not be used for Collision Avoidance". A 1.5 A
+    // charger we have not negotiated with is telling us what we may draw, not
+    // telling us to be quiet.
+    UcsiPpm* ppm = mock_attach(false);
+    simulate_source_rp(ppm, 0b10u);
+    TEST_ASSERT(ppm->pe_negotiated_voltage_mv == 0u);
+    TEST_ASSERT(ucsi_ppm_tc_sink_tx_allowed(ppm));
+
+    // Same Rp, now inside a contract — and it means the opposite thing.
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+    simulate_pd_message(ppm, 0x03u /* Accept */, NULL, 0);
+    simulate_pd_message(ppm, 0x06u /* PS_RDY */, NULL, 0);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    simulate_source_rp(ppm, 0b10u);
+    TEST_ASSERT(!ucsi_ppm_tc_sink_tx_allowed(ppm));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_sink_tx_not_gated_when_source(void) {
+    // A Source is the one doing the signalling; its own Rp says nothing to it.
+    // mock_attach seeds BC_LVL 0b10 source-side, which is the SinkTxNG pattern.
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(ppm->tc_role_is_src);
+    TEST_ASSERT(ucsi_ppm_tc_sink_tx_allowed(ppm));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_pe_pr_swap_full_snk_to_src_flow(void) {
     UcsiPpm* ppm = mock_snk_ready();
     mock_i2c_reset();
@@ -6370,6 +6781,26 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_pe_dr_swap_initiator_not_supported_keeps_role),
     TEST_ENTRY(test_pe_dr_swap_initiator_timeout_hard_resets),
     TEST_ENTRY(test_pe_dr_swap_initiated_outside_ready_errors),
+
+    // L3 PD 3.0 collision avoidance by Rp (PD R3.2 §7.2 / Figure 9.9).
+    TEST_ENTRY(test_pe_sink_tx_ng_defers_renegotiate),
+    TEST_ENTRY(test_pe_sink_tx_ok_releases_deferred_ams),
+    TEST_ENTRY(test_pe_sink_tx_ng_never_lifted_drops_ams),
+    TEST_ENTRY(test_pe_sink_tx_ng_ignored_for_pd2_partner),
+    TEST_ENTRY(test_pe_sink_tx_ng_defers_pr_swap),
+    TEST_ENTRY(test_pe_sink_tx_ng_defers_dr_swap),
+    TEST_ENTRY(test_pe_sink_tx_ng_does_not_gate_answers),
+    TEST_ENTRY(test_pe_sink_tx_ng_does_not_gate_soft_reset),
+    TEST_ENTRY(test_pe_sink_tx_rp_default_does_not_gate),
+    TEST_ENTRY(test_tc_sink_tx_free_outside_explicit_contract),
+    TEST_ENTRY(test_tc_sink_tx_not_gated_when_source),
+    TEST_ENTRY(test_tc_src_rp_honest_before_explicit_contract),
+    TEST_ENTRY(test_tc_src_rp_sink_tx_ok_in_src_ready),
+    TEST_ENTRY(test_tc_src_rp_honest_for_pd2_partner),
+    TEST_ENTRY(test_tc_src_rp_drops_to_ng_before_own_ams),
+    TEST_ENTRY(test_tc_src_ams_waits_out_sink_tx_timer),
+    TEST_ENTRY(test_tc_src_rp_released_after_own_ams),
+    TEST_ENTRY(test_tc_src_rp_reapplied_after_chip_reinit),
     TEST_ENTRY(test_pe_dr_swap_initiated_same_role_is_no_op),
     TEST_ENTRY(test_cs_partner_type_reflects_data_role_after_dr_swap),
 

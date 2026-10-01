@@ -57,6 +57,29 @@ void ucsi_ppm_tc_tick(UcsiPpm* ppm);
 // ucsi_ppm_tick, which is what makes it pick up TC and PE changes alike.
 void ucsi_ppm_tc_update_sink_current_limit(UcsiPpm* ppm);
 
+// True when we may open an Atomic Message Sequence of our own. PD 3.0
+// collision avoidance (R3.2 §7.2): a Sink reads the Source's Rp off BC_LVL and
+// Shall Not start an AMS while it reads SinkTxNG. Always true for a Source (it
+// is the one signalling), when not Attached.SNK, for a partner we speak R2.0
+// to, and outside an Explicit Contract, where Rp still means Type-C Current.
+// Only sequences we *start* are gated — answers inside the partner's own AMS,
+// Soft_Reset and Hard Reset are not.
+bool ucsi_ppm_tc_sink_tx_allowed(const UcsiPpm* ppm);
+
+// The Source's half of collision avoidance (R3.2 Figure 9.8): keeps
+// CONTROL0.HOST_CUR at SinkTxOk (3.0 A) while we sit idle in PE_SRC_Ready with
+// an Explicit Contract, at SinkTxNG (1.5 A) while an AMS of ours is pending, and
+// at config.source_rp_current otherwise — before a contract Rp is still a
+// Type-C Current advertisement and must stay honest. Level-triggered and
+// change-gated: costs no I2C when the answer has not moved, so it is safe to
+// call from the end of every ucsi_ppm_tick.
+void ucsi_ppm_tc_update_source_rp(UcsiPpm* ppm);
+
+// Same policy, but writes unconditionally. For the paths that have just
+// re-initialised the chip, where CONTROL0 is back at its reset value and the
+// cache ucsi_ppm_tc_update_source_rp keeps would skip the write.
+void ucsi_ppm_tc_apply_source_rp(UcsiPpm* ppm);
+
 // Milliseconds until the next TC deadline (CCDebounce expiry or the
 // AttachWait give-up timeout), or UCSI_PPM_NO_TIMEOUT when the current
 // state has no timed transition. Backend for ucsi_ppm_next_timeout_ms.

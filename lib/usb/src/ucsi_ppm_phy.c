@@ -123,6 +123,22 @@ static uint8_t rp_current_to_field(UcsiPpmRpCurrent c) {
     }
 }
 
+// MDAC field is 6 bits (MEASURE[5:0]); each step is 42 mV on the comparator
+// reference. When MEAS_VBUS=1 the VBUS input is divided by 10, so the
+// effective threshold step on actual VBUS is 420 mV.
+//
+// The code is one-based: datasheet Table 20 lists 00_0000 → 42 mV and
+// 11_0000 (48) → 2.058 V, i.e. threshold = (MDAC + 1) × 42 mV. Getting this
+// wrong costs a whole LSB — 420 mV once the VBUS divider is in play.
+#define MDAC_LSB_MV       42u
+#define MDAC_VBUS_DIVISOR 10u
+#define MDAC_VBUS_STEP_MV (MDAC_LSB_MV * MDAC_VBUS_DIVISOR)
+#define MDAC_FIELD_MASK   0x3Fu
+#define MEASURE_MEAS_VBUS (1u << 6)
+
+// STATUS0.COMP is bit 5 (datasheet Fusb302Status0RegBits).
+#define STATUS0_COMP (1u << 5)
+
 // --- lifecycle -------------------------------------------------------------
 
 UcsiPpmStatus ucsi_ppm_phy_sw_reset(UcsiPpm* ppm) {
@@ -140,6 +156,11 @@ UcsiPpmStatus ucsi_ppm_phy_init(UcsiPpm* ppm) {
 
     s = ucsi_ppm_phy_sw_reset(ppm);
     if(s != UcsiPpmStatusOk) return s;
+
+    // CONTROL0.HOST_CUR is back at its reset value, so whatever Rp the caller
+    // believes it last programmed is no longer on the pin. Invalidated here
+    // rather than at every call site — this is the event that stales it.
+    ppm->tc_source_rp_applied_valid = false;
 
     s = phy_write_reg(ppm, Fusb302RegPower, PHY_POWER_ALL_ON);
     if(s != UcsiPpmStatusOk) return s;
@@ -224,10 +245,24 @@ UcsiPpmStatus ucsi_ppm_phy_lock_polarity(UcsiPpm* ppm, UcsiPpmPhyCc cc) {
     return phy_write_reg(ppm, Fusb302RegSwitches1, sw1);
 }
 
+// Defined with the rest of the MDAC arithmetic further down; the table of
+// thresholds and the reasoning behind them live there.
+static uint8_t rp_current_to_mdac(UcsiPpmRpCurrent c);
+
 UcsiPpmStatus ucsi_ppm_phy_set_rp_current(UcsiPpm* ppm, UcsiPpmRpCurrent current) {
     // CONTROL0.HOST_CUR bits 3:2.
     const uint8_t v = (uint8_t)((rp_current_to_field(current) & 0x3u) << 2);
-    return phy_rmw_reg(ppm, Fusb302RegControl0, 0xCu /* HOST_CUR mask */, v);
+    UcsiPpmStatus s = phy_rmw_reg(ppm, Fusb302RegControl0, 0xCu /* HOST_CUR mask */, v);
+    if(s != UcsiPpmStatusOk) return s;
+
+    // Rp and the detach comparator are one setting, not two: the CC voltage a
+    // connected partner produces scales with the pull-up current, so a
+    // threshold left behind from the previous Rp either misses disconnects or
+    // — worse, and this is the real hazard when we raise Rp to SinkTxOk —
+    // declares a detach on a partner that is still there. MEAS_VBUS stays 0 so
+    // the comparator watches the CC pin selected by SWITCHES0.MEAS_CC*.
+    return phy_write_reg(
+        ppm, Fusb302RegMeasure, (uint8_t)(rp_current_to_mdac(current) & MDAC_FIELD_MASK));
 }
 
 UcsiPpmStatus ucsi_ppm_phy_read_vbusok(UcsiPpm* ppm, bool* out_vbus_ok) {
@@ -523,24 +558,49 @@ UcsiPpmStatus ucsi_ppm_phy_recv_message(UcsiPpm* ppm, UcsiPpmPhyPdMsg* out, bool
 
 // --- Measurements (MDAC + BC_LVL) ------------------------------------------
 
-// MDAC field is 6 bits (MEASURE[5:0]); each step is 42 mV on the comparator
-// reference. When MEAS_VBUS=1 the VBUS input is divided by 10, so the
-// effective threshold step on actual VBUS is 420 mV.
-#define MDAC_LSB_MV       42u
-#define MDAC_VBUS_DIVISOR 10u
-#define MDAC_VBUS_STEP_MV (MDAC_LSB_MV * MDAC_VBUS_DIVISOR)
-#define MDAC_FIELD_MASK   0x3Fu
-#define MEASURE_MEAS_VBUS (1u << 6)
-
-// STATUS0.COMP is bit 5 (datasheet Fusb302Status0RegBits).
-#define STATUS0_COMP (1u << 5)
-
-// Rounds up so the actual threshold is >= voltage_mv (conservative for
-// "above X mV" detection — see header doc).
-static uint8_t vbus_mv_to_mdac(uint16_t voltage_mv) {
-    uint32_t v = ((uint32_t)voltage_mv + (MDAC_VBUS_STEP_MV - 1u)) / MDAC_VBUS_STEP_MV;
+// Smallest code whose threshold is >= voltage_mv, i.e. ceil(v / step) - 1
+// (conservative for "above X mV" detection — see header doc).
+static uint8_t mv_to_mdac(uint32_t voltage_mv, uint32_t step_mv) {
+    if(voltage_mv <= step_mv) return 0u;
+    uint32_t v = ((voltage_mv + (step_mv - 1u)) / step_mv) - 1u;
     if(v > MDAC_FIELD_MASK) v = MDAC_FIELD_MASK;
     return (uint8_t)v;
+}
+
+static uint8_t vbus_mv_to_mdac(uint16_t voltage_mv) {
+    return mv_to_mdac(voltage_mv, MDAC_VBUS_STEP_MV);
+}
+
+// Comparator reference for source-side detach detection, per Rp.
+//
+// The threshold has to sit between the highest CC voltage a legally-terminated
+// partner can present and the lowest voltage at which disconnect may be
+// declared. Type-C R2.5 Table 4-37 gives both for a current-source pull-up,
+// which is what the FUSB302 uses (80/180/330 µA):
+//
+//   Rp        Rd connected, max   Disconnect threshold, min   we pick
+//   3.0 A     2.181 V             2.432 V                     2.310 V (code 54)
+//   1.5 A     1.320 V             1.441 V                     1.386 V (code 32)
+//   default   1.320 V             1.321 V                     1.344 V (code 31)
+//
+// Chosen near the middle of each window. The USB-default window is degenerate —
+// the two bounds abut, both set by the CC clamp — so there the only requirement
+// is to clear 1.320 V, and the margin above it is one LSB.
+//
+// This is why MDAC cannot stay at its reset code (49 → 2.100 V): that is *below*
+// the 2.181 V a legal partner may present at Rp 3.0 A, so raising Rp to
+// SinkTxOk with the reset threshold in place turns a working connection into a
+// spurious "comp above mdac" detach.
+static uint8_t rp_current_to_mdac(UcsiPpmRpCurrent c) {
+    switch(c) {
+    case UcsiPpmRpCurrent3A:
+        return 54u; // 2.310 V
+    case UcsiPpmRpCurrent1A5:
+        return 32u; // 1.386 V
+    case UcsiPpmRpCurrentUsbDefault:
+    default:
+        return 31u; // 1.344 V
+    }
 }
 
 UcsiPpmStatus ucsi_ppm_phy_measure_vbus_threshold(UcsiPpm* ppm, uint16_t voltage_mv, bool* above) {

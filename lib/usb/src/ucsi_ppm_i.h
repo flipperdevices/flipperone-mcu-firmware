@@ -190,6 +190,12 @@ struct UcsiPpm {
     uint8_t tc_bc_lvl_pending;
     uint32_t tc_bc_lvl_pending_ms;
     bool tc_bc_lvl_pending_valid;
+    // Last Rp we actually programmed into CONTROL0.HOST_CUR, so the
+    // level-triggered source-side policy in ucsi_ppm_tc_update_source_rp costs
+    // no I2C when nothing changed. `valid` is cleared whenever the chip is
+    // re-initialised behind our back and the cache can no longer be trusted.
+    uint8_t tc_source_rp_applied;
+    bool tc_source_rp_applied_valid;
 
     // Sink-side VBUS loss. A Hard Reset drops VBUS on purpose and brings it
     // back within tSrcRecover, so a loss only becomes a detach if it fails to
@@ -269,6 +275,17 @@ struct UcsiPpm {
     // Drives the Data Role bit in outgoing PD headers and Partner Type
     // reported via GET_CONNECTOR_STATUS.
     bool pe_data_role_is_dfp;
+    // A Sink-initiated AMS the Source has not licensed yet: PD 3.0 collision
+    // avoidance (R3.2 §7.2) forbids opening one while Rp reads SinkTxNG, so the
+    // request is parked here instead of being sent and left to time out. The PE
+    // tick replays it once Rp returns to SinkTxOk, and gives up after
+    // UCSI_PPM_PE_SINK_TX_WAIT_MS measured from _at_ms. Values are the
+    // arguments of whichever ucsi_ppm_pe_request_* call was deferred; the kind
+    // is a PeDeferredAms enum, private to ucsi_ppm_pe.c.
+    uint8_t pe_deferred_ams;
+    uint16_t pe_deferred_ams_current_ma;
+    bool pe_deferred_ams_to_dfp;
+    uint32_t pe_deferred_ams_at_ms;
 
     // Accumulated Connector Status Change bitmap (commands.md §2.17 / Table
     // 6-44). PE / TC layers OR new bits in via ucsi_ppm_notify_connector_change;

@@ -163,7 +163,7 @@ detection → settle, а нам остаётся «остаток» — debounce
 7. `SWITCHES1` — выставить `POWER_ROLE=1` (Source), `DATA_ROLE=1` (DFP — DRP-default), `SPEC_REV=01b` (PD 2.0; обновим до PD 3.0 после получения первого сообщения партнёра с rev=10b — см. [`pd-scope.md`](pd-scope.md) §1).
 8. `SWITCHES1.AUTO_CRC = 1`.
 9. `CONTROL3 = { AUTO_RETRY=1, N_RETRIES=10b (=2 retries), AUTO_SOFTRESET=0, AUTO_HARDRESET=0 }`.
-10. **`CONTROL0.HOST_CUR = 10b`** (1.5A advertised = SinkTxNG) — sink не должен инициировать AMS до того как мы отправим Source_Caps. PE поднимет в `11b` (3.0A advertised = SinkTxOk) после успешного TX Source_Capabilities.
+10. **`CONTROL0.HOST_CUR` = честный Type-C Current** (`config.source_rp_current`) через `ucsi_ppm_tc_apply_source_rp()`. Не SinkTxNG: до Explicit Contract Rp вообще не средство collision avoidance (PD §5.6 item 1), а обещание тока, которое Type-C-only партнёр возьмёт буквально. В SinkTxOk/SinkTxNG Rp начинает играть только с `PE_SRC_Ready` — см. [`prl-sm.md`](prl-sm.md) §7.2.
 11. Маски: открыть `I_TXSENT, I_RETRYFAIL, I_HARDRST, I_HARDSENT, I_GCRCSENT, I_BC_LVL, I_COMP_CHNG, I_VBUSOK`.
 12. Сообщить PE: **Source startup** — пусть начинает отправлять `Source_Capabilities`.
 

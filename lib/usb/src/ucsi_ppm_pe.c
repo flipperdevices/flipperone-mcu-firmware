@@ -107,6 +107,28 @@
 // so next_timeout_ms asks the host to wake us this often while in it.
 #define UCSI_PPM_PE_SOURCE_ON_POLL_MS 10u
 
+// How long we hold a Sink-initiated AMS waiting for the Source to move its Rp
+// back to SinkTxOk. The spec gives no timer here — the Source is simply
+// expected to release its licence at the end of its own AMS — but a Source that
+// parks Rp at 1.5 A would otherwise keep the request queued for the life of the
+// connection. A Source AMS, even one carrying chunked extended messages, is
+// finished well inside this; past it, the licence is not coming.
+#define UCSI_PPM_PE_SINK_TX_WAIT_MS 500u
+
+// tSinkTx, Table 6.70: 16..20 ms. The Source side of the same mechanism —
+// §7.31.13.1 says a Source "Shall wait a minimum of tSinkTx after changing Rp
+// from SinkTxOK to SinkTxNG before initiating an AMS". Take the max: this is a
+// floor we must clear, and our wakeups are not that fine-grained.
+#define UCSI_PPM_PE_SINK_TX_MS 20u
+
+// Which ucsi_ppm_pe_request_* call is parked in ppm->pe_deferred_ams.
+typedef enum {
+    PeDeferredAmsNone = 0,
+    PeDeferredAmsRenegotiate,
+    PeDeferredAmsDrSwap,
+    PeDeferredAmsPrSwapToSource,
+} PeDeferredAms;
+
 // --- helpers ---------------------------------------------------------------
 
 static uint16_t pe_build_header(uint8_t msg_type, uint8_t num_objects, bool power_role_src, bool data_role_dfp, uint8_t spec_rev) {
@@ -954,7 +976,7 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
             // every Type-C state change.
             UCSI_LOG_I(ppm, "Attached.SNK -> Attached.SRC (pr_swap)");
             ppm->tc_state = (int)UcsiPpmTcStateAttachedSrc;
-            (void)ucsi_ppm_phy_set_rp_current(ppm, ppm->config.source_rp_current);
+            ucsi_ppm_tc_apply_source_rp(ppm);
             (void)ucsi_ppm_phy_set_source_termination(
                 ppm, (UcsiPpmPhyCc)ppm->tc_orientation);
             ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, true);
@@ -995,6 +1017,10 @@ UcsiPpmStatus ucsi_ppm_pe_init(UcsiPpm* ppm) {
     ppm->pe_hard_reset_counter = 0u;
     ppm->pe_typec_only = false;
     ppm->pe_data_role_is_dfp = false;
+    ppm->pe_deferred_ams = (uint8_t)PeDeferredAmsNone;
+    ppm->pe_deferred_ams_current_ma = 0u;
+    ppm->pe_deferred_ams_to_dfp = false;
+    ppm->pe_deferred_ams_at_ms = 0u;
     return UcsiPpmStatusOk;
 }
 
@@ -1115,6 +1141,106 @@ static void pe_restart_after_hard_reset(UcsiPpm* ppm) {
     ppm->pe_received_pdo_count = 0u;
 }
 
+// True while an AMS we started is still ours to finish. Read by TC to decide
+// whether the Source's Rp should say SinkTxNG.
+bool ucsi_ppm_pe_src_ams_in_progress(const UcsiPpm* ppm) {
+    // A parked request has already claimed the bus — Rp went to SinkTxNG the
+    // moment it was armed, and the wait we are serving out is exactly tSinkTx.
+    if(ppm->pe_deferred_ams != (uint8_t)PeDeferredAmsNone) return true;
+    // DR_Swap is the only AMS we initiate as a Source today. PR_Swap src→snk and
+    // Alert will belong here too once they exist.
+    return ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse;
+}
+
+// True when the first Message of an AMS of ours may go on the wire right now.
+//
+// The two roles wait on different things. A Sink waits for a signal — the
+// Source's Rp must read SinkTxOk (§7.2). A Source waits for a clock — it has to
+// hold its own Rp at SinkTxNG for tSinkTx first, so the Sink has time to notice
+// and stop talking (§7.31.13.1). Which is why the Source branch can only ever
+// return true once a request has been parked: parking is what drops Rp.
+static bool pe_ams_start_allowed(const UcsiPpm* ppm) {
+    if(!ppm->tc_role_is_src) return ucsi_ppm_tc_sink_tx_allowed(ppm);
+
+    // Outside idle-with-a-contract Rp is not a collision-avoidance signal at
+    // all, so there is nothing to wait for.
+    if(ppm->pe_state != (int)UcsiPpmPeSrcReady) return true;
+    if(ppm->prl_our_spec_rev < UCSI_PPM_SPEC_REV_3_0) return true;
+
+    if(ppm->pe_deferred_ams == (uint8_t)PeDeferredAmsNone) return false;
+    const uint32_t waited =
+        (uint32_t)(ppm->config.time_ms(ppm->config.hal_ctx) - ppm->pe_deferred_ams_at_ms);
+    return waited >= UCSI_PPM_PE_SINK_TX_MS;
+}
+
+// Parks the first Message of an AMS of ours until we are allowed to send it.
+//
+// The gate has to sit in front of the whole initiator, not in the transmit
+// path: every one of these moves PE into a WaitFor* state and starts the
+// SenderResponseTimer, so a message merely held back in the PRL queue would be
+// declared lost and escalate to a Hard Reset while it was still waiting. Here
+// nothing has been sent and no timer is running, which is exactly what
+// PRL_Tx_Snk_Start_of_AMS and PRL_Tx_Src_Pending describe (Figures 9.8/9.9).
+//
+// Reports Ok: the request is accepted and will go out. Callers complete their
+// UCSI command on send today, so this is not visible to the OPM.
+static UcsiPpmStatus pe_defer_ams(UcsiPpm* ppm, PeDeferredAms kind, uint16_t current_ma, bool to_dfp) {
+    ppm->pe_deferred_ams = (uint8_t)kind;
+    ppm->pe_deferred_ams_current_ma = current_ma;
+    ppm->pe_deferred_ams_to_dfp = to_dfp;
+    ppm->pe_deferred_ams_at_ms = ppm->config.time_ms(ppm->config.hal_ctx);
+    UCSI_LOG_I(ppm, "deferring ams %u until sink tx is ok", (unsigned)kind);
+    // As a Source this is the step that claims the bus: Rp drops to SinkTxNG
+    // now, and the tSinkTx we are about to wait out is measured from here.
+    ucsi_ppm_tc_update_source_rp(ppm);
+    return UcsiPpmStatusOk;
+}
+
+// Replays a parked AMS. Called from the tick: as a Sink that means the BC_LVL
+// interrupt carrying the Source's Rp back to SinkTxOk, as a Source the
+// tSinkTx wakeup.
+static void pe_run_deferred_ams(UcsiPpm* ppm) {
+    const PeDeferredAms kind = (PeDeferredAms)ppm->pe_deferred_ams;
+    if(kind == PeDeferredAmsNone) return;
+
+    if(!pe_ams_start_allowed(ppm)) {
+        // Sink-side only in practice: the Source's own wait always ends.
+        const uint32_t waited =
+            (uint32_t)(ppm->config.time_ms(ppm->config.hal_ctx) - ppm->pe_deferred_ams_at_ms);
+        if(waited >= UCSI_PPM_PE_SINK_TX_WAIT_MS) {
+            UCSI_LOG_W(ppm, "sink tx never became ok, dropping ams %u", (unsigned)kind);
+            ppm->pe_deferred_ams = (uint8_t)PeDeferredAmsNone;
+        }
+        return;
+    }
+
+    // Replayed before the record is cleared, not after: on the Source path
+    // pe_ams_start_allowed reads pe_deferred_ams_at_ms to know tSinkTx has
+    // elapsed, so it has to still be there when the initiator consults it. The
+    // initiator cannot park itself again — the predicate it is about to call
+    // just returned true.
+    UcsiPpmStatus status = UcsiPpmStatusOk;
+    switch(kind) {
+    case PeDeferredAmsRenegotiate:
+        status = ucsi_ppm_pe_request_renegotiate(ppm, ppm->pe_deferred_ams_current_ma);
+        break;
+    case PeDeferredAmsDrSwap:
+        status = ucsi_ppm_pe_request_dr_swap(ppm, ppm->pe_deferred_ams_to_dfp);
+        break;
+    case PeDeferredAmsPrSwapToSource:
+        status = ucsi_ppm_pe_request_pr_swap_to_source(ppm);
+        break;
+    case PeDeferredAmsNone:
+        break;
+    }
+    ppm->pe_deferred_ams = (uint8_t)PeDeferredAmsNone;
+    // Losing the race is normal: the partner may have renegotiated or detached
+    // while we waited, so the preconditions we checked on the way in are gone.
+    if(status != UcsiPpmStatusOk) {
+        UCSI_LOG_I(ppm, "deferred ams %u no longer applies: %d", (unsigned)kind, (int)status);
+    }
+}
+
 UcsiPpmStatus ucsi_ppm_pe_request_renegotiate(UcsiPpm* ppm, uint16_t operating_current_ma) {
     // Only sink-side, only with a live explicit contract — otherwise we'd
     // have nothing to renegotiate against.
@@ -1127,6 +1253,11 @@ UcsiPpmStatus ucsi_ppm_pe_request_renegotiate(UcsiPpm* ppm, uint16_t operating_c
 
     const uint32_t pdo = ppm->pe_received_pdos[pos - 1u];
     if(!pdo_is_fixed(pdo)) return UcsiPpmStatusInvalidArg;
+
+    if(!pe_ams_start_allowed(ppm)) {
+        return pe_defer_ams(ppm, PeDeferredAmsRenegotiate, operating_current_ma, false);
+    }
+
     // Clamp to advertised max so we never request more than the source offers.
     const uint16_t max_ma = pdo_fixed_current_ma(pdo);
     const uint16_t req_ma = operating_current_ma > max_ma ? max_ma : operating_current_ma;
@@ -1159,6 +1290,9 @@ UcsiPpmStatus ucsi_ppm_pe_request_dr_swap(UcsiPpm* ppm, bool to_dfp) {
         // Already in requested role — nothing to do.
         return UcsiPpmStatusOk;
     }
+    if(!pe_ams_start_allowed(ppm)) {
+        return pe_defer_ams(ppm, PeDeferredAmsDrSwap, 0u, to_dfp);
+    }
     if(!pe_send_control(ppm, PD_MSG_TYPE_DR_SWAP)) {
         return UcsiPpmStatusHalError;
     }
@@ -1173,6 +1307,9 @@ UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_source(UcsiPpm* ppm) {
     // protocol but with us turning VBUS off first — needs more careful PSU
     // teardown ordering.
     if(ppm->pe_state != (int)UcsiPpmPeSnkReady) return UcsiPpmStatusInvalidArg;
+    if(!pe_ams_start_allowed(ppm)) {
+        return pe_defer_ams(ppm, PeDeferredAmsPrSwapToSource, 0u, false);
+    }
     if(!pe_send_control(ppm, PD_MSG_TYPE_PR_SWAP)) {
         return UcsiPpmStatusHalError;
     }
@@ -1245,6 +1382,10 @@ void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
 }
 
 void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
+    // Orthogonal to pe_state: a parked AMS is only ever armed from *Ready, and
+    // replaying it moves us out of Ready, so this runs before the switch.
+    pe_run_deferred_ams(ppm);
+
     switch(ppm->pe_state) {
     case(int)UcsiPpmPeSnkWaitForCapabilities:
         // Nothing left to wait for once the partner is known to be Type-C
@@ -1361,7 +1502,7 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
 
 // Mirrors the ucsi_ppm_pe_tick switch: every state that checks a timer there
 // reports the remaining time here. Keep the two in sync when adding states.
-uint32_t ucsi_ppm_pe_next_timeout_ms(const UcsiPpm* ppm) {
+static uint32_t pe_state_timeout_ms(const UcsiPpm* ppm) {
     switch(ppm->pe_state) {
     case(int)UcsiPpmPeSnkWaitForCapabilities:
         if(ppm->pe_typec_only) return UCSI_PPM_NO_TIMEOUT;
@@ -1391,4 +1532,24 @@ uint32_t ucsi_ppm_pe_next_timeout_ms(const UcsiPpm* ppm) {
     default:
         return UCSI_PPM_NO_TIMEOUT;
     }
+}
+
+uint32_t ucsi_ppm_pe_next_timeout_ms(const UcsiPpm* ppm) {
+    uint32_t next = pe_state_timeout_ms(ppm);
+
+    if(ppm->pe_deferred_ams != (uint8_t)PeDeferredAmsNone) {
+        // As a Source this is the real release deadline: nothing else will wake
+        // us when tSinkTx runs out. As a Sink the release comes from the BC_LVL
+        // interrupt and this is only the give-up — which still has to be
+        // reported, or a Source that goes quiet while holding SinkTxNG would
+        // leave the request armed with nothing scheduled to retire it.
+        const uint32_t window =
+            ppm->tc_role_is_src ? UCSI_PPM_PE_SINK_TX_MS : UCSI_PPM_PE_SINK_TX_WAIT_MS;
+        const uint32_t waited =
+            (uint32_t)(ppm->config.time_ms(ppm->config.hal_ctx) - ppm->pe_deferred_ams_at_ms);
+        const uint32_t remaining = waited >= window ? 0u : window - waited;
+        if(remaining < next) next = remaining;
+    }
+
+    return next;
 }

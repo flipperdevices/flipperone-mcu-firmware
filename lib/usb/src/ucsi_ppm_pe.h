@@ -74,6 +74,11 @@ UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_source(UcsiPpm* ppm);
 // VBUS as part of the protocol.
 bool ucsi_ppm_pe_pr_swap_in_progress(const UcsiPpm* ppm);
 
+// True while an AMS we initiated is still ours to finish, including one still
+// parked waiting for its licence. TC reads this to hold the Source's Rp at
+// SinkTxNG for the duration — see ucsi_ppm_tc_update_source_rp.
+bool ucsi_ppm_pe_src_ams_in_progress(const UcsiPpm* ppm);
+
 // Renegotiates the existing sink-side contract at a different operating
 // current. Builds a fresh Request RDO selecting the same PDO position as
 // the prior contract, ships it via PRL, and re-enters the Accept→PS_RDY

@@ -257,9 +257,10 @@ bitmap-а (см. Table 6-44 в [`commands.md`](commands.md) §2.17).
 
 Некоторые события L4 интересны **нескольким** компонентам L3:
 
-- **`BcLvlChanged`** — слушают:
-  - **PRL** для SinkTx collision avoidance (см. [`prl-sm.md`](prl-sm.md) §7).
-  - **Type-C SM** для определения partner Rp current → `Power Operation Mode` в `GET_CONNECTOR_STATUS`.
+- **`BcLvlChanged`** — слушает **только Type-C SM**: partner Rp current →
+  `Power Operation Mode` в `GET_CONNECTOR_STATUS`, sink current limit, и
+  SinkTx collision avoidance через `ucsi_ppm_tc_sink_tx_allowed()` (гейт
+  вызывает PE, см. [`prl-sm.md`](prl-sm.md) §7.1). Broadcast не понадобился.
 - **`VbusChanged`** — слушают:
   - **Type-C SM** для attach/detach detection.
   - **PE** во время Hard Reset / PR_Swap для определения vSafe0V / vSafe5V переходов.

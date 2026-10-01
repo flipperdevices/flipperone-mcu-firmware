@@ -37,7 +37,7 @@
 
 - MessageID counter, duplicate detection.
 - TX / RX через FUSB302.
-- SinkTx collision avoidance.
+- ~~SinkTx collision avoidance~~ — на деле легло в TC (чтение Rp) + PE (отложенный AMS), не в PRL: см. [`prl-sm.md`](prl-sm.md) §7.1.
 - Soft_Reset counter semantics.
 
 ### 1.4 Высокоуровневая структура PE
@@ -122,11 +122,11 @@ explicit-контрактом.
 
 **Действия**:
 1. Сконструировать `Source_Capabilities` message из наших PDOs (см. §8); учесть SET_POWER_LEVEL target (§8.4).
-2. `HOST_CUR` уже = `10b` (SinkTxNG) с момента `Attached.SRC` entry (см. [`type-c-sm.md`](type-c-sm.md) §2.5 step 10). Подтверждать не нужно.
+2. `HOST_CUR` трогать не нужно: до Explicit Contract он держит честный Type-C Current, а не SinkTx-сигнал (см. [`prl-sm.md`](prl-sm.md) §7.2).
 3. Отправить через `prl.tx_request(msg)`.
 4. Запустить `SenderResponseTimer` (tSenderResponse, ~300 мс).
 5. Inc `CapsCounter`.
-6. После `I_TXSENT` (PRL событие MessageSent): установить `HOST_CUR = 11b` (SinkTxOk) — теперь sink может инициировать AMS.
+6. `HOST_CUR` поднимается в `11b` (SinkTxOk) не здесь, а на входе в `PE_SRC_Ready` — то есть после PS_RDY, когда Explicit Contract уже есть. Делает это `ucsi_ppm_tc_update_source_rp()` по `pe_state`, отдельного уведомления от PE не нужно.
 
 **События**:
 - `PRL: MessageReceived(Request)` → отменить SenderResponseTimer → `PE_SRC_Negotiate_Capability`.

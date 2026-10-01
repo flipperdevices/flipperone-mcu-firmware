@@ -217,7 +217,7 @@ PHY-теста. По таймеру софта (tBISTContMode = 30-60 мс) → 
 - **Duplicate detection на приёме** — если прилетел тот же MessageID, что и в предыдущем сообщении, FUSB302 всё равно вернёт GoodCRC (auto), но нам надо понять "это retry партнёра, не обрабатывать дважды".
 - **Soft_Reset MessageID semantics** — Soft_Reset всегда имеет MessageID=0 и обнуляет counter в обе стороны.
 - **Discard на коллизии** — если получили message пока пытаемся отправить (`I_COLLISION`), TX отменяется в железе, но PRL должен повторить попытку.
-- **SinkTxTimer (tSinkTx, ~18 мс)** — sink ждёт перед инициированием AMS, чтобы дать source шанс. PRL должен ждать этот таймер.
+- **SinkTx collision avoidance** — как Sink гейт по `STATUS0.BC_LVL` (реализовано в TC+PE, см. [`prl-sm.md`](prl-sm.md) §7.1); tSinkTx это таймер **Source**, нам как синку он не нужен.
 
 ### 2.3 PE state machine — целиком в софте
 

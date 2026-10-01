@@ -52,6 +52,23 @@
 // source is advertising, i.e. how much we may draw before any PD contract
 // (Type-C R2.0 Table 4-25). "Default USB" is 500 mA on USB 2.0 and 900 mA on
 // USB 3.x; we cannot tell them apart here, so take the safe one.
+
+// --- SinkTx collision avoidance (PD R3.2 §7.2, Figures 9.8/9.9) -------------
+//
+// PD 3.0 dropped the "collide and retry" model: on a half-duplex bus with an
+// always-listening Source, the Source instead licences the Sink through its Rp.
+// Rp 3.0 A means SinkTxOk — the Sink May start an AMS; Rp 1.5 A means SinkTxNG
+// — the Sink Shall Not start one and may only answer the Source. A Sink reads
+// that off BC_LVL on the active CC pin, the same field it already uses to learn
+// how much current it may draw before a contract.
+//
+// Two exemptions, both explicit in the spec: Soft_Reset goes out "irrespective
+// of the value of Rp" (§7.1.1, and Figure 9.9 routes it around the Rp check),
+// and Hard Reset Signaling may be sent at any time (§7.1.3). And one
+// precondition: only inside an Explicit Contract does Rp mean this at all
+// (§5.6 item 1) — before one it is still a Type-C Current advertisement.
+#define UCSI_PPM_TC_BC_LVL_SINK_TX_NG 0b10u
+#define UCSI_PPM_TC_BC_LVL_SINK_TX_OK 0b11u
 static uint16_t tc_rp_advertised_current_ma(uint8_t bc_lvl) {
     switch(bc_lvl) {
     case 0b01u:
@@ -240,7 +257,7 @@ static void handle_toggle_done(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         // floats and BC_LVL reads vNoRd. Do NOT enable external VBUS yet;
         // driving 5 V into VBUS during the debounce window can bleed into
         // CC sense. VBUS comes up at commit (see tc_try_commit_attached).
-        (void)ucsi_ppm_phy_set_rp_current(ppm, ppm->config.source_rp_current);
+        ucsi_ppm_tc_apply_source_rp(ppm);
         (void)ucsi_ppm_phy_set_source_termination(ppm, cc);
     }
     // Sink-side: nothing more — partner brings up VBUS and FUSB302's
@@ -521,7 +538,7 @@ static void tc_rearm_phy_after_hard_reset(UcsiPpm* ppm) {
     // needs; both roles still need the measured/transmit CC pin selected.
     (void)ucsi_ppm_phy_lock_polarity(ppm, (UcsiPpmPhyCc)ppm->tc_orientation);
     if(ppm->tc_role_is_src) {
-        (void)ucsi_ppm_phy_set_rp_current(ppm, ppm->config.source_rp_current);
+        ucsi_ppm_tc_apply_source_rp(ppm);
         (void)ucsi_ppm_phy_set_source_termination(ppm, (UcsiPpmPhyCc)ppm->tc_orientation);
     }
 
@@ -605,6 +622,94 @@ static bool tc_bc_lvl_settle(UcsiPpm* ppm) {
     ppm->tc_bc_lvl_pending_valid = false;
     UCSI_LOG_D(ppm, "cc level settled at %u", (unsigned)ppm->tc_last_bc_lvl);
     return true;
+}
+
+bool ucsi_ppm_tc_sink_tx_allowed(const UcsiPpm* ppm) {
+    // Only a Sink obeys this; a Source is the one doing the signalling.
+    if(ppm->tc_role_is_src) return true;
+    if(ppm->tc_state != (int)UcsiPpmTcStateAttachedSnk) return true;
+    // The mechanism arrived with PD 3.0. A partner we have stepped down to R2.0
+    // for never moves its Rp for us and expects collide-and-retry instead.
+    if(ppm->prl_our_spec_rev < UCSI_PPM_SPEC_REV_3_0) return true;
+    // §5.6 item 1, and this one is easy to get wrong: outside an Explicit
+    // Contract Rp still means Type-C Current and "Shall Not be used for
+    // Collision Avoidance". A 1.5 A charger we have not negotiated with yet is
+    // telling us how much we may draw, not telling us to be quiet.
+    if(ppm->pe_negotiated_voltage_mv == 0u) return true;
+
+    // Deliberately the *undebounced* reading. tPDDebounce is 10-20 ms, but
+    // §7.2 gives a Sink only tSinkDelay (5 ms max) to fall silent after the
+    // Source asserts SinkTxNG, so a debounced view would react far too late
+    // and we would open an AMS into a Source that has already started one.
+    // The debounced tc_last_bc_lvl stays the input to detach detection, which
+    // is what the debounce is actually for.
+    const uint8_t level =
+        ppm->tc_bc_lvl_pending_valid ? ppm->tc_bc_lvl_pending : ppm->tc_last_bc_lvl;
+
+    // §7.31.13.1 phrases the rule the other way round — a Sink "Shall only
+    // initiate an AMS when it has determined that Rp is set to SinkTxOK". For a
+    // compliant Source the two forms are the same thing: inside an Explicit
+    // Contract §5.6 item 3 permits Rp to be nothing but SinkTxNG or SinkTxOk.
+    // They differ only for a Source that leaves Rp at Type-C default, and there
+    // the permissive form is the one that does not lock us out of renegotiation
+    // for the whole connection.
+    return level != UCSI_PPM_TC_BC_LVL_SINK_TX_NG;
+}
+
+// The Source's half of the same mechanism (Figure 9.8). PE_SRC_Ready *is* the
+// spec's "end of AMS" notification, so it maps straight onto Rp = SinkTxOk; a
+// source-initiated AMS maps onto Rp = SinkTxNG; and everything before the first
+// contract keeps the honest Type-C Current, because until then that is still
+// what Rp means (§5.6 item 1, mirrored from the Sink side).
+//
+// Note we also fall back to the honest current while answering the partner
+// inside *its* AMS — leaving PE_SRC_Ready for, say, SrcTransitionSupply reads as
+// "not idle" here. The Sink has no business opening a new AMS mid-exchange
+// anyway, so signalling NG through it costs nothing.
+static UcsiPpmRpCurrent tc_desired_source_rp(const UcsiPpm* ppm) {
+    if(ppm->tc_state != (int)UcsiPpmTcStateAttachedSrc) return ppm->config.source_rp_current;
+    // An R2.0 partner reads Rp as current, full stop.
+    if(ppm->prl_our_spec_rev < UCSI_PPM_SPEC_REV_3_0) return ppm->config.source_rp_current;
+    // Ordered before the SrcReady test on purpose: a deferred AMS of ours is
+    // still parked in PE_SRC_Ready, and it is exactly then that Rp must read NG.
+    if(ucsi_ppm_pe_src_ams_in_progress(ppm)) return UcsiPpmRpCurrent1A5;
+    if(ppm->pe_state != (int)UcsiPpmPeSrcReady) return ppm->config.source_rp_current;
+    return UcsiPpmRpCurrent3A;
+}
+
+static void tc_write_source_rp(UcsiPpm* ppm, UcsiPpmRpCurrent want) {
+    if(ucsi_ppm_phy_set_rp_current(ppm, want) != UcsiPpmStatusOk) {
+        // Leave the cache invalid so the next pass retries rather than believing
+        // a value the chip never took.
+        ppm->tc_source_rp_applied_valid = false;
+        return;
+    }
+    ppm->tc_source_rp_applied = (uint8_t)want;
+    ppm->tc_source_rp_applied_valid = true;
+}
+
+void ucsi_ppm_tc_update_source_rp(UcsiPpm* ppm) {
+    // Sink side we have no Rp to signal with — CONTROL0.HOST_CUR does nothing
+    // until PU_EN is on — so leave the register alone rather than spend an I2C
+    // write per tick on a value nobody reads. The explicitly-source paths go
+    // through ucsi_ppm_tc_apply_source_rp instead.
+    if(ppm->tc_state != (int)UcsiPpmTcStateAttachedSrc) return;
+
+    const UcsiPpmRpCurrent want = tc_desired_source_rp(ppm);
+    if(ppm->tc_source_rp_applied_valid && ppm->tc_source_rp_applied == (uint8_t)want) return;
+    UCSI_LOG_I(
+        ppm,
+        "source rp -> %s",
+        want == UcsiPpmRpCurrent3A    ? "3.0A (SinkTxOk)" :
+        want == UcsiPpmRpCurrent1A5   ? "1.5A (SinkTxNG)" :
+                                        "default");
+    tc_write_source_rp(ppm, want);
+}
+
+void ucsi_ppm_tc_apply_source_rp(UcsiPpm* ppm) {
+    // The chip was just re-initialised, so CONTROL0.HOST_CUR is back at its
+    // reset value whatever our cache says. Write unconditionally.
+    tc_write_source_rp(ppm, tc_desired_source_rp(ppm));
 }
 
 void ucsi_ppm_tc_tick(UcsiPpm* ppm) {

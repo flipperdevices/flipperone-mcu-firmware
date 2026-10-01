@@ -283,6 +283,9 @@ UcsiPpmStatus ucsi_ppm_tick(UcsiPpm* ppm) {
     // After both state machines have settled, so a contract that just came up
     // is reported instead of the Rp advertisement it replaces.
     ucsi_ppm_tc_update_sink_current_limit(ppm);
+    // Same reason, mirrored: our own Rp follows what PE just decided. Cheap
+    // when nothing moved — the write is change-gated.
+    ucsi_ppm_tc_update_source_rp(ppm);
 
     // Anything the tick itself queued — a source-capability retransmission, or a
     // message an OPM command asked for just before this tick — leaves here. The

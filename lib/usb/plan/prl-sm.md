@@ -301,25 +301,119 @@ PD 3.0 ввёл механизм, чтобы Sink не пытался начат
 | 1.5A (180 μA pull-up)  | "SinkTxNG" — sink ждёт | `10`          |
 | Default (80 μA)        | (legacy USB)            | `01`          |
 
+**Обязательное предусловие (§5.6 item 1):** вне Explicit Contract Rp по-прежнему
+означает Type-C Current и **не** используется для collision avoidance. 1.5 А от
+зарядки, с которой мы ещё не договорились, — это «столько можно брать», а не
+«молчи».
+
 ### 7.1 Поведение Sink (нас, когда мы Sink)
 
-- При `Fusb302EventBcLvlChanged`:
-  - Если BC_LVL = 11 → `sink_tx_ok = true`. Если был timer, отменить.
-  - Если BC_LVL = 10 → `sink_tx_ok = false`. Запустить SinkTxTimer (если не запущен), tSinkTx ≈ 18 мс. Когда timer expires, можно начать TX даже если BC_LVL ещё 10 (это safety net).
-- При попытке TX:
-  - Если `sink_tx_ok || SinkTxTimer expired` → можно TX.
-  - Иначе → отложить TX (PRL остаётся в IDLE с pending request).
+Реализовано: `ucsi_ppm_tc_sink_tx_allowed()` + `pe_defer_ams()` в
+[`ucsi_ppm_pe.c`](../src/ucsi_ppm_pe.c).
+
+- Гейт живёт **в PE, перед инициатором**, а не в TX-очереди PRL. Каждый
+  `ucsi_ppm_pe_request_*` переводит PE в `WaitFor*` и запускает
+  SenderResponseTimer, поэтому сообщение, всего лишь задержанное в очереди,
+  протухло бы по таймауту и уехало в Hard Reset. Отложенный запрос лежит в
+  `pe_deferred_ams` — ничего не отправлено, никакой таймер не идёт. Это ровно
+  `PRL_Tx_Snk_Start_of_AMS` из Figure 9.9.
+- Условие: BC_LVL ≠ `10`. Читается **недебаунсенное** значение: tPDDebounce это
+  10–20 мс, а §7.2 даёт синку только tSinkDelay (max 5 мс) на то чтобы замолчать.
+  Дебаунс остаётся входом для детекта отключения, там он и нужен.
+- Отложенный AMS переигрывается из `ucsi_ppm_pe_tick`, т.е. по тому же
+  I_BC_LVL-прерыванию, которым Source возвращает Rp в SinkTxOk.
+- **Никакого «safety net по tSinkTx» нет** — раньше здесь было написано
+  обратное. tSinkTx (16–20 мс) это таймер **Source**: сколько он ждёт после
+  перевода Rp в SinkTxNG прежде чем начать свою AMS (§7.31.13.1). Синк не
+  получает от него права передавать; §7.2 говорит прямо противоположное — синк
+  замолкает *после* того как заметил NG. Вместо этого стоит потолок
+  `UCSI_PPM_PE_SINK_TX_WAIT_MS` (500 мс, не из спеки): Source, припаркованный на
+  1.5 А, иначе держал бы запрос всё соединение — по истечении запрос
+  выбрасывается с warning.
+- Исключения (обе явные в спеке): `Soft_Reset` уходит «irrespective of the value
+  of Rp» (§7.1.1, Figure 9.9 обводит его вокруг проверки Rp), Hard Reset
+  Signaling можно всегда (§7.1.3). Ответы внутри AMS партнёра не гейтятся вообще
+  — §7.2: синк «Shall only send Messages that are part of a Source-initiated
+  AMS», то есть их-то как раз и обязан отправить.
+
+Про строгость условия: §7.31.13.1 формулирует правило наоборот — синк «Shall
+only initiate an AMS when it has determined that Rp is set to SinkTxOK». Для
+корректного Source это то же самое: внутри Explicit Contract §5.6 item 3
+разрешает Rp быть только SinkTxNG или SinkTxOk. Расхождение лишь для Source,
+оставившего Rp на Type-C default, и там разрешительная форма (≠ NG) — та,
+которая не запирает нас без ренеготиации на всё соединение.
 
 ### 7.2 Поведение Source (нас, когда мы Source)
 
-- Когда мы хотим, чтобы sink не инициировал AMS (например, мы готовимся отправить Source_Capabilities) → выставить `CONTROL0.HOST_CUR = 10b` (1.5A — SinkTxNG).
-- Когда мы готовы дать sink-у право инициировать AMS → `HOST_CUR = 11b` (3.0A — SinkTxOk).
+Реализовано: `ucsi_ppm_tc_update_source_rp()` в
+[`ucsi_ppm_tc.c`](../src/ucsi_ppm_tc.c), level-triggered, вызывается в конце
+каждого `ucsi_ppm_tick` и из `pe_defer_ams`. Запись в `CONTROL0.HOST_CUR` идёт
+только при смене значения (кэш `tc_source_rp_applied`, сбрасывается в
+`ucsi_ppm_phy_init` — после SW_RESET регистр вернулся в reset value).
 
-В обычной работе: Source держит `HOST_CUR=11b` (SinkTxOk). PE опускает в
-`10b` только когда сам собирается отправить (например, перед Get_Sink_Cap),
-и поднимает обратно после.
+Желаемое Rp по состоянию:
 
-### 7.3 Default (legacy USB, BC_LVL=01)
+| Состояние                                        | Rp                        |
+|:-------------------------------------------------|:--------------------------|
+| не `Attached.SRC`                                | `config.source_rp_current`|
+| партнёр R2.0                                     | `config.source_rp_current`|
+| наша AMS в полёте или отложена                   | 1.5 A (SinkTxNG)          |
+| не `PE_SRC_Ready` (отвечаем внутри AMS партнёра) | `config.source_rp_current`|
+| `PE_SRC_Ready` (idle с Explicit Contract)        | **3.0 A (SinkTxOk)**      |
+
+`PE_SRC_Ready` **и есть** «end of AMS notification» из Figure 9.8, поэтому
+отдельного уведомления от PE не понадобилось — TC читает `pe_state`.
+
+**До контракта Rp не поднимаем** — там он всё ещё Type-C Current (§5.6 item 1),
+а у нас OTG на 1.5 А: Type-C-only партнёр законно возьмёт ровно столько, сколько
+мы заявили. Отсюда же следует, что старый план (§F2.3 в
+[`validation.md`](validation.md): «в `Attached.SRC` entry ставить 10b, PE поднимет
+в 11b после первого Source_Caps») был построен на неверной посылке.
+
+Своя AMS (`PRL_Tx_Src_Source_Tx` → `PRL_Tx_Src_Pending`): `pe_defer_ams`
+опускает Rp в SinkTxNG **сразу**, от этого момента отсчитывается
+`UCSI_PPM_PE_SINK_TX_MS` (20 мс, tSinkTx max — §7.31.13.1 требует минимум
+tSinkTx), и только потом сообщение уходит. Rp возвращается в SinkTxOk когда PE
+приходит назад в `PE_SRC_Ready`. Сегодня единственная наша source-AMS это
+DR_Swap; PR_Swap src→snk и Alert встанут туда же через
+`ucsi_ppm_pe_src_ams_in_progress()`.
+
+### 7.3 MDAC должен ехать вместе с Rp
+
+Source-side детект отключения (`handle_comp_changed`) сравнивает CC с порогом
+MDAC, а напряжение на CC у подключённого партнёра **масштабируется с током Rp**.
+Значит одно значение MDAC на все три Rp невозможно, и связка сделана атомарной:
+`ucsi_ppm_phy_set_rp_current()` пишет `CONTROL0.HOST_CUR` и `MEASURE.MDAC` за один
+вызов.
+
+FUSB302 тянет CC **источником тока** (80/180/330 µA), поэтому релевантна Type-C
+R2.5 **Table 4-37** (Source CC Pin Voltages … using a Pull-Up current), не
+sink-таблица 4-36:
+
+| Rp      | Rd подключён, max | Disconnect threshold, min | Берём            |
+|:--------|------------------:|--------------------------:|:-----------------|
+| 3.0 A   | 2.181 В           | 2.432 В                   | 2.310 В (код 54) |
+| 1.5 A   | 1.320 В           | 1.441 В                   | 1.386 В (код 32) |
+| default | 1.320 В           | 1.321 В                   | 1.344 В (код 31) |
+
+Берём середину окна. Для USB-default окно вырожденное (границы стыкуются, обе
+заданы клампом CC), там требование только «выше 1.320 В» и запас — один LSB.
+
+Две вещи, которые здесь легко проглядеть:
+
+1. **Код MDAC one-based**: датащит FUSB302 Table 20 даёт `00_0000` → 42 мВ и
+   `11_0000` (48) → 2.058 В, то есть порог = **(MDAC + 1) × 42 мВ**. У нас
+   `vbus_mv_to_mdac()` считал `ceil(v / step)` — на LSB ниже задуманного, а на
+   VBUS-делителе это целых 420 мВ. Исправлено (`mv_to_mdac`).
+2. **Reset value был опасен именно для нашей правки.** MEASURE reset = 0x31 →
+   MDAC = 49 → порог **2.100 В**, что **ниже** 2.181 В, которые легальный партнёр
+   вправе показать при Rp 3.0 А. То есть поднять Rp в SinkTxOk, не тронув MDAC,
+   означало бы ложный «comp above mdac» → detach живого соединения. При Rp 1.5 А
+   старый порог наоборот был завышен (2.100 против нужных ~1.386): детект
+   работал, но грубее, чем нужно — это уточнение к более раннему утверждению,
+   будто COMP там не срабатывал вовсе.
+
+### 7.4 Default (legacy USB, BC_LVL=01)
 
 В PD 2.0 SinkTx mechanism нет. BC_LVL=01 означает legacy default — sink
 может TX в любое время. У нас, как Source, никогда не advertised
