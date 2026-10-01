@@ -52,55 +52,73 @@ static void haptic_timer_callback(void* context) {
     drv2605l_disable(instance->haptic_header);
 }
 
-static void haptic_calibration(Haptic* instance, bool force_auto_calibration) {
+// Stops whatever is currently being played: cancels the pending auto-off timer
+// and issues the stop command, so calibration does not run while the driver is
+// still driving the actuator.
+static void haptic_stop_playback(Haptic* instance) {
+    furi_assert(instance);
+
+    if(furi_event_loop_timer_is_running(instance->timer)) {
+        furi_event_loop_timer_stop(instance->timer);
+    }
+    drv2605l_trigger_go(instance->haptic_header, false);
+    drv2605l_disable(instance->haptic_header);
+}
+
+// Runs auto-calibration, reads back the resulting coefficients and persists
+// them to NVM. Returns true only if every step succeeded.
+static bool haptic_auto_calibrate_and_save(
+    Haptic* instance,
+    Drv2605lCalibrationData* calib_data,
+    uint32_t calib_data_size) {
+    if(!drv2605l_auto_calibration(instance->haptic_header)) {
+        FURI_LOG_E(TAG, "Haptic auto-calibration failed");
+        return false;
+    }
+
+    FURI_LOG_I(TAG, "Haptic auto-calibration successful");
+
+    if(!drv2605l_get_calibration_data(instance->haptic_header, calib_data)) {
+        FURI_LOG_E(TAG, "Failed to get haptic calibration data after auto-calibration");
+        return false;
+    }
+
+    if(furi_hal_nvm_set_struct(SETTINGS_HAPTIC_CALIB_DATA, calib_data, calib_data_size) !=
+       FuriHalNvmStorageOK) {
+        FURI_LOG_E(TAG, "Failed to save haptic calibration data to NVM");
+        return false;
+    }
+
+    FURI_LOG_I(TAG, "Saved haptic calibration data to NVM");
+    return true;
+}
+
+static bool haptic_calibration(Haptic* instance, bool force_auto_calibration) {
     uint32_t calib_data_size = drv2605l_size_calibration_data(instance->haptic_header);
     Drv2605lCalibrationData* calib_data = malloc(calib_data_size);
+    bool result = false;
 
     drv2605l_enable(instance->haptic_header);
 
     if(force_auto_calibration) {
-        if(drv2605l_auto_calibration(instance->haptic_header)) {
-            FURI_LOG_I(TAG, "Haptic auto-calibration successful");
-            if(drv2605l_get_calibration_data(instance->haptic_header, calib_data)) {
-                if(furi_hal_nvm_set_struct(SETTINGS_HAPTIC_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
-                    FURI_LOG_I(TAG, "Saved haptic calibration data to NVM");
-                } else {
-                    FURI_LOG_E(TAG, "Failed to save haptic calibration data to NVM");
-                }
-            } else {
-                FURI_LOG_E(TAG, "Failed to get haptic calibration data after auto-calibration");
-            }
+        result = haptic_auto_calibrate_and_save(instance, calib_data, calib_data_size);
+    } else if(furi_hal_nvm_get_struct(SETTINGS_HAPTIC_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
+        if(drv2605l_set_calibration_data(instance->haptic_header, calib_data)) {
+            FURI_LOG_I(TAG, "Loaded haptic calibration data from NVM");
+            result = true;
         } else {
-            FURI_LOG_E(TAG, "Haptic auto-calibration failed");
+            FURI_LOG_E(TAG, "Failed to set haptic calibration data from NVM, running auto-calibration");
+            result = haptic_auto_calibrate_and_save(instance, calib_data, calib_data_size);
         }
     } else {
-        if(furi_hal_nvm_get_struct(SETTINGS_HAPTIC_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
-            if(drv2605l_set_calibration_data(instance->haptic_header, calib_data)) {
-                FURI_LOG_I(TAG, "Loaded haptic calibration data from NVM");
-            } else {
-                FURI_LOG_E(TAG, "Failed to set haptic calibration data from NVM");
-            }
-        } else {
-            FURI_LOG_W(TAG, "No haptic calibration data in NVM");
-            if(drv2605l_auto_calibration(instance->haptic_header)) {
-                FURI_LOG_I(TAG, "Haptic auto-calibration successful");
-                if(drv2605l_get_calibration_data(instance->haptic_header, calib_data)) {
-                    if(furi_hal_nvm_set_struct(SETTINGS_HAPTIC_CALIB_DATA, calib_data, calib_data_size) == FuriHalNvmStorageOK) {
-                        FURI_LOG_I(TAG, "Saved haptic calibration data to NVM");
-                    } else {
-                        FURI_LOG_E(TAG, "Failed to save haptic calibration data to NVM");
-                    }
-                } else {
-                    FURI_LOG_E(TAG, "Failed to get haptic calibration data after auto-calibration");
-                }
-            } else {
-                FURI_LOG_E(TAG, "Haptic auto-calibration failed");
-            }
-        }
+        FURI_LOG_W(TAG, "No haptic calibration data in NVM");
+        result = haptic_auto_calibrate_and_save(instance, calib_data, calib_data_size);
     }
+
     drv2605l_disable(instance->haptic_header);
 
     free(calib_data);
+    return result;
 }
 
 static void haptic_message_queue_callback(FuriEventLoopObject* object, void* context) {
@@ -130,8 +148,8 @@ static void haptic_message_queue_callback(FuriEventLoopObject* object, void* con
         result = true;
         break;
     case HapticMessageTypeCalibrate:
-        haptic_calibration(instance, true);
-        result = true;
+        haptic_stop_playback(instance);
+        result = haptic_calibration(instance, true);
         break;
     default:
         furi_crash("Invalid message type");
@@ -169,7 +187,9 @@ static Haptic* haptic_alloc(void) {
 
     // Load or perform auto-calibration
     if(instance->haptic_header) {
-        haptic_calibration(instance, false);
+        if(!haptic_calibration(instance, false)) {
+            FURI_LOG_W(TAG, "Haptic calibration at startup failed");
+        }
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, haptic_message_queue_callback, instance);
@@ -251,13 +271,20 @@ bool haptic_stop(Haptic* instance) {
 
 bool haptic_force_auto_calibrate(Haptic* instance) {
     furi_check(instance);
-    if(haptic_is_device_initialized(instance, NULL)) {
-        const HapticMessage msg = {
-            .type = HapticMessageTypeCalibrate,
-        };
-
-        haptic_send_message(instance, &msg);
-        return true;
+    if(!haptic_is_device_initialized(instance, NULL)) {
+        return false;
     }
-    return false;
+
+    // Calibration runs on the service thread. Block here until
+    // haptic_message_queue_callback() has processed the request and released
+    // the lock, so the caller gets the real outcome instead of just "queued".
+    bool result = false;
+    HapticMessage msg = {
+        .type = HapticMessageTypeCalibrate,
+        .lock = api_lock_alloc_locked(),
+        .result = &result,
+    };
+
+    haptic_send_message(instance, &msg);
+    return result;
 }

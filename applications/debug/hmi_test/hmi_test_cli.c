@@ -167,8 +167,7 @@ static bool hmi_test_cli_haptic(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
 
     int effect_id = 0;
-    if(!args_read_int_and_trim(args, &effect_id) || effect_id < 0 ||
-       effect_id >= Drv2605lEffectCountMax) {
+    if(!args_read_int_and_trim(args, &effect_id) || effect_id < 0 || (effect_id >= Drv2605lEffectCountMax && effect_id != 255)) {
         printf(CLI_STATUS_ERROR);
         return false;
     }
@@ -184,29 +183,40 @@ static bool hmi_test_cli_haptic(PipeSide* pipe, FuriString* args) {
         }
     }
 
-    printf("Testing haptic effect %d for duration %d ms\r\n", effect_id, duration);
-
+    bool ret = false;
     Haptic* haptic = furi_record_open(RECORD_HAPTIC);
-    bool played = haptic_play_effect(haptic, (Drv2605lEffect)effect_id, duration);
+    if(effect_id == 255) {
+        printf("Calibrating haptic device...\r\n");
+        ret = haptic_force_auto_calibrate(haptic);
+    } else {
+        printf("Testing haptic effect %d for duration %d ms\r\n", effect_id, duration);
+        ret = haptic_play_effect(haptic, (Drv2605lEffect)effect_id, duration);
+        printf("Haptic effect played.\r\n");
+    }
+
     furi_record_close(RECORD_HAPTIC);
 
-    if(!played) {
-        // the service only reports false when its device isn't initialised -
-        // the arguments were fine, so keep the caller from printing usage here
-        printf(ANSI_FG_RED "Haptic device not ready" ANSI_RESET "\r\n");
+    if(!ret) {
+        // Arguments were fine, so keep the caller from printing usage here.
+        // Calibration now returns the real outcome: false means either the
+        // device isn't initialised or the calibration itself failed.
+        printf(
+            ANSI_FG_RED "Haptic %s failed" ANSI_RESET "\r\n",
+            effect_id == 255 ? "calibration" : "playback");
         printf(CLI_STATUS_ERROR);
         return true;
     }
 
-    printf("Haptic effect played.\r\n");
     printf(CLI_STATUS_OK);
     return true;
 }
 
 static const HmiTestCmd hmi_test_cmds[] = {
     {"touch", "", "Start an application test touchpad", hmi_test_cli_start_touch},
-    {"haptic", "<effect_id> [duration]", "test haptic, effect_id = 0..123, duration = 0 (service default, 3s) or play time in ms (min 2)", hmi_test_cli_haptic}
-};
+    {"haptic",
+     "<effect_id> [duration]",
+     "test haptic, effect_id = 0..123 (255 - calibration), duration = 0 (service default, 3s) or play time in ms (min 2)",
+     hmi_test_cli_haptic}};
 
 static void hmi_test_command_cli_print_usage(void) {
     printf("Usage:\r\nhmi_test <cmd>\r\nCmd list:\r\n");
