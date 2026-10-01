@@ -18,6 +18,7 @@ static uint8_t* find_picobin_block(const uint8_t* start, size_t size) {
         const uint8_t* ptr = start + offset;
         if(*(uint32_t*)ptr == PICOBIN_BLOCK_MARKER_START) {
             start_ptr = (uint8_t*)ptr;
+            break;
         }
     }
     if(!start_ptr) return NULL;
@@ -115,6 +116,12 @@ bool furi_hal_flash_fw_partition_invalidate(FlashPartitionId partition_id) {
     furi_hal_flash_read(part_base + page_nb * FLASH_PAGE_SIZE, page_buf, FLASH_PAGE_SIZE);
     memset(&page_buf[page_offset], 0, 4);
     furi_hal_flash_write(part_base + page_nb * FLASH_PAGE_SIZE, page_buf, FLASH_PAGE_SIZE);
+
+    const uint8_t* verify_ptr = furi_hal_flash_get_read_ptr(part_base + page_nb * FLASH_PAGE_SIZE);
+    if (memcmp(&verify_ptr[page_offset], &page_buf[page_offset], 4) != 0) {
+        furi_crash("Picobin overwrite failed"); // Should never happen
+    }
+
     free(page_buf);
 
     return true;

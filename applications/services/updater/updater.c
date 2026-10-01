@@ -112,7 +112,7 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
         furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
     }
 
-    if(offset != updater->i2c_data_offset) return false; // Out-of-order write
+    if(offset != updater->i2c_data_offset) return false; // Out-of-order write //TODO: how to handle it? Set i2c error flag?
 
     updater->i2c_data.raw[updater->i2c_data_offset++] = value;
 
@@ -124,6 +124,7 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
         };
         memcpy(msg.block.data, updater->i2c_data.data, sizeof(msg.block.data));
         furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
+        // TODO: set i2c error flag on queue full condition?
     }
 
     return true;

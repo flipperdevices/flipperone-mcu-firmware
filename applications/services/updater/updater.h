@@ -4,6 +4,7 @@
 
 #define RECORD_UPDATER "updater"
 
+// Keep in sync with Linux updater code
 typedef enum {
     UpdaterStateIdle = 0,
     UpdaterStateRunning,

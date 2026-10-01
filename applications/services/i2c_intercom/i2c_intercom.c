@@ -57,6 +57,7 @@ static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle
             bool valid = false;
             with_i2c_register({ valid = i2c_register_write(instance->mem_address, data); });
             if(!valid) {
+                // TODO: add error signalling instead of printing from isr
                 FURI_LOG_W(TAG, "write to invalid addr 0x%04X", instance->mem_address);
             }
             instance->mem_address++;

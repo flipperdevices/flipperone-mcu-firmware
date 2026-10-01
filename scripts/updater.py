@@ -14,6 +14,7 @@ REG_FW_BLOCKS = 0xF022
 
 REG_FW_DATA = 0xF040
 
+# Keep in sync with UpdaterState/UpdaterError/UpdaterCommand from the MCU firmware
 class UpdaterState(Enum):
     IDLE = 0
     RUNNING = 1
@@ -161,7 +162,11 @@ def main():
 
         state, error = get_state(mcu)
         print(f"State: {state.name}, Sending block {block_idx}/{block_count}")
+        block_start_time = time.perf_counter()
         while state == UpdaterState.BUSY:
+            if time.perf_counter() - block_start_time > 5:  # 5 seconds timeout
+                print("Timeout while waiting for MCU to be ready")
+                return
             time.sleep(0.1)
             state, error = get_state(mcu)
 
@@ -173,13 +178,17 @@ def main():
 
     end_time = time.perf_counter()
 
-    time.sleep(0.1)  # wait for the last block to be processed
-
     state, error = get_state(mcu)
+    while state != UpdaterState.DONE:
+        if time.perf_counter() - end_time > 5:  # 5 seconds timeout
+            print("Timeout while waiting for MCU to be ready")
+            return
+        time.sleep(0.1)
+        state, error = get_state(mcu)
+        if state == UpdaterState.ERROR:
+            print(f"Error: {error.name}")
+            return
     print(f"State: {state.name}")
-    if state == UpdaterState.ERROR:
-        print(f"Error: {error.name}")
-        return
 
     print(f"Written in {end_time - start_time:.2f}s ({len(firmware_data)/(end_time - start_time)/1024*8:.2f} Kbits/s)")
     print("Update complete. Reset MCU to start new firmware.")
