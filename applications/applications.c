@@ -22,6 +22,7 @@ extern int32_t cli_vcp_srv(void* p);
 // applications
 extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
+extern int32_t touchpad_test_v2_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
 extern int32_t font_test_app(void* p);
@@ -39,6 +40,7 @@ extern void input_cli_command(PipeSide* pipe, FuriString* args, void* context);
 extern void unit_tests_cli_command(PipeSide* pipe, FuriString* args, void* context);
 extern void saradc_command_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void desktop_command_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void hmi_test_command_cli(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -178,6 +180,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+        {
+        .app = touchpad_test_v2_app,
+        .name = "Touchpad Test V2",
+        .appid = "touchpad_test_v2",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
     {
         .app = haptic_test_app,
         .name = "Haptic Test",
@@ -289,6 +298,12 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = desktop_command_cli,
         .name = "desktop",
+        .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = hmi_test_command_cli,
+        .name = "hmi_test",
         .stack_size = 1024 * 2,
         .flags = CliCommandFlagParallelSafe,
     },
