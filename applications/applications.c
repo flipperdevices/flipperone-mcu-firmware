@@ -25,7 +25,6 @@ extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
-// extern int32_t pd_ucsi_app(void* p);
 
 extern int32_t unit_test_app(void* p);
 extern int32_t font_test_app(void* p);
