@@ -4514,6 +4514,87 @@ static void simulate_tx_retry_fail(UcsiPpm* ppm) {
     ucsi_ppm_tick(ppm);
 }
 
+static bool test_pe_snk_wait_cap_timer_waits_for_vbus_after_hard_reset(void) {
+    // PD R3.0 §8.3.3.3.2: after a Hard Reset the sink sits in PE_SNK_Discovery
+    // until VBUS is back, and only then PE_SNK_Wait_for_Capabilities starts
+    // SinkWaitCapTimer. A source needs up to tSrcRecover (~1 s) to bring VBUS
+    // back, far longer than tTypeCSinkWaitCap, so a timer that ran from the
+    // reset would fire a second Hard Reset into a source doing its job.
+    UcsiPpm* ppm = mock_attach(false);
+    // The source's Rp has to be visible, or TC reads the VBUS drop below as
+    // "vbus and Rp both gone" and detaches instead of waiting tSrcRecover.
+    simulate_bc_lvl_changed(ppm, 0b10u);
+    g_mock_time_ms += 20; // past tPDDebounce
+    ucsi_ppm_tick(ppm);
+    g_mock_time_ms += 600; // expire SinkWaitCapTimer
+    ucsi_ppm_tick(ppm);
+    simulate_hard_reset_sent(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+
+    // tPSHardReset later the source drops VBUS.
+    g_mock_time_ms += 30;
+    simulate_vbus_changed(ppm, false);
+    TEST_ASSERT(ppm->tc_vbus_lost);
+
+    // Well past tTypeCSinkWaitCap with VBUS still down: no second Hard Reset,
+    // and PE has no deadline of its own — TC's tSrcRecover is the one running.
+    g_mock_time_ms += 600;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+    TEST_ASSERT(ucsi_ppm_pe_next_timeout_ms(ppm) == UCSI_PPM_NO_TIMEOUT);
+    TEST_ASSERT(ucsi_ppm_next_timeout_ms(ppm) != UCSI_PPM_NO_TIMEOUT);
+
+    // VBUS returns: the wait starts now.
+    g_mock_time_ms += 200;
+    simulate_vbus_changed(ppm, true);
+    TEST_ASSERT(!ppm->tc_vbus_lost);
+    TEST_ASSERT(ppm->pe_timer_start_ms == g_mock_time_ms);
+
+    // Inside the window — still waiting; past it — the next Hard Reset.
+    g_mock_time_ms += 300;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+    g_mock_time_ms += 200;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPePendingHardResetSent);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 2u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_pe_snk_caps_after_vbus_recovery_negotiate(void) {
+    // The happy end of the same story: VBUS comes back, Source_Capabilities
+    // follow within tFirstSourceCap, and the contract proceeds with the Hard
+    // Reset budget intact.
+    UcsiPpm* ppm = mock_attach(false);
+    simulate_bc_lvl_changed(ppm, 0b10u); // Rp present, see the test above
+    g_mock_time_ms += 20;
+    ucsi_ppm_tick(ppm);
+    g_mock_time_ms += 600;
+    ucsi_ppm_tick(ppm);
+    simulate_hard_reset_sent(ppm);
+    g_mock_time_ms += 30;
+    simulate_vbus_changed(ppm, false);
+    g_mock_time_ms += 900; // tSrcRecover
+    simulate_vbus_changed(ppm, true);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+    mock_txns_reset();
+
+    g_mock_time_ms += 120;
+    const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 3000, true, false, true, true);
+    simulate_pd_message(ppm, 0x01u /* Source_Capabilities */, &pdo, 1);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForAccept);
+    TEST_ASSERT(find_fifo_burst_by_msg_type(0x02u /* Request */) >= 0);
+    TEST_ASSERT(ppm->pe_hard_reset_counter == 1u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_pe_snk_hard_reset_sent_returns_to_wait_caps(void) {
     UcsiPpm* ppm = mock_attach(false);
     g_mock_time_ms += 600; // expire SinkWaitCapTimer
@@ -6982,6 +7063,8 @@ static const TestEntry k_tests[] = {
 
     // L3 PE Hard Reset orchestration.
     TEST_ENTRY(test_pe_snk_hard_reset_sent_returns_to_wait_caps),
+    TEST_ENTRY(test_pe_snk_wait_cap_timer_waits_for_vbus_after_hard_reset),
+    TEST_ENTRY(test_pe_snk_caps_after_vbus_recovery_negotiate),
     TEST_ENTRY(test_pe_src_hard_reset_sent_returns_to_send_caps),
     TEST_ENTRY(test_pe_hard_reset_rx_restarts_without_counter_bump),
     TEST_ENTRY(test_pe_snk_no_pd_partner_settles_on_typec),

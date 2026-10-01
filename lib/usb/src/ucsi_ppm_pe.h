@@ -47,6 +47,14 @@ void ucsi_ppm_pe_on_detach(UcsiPpm* ppm);
 // SrcTransitionSupply this drives the PS_RDY emission and contract commit.
 void ucsi_ppm_pe_on_power_supply_ready(UcsiPpm* ppm);
 
+// TC saw VBUS come back after a drop that was not a detach — the source's
+// Hard Reset recovery. PE_SNK_Discovery waits for exactly this before
+// PE_SNK_Wait_for_Capabilities starts SinkWaitCapTimer (PD R3.0 §8.3.3.3.2),
+// so in WaitForCapabilities the timer restarts from here. While TC reports
+// VBUS lost the timer does not run at all; tSrcRecover in TC decides whether
+// the drop was a detach.
+void ucsi_ppm_pe_on_vbus_recovered(UcsiPpm* ppm);
+
 // PHY-pump event hook. PE cares about HardResetSent (our Hard Reset just
 // went out — recover the state machine) and HardResetRx (partner Hard Reset
 // arrived — reset and wait for new Caps/Request). Other event kinds are

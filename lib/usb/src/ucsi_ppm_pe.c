@@ -1076,6 +1076,16 @@ void ucsi_ppm_pe_on_detach(UcsiPpm* ppm) {
     (void)ucsi_ppm_pe_init(ppm);
 }
 
+void ucsi_ppm_pe_on_vbus_recovered(UcsiPpm* ppm) {
+    if(ppm->pe_state != (int)UcsiPpmPeSnkWaitForCapabilities) return;
+    // PE_SNK_Discovery → PE_SNK_Wait_for_Capabilities: the source has come
+    // through tSrcRecover and is about to advertise. Counting from when we
+    // sent the Hard Reset instead would expire while VBUS was still down and
+    // spend a second Hard Reset on a source doing exactly what it should.
+    UCSI_LOG_I(ppm, "vbus back, sink wait cap timer restarted");
+    pe_arm_timer(ppm);
+}
+
 void ucsi_ppm_pe_on_power_supply_ready(UcsiPpm* ppm) {
     if(ppm->pe_state != (int)UcsiPpmPeSrcTransitionSupply) return;
     // PSU is at the requested voltage — tell partner the supply is ready and
@@ -1430,6 +1440,10 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
         // Nothing left to wait for once the partner is known to be Type-C
         // only; we stay here passively in case it ever starts talking PD.
         if(ppm->pe_typec_only) break;
+        // No VBUS, no advertisement to wait for: this is PE_SNK_Discovery.
+        // The timer resumes from ucsi_ppm_pe_on_vbus_recovered; if VBUS never
+        // returns TC declares the detach after tSrcRecover.
+        if(ppm->tc_vbus_lost) break;
         if(pe_timer_expired(ppm, UCSI_PPM_PE_SINK_WAIT_CAP_MS)) pe_request_hard_reset(ppm);
         break;
     case(int)UcsiPpmPeSnkWaitForAccept:
@@ -1545,6 +1559,8 @@ static uint32_t pe_state_timeout_ms(const UcsiPpm* ppm) {
     switch(ppm->pe_state) {
     case(int)UcsiPpmPeSnkWaitForCapabilities:
         if(ppm->pe_typec_only) return UCSI_PPM_NO_TIMEOUT;
+        // Suspended while VBUS is down — TC's tSrcRecover is the deadline then.
+        if(ppm->tc_vbus_lost) return UCSI_PPM_NO_TIMEOUT;
         return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_SINK_WAIT_CAP_MS);
     case(int)UcsiPpmPeSnkWaitForAccept:
     case(int)UcsiPpmPeWaitForSoftResetAccept:

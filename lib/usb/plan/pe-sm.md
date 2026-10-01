@@ -319,7 +319,15 @@ explicit-контрактом.
 ### 3.2 PE_SNK_Discovery (== Wait_For_Capabilities)
 
 **Действия**:
-1. Запустить `SinkWaitCapTimer` (tTypeCSinkWaitCap, ~465 мс).
+1. Запустить `SinkWaitCapTimer` (tTypeCSinkWaitCap, ~465 мс) — **только при
+   наличии VBUS**. Discovery по §8.3.3.3.2 ждёт VBUS, и лишь затем
+   Wait_for_Capabilities взводит таймер. После Hard Reset источник роняет
+   VBUS на tSrcRecover (до ~1 с), это дольше tTypeCSinkWaitCap; таймер,
+   идущий от момента reset, выстрелил бы вторым Hard Reset в источник,
+   который ведёт себя правильно. Реализация: пока TC держит `tc_vbus_lost`,
+   таймер в `ucsi_ppm_pe_tick` не идёт и дедлайна не даёт; на `vbus recovered`
+   TC зовёт `ucsi_ppm_pe_on_vbus_recovered`, и таймер стартует заново.
+   Если VBUS не вернулся — detach объявляет TC по tSrcRecover.
 
 **События**:
 - `PRL: MessageReceived(Source_Capabilities)` → отменить timer → `PE_SNK_Evaluate_Capability`.

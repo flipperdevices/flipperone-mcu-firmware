@@ -442,6 +442,9 @@ static void handle_vbus_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         if(ppm->tc_vbus_lost) {
             ppm->tc_vbus_lost = false;
             UCSI_LOG_I(ppm, "vbus recovered");
+            // The source finished its Hard Reset recovery; the sink's wait for
+            // Source_Capabilities is measured from here, not from the reset.
+            ucsi_ppm_pe_on_vbus_recovered(ppm);
         }
     } else {
         // VBUS lost while attached as Sink. Not a detach on its own: a Hard
