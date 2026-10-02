@@ -201,6 +201,7 @@ int32_t cpu_log_srv(void* p) {
     UNUSED(p);
 
     CpuLogSrv* app = malloc(sizeof(CpuLogSrv));
+    CpuLogHandlersList_init(app->handlers);
 
     app->rx_stream = furi_stream_buffer_alloc(CPU_LOG_STREAM_SIZE, 1);
     app->msg_queue = furi_message_queue_alloc(4, sizeof(CpuLogSrvMessage));
