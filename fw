@@ -6,7 +6,8 @@
 #   ./fw flash     build, then write the partition table and firmware over SWD (openocd)
 #   ./fw setup     fetch the Pico SDK and the ARM toolchain without building
 #
-#   FW_TARGET=f1 ./fw   build another board (reconfigures the build directory)
+# Variables go make-style after the command, e.g. `./fw build FW_TARGET=f1`, or in the
+# environment. FW_TARGET reconfigures the build directory for another board.
 #
 # The Pico SDK and the toolchain live in ~/.pico-sdk, the directory the Raspberry Pi
 # Pico VS Code extension uses, so one copy serves both. Versions come from CMakeLists.txt.
@@ -14,17 +15,38 @@ set -eu
 cd "$(dirname "$0")"
 . ./fw.cfg
 
+fail() { echo "error: $*" >&2; exit 1; }
+usage() { echo "usage: $0 [build|clean|flash|setup] [NAME=value ...]" >&2; exit 2; }
+
+# One command plus NAME=value overrides, in any order. Overrides beat the environment and fw.cfg.
+command=
+for arg; do
+    case $arg in
+        *=*)
+            name=${arg%%=*}
+            case $name in
+                ''|[0-9]*|*[!A-Za-z0-9_]*) fail "not a variable name: $name" ;;
+            esac
+            export "$arg"
+            ;;
+        *)
+            [ -z "$command" ] || usage
+            command=$arg
+            ;;
+    esac
+done
+command=${command:-build}
+
 PICO_HOME=$HOME/.pico-sdk
 SDK_VERSION=$(sed -n 's/^set(sdkVersion \(.*\))$/\1/p' CMakeLists.txt)
 TOOLCHAIN_VERSION=$(sed -n 's/^set(toolchainVersion \(.*\))$/\1/p' CMakeLists.txt)
+[ -n "$SDK_VERSION" ] && [ -n "$TOOLCHAIN_VERSION" ] || fail "sdkVersion/toolchainVersion not found in CMakeLists.txt"
 ARM_RELEASE=$(echo "$TOOLCHAIN_VERSION" | tr '_A-Z' '.a-z')  # 14_2_Rel1 -> 14.2.rel1
 
 DEFAULT_SDK=$PICO_HOME/sdk/$SDK_VERSION
 DEFAULT_TOOLCHAIN=$PICO_HOME/toolchain/$TOOLCHAIN_VERSION
 export PICO_SDK_PATH="${PICO_SDK_PATH:-$DEFAULT_SDK}"
 export PICO_TOOLCHAIN_PATH="${PICO_TOOLCHAIN_PATH:-$DEFAULT_TOOLCHAIN}"
-
-fail() { echo "error: $*" >&2; exit 1; }
 
 # The extension's copy first, so command-line and VS Code builds share one CMake cache.
 find_tool() { # find_tool <name> <glob under ~/.pico-sdk>: the path, or nothing when not installed
@@ -62,6 +84,7 @@ ensure_sdk() {
     git -c advice.detachedHead=false clone --depth 1 --branch "$SDK_VERSION" "$PICO_SDK_GIT_URL" "$PICO_SDK_PATH.tmp"
     git -C "$PICO_SDK_PATH.tmp" submodule update --init --depth 1
     mv "$PICO_SDK_PATH.tmp" "$PICO_SDK_PATH"
+    [ -f "$PICO_SDK_PATH/pico_sdk_init.cmake" ] || fail "$PICO_SDK_PATH does not look like the Pico SDK"
 }
 
 ensure_toolchain() {
@@ -84,6 +107,7 @@ ensure_toolchain() {
     rm "$tmp/$name.tar.xz"
     mv "$tmp"/arm-gnu-toolchain-* "$PICO_TOOLCHAIN_PATH"
     rm -rf "$tmp"
+    [ -x "$PICO_TOOLCHAIN_PATH/bin/arm-none-eabi-gcc" ] || fail "unexpected toolchain archive layout in $PICO_TOOLCHAIN_PATH"
 }
 
 build() {
@@ -94,6 +118,15 @@ build() {
         "$CMAKE" -S . -B build -G Ninja -DCMAKE_MAKE_PROGRAM="$NINJA" -DFW_TARGET="${FW_TARGET:-$DEFAULT_FW_TARGET}"
     fi
     "$CMAKE" --build build
+}
+
+clean() {
+    if [ -d build ]; then
+        echo "Removing $(pwd)/build ($(du -sh build | awk '{print $1}'))"
+        rm -rf build
+    else
+        echo "Nothing to clean: $(pwd)/build does not exist"
+    fi
 }
 
 flash() {
@@ -107,9 +140,9 @@ flash() {
     "$OPENOCD" "$@" -f "$OPENOCD_INTERFACE" -f "$OPENOCD_TARGET" -f targets/flash.tcl
 }
 
-case ${1:-build} in
+case $command in
     build) build ;;
-    clean) rm -rf build ;;
+    clean) clean ;;
     flash) flash ;;
     setup)
         check_host_tools
@@ -118,5 +151,5 @@ case ${1:-build} in
         echo "Pico SDK:  $PICO_SDK_PATH"
         echo "Toolchain: $PICO_TOOLCHAIN_PATH"
         ;;
-    *) echo "usage: $0 [build|clean|flash|setup]" >&2; exit 2 ;;
+    *) usage ;;
 esac

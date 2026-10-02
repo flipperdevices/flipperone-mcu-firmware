@@ -6,7 +6,8 @@ rem   fw.cmd clean     remove the build directory
 rem   fw.cmd flash     build, then write the partition table and firmware over SWD (openocd)
 rem   fw.cmd setup     fetch the Pico SDK and the ARM toolchain without building
 rem
-rem   set FW_TARGET=f1 before running to build another board (reconfigures the build directory)
+rem Variables go make-style after the command, e.g. `fw.cmd build FW_TARGET=f1`, or are set
+rem beforehand with `set`. FW_TARGET reconfigures the build directory for another board.
 rem
 rem The Pico SDK and the toolchain live in %USERPROFILE%\.pico-sdk, the directory the
 rem Raspberry Pi Pico VS Code extension uses, so one copy serves both. Versions come
@@ -15,9 +16,26 @@ setlocal
 cd /d "%~dp0"
 for /f "usebackq eol=# tokens=1,* delims==" %%a in ("fw.cfg") do set "%%a=%%b"
 
+rem One command plus NAME=value overrides, in any order. %* is split by hand because cmd
+rem treats '=' as a separator when it fills %1, %2, ...
+set "COMMAND="
+set "ARGS=%*"
+:parse_args
+if not defined ARGS goto args_done
+for /f "tokens=1,*" %%a in ("%ARGS%") do (
+    set "ARG=%%a"
+    set "ARGS=%%b"
+)
+call :parse_arg "%ARG%" || goto usage
+goto parse_args
+:args_done
+if not defined COMMAND set "COMMAND=build"
+
 set "PICO_HOME=%USERPROFILE%\.pico-sdk"
 for /f "tokens=3 delims=() " %%v in ('findstr /b /c:"set(sdkVersion" CMakeLists.txt') do set "SDK_VERSION=%%v"
 for /f "tokens=3 delims=() " %%v in ('findstr /b /c:"set(toolchainVersion" CMakeLists.txt') do set "TOOLCHAIN_VERSION=%%v"
+if not defined SDK_VERSION goto no_versions
+if not defined TOOLCHAIN_VERSION goto no_versions
 rem 14_2_Rel1 -> 14.2.rel1
 set "ARM_RELEASE=%TOOLCHAIN_VERSION:_=.%"
 set "ARM_RELEASE=%ARM_RELEASE:Rel=rel%"
@@ -27,18 +45,32 @@ set "DEFAULT_TOOLCHAIN=%PICO_HOME%\toolchain\%TOOLCHAIN_VERSION%"
 if not defined PICO_SDK_PATH set "PICO_SDK_PATH=%DEFAULT_SDK%"
 if not defined PICO_TOOLCHAIN_PATH set "PICO_TOOLCHAIN_PATH=%DEFAULT_TOOLCHAIN%"
 
-set "COMMAND=%~1"
-if "%COMMAND%"=="" set "COMMAND=build"
 if /i "%COMMAND%"=="build" goto run
 if /i "%COMMAND%"=="clean" goto run
 if /i "%COMMAND%"=="flash" goto run
 if /i "%COMMAND%"=="setup" goto run
-echo usage: fw.cmd [build^|clean^|flash^|setup] >&2
+:usage
+echo usage: fw.cmd [build^|clean^|flash^|setup] [NAME=value ...] >&2
 exit /b 2
+
+:no_versions
+echo error: sdkVersion/toolchainVersion not found in CMakeLists.txt >&2
+exit /b 1
 
 :run
 call :%COMMAND%
 exit /b
+
+:parse_arg
+for /f "tokens=1,* delims==" %%a in ("%~1") do (
+    if "%%b"=="" (
+        if defined COMMAND exit /b 1
+        set "COMMAND=%%a"
+    ) else (
+        set "%%a=%%b"
+    )
+)
+exit /b 0
 
 :build
 call :check_host_tools || exit /b 1
@@ -56,7 +88,16 @@ if defined RECONFIGURE (
 exit /b
 
 :clean
-if exist build rmdir /s /q build
+if not exist build (
+    echo Nothing to clean: %CD%\build does not exist
+    exit /b 0
+)
+echo Removing %CD%\build
+rmdir /s /q build
+if exist build (
+    echo error: could not remove %CD%\build >&2
+    exit /b 1
+)
 exit /b 0
 
 :flash
@@ -123,6 +164,10 @@ if not exist "%PICO_HOME%\sdk" mkdir "%PICO_HOME%\sdk"
 git -c advice.detachedHead=false clone --depth 1 --branch %SDK_VERSION% %PICO_SDK_GIT_URL% "%PICO_SDK_PATH%.tmp" || exit /b 1
 git -C "%PICO_SDK_PATH%.tmp" submodule update --init --depth 1 || exit /b 1
 move "%PICO_SDK_PATH%.tmp" "%PICO_SDK_PATH%" >nul || exit /b 1
+if not exist "%PICO_SDK_PATH%\pico_sdk_init.cmake" (
+    echo error: %PICO_SDK_PATH% does not look like the Pico SDK >&2
+    exit /b 1
+)
 exit /b 0
 
 :ensure_toolchain
@@ -142,4 +187,8 @@ del "%TC_TMP%\%TC_NAME%.zip"
 for /d %%d in ("%TC_TMP%\arm-gnu-toolchain-*") do move "%%d" "%PICO_TOOLCHAIN_PATH%" >nul || exit /b 1
 if not exist "%PICO_TOOLCHAIN_PATH%\bin" move "%TC_TMP%" "%PICO_TOOLCHAIN_PATH%" >nul || exit /b 1
 if exist "%TC_TMP%" rmdir /s /q "%TC_TMP%"
+if not exist "%PICO_TOOLCHAIN_PATH%\bin\arm-none-eabi-gcc.exe" (
+    echo error: unexpected toolchain archive layout in %PICO_TOOLCHAIN_PATH% >&2
+    exit /b 1
+)
 exit /b 0

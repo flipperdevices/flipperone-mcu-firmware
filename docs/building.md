@@ -43,10 +43,9 @@ about 1.5 GB of disk: 0.4 GB for the SDK and 1 GB for the unpacked toolchain.
 ### Choosing the board
 
 The scripts build `f2` unless told otherwise (`DEFAULT_FW_TARGET` in `fw.cfg`; CMake on
-its own defaults to `f1`). `FW_TARGET=f1 ./fw` (on Windows `set FW_TARGET=f1`, then
-`fw.cmd`) reconfigures the build directory for another board, which means a full
-rebuild. The build directory then keeps that board until `FW_TARGET` is set again or
-`clean` is run. [TARGETS.md](../TARGETS.md) describes what a target is.
+its own defaults to `f1`). `./fw build FW_TARGET=f1` (Windows: `fw.cmd build FW_TARGET=f1`)
+reconfigures the build directory for another board, which means a full rebuild. The build
+directory then keeps that board until `FW_TARGET` is given again or `clean` is run. [TARGETS.md](../TARGETS.md) describes what a target is.
 
 ### Flashing
 
@@ -63,9 +62,11 @@ To load over USB instead, put the board into BOOTSEL mode and run
 ## Settings
 
 `fw.cfg` holds the knobs: the default board, where missing pieces are fetched from, and
-the openocd configuration files. Environment variables override what the scripts derive:
-`PICO_SDK_PATH` and `PICO_TOOLCHAIN_PATH` point at your own SDK or toolchain (nothing is
-fetched then), `OPENOCD` at the openocd to use.
+the openocd configuration files. Any variable can be overridden for one run make-style,
+`./fw build NAME=value`, or through the environment: `PICO_SDK_PATH` and
+`PICO_TOOLCHAIN_PATH` point at your own SDK or toolchain (nothing is fetched then),
+`OPENOCD` at the openocd to use. On Windows a value with spaces has to be set with `set`
+before running `fw.cmd`, since the command line is split on spaces.
 
 With the VS Code extension installed, its hook in `CMakeLists.txt` points the build at
 `~/.pico-sdk` regardless of `PICO_SDK_PATH`.
