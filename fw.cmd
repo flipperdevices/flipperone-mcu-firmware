@@ -41,10 +41,9 @@ call :%COMMAND%
 exit /b
 
 :build
+call :check_host_tools || exit /b 1
 call :ensure_sdk || exit /b 1
 call :ensure_toolchain || exit /b 1
-call :find_tool CMAKE cmake cmake bin\cmake.exe || exit /b 1
-call :find_tool NINJA ninja ninja ninja.exe || exit /b 1
 set "TARGET=%FW_TARGET%"
 if not defined TARGET set "TARGET=%DEFAULT_FW_TARGET%"
 set "RECONFIGURE="
@@ -64,8 +63,12 @@ exit /b 0
 call :build || exit /b 1
 set "OPENOCD_SCRIPTS="
 if not defined OPENOCD (
-    call :find_tool OPENOCD openocd openocd openocd.exe || exit /b 1
+    call :find_tool OPENOCD openocd openocd openocd.exe
     for /d %%d in ("%PICO_HOME%\openocd\*") do if exist "%%d\openocd.exe" set "OPENOCD_SCRIPTS=%%d\scripts"
+)
+if not defined OPENOCD (
+    echo error: openocd not found. RP2350 needs the Raspberry Pi build: https://github.com/raspberrypi/openocd >&2
+    exit /b 1
 )
 if defined OPENOCD_SCRIPTS (
     "%OPENOCD%" -s "%OPENOCD_SCRIPTS%" -f %OPENOCD_INTERFACE% -f %OPENOCD_TARGET% -f targets/flash.tcl
@@ -75,6 +78,7 @@ if defined OPENOCD_SCRIPTS (
 exit /b
 
 :setup
+call :check_host_tools || exit /b 1
 call :ensure_sdk || exit /b 1
 call :ensure_toolchain || exit /b 1
 echo Pico SDK:  %PICO_SDK_PATH%
@@ -83,13 +87,28 @@ exit /b 0
 
 rem find_tool <variable> <name> <.pico-sdk subdirectory> <path inside the version directory>
 rem The extension's copy first, so command-line and VS Code builds share one CMake cache.
+rem Leaves the variable undefined when the tool is not installed.
 :find_tool
 set "%~1="
 for /d %%d in ("%PICO_HOME%\%~3\*") do if exist "%%d\%~4" set "%~1=%%d\%~4"
 if defined %~1 exit /b 0
 for /f "delims=" %%p in ('where %~2 2^>nul') do if not defined %~1 set "%~1=%%p"
-if defined %~1 exit /b 0
-echo error: %~2 not found. Install the Raspberry Pi Pico VS Code extension, or install %~2 and add it to PATH. >&2
+exit /b 0
+
+rem Everything the build needs from the system, reported in one go before anything is fetched.
+:check_host_tools
+call :find_tool CMAKE cmake cmake bin\cmake.exe
+call :find_tool NINJA ninja ninja ninja.exe
+set "MISSING="
+if not defined CMAKE set "MISSING=%MISSING% cmake"
+if not defined NINJA set "MISSING=%MISSING% ninja"
+where /q git || set "MISSING=%MISSING% git"
+where /q py || set "MISSING=%MISSING% python"
+where /q curl.exe || set "MISSING=%MISSING% curl"
+where /q tar.exe || set "MISSING=%MISSING% tar"
+if not defined MISSING exit /b 0
+echo error: missing:%MISSING% >&2
+echo   Install the Raspberry Pi Pico VS Code extension, or Git for Windows, CMake, Ninja and Python 3 with the py launcher. curl and tar ship with Windows 10 and later. >&2
 exit /b 1
 
 :ensure_sdk
@@ -98,11 +117,10 @@ if /i not "%PICO_SDK_PATH%"=="%DEFAULT_SDK%" (
     echo error: PICO_SDK_PATH=%PICO_SDK_PATH% does not contain the Pico SDK >&2
     exit /b 1
 )
-where /q git || (echo error: git not found, install Git for Windows >&2 & exit /b 1)
 echo Fetching Pico SDK %SDK_VERSION% into %PICO_SDK_PATH%
 if exist "%PICO_SDK_PATH%.tmp" rmdir /s /q "%PICO_SDK_PATH%.tmp"
 if not exist "%PICO_HOME%\sdk" mkdir "%PICO_HOME%\sdk"
-git clone --depth 1 --branch %SDK_VERSION% %PICO_SDK_GIT_URL% "%PICO_SDK_PATH%.tmp" || exit /b 1
+git -c advice.detachedHead=false clone --depth 1 --branch %SDK_VERSION% %PICO_SDK_GIT_URL% "%PICO_SDK_PATH%.tmp" || exit /b 1
 git -C "%PICO_SDK_PATH%.tmp" submodule update --init --depth 1 || exit /b 1
 move "%PICO_SDK_PATH%.tmp" "%PICO_SDK_PATH%" >nul || exit /b 1
 exit /b 0

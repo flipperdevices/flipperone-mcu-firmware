@@ -8,9 +8,20 @@ can be mixed freely.
 
 | Platform | Install |
 | --- | --- |
-| Ubuntu 24.04+ | `sudo apt install build-essential cmake ninja-build git curl python3-venv` |
+| Ubuntu 24.04+, Debian 12+ | `sudo apt install build-essential cmake ninja-build git curl python3-venv` |
 | macOS | `xcode-select --install`, then `brew install cmake ninja` |
 | Windows 10+ | [Git for Windows](https://gitforwindows.org/), [CMake](https://cmake.org/download/), [Ninja](https://ninja-build.org/) and [Python 3](https://www.python.org/downloads/) on `PATH`; or the Raspberry Pi Pico VS Code extension, which installs them all under `%USERPROFILE%\.pico-sdk` |
+
+The scripts check for all of these first and list everything missing in one go, before
+anything is downloaded. A host C++ compiler is on the list because the SDK builds its own
+`pioasm` and `picotool` for the host when no installed one matches; on Windows the VS Code
+extension ships both prebuilt.
+
+Clone with submodules:
+
+```shell
+git clone --recursive https://github.com/flipperdevices/flipperone-mcu-firmware.git
+```
 
 The Pico SDK and the ARM GCC toolchain are not on the list. The scripts look for them in
 `~/.pico-sdk` (`%USERPROFILE%\.pico-sdk` on Windows), the directory the Raspberry Pi Pico

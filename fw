@@ -27,21 +27,39 @@ export PICO_TOOLCHAIN_PATH="${PICO_TOOLCHAIN_PATH:-$DEFAULT_TOOLCHAIN}"
 fail() { echo "error: $*" >&2; exit 1; }
 
 # The extension's copy first, so command-line and VS Code builds share one CMake cache.
-find_tool() { # find_tool <name> <glob under ~/.pico-sdk> <install hint>
+find_tool() { # find_tool <name> <glob under ~/.pico-sdk>: the path, or nothing when not installed
     for candidate in "$PICO_HOME"/$2; do
         if [ -x "$candidate" ]; then echo "$candidate"; return; fi
     done
-    command -v "$1" || fail "$1 not found. $3"
+    command -v "$1" || true
+}
+
+# Everything the build needs from the system, reported in one go before anything is fetched.
+# c++ builds pioasm and picotool for the host; python3 with venv runs the assets step.
+check_host_tools() {
+    CMAKE=$(find_tool cmake 'cmake/*/bin/cmake')
+    NINJA=$(find_tool ninja 'ninja/*/ninja')
+    missing=
+    [ -n "$CMAKE" ] || missing="$missing cmake"
+    [ -n "$NINJA" ] || missing="$missing ninja"
+    for tool in git curl c++ python3; do
+        command -v "$tool" >/dev/null || missing="$missing $tool"
+    done
+    if command -v python3 >/dev/null && ! python3 -c 'import venv, ensurepip' 2>/dev/null; then
+        missing="$missing python3-venv"
+    fi
+    [ -z "$missing" ] || fail "missing:$missing
+  Ubuntu/Debian: sudo apt install build-essential cmake ninja-build git curl python3-venv
+  macOS:         xcode-select --install; brew install cmake ninja"
 }
 
 ensure_sdk() {
     [ -f "$PICO_SDK_PATH/pico_sdk_init.cmake" ] && return
     [ "$PICO_SDK_PATH" = "$DEFAULT_SDK" ] || fail "PICO_SDK_PATH=$PICO_SDK_PATH does not contain the Pico SDK"
-    command -v git >/dev/null || fail "git not found"
     echo "Fetching Pico SDK $SDK_VERSION into $PICO_SDK_PATH"
     rm -rf "$PICO_SDK_PATH.tmp"
     mkdir -p "$PICO_HOME/sdk"
-    git clone --depth 1 --branch "$SDK_VERSION" "$PICO_SDK_GIT_URL" "$PICO_SDK_PATH.tmp"
+    git -c advice.detachedHead=false clone --depth 1 --branch "$SDK_VERSION" "$PICO_SDK_GIT_URL" "$PICO_SDK_PATH.tmp"
     git -C "$PICO_SDK_PATH.tmp" submodule update --init --depth 1
     mv "$PICO_SDK_PATH.tmp" "$PICO_SDK_PATH"
 }
@@ -56,7 +74,6 @@ ensure_toolchain() {
         Linux-aarch64) host=aarch64 ;;
         *) fail "no prebuilt ARM toolchain for $(uname -s)/$(uname -m); install one and set PICO_TOOLCHAIN_PATH" ;;
     esac
-    command -v curl >/dev/null || fail "curl not found"
     name=arm-gnu-toolchain-$ARM_RELEASE-$host-arm-none-eabi
     tmp=$PICO_TOOLCHAIN_PATH.tmp
     echo "Fetching $name into $PICO_TOOLCHAIN_PATH"
@@ -70,11 +87,9 @@ ensure_toolchain() {
 }
 
 build() {
+    check_host_tools
     ensure_sdk
     ensure_toolchain
-    CMAKE=$(find_tool cmake 'cmake/*/bin/cmake' 'Ubuntu: sudo apt install cmake   macOS: brew install cmake')
-    NINJA=$(find_tool ninja 'ninja/*/ninja' 'Ubuntu: sudo apt install ninja-build   macOS: brew install ninja')
-    command -v python3 >/dev/null || fail "python3 not found (the assets step needs python3 with venv)"
     if [ ! -f build/CMakeCache.txt ] || [ -n "${FW_TARGET:-}" ]; then
         "$CMAKE" -S . -B build -G Ninja -DCMAKE_MAKE_PROGRAM="$NINJA" -DFW_TARGET="${FW_TARGET:-$DEFAULT_FW_TARGET}"
     fi
@@ -83,7 +98,8 @@ build() {
 
 flash() {
     build
-    OPENOCD=${OPENOCD:-$(find_tool openocd 'openocd/*/openocd' 'RP2350 needs the Raspberry Pi build: https://github.com/raspberrypi/openocd')}
+    OPENOCD=${OPENOCD:-$(find_tool openocd 'openocd/*/openocd')}
+    [ -n "$OPENOCD" ] || fail "openocd not found. RP2350 needs the Raspberry Pi build: https://github.com/raspberrypi/openocd"
     case $OPENOCD in
         "$PICO_HOME"/*) set -- -s "${OPENOCD%/openocd}/scripts" ;;
         *) set -- ;;
@@ -96,6 +112,7 @@ case ${1:-build} in
     clean) rm -rf build ;;
     flash) flash ;;
     setup)
+        check_host_tools
         ensure_sdk
         ensure_toolchain
         echo "Pico SDK:  $PICO_SDK_PATH"
