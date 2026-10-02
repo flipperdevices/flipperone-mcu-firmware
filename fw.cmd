@@ -1,0 +1,127 @@
+@echo off
+rem Command-line build for Windows (Linux/macOS: fw). See docs/building.md.
+rem
+rem   fw.cmd [build]   configure on the first run, then build -> build\flipperone-mcu-firmware.uf2
+rem   fw.cmd clean     remove the build directory
+rem   fw.cmd flash     build, then write the partition table and firmware over SWD (openocd)
+rem   fw.cmd setup     fetch the Pico SDK and the ARM toolchain without building
+rem
+rem   set FW_TARGET=f1 before running to build another board (reconfigures the build directory)
+rem
+rem The Pico SDK and the toolchain live in %USERPROFILE%\.pico-sdk, the directory the
+rem Raspberry Pi Pico VS Code extension uses, so one copy serves both. Versions come
+rem from CMakeLists.txt. Needs Windows 10 or later for the bundled curl.exe and tar.exe.
+setlocal
+cd /d "%~dp0"
+for /f "usebackq eol=# tokens=1,* delims==" %%a in ("fw.cfg") do set "%%a=%%b"
+
+set "PICO_HOME=%USERPROFILE%\.pico-sdk"
+for /f "tokens=3 delims=() " %%v in ('findstr /b /c:"set(sdkVersion" CMakeLists.txt') do set "SDK_VERSION=%%v"
+for /f "tokens=3 delims=() " %%v in ('findstr /b /c:"set(toolchainVersion" CMakeLists.txt') do set "TOOLCHAIN_VERSION=%%v"
+rem 14_2_Rel1 -> 14.2.rel1
+set "ARM_RELEASE=%TOOLCHAIN_VERSION:_=.%"
+set "ARM_RELEASE=%ARM_RELEASE:Rel=rel%"
+
+set "DEFAULT_SDK=%PICO_HOME%\sdk\%SDK_VERSION%"
+set "DEFAULT_TOOLCHAIN=%PICO_HOME%\toolchain\%TOOLCHAIN_VERSION%"
+if not defined PICO_SDK_PATH set "PICO_SDK_PATH=%DEFAULT_SDK%"
+if not defined PICO_TOOLCHAIN_PATH set "PICO_TOOLCHAIN_PATH=%DEFAULT_TOOLCHAIN%"
+
+set "COMMAND=%~1"
+if "%COMMAND%"=="" set "COMMAND=build"
+if /i "%COMMAND%"=="build" goto run
+if /i "%COMMAND%"=="clean" goto run
+if /i "%COMMAND%"=="flash" goto run
+if /i "%COMMAND%"=="setup" goto run
+echo usage: fw.cmd [build^|clean^|flash^|setup] >&2
+exit /b 2
+
+:run
+call :%COMMAND%
+exit /b
+
+:build
+call :ensure_sdk || exit /b 1
+call :ensure_toolchain || exit /b 1
+call :find_tool CMAKE cmake cmake bin\cmake.exe || exit /b 1
+call :find_tool NINJA ninja ninja ninja.exe || exit /b 1
+set "TARGET=%FW_TARGET%"
+if not defined TARGET set "TARGET=%DEFAULT_FW_TARGET%"
+set "RECONFIGURE="
+if not exist build\CMakeCache.txt set "RECONFIGURE=1"
+if defined FW_TARGET set "RECONFIGURE=1"
+if defined RECONFIGURE (
+    "%CMAKE%" -S . -B build -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA%" -DFW_TARGET=%TARGET% || exit /b 1
+)
+"%CMAKE%" --build build
+exit /b
+
+:clean
+if exist build rmdir /s /q build
+exit /b 0
+
+:flash
+call :build || exit /b 1
+set "OPENOCD_SCRIPTS="
+if not defined OPENOCD (
+    call :find_tool OPENOCD openocd openocd openocd.exe || exit /b 1
+    for /d %%d in ("%PICO_HOME%\openocd\*") do if exist "%%d\openocd.exe" set "OPENOCD_SCRIPTS=%%d\scripts"
+)
+if defined OPENOCD_SCRIPTS (
+    "%OPENOCD%" -s "%OPENOCD_SCRIPTS%" -f %OPENOCD_INTERFACE% -f %OPENOCD_TARGET% -f targets/flash.tcl
+) else (
+    "%OPENOCD%" -f %OPENOCD_INTERFACE% -f %OPENOCD_TARGET% -f targets/flash.tcl
+)
+exit /b
+
+:setup
+call :ensure_sdk || exit /b 1
+call :ensure_toolchain || exit /b 1
+echo Pico SDK:  %PICO_SDK_PATH%
+echo Toolchain: %PICO_TOOLCHAIN_PATH%
+exit /b 0
+
+rem find_tool <variable> <name> <.pico-sdk subdirectory> <path inside the version directory>
+rem The extension's copy first, so command-line and VS Code builds share one CMake cache.
+:find_tool
+set "%~1="
+for /d %%d in ("%PICO_HOME%\%~3\*") do if exist "%%d\%~4" set "%~1=%%d\%~4"
+if defined %~1 exit /b 0
+for /f "delims=" %%p in ('where %~2 2^>nul') do if not defined %~1 set "%~1=%%p"
+if defined %~1 exit /b 0
+echo error: %~2 not found. Install the Raspberry Pi Pico VS Code extension, or install %~2 and add it to PATH. >&2
+exit /b 1
+
+:ensure_sdk
+if exist "%PICO_SDK_PATH%\pico_sdk_init.cmake" exit /b 0
+if /i not "%PICO_SDK_PATH%"=="%DEFAULT_SDK%" (
+    echo error: PICO_SDK_PATH=%PICO_SDK_PATH% does not contain the Pico SDK >&2
+    exit /b 1
+)
+where /q git || (echo error: git not found, install Git for Windows >&2 & exit /b 1)
+echo Fetching Pico SDK %SDK_VERSION% into %PICO_SDK_PATH%
+if exist "%PICO_SDK_PATH%.tmp" rmdir /s /q "%PICO_SDK_PATH%.tmp"
+if not exist "%PICO_HOME%\sdk" mkdir "%PICO_HOME%\sdk"
+git clone --depth 1 --branch %SDK_VERSION% %PICO_SDK_GIT_URL% "%PICO_SDK_PATH%.tmp" || exit /b 1
+git -C "%PICO_SDK_PATH%.tmp" submodule update --init --depth 1 || exit /b 1
+move "%PICO_SDK_PATH%.tmp" "%PICO_SDK_PATH%" >nul || exit /b 1
+exit /b 0
+
+:ensure_toolchain
+if exist "%PICO_TOOLCHAIN_PATH%\bin\arm-none-eabi-gcc.exe" exit /b 0
+if /i not "%PICO_TOOLCHAIN_PATH%"=="%DEFAULT_TOOLCHAIN%" (
+    echo error: PICO_TOOLCHAIN_PATH=%PICO_TOOLCHAIN_PATH% has no bin\arm-none-eabi-gcc.exe >&2
+    exit /b 1
+)
+set "TC_NAME=arm-gnu-toolchain-%ARM_RELEASE%-mingw-w64-x86_64-arm-none-eabi"
+set "TC_TMP=%PICO_TOOLCHAIN_PATH%.tmp"
+echo Fetching %TC_NAME% into %PICO_TOOLCHAIN_PATH%
+if exist "%TC_TMP%" rmdir /s /q "%TC_TMP%"
+mkdir "%TC_TMP%" || exit /b 1
+curl.exe -fL --retry 3 -o "%TC_TMP%\%TC_NAME%.zip" "%ARM_TOOLCHAIN_BASE_URL%/%ARM_RELEASE%/binrel/%TC_NAME%.zip" || exit /b 1
+tar.exe -xf "%TC_TMP%\%TC_NAME%.zip" -C "%TC_TMP%" || exit /b 1
+del "%TC_TMP%\%TC_NAME%.zip"
+for /d %%d in ("%TC_TMP%\arm-gnu-toolchain-*") do move "%%d" "%PICO_TOOLCHAIN_PATH%" >nul || exit /b 1
+if not exist "%PICO_TOOLCHAIN_PATH%\bin" move "%TC_TMP%" "%PICO_TOOLCHAIN_PATH%" >nul || exit /b 1
+if exist "%TC_TMP%" rmdir /s /q "%TC_TMP%"
+exit /b 0
