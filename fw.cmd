@@ -149,7 +149,7 @@ where /q curl.exe || set "MISSING=%MISSING% curl"
 where /q tar.exe || set "MISSING=%MISSING% tar"
 if not defined MISSING exit /b 0
 echo error: missing:%MISSING% >&2
-echo   Install the Raspberry Pi Pico VS Code extension, or Git for Windows, CMake, Ninja and Python 3 with the py launcher. curl and tar ship with Windows 10 and later. >&2
+echo   Git for Windows and Python 3 with the py launcher are required. CMake and Ninja come with the Raspberry Pi Pico VS Code extension, or go on PATH. curl and tar ship with Windows 10 and later. >&2
 exit /b 1
 
 :ensure_sdk

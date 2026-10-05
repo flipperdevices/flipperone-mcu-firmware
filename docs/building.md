@@ -9,13 +9,15 @@ can be mixed freely.
 | Platform | Install |
 | --- | --- |
 | Ubuntu 24.04+, Debian 12+ | `sudo apt install build-essential cmake ninja-build git curl python3-venv` |
-| macOS | `xcode-select --install`, then `brew install cmake ninja` |
-| Windows 10+ | [Git for Windows](https://gitforwindows.org/), [CMake](https://cmake.org/download/), [Ninja](https://ninja-build.org/) and [Python 3](https://www.python.org/downloads/) on `PATH`; or the Raspberry Pi Pico VS Code extension, which installs them all under `%USERPROFILE%\.pico-sdk` |
+| macOS | `xcode-select --install`, then `brew install cmake ninja python` |
+| Windows 10+ | [Git for Windows](https://gitforwindows.org/) and [Python 3](https://www.python.org/downloads/) with the `py` launcher; plus [CMake](https://cmake.org/download/) and [Ninja](https://ninja-build.org/) on `PATH`, unless the Raspberry Pi Pico VS Code extension is installed, which provides both under `%USERPROFILE%\.pico-sdk` |
 
 The scripts check for all of these first and list everything missing in one go, before
 anything is downloaded. A host C++ compiler is on the list because the SDK builds its own
 `pioasm` and `picotool` for the host when no installed one matches; on Windows the VS Code
-extension ships both prebuilt.
+extension ships both prebuilt. On macOS the Python that comes with the command line tools is
+not enough: it refuses to create the virtual environment the assets step uses, hence the
+Homebrew one.
 
 Clone with submodules:
 
@@ -78,6 +80,9 @@ With the VS Code extension installed, its hook in `CMakeLists.txt` points the bu
   fetches it into the place the hook looks.
 - **Errors naming two different SDK paths** after the SDK moved: a build directory cannot
   be re-pointed at another SDK. Run `./fw clean` and build again.
+- **`This build of python cannot create venvs without using symlinks`** on macOS: `python3`
+  is the Apple command line tools build. `brew install python` and make sure Homebrew's
+  `python3` comes first on `PATH`.
 - **picotool is built from source** when no installed one matches the SDK version. That
   needs a host C++ compiler: `build-essential` on Ubuntu, the Xcode Command Line Tools on
   macOS. On Windows the VS Code extension provides a prebuilt picotool.

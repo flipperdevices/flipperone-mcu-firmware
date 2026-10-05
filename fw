@@ -70,9 +70,17 @@ check_host_tools() {
     if command -v python3 >/dev/null && ! python3 -c 'import venv, ensurepip' 2>/dev/null; then
         missing="$missing python3-venv"
     fi
-    [ -z "$missing" ] || fail "missing:$missing
+    problems=
+    [ -z "$missing" ] || problems="missing:$missing"
+    # Apple's command line tools Python refuses `venv --copies`, which the assets step uses;
+    # its own venv module keys that refusal on this config variable.
+    if command -v python3 >/dev/null && python3 -c 'import sys, sysconfig; sys.exit(sysconfig.get_config_var("TRAIN_STYLE") != "DT")' 2>/dev/null; then
+        problems="${problems:+$problems
+}python3 is the Apple command line tools build, which cannot create the venv the assets step needs"
+    fi
+    [ -z "$problems" ] || fail "$problems
   Ubuntu/Debian: sudo apt install build-essential cmake ninja-build git curl python3-venv
-  macOS:         xcode-select --install; brew install cmake ninja"
+  macOS:         xcode-select --install; brew install cmake ninja python"
 }
 
 ensure_sdk() {
