@@ -7,7 +7,7 @@ const LedItem led_batch_all_off_items[] = {
 };
 
 const LedBatch led_batch_all_off = {
-    .items = led_batch_all_off_items,
+    .items = (LedItem*)led_batch_all_off_items,
     .count = COUNT_OF(led_batch_all_off_items),
 };
 
@@ -18,7 +18,7 @@ const LedItem led_batch_power_red_items[] = {
 };
 
 const LedBatch led_batch_power_red = {
-    .items = led_batch_power_red_items,
+    .items = (LedItem*)led_batch_power_red_items,
     .count = COUNT_OF(led_batch_power_red_items),
 };
 
@@ -44,7 +44,7 @@ const LedItem led_batch_all_on_items[] = {
 };
 
 const LedBatch led_batch_all_on = {
-    .items = led_batch_all_on_items,
+    .items = (LedItem*)led_batch_all_on_items,
     .count = COUNT_OF(led_batch_all_on_items),
 };
 
@@ -70,7 +70,7 @@ const LedItem led_batch_all_white_items[] = {
 };
 
 const LedBatch led_batch_all_white = {
-    .items = led_batch_all_white_items,
+    .items = (LedItem*)led_batch_all_white_items,
     .count = COUNT_OF(led_batch_all_white_items),
 };
 

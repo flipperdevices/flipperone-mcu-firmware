@@ -29,6 +29,7 @@ extern int32_t cli_on_system_start(void* p);
 extern int32_t rpc_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
 extern int32_t cpu_app(void* p);
+extern int32_t power_meter_test_app(void* p);
 
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
@@ -189,6 +190,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .app = font_test_app,
         .name = "Font Test",
         .appid = "font_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = power_meter_test_app,
+        .name = "Power Meter Test",
+        .appid = "power_meter_test",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },

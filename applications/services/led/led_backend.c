@@ -51,7 +51,8 @@ typedef struct {
         } set_color_single;
 
         struct {
-            const LedBatch* items;
+            LedItem* items;
+            size_t count;
         } set_color_batch;
 
         struct {
@@ -238,9 +239,8 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
         break;
     }
     case LedMessageTypeSetColorBatch: {
-        const LedItem* items = msg.set_color_batch.items->items;
-        const size_t count = msg.set_color_batch.items->count;
-        led_process_set_color_batch(instance, (LedItem*)items, count);
+        led_process_set_color_batch(instance, msg.set_color_batch.items, msg.set_color_batch.count);
+        free(msg.set_color_batch.items);
         result = true;
         break;
     }
@@ -401,10 +401,15 @@ void led_set_color_single(Led* instance, FuriBspLedType type, LedColor color) {
 
 void led_set_color_batch(Led* instance, const LedBatch* batch) {
     furi_check(instance);
+    furi_check(batch);
+    furi_check(batch->items);
+
+    LedItem* items_copy = malloc(sizeof(LedItem) * batch->count);
+    memcpy((void*)items_copy, batch->items, sizeof(LedItem) * batch->count);
 
     const LedMessage msg = {
         .type = LedMessageTypeSetColorBatch,
-        .set_color_batch = {.items = batch},
+        .set_color_batch = {.count = batch->count, .items = items_copy},
     };
     led_send_message(instance, &msg);
 }
