@@ -153,11 +153,13 @@ int32_t power_meter_test_app(void* p) {
     furi_thread_start(srv_thread);
 
     furi_event_loop_run(instance->event_loop);
-    power_meter_test_free(instance);
 
     furi_thread_signal(srv_thread, FuriSignalExit, NULL);
     furi_thread_join(srv_thread);
     furi_thread_free(srv_thread);
+
+    power_meter_test_free(instance);
+
     return 0;
 }
 
