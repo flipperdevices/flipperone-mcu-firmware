@@ -18,11 +18,6 @@
 В [`commands.md`](commands.md) помечены MUST, в `ucsi_ppm_cmd.c` падают в
 `default` и отвечают Not Supported:
 
-- [ ] **CONNECTOR_RESET (0x03)** — Hard Reset / Error Recovery по команде хоста.
-      Вместе с ним dead-battery политика ([`type-c-sm.md`](type-c-sm.md) §10.4,
-      `validation.md` F4.7/F9.1): если мы sink без альтернативного питания —
-      fail с Error Information bit 5. Хук `has_alt_power` в конфиге есть, но
-      кроме чтения в `ucsi_ppm.c` нигде не используется.
 - [ ] **CANCEL (0x02)** — хендлеры синхронные, отменять нечего, но ответ по
       спеке нужен вместо Not Supported.
 - [ ] **SET_SINK_PATH (0x1C)**.
@@ -107,7 +102,8 @@
 Чтобы не возвращаться к этому в обсуждениях:
 
 - Chunking extended-сообщений (нечего слать длиннее 26 байт).
-- VDM / Alt Mode / Discover Identity (структурные VDM — NAK).
+- VDM / Alt Mode / Discover Identity (структурные VDM — NAK; GET_CURRENT_CAM
+  отвечает «ни в одном», настоящая реализация — вторая стадия).
 - SOP'/SOP'' и VCONN (не источаем).
 - PPS / APDO, EPR, FR_Swap, BIST.
 - tSrcHoldsBus (§7.31.13.2) — необязательная оптимизация Rp.

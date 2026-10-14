@@ -126,6 +126,19 @@ UcsiPpmStatus ucsi_ppm_phy_set_rp_current(UcsiPpm* ppm, UcsiPpmRpCurrent current
 // keep PU_EN latched on its own.
 UcsiPpmStatus ucsi_ppm_phy_set_source_termination(UcsiPpm* ppm, UcsiPpmPhyCc cc);
 
+// Configures SWITCHES0 for sink role: Rd on both pins, Rp off, MEAS routed
+// to the given CC. Call once after TOGGLE_DONE picks SNK. Explicit for the
+// same reason as the source side, and because after
+// ucsi_ppm_phy_open_terminations the PDWN bits are definitely clear.
+UcsiPpmStatus ucsi_ppm_phy_set_sink_termination(UcsiPpm* ppm, UcsiPpmPhyCc cc);
+
+// SWITCHES0 = 0: no Rp, no Rd, no VCONN, nothing measured — the connector
+// presents as nothing at all. Not what SW_RESET leaves behind: the register
+// resets to 0x03, Rd on both pins, so a freshly reset chip looks like a sink
+// to whatever is attached. A Disabled connector and a disconnect the partner
+// has to notice (ErrorRecovery) both need this written explicitly.
+UcsiPpmStatus ucsi_ppm_phy_open_terminations(UcsiPpm* ppm);
+
 // Reads the current STATUS0.VBUSOK level — non-edge polling, useful when
 // the partner's VBUS was already up before phy_init ran (no I_VBUSOK edge
 // ever fired so the event-driven path misses it).

@@ -5,6 +5,8 @@
 
 #include <string.h>
 
+#define TAG "UcsiCmd"
+
 // --- Spec-derived constants ------------------------------------------------
 
 // MESSAGE_IN response sizes per command (commands.md §2.x "CCI отличия").
@@ -63,6 +65,16 @@
 // (commands.md §2.x — first column "Offset" in each command's CONTROL table).
 #define BIT_SET_CCOM_CC_MODE   23u
 #define WIDTH_SET_CCOM_CC_MODE 4u
+
+// Connector Number, shared by every connector-scoped command. Only
+// CONNECTOR_RESET checks it today: the others never had a reason to, with
+// one connector there is nothing to select.
+#define BIT_CONNECTOR_NUMBER   16u
+#define WIDTH_CONNECTOR_NUMBER 7u
+
+// CONNECTOR_RESET parameters (commands.md §2.3).
+#define BIT_CONNECTOR_RESET_TYPE  23u
+#define CONNECTOR_RESET_TYPE_DATA 1u
 
 #define BIT_ROLE   23u // shared by SET_UOR / SET_PDR
 #define WIDTH_ROLE 3u
@@ -308,6 +320,72 @@ static uint32_t handle_not_supported(UcsiPpm* ppm) {
 static uint32_t fail_with_error(UcsiPpm* ppm, uint16_t error_bits) {
     ppm->error_info |= error_bits;
     return UCSI_PPM_CCI_COMMAND_COMPLETED | UCSI_PPM_CCI_ERROR;
+}
+
+static uint32_t handle_connector_reset(UcsiPpm* ppm) {
+    // commands.md §2.3, UCSI 3.0 §6.5.3.
+    const uint8_t connector = (uint8_t)control_get_field(ppm, BIT_CONNECTOR_NUMBER, WIDTH_CONNECTOR_NUMBER);
+    if(connector != UCSI_PPM_NUM_CONNECTORS) {
+        return fail_with_error(ppm, UCSI_PPM_ERR_NONEXISTENT_CONNECTOR);
+    }
+
+    // Data Reset exits Alternate Modes and resets the USB data path with VBUS
+    // kept up; mandatory for USB4 ports only, and we are not one. The spec's
+    // answer for that case is the Not Supported indicator, connector untouched.
+    if(control_get_field(ppm, BIT_CONNECTOR_RESET_TYPE, 1u) == CONNECTOR_RESET_TYPE_DATA) {
+        return handle_not_supported(ppm);
+    }
+
+    // Hard Reset: "the connector shall go through a disconnect-connect
+    // sequence" — Type-C ErrorRecovery, not a PD Hard Reset. The partner sees
+    // CC open and detaches on its own.
+    const bool attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc ||
+                          ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
+    if(!attached) {
+        // Nothing to disconnect; the connector is already between partners.
+        // Success rather than an error: the OPM asked for a state we are in.
+        UCSI_LOG_I(ppm, "connector reset with nothing attached, no-op");
+        return UCSI_PPM_CCI_COMMAND_COMPLETED;
+    }
+
+    // Dead battery (§6.5.3): as a sink the partner's VBUS may be all that
+    // powers us, and opening CC makes it take that away. Only the product
+    // knows whether a battery or another input would carry us through.
+    if(ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk && !ppm->config.has_alt_power(ppm->config.hal_ctx)) {
+        UCSI_LOG_W(ppm, "connector reset refused: sink on partner VBUS with no other power");
+        return fail_with_error(ppm, UCSI_PPM_ERR_DEAD_BATTERY);
+    }
+
+    ucsi_ppm_tc_connector_reset(ppm);
+    // Completed means started (§6.5.3). The OPM follows the rest through the
+    // Connect Change notifications: one for the detach the teardown just
+    // raised, one for the re-attach when the partner comes back.
+    return UCSI_PPM_CCI_COMMAND_COMPLETED;
+}
+
+// GET_CURRENT_CAM Data: one byte per active Alternate Mode, 0xFF meaning the
+// connector is in none (commands.md §2.13).
+#define GET_CURRENT_CAM_NONE     0xFFu
+#define DATA_LEN_GET_CURRENT_CAM 1u
+
+static uint32_t handle_get_current_cam(UcsiPpm* ppm) {
+    // Optional for a port without Alternate Modes, and Not Supported would be
+    // a correct answer — but the Linux ucsi driver asks on every partner
+    // change without checking the capability bits, and logs an error when
+    // refused. "Not in any Alternate Mode" is just as true and keeps dmesg
+    // quiet.
+    //
+    // TODO(v2): a real answer, one index per active mode out of the list
+    // GET_ALTERNATE_MODES reports, once Alternate Modes exist in this library
+    // (VDM Discover Identity/SVIDs/Modes, Enter_Mode — pd-scope.md §1.2).
+    // Until then there is no mode to be in, so this is not a stub but the
+    // whole truth.
+    const uint8_t connector = (uint8_t)control_get_field(ppm, BIT_CONNECTOR_NUMBER, WIDTH_CONNECTOR_NUMBER);
+    if(connector != UCSI_PPM_NUM_CONNECTORS) {
+        return fail_with_error(ppm, UCSI_PPM_ERR_NONEXISTENT_CONNECTOR);
+    }
+    ppm->regfile[UCSI_PPM_OFFSET_MESSAGE_IN] = GET_CURRENT_CAM_NONE;
+    return cci_with_data_length(UCSI_PPM_CCI_COMMAND_COMPLETED, DATA_LEN_GET_CURRENT_CAM);
 }
 
 static uint32_t handle_set_ccom(UcsiPpm* ppm) {
@@ -634,6 +712,9 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
         // clears it implicitly by sending the next command.
         stays_idle = true;
         break;
+    case UCSI_PPM_OPCODE_CONNECTOR_RESET:
+        result_cci = handle_connector_reset(ppm);
+        break;
     case UCSI_PPM_OPCODE_GET_CAPABILITY:
         result_cci = handle_get_capability(ppm);
         break;
@@ -652,6 +733,9 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
     case UCSI_PPM_OPCODE_SET_PDR:
         result_cci = handle_set_pdr(ppm);
         break;
+    case UCSI_PPM_OPCODE_GET_CURRENT_CAM:
+        result_cci = handle_get_current_cam(ppm);
+        break;
     case UCSI_PPM_OPCODE_GET_PDOS:
         result_cci = handle_get_pdos(ppm);
         break;
@@ -669,8 +753,23 @@ void ucsi_ppm_cmd_dispatch(UcsiPpm* ppm) {
         break;
     }
 
-    cci_store(ppm, result_cci);
+    // A handler may raise a connector change on its way — CONNECTOR_RESET
+    // tears the session down synchronously — and the indicator it set in CCI
+    // must not be lost under the command's own result.
+    cci_store(ppm, result_cci | (cci_load(ppm) & UCSI_PPM_CCI_CONNECTOR_CHANGE_MASK));
     ppm->cmd_state = stays_idle ? UcsiPpmCmdStateIdle : UcsiPpmCmdStateWaitForAck;
+
+    // One line per command is the only trace of the OPM on this side. Rare
+    // enough to keep at info: the host sends a handful at init and then only
+    // reacts to notifications.
+    UCSI_LOG_I(
+        ppm,
+        "cmd 0x%02X -> cci %08lX%s%s%s",
+        (unsigned)opcode,
+        (unsigned long)result_cci,
+        (result_cci & UCSI_PPM_CCI_ERROR) ? " error" : "",
+        (result_cci & UCSI_PPM_CCI_NOT_SUPPORTED) ? " not-supported" : "",
+        (result_cci & UCSI_PPM_CCI_RESET_COMPLETED) ? " reset-completed" : "");
 
     // OPM alert: gated by SET_NOTIFICATION_ENABLE bit 0 (Command Completed
     // Notification Enable, commands.md §2.5 Table 6-25). Reset Completed is

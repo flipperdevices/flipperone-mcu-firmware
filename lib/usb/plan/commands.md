@@ -292,6 +292,9 @@ CANCEL дропается.
 - `Error Indicator = 1` при неуспехе.
 - `Command Completed Indicator = 1`.
 
+Реализация — [`type-c-sm.md`](type-c-sm.md) §6: Hard Reset = Type-C
+ErrorRecovery, Data Reset = NS, dead battery = Error Information bit 5.
+
 ---
 
 ### 2.4 ACK_CC_CI (0x04) — MUST
@@ -634,6 +637,13 @@ alt-mode в том же порядке, как их вернул GET_ALTERNATE_M
 
 Возвращает массив индексов alt-mode-ов, в которых коннектор **сейчас**
 работает.
+
+Реализовано как «ни в одном»: Command Completed, Data Length 1, байт `0xFF`.
+Not Supported был бы тоже верен, но Linux-драйвер ucsi шлёт эту команду на
+каждый Partner Change, не глядя на capability-биты, и на отказ пишет
+«GET_CURRENT_CAM command failed» в dmesg. Полноценная реализация (индексы
+активных режимов из списка GET_ALTERNATE_MODES) — вторая стадия библиотеки,
+вместе с VDM и Alternate Modes.
 
 #### CONTROL
 

@@ -30,6 +30,13 @@
 // counts as a detach once this expires without it coming back.
 #define UCSI_PPM_TC_SRC_RECOVER_MS 1000u
 
+// How long ErrorRecovery keeps both terminations open before detection
+// restarts. Type-C R2.0 Table 4-30 gives tErrorRecovery a minimum of 25 ms
+// and no maximum. Linux tcpm uses 100 ms (PD_T_ERROR_RECOVERY, "minimum 25
+// is insufficient") and we follow it: how long the partner needs to notice
+// an open CC is its own business, and the kernel's number has the mileage.
+#define UCSI_PPM_TC_ERROR_RECOVERY_MS 100u
+
 // STATUS0.BC_LVL interpretation when measuring on the active CC pin with Rp
 // enabled (source side, fusb302.md §5.1):
 //   0b00 — < 200 mV   (no Rd, but rare; partner not present)
@@ -167,10 +174,11 @@ UcsiPpmStatus ucsi_ppm_tc_init(UcsiPpm* ppm) {
 
     UcsiPpmPhyToggleMode toggle_mode;
     if(!cc_mode_to_toggle(ppm->current_cc_operation_mode, &toggle_mode)) {
-        // Disabled: terminations are off (phy_init leaves SWITCHES0 zeroed
-        // post-SW_RESET); no toggle is needed.
+        // Disabled: no toggle, and the terminations have to be taken off
+        // explicitly — SW_RESET leaves Rd on both pins, which is a sink, not
+        // a disabled connector.
         tc_set_state(ppm, (int)UcsiPpmTcStateDisabled, "init, cc mode disabled");
-        return UcsiPpmStatusOk;
+        return ucsi_ppm_phy_open_terminations(ppm);
     }
 
     tc_set_state(ppm, (int)UcsiPpmTcStateUnattached, "init");
@@ -260,8 +268,14 @@ static void handle_toggle_done(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
         ucsi_ppm_tc_apply_source_rp(ppm);
         (void)ucsi_ppm_phy_set_source_termination(ppm, cc);
     }
-    // Sink-side: nothing more — partner brings up VBUS and FUSB302's
-    // I_VBUSOK will fire, taking us to Attached once the debounce expires.
+    else {
+        // Rd on both pins, written rather than inherited: SW_RESET happens to
+        // leave PDWN1/PDWN2 set, but ErrorRecovery clears them on purpose and
+        // the toggle FSM only drives its own internal copies while it runs.
+        // Then the partner brings up VBUS and I_VBUSOK takes us to Attached
+        // once the debounce expires.
+        (void)ucsi_ppm_phy_set_sink_termination(ppm, cc);
+    }
 }
 
 // Forward decl — tc_try_commit_attached can bail out to Unattached on
@@ -383,7 +397,12 @@ static void tc_try_commit_attached(UcsiPpm* ppm) {
 // (source side only), CC routing, then restarts the chip's auto-toggle in
 // the configured mode. If the connector is Disabled in config, falls back
 // to Disabled instead.
-static void tc_enter_unattached(UcsiPpm* ppm, const char* reason) {
+// Ends the current session without starting the next one: VBUS source off if
+// we drove it, chip re-initialised (terminations open, no toggle), per-session
+// state cleared, PRL/PE reset, OPM told the partner is gone. Followed by
+// tc_start_detection — right away for a detach, after tErrorRecovery for a
+// connector reset.
+static void tc_teardown_session(UcsiPpm* ppm) {
     const bool was_src = ppm->tc_role_is_src;
     const bool was_attached = ppm->tc_state == (int)UcsiPpmTcStateAttachedSrc || ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk;
 
@@ -419,16 +438,41 @@ static void tc_enter_unattached(UcsiPpm* ppm, const char* reason) {
     if(was_attached) {
         ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_CONNECT_CHANGE | UCSI_PPM_CSC_PARTNER_CHANGED | UCSI_PPM_CSC_POWER_OP_MODE_CHANGE);
     }
+}
 
+// Starts looking for the next partner in the configured CC mode, or parks
+// the connector in Disabled when that mode is Disabled.
+static void tc_start_detection(UcsiPpm* ppm, const char* reason) {
     UcsiPpmPhyToggleMode toggle_mode;
     if(cc_mode_to_toggle(ppm->current_cc_operation_mode, &toggle_mode)) {
         tc_set_state(ppm, (int)UcsiPpmTcStateUnattached, reason);
         ppm->tc_attach_wait_start_ms = ppm->config.time_ms(ppm->config.hal_ctx);
         (void)ucsi_ppm_phy_start_toggle(ppm, toggle_mode);
     } else {
-        // Disabled mode (or unreachable default): stay disabled.
+        // Disabled mode (or unreachable default): stay disabled, and present
+        // nothing — the chip reset inside the teardown left Rd on the pins.
         tc_set_state(ppm, (int)UcsiPpmTcStateDisabled, reason);
+        (void)ucsi_ppm_phy_open_terminations(ppm);
     }
+}
+
+static void tc_enter_unattached(UcsiPpm* ppm, const char* reason) {
+    tc_teardown_session(ppm);
+    tc_start_detection(ppm, reason);
+}
+
+void ucsi_ppm_tc_connector_reset(UcsiPpm* ppm) {
+    // A detach, except that detection does not restart until tErrorRecovery
+    // has passed, and the terminations are opened for real. The teardown's
+    // SW_RESET alone does not do that: SWITCHES0 comes back as 0x03, Rd on
+    // both pins, and the partner keeps seeing a sink. That is how the first
+    // bench run went — toggle "settled" 6 ms after the recovery window, the
+    // charger had never let go of Rp or VBUS, and the reset only took effect
+    // through the Hard Reset SinkWaitCapTimer fired afterwards.
+    tc_teardown_session(ppm);
+    (void)ucsi_ppm_phy_open_terminations(ppm);
+    tc_set_state(ppm, (int)UcsiPpmTcStateErrorRecovery, "connector reset");
+    ppm->tc_error_recovery_start_ms = ppm->config.time_ms(ppm->config.hal_ctx);
 }
 
 static void handle_vbus_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
@@ -588,6 +632,9 @@ static uint32_t tc_remaining_ms(const UcsiPpm* ppm, uint32_t started_ms, uint32_
 }
 
 uint32_t ucsi_ppm_tc_next_timeout_ms(const UcsiPpm* ppm) {
+    if(ppm->tc_state == (int)UcsiPpmTcStateErrorRecovery) {
+        return tc_remaining_ms(ppm, ppm->tc_error_recovery_start_ms, UCSI_PPM_TC_ERROR_RECOVERY_MS);
+    }
     if(ppm->tc_state == (int)UcsiPpmTcStateAttachWait) {
         const uint32_t debounce =
             tc_remaining_ms(ppm, ppm->tc_attach_wait_start_ms, UCSI_PPM_TC_CC_DEBOUNCE_MS);
@@ -718,6 +765,12 @@ void ucsi_ppm_tc_apply_source_rp(UcsiPpm* ppm) {
 }
 
 void ucsi_ppm_tc_tick(UcsiPpm* ppm) {
+    if(ppm->tc_state == (int)UcsiPpmTcStateErrorRecovery) {
+        if(tc_remaining_ms(ppm, ppm->tc_error_recovery_start_ms, UCSI_PPM_TC_ERROR_RECOVERY_MS) == 0u) {
+            tc_start_detection(ppm, "error recovery done");
+        }
+        return;
+    }
     if(ppm->tc_state == (int)UcsiPpmTcStateAttachWait) {
         // First try the normal commit path — debounce expired + VBUS seen.
         tc_try_commit_attached(ppm);

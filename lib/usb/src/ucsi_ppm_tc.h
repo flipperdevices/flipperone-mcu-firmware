@@ -39,6 +39,14 @@ UcsiPpmStatus ucsi_ppm_tc_deinit(UcsiPpm* ppm);
 // ucsi_ppm_reset and as part of detach recovery.
 UcsiPpmStatus ucsi_ppm_tc_reset(UcsiPpm* ppm);
 
+// UCSI CONNECTOR_RESET (Hard): Type-C ErrorRecovery (R2.0 §4.5.2.2.2). Tears
+// the session down like a detach — VBUS source off if we drove it, chip
+// re-initialised with both terminations open, PRL/PE reset, OPM told the
+// partner is gone — and holds the terminations open for tErrorRecovery
+// before detection restarts, so the partner sees a real disconnect. The
+// dead-battery check is the caller's: this does not look at who powers us.
+void ucsi_ppm_tc_connector_reset(UcsiPpm* ppm);
+
 // Consumes one event from the PHY pump. Handles only events relevant to
 // the connector state machine (ToggleDone, VbusChanged today; CompChanged /
 // HardReset* once detach/recovery is in). Unknown events are dropped

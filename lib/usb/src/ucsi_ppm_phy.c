@@ -302,6 +302,26 @@ UcsiPpmStatus ucsi_ppm_phy_set_source_termination(UcsiPpm* ppm, UcsiPpmPhyCc cc)
     return phy_rmw_reg(ppm, Fusb302RegSwitches1, sw1_mask, sw1_value);
 }
 
+UcsiPpmStatus ucsi_ppm_phy_set_sink_termination(UcsiPpm* ppm, UcsiPpmPhyCc cc) {
+    // PDWN1 | PDWN2 on, PU_EN* off, MEAS on the active CC. RMW keeps the
+    // VCONN bits alone, like the source side. The TX_CC routing in SWITCHES1
+    // is left to ucsi_ppm_phy_lock_polarity, which the caller runs first.
+    const uint8_t sw0_mask = (uint8_t)((1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 6) | (1u << 7));
+    uint8_t sw0_value = (uint8_t)((1u << 0) | (1u << 1)); // PDWN1, PDWN2
+    if(cc == UcsiPpmPhyCc1) {
+        sw0_value |= (1u << 2); // MEAS_CC1
+    } else if(cc == UcsiPpmPhyCc2) {
+        sw0_value |= (1u << 3); // MEAS_CC2
+    }
+    return phy_rmw_reg(ppm, Fusb302RegSwitches0, sw0_mask, sw0_value);
+}
+
+UcsiPpmStatus ucsi_ppm_phy_open_terminations(UcsiPpm* ppm) {
+    // Datasheet Table 18: SWITCHES0 reset value is 0x03. A plain write, not
+    // RMW — every bit in here is something we want off.
+    return phy_write_reg(ppm, Fusb302RegSwitches0, 0x00u);
+}
+
 UcsiPpmStatus ucsi_ppm_phy_set_msg_header_bits(UcsiPpm* ppm, bool power_role_src, bool data_role_dfp) {
     // SWITCHES1: AUTO_CRC (bit 2), DATA_ROLE (bit 4), SPEC_REV (bits 6:5),
     // POWER_ROLE (bit 7). We touch the role/rev bits and leave AUTO_CRC alone.

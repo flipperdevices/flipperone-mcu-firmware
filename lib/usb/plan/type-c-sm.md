@@ -297,6 +297,31 @@ UCSI `CONNECTOR_RESET` (см. [`commands.md`](commands.md) §2.3) имеет
 - **Data Reset** (Reset Type=1). Только USB-data сброс, VBUS сохраняется.
   - **Действие Type-C SM**: в нашей конфигурации (не USB4) — отвечаем NS на CONNECTOR_RESET с Data Reset (CCI `Not Supported Indicator=1` + остаёмся в Attached).
 
+Реализовано: `handle_connector_reset` в `ucsi_ppm_cmd.c` и
+`ucsi_ppm_tc_connector_reset` в `ucsi_ppm_tc.c`.
+
+- Hard Reset здесь — Type-C ErrorRecovery, **не** PD Hard Reset: партнёр
+  видит открытый CC и отключается сам. `tc_teardown_session` (то же, что
+  detach: VBUS source off, `phy_init` → SWITCHES0 = 0, PRL/PE reset,
+  Connect Change для OPM), затем **`ucsi_ppm_phy_open_terminations`**
+  (SWITCHES0 = 0), состояние `ErrorRecovery` на
+  `UCSI_PPM_TC_ERROR_RECOVERY_MS` = 100 мс (значение Linux tcpm,
+  `PD_T_ERROR_RECOVERY`), и только потом `tc_start_detection` заново заводит
+  TOGGLE. Явное открытие терминаций обязательно: reset value SWITCHES0 у
+  FUSB302 равен 0x03, после SW_RESET чип показывает Rd на обоих пинах, и без
+  этой записи партнёр разрыва не видит вообще (на стенде toggle «садился»
+  через 6 мс после окна, зарядка Rp и VBUS не отпускала, сброс доезжал только
+  через Hard Reset по SinkWaitCapTimer). По той же причине после TOGGLE,
+  севшего в SNK, Rd теперь ставится явно (`ucsi_ppm_phy_set_sink_termination`),
+  а режим Disabled тоже открывает терминации, а не полагается на reset.
+- Command Completed выставляется сразу («once it starts»), завершение OPM
+  видит по двум Connect Change: detach из teardown и re-attach.
+- Dead battery (§10.4) проверяется в `handle_connector_reset`:
+  `Attached.SNK` и `config.has_alt_power()` == false → Error Information bit 5,
+  коннектор не трогаем.
+- Ничего не подключено → Command Completed без действий; неверный номер
+  коннектора → Error Information bit 1.
+
 ---
 
 ## 7. PR_Swap и Type-C SM

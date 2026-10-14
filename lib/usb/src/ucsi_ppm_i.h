@@ -68,6 +68,7 @@ typedef struct {
 #define UCSI_PPM_OPCODE_SET_CCOM                 0x08u
 #define UCSI_PPM_OPCODE_SET_UOR                  0x09u
 #define UCSI_PPM_OPCODE_SET_PDR                  0x0Bu
+#define UCSI_PPM_OPCODE_GET_CURRENT_CAM          0x0Eu
 #define UCSI_PPM_OPCODE_GET_PDOS                 0x10u
 #define UCSI_PPM_OPCODE_GET_CABLE_PROPERTY       0x11u
 #define UCSI_PPM_OPCODE_GET_CONNECTOR_STATUS     0x12u
@@ -202,6 +203,10 @@ struct UcsiPpm {
     // return in time. Zero timestamp when VBUS is present.
     uint32_t tc_vbus_lost_at_ms;
     bool tc_vbus_lost;
+
+    // When ErrorRecovery was entered: terminations stay open until
+    // tErrorRecovery has elapsed from here, then detection restarts.
+    uint32_t tc_error_recovery_start_ms;
 
     // Last value handed to config.sink_current_limit, so the callback only
     // fires on real changes. `valid` separates "never reported" from

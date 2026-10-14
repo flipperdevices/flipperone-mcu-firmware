@@ -33,7 +33,7 @@
 #define PD_SINK_VINDPM_PERCENT (85u)
 // Floor for the 5 V case, where 85% would land under the charger's own
 // operating point. Matches what the hardware picks for itself at vSafe5V.
-#define PD_SINK_VINDPM_MIN_MV (4400u)
+#define PD_SINK_VINDPM_MIN_MV  (4400u)
 
 struct Pd {
     FuriEventLoop* event_loop;
@@ -47,6 +47,12 @@ struct Pd {
 
     FuriCallback ucsi_alert_callback;
     void* ucsi_alert_context;
+
+    // Whether the battery could carry the device through losing VBUS.
+    // Refreshed from the fuel gauge on this service's thread; read by the PD
+    // stack from its worker, where a trip to the I2C bus is not welcome.
+    FuriEventLoopTimer* alt_power_timer;
+    volatile bool alt_power_ok;
 };
 
 typedef enum {
@@ -81,6 +87,61 @@ static void pd_vbus_source_set(void* context, bool enable) {
     }
 }
 
+// Below this the battery is treated as unable to carry the device on its own.
+// A connector reset itself is short (tErrorRecovery plus the partner's
+// re-attach, well under a second), so this is a margin against the fuel
+// gauge's accuracy near empty rather than a capacity budget.
+#define PD_ALT_POWER_MIN_SOC_PERCENT (5u)
+
+// How often the cached answer is refreshed. State of charge moves by a
+// percent every few minutes at most, so this is generous; it exists so the
+// value a reset is decided on is never older than one period.
+#define PD_ALT_POWER_REFRESH_MS (10000u)
+
+// Whether losing VBUS would leave the device powered. The PD stack asks this
+// before a host-requested CONNECTOR_RESET while we sink from the partner
+// (UCSI 3.0 §6.5.3, dead battery): the reset opens CC and the charger cuts
+// VBUS, so the answer has to be a battery that is present and holds a
+// usable charge. Presence is read off the fuel gauge having come up — the
+// gauge sits inside the pack — and charge off its relative state of charge
+// and its own Fully Discharged flag.
+//
+// Runs on this service's thread, on a timer: the reads block on the power
+// service and the I2C bus, which must not happen on the PD worker, where the
+// stack asks the question. Any read failure counts as no battery — refusing
+// a reset is the safe way to be wrong.
+static void pd_alt_power_refresh(void* context) {
+    Pd* instance = context;
+
+    bool ok = false;
+    uint8_t soc = 0;
+    bool fully_discharged = false;
+
+    PowerDevice devices = 0;
+    (void)power_is_device_initialized(instance->power, &devices);
+    if(!(devices & PowerDeviceBq28z620)) {
+        FURI_LOG_W(TAG, "alt power: no fuel gauge, assuming no battery");
+    } else if(!power_bq28z620_get_relative_state_of_charge(instance->power, &soc)) {
+        FURI_LOG_W(TAG, "alt power: soc read failed, assuming no battery");
+    } else {
+        Bq28z620StdCmdBatteryStatusRegBits status = {0};
+        fully_discharged = power_bq28z620_get_battery_status(instance->power, &status) && status.fully_discharged;
+        ok = soc >= PD_ALT_POWER_MIN_SOC_PERCENT && !fully_discharged;
+    }
+
+    if(ok != instance->alt_power_ok) {
+        FURI_LOG_I(TAG, "alt power: soc %u%%%s -> %s", soc, fully_discharged ? ", fully discharged" : "", ok ? "yes" : "no");
+    }
+    instance->alt_power_ok = ok;
+}
+
+// UsbPd worker thread, from inside a UCSI command. Only the cached flag: no
+// bus, no blocking, nothing a PD timer could miss.
+static bool pd_has_alt_power(void* context) {
+    Pd* instance = context;
+    return instance->alt_power_ok;
+}
+
 static bool pd_power_supply_set(void* context, uint16_t voltage_mv, uint16_t current_limit_ma) {
     Pd* instance = context;
     if(!power_bq25792_set_otg_params(instance->power, voltage_mv, current_limit_ma)) {
@@ -108,12 +169,7 @@ static void pd_sink_current_limit_set(void* context, uint16_t current_ma, UcsiPp
     // ICO starts the moment VBUS appears — long before a contract exists.
     const bool probe_allowed = source == UcsiPpmSinkLimitTypeCOnly;
     static const char* const source_names[] = {"none", "type-c Rp", "type-c only", "pd contract"};
-    FURI_LOG_I(
-        TAG,
-        "input limit: %u mA (%s, ico %s)",
-        current_ma,
-        source_names[source],
-        probe_allowed ? "on" : "off");
+    FURI_LOG_I(TAG, "input limit: %u mA (%s, ico %s)", current_ma, source_names[source], probe_allowed ? "on" : "off");
 
     // Runs on the PD worker thread, in the middle of PD event handling.
     // power_bq25792_set_input_current_limit_ma() blocks on the power service
@@ -266,8 +322,7 @@ static void pd_message_queue_callback(FuriEventLoopObject* object, void* context
         // here. Diagnostics do not belong on a bus the protocol depends on.
         break;
     case PdMessageTypeSetInputVoltageLimit:
-        result =
-            power_bq25792_set_input_voltage_limit_mv(instance->power, msg.input_voltage_limit_mv);
+        result = power_bq25792_set_input_voltage_limit_mv(instance->power, msg.input_voltage_limit_mv);
         if(!result) {
             FURI_LOG_W(TAG, "vindpm %u mV failed", msg.input_voltage_limit_mv);
         }
@@ -307,6 +362,7 @@ static void pd_config_fill(Pd* instance, UsbPdConfig* config) {
     config->vbus_source_set = pd_vbus_source_set;
     config->power_supply_set = pd_power_supply_set;
     config->sink_current_limit_set = pd_sink_current_limit_set;
+    config->has_alt_power = pd_has_alt_power;
     config->ucsi_alert = pd_ucsi_alert;
 
     // FUSB302 INT_N is wired both into the main expander and straight to this
@@ -345,10 +401,16 @@ static Pd* pd_alloc(void) {
 
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(PD_MAX_MESSAGES, sizeof(PdMessage));
-    furi_event_loop_subscribe_message_queue(
-        instance->event_loop, instance->message_queue, FuriEventLoopEventIn, pd_message_queue_callback, instance);
+    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, pd_message_queue_callback, instance);
 
     instance->power = furi_record_open(RECORD_POWER);
+
+    // First answer before the stack exists, so a reset request can never find
+    // the flag unset; from then on the timer keeps it current.
+    instance->alt_power_ok = false;
+    pd_alt_power_refresh(instance);
+    instance->alt_power_timer = furi_event_loop_timer_alloc(instance->event_loop, pd_alt_power_refresh, FuriEventLoopTimerTypePeriodic, instance);
+    furi_event_loop_timer_start(instance->alt_power_timer, PD_ALT_POWER_REFRESH_MS);
 
     UsbPdConfig config;
     pd_config_fill(instance, &config);

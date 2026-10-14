@@ -212,6 +212,19 @@ static bool mock_any_write_to(uint8_t reg, uint8_t value) {
     return false;
 }
 
+// True if some register store to `reg` had every bit of `mask` set. For
+// self-clearing command bits, where the full value depends on what the
+// read-modify-write found in the register.
+static bool mock_any_write_with_bits(uint8_t reg, uint8_t mask) {
+    for(size_t i = 0; i < g_mock_txn_count; ++i) {
+        const MockI2cTxn* t = &g_mock_txns[i];
+        if(t->is_write && t->len == 2u && t->data[0] == reg && (t->data[1] & mask) == mask) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Builds a ppm with mock I²C / time / GPIO wired in. Returns NULL on error.
 // Resets the mock state on entry so tests don't accidentally trip the
 // txn buffer cap with leftover entries from earlier tests.
@@ -964,7 +977,9 @@ static bool test_cmd_not_supported_in_scope(void) {
     make_valid_config(&cfg);
     ucsi_ppm_init(ppm, &cfg);
 
-    const uint8_t opcodes[] = {0x0Cu, 0x0Du, 0x0Eu, 0x0Fu, 0x15u};
+    // 0x0E GET_CURRENT_CAM is not here: it answers "none" instead, see
+    // test_cmd_get_current_cam_reports_none.
+    const uint8_t opcodes[] = {0x0Cu, 0x0Du, 0x0Fu, 0x15u};
     for(size_t i = 0; i < sizeof(opcodes) / sizeof(opcodes[0]); ++i) {
         // ACK to clear prior CCI if needed.
         if(ppm->cmd_state == UcsiPpmCmdStateWaitForAck) {
@@ -2849,6 +2864,41 @@ static bool test_tc_toggle_done_src_cc1(void) {
     const uint8_t c0 = g_mock_regs[Fusb302RegControl0];
     const Fusb302Control0RegBits c0_bits = *((const Fusb302Control0RegBits*)&c0);
     TEST_ASSERT(c0_bits.host_cur == 0b11u); // make_valid_config sets 3A
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_toggle_done_snk_asserts_rd(void) {
+    // Rd must be written, not inherited from the chip's reset value: after
+    // ErrorRecovery the PDWN bits are deliberately clear, and the toggle FSM
+    // only drives internal copies while it runs.
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    mock_i2c_reset(); // SWITCHES0 reads 0 from here: no reset value to lean on
+
+    simulate_toggle_done(ppm, FUSB302_STATUS1A_TOGSS_SNKON_CC2);
+
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateAttachWait);
+    TEST_ASSERT(ppm->tc_role_is_src == false);
+    const uint8_t sw0 = g_mock_regs[Fusb302RegSwitches0];
+    TEST_ASSERT((sw0 & 0x03u) == 0x03u); // PDWN1 | PDWN2
+    TEST_ASSERT((sw0 & 0xC0u) == 0u); // no PU_EN
+    TEST_ASSERT((sw0 & 0x08u) != 0u); // MEAS_CC2
+    TEST_ASSERT((sw0 & 0x04u) == 0u);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_tc_disabled_mode_opens_terminations(void) {
+    // A Disabled connector presents nothing. SW_RESET leaves Rd on both pins,
+    // so without an explicit write a "disabled" port would attach to any
+    // charger as a sink.
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDisabled, true);
+    TEST_ASSERT(ppm);
+    TEST_ASSERT(ucsi_ppm_get_connector_state(ppm) == UcsiPpmStateDisabled);
+    TEST_ASSERT(mock_any_write_to(Fusb302RegSwitches0, 0x00u));
+    TEST_ASSERT(!mock_any_write_with_bits(Fusb302RegControl2, 1u << 0 /* TOGGLE */));
 
     ucsi_ppm_free(ppm);
     return true;
@@ -6615,19 +6665,6 @@ static uint8_t fifo_burst_msg_id(int idx) {
     return (uint8_t)((hdr >> 9) & 0x07u);
 }
 
-// True if some register store to `reg` had every bit of `mask` set. For
-// self-clearing command bits, where the full value depends on what the
-// read-modify-write found in the register.
-static bool mock_any_write_with_bits(uint8_t reg, uint8_t mask) {
-    for(size_t i = 0; i < g_mock_txn_count; ++i) {
-        const MockI2cTxn* t = &g_mock_txns[i];
-        if(t->is_write && t->len == 2u && t->data[0] == reg && (t->data[1] & mask) == mask) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static bool test_prl_collision_retries_frame_with_same_message_id(void) {
     UcsiPpm* ppm = mock_attach(false);
     const uint32_t pdo = ucsi_ppm_pdo_fixed_source(5000, 1500, true, false, true, true);
@@ -6818,6 +6855,184 @@ static bool test_tc_src_rp_never_type_c_default_inside_contract(void) {
     return true;
 }
 
+// --- CONNECTOR_RESET (commands.md §2.3, UCSI 3.0 §6.5.3) ---------------------
+
+// Issues CONNECTOR_RESET the way an OPM does: parameters first, opcode last.
+// CONTROL bits 16..22 carry the Connector Number and bit 23 the Reset Type
+// (0 = Hard, 1 = Data); both sit in CONTROL byte 2.
+static void issue_connector_reset(UcsiPpm* ppm, uint8_t connector, uint8_t reset_type) {
+    uint8_t payload[7] = {0};
+    payload[1] = (uint8_t)((connector & 0x7Fu) | ((reset_type & 0x01u) << 7));
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 1, 7, payload);
+    uint8_t op = UCSI_PPM_OPCODE_CONNECTOR_RESET;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+}
+
+static bool stub_no_alt_power(void* ctx) {
+    (void)ctx;
+    return false;
+}
+
+static bool test_cmd_get_current_cam_reports_none(void) {
+    // No Alternate Modes here, but the Linux ucsi driver asks on every
+    // partner change and logs an error on Not Supported. "Not in any" is the
+    // honest answer that keeps it quiet: one byte, 0xFF.
+    UcsiPpm* ppm = mock_attach(false);
+    uint8_t payload[7] = {0};
+    payload[1] = 1u; // Connector Number, CONTROL bits 16..22
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL + 1, 7, payload);
+    uint8_t op = UCSI_PPM_OPCODE_GET_CURRENT_CAM;
+    ucsi_ppm_register_write(ppm, UCSI_PPM_OFFSET_CONTROL, 1, &op);
+
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_NOT_SUPPORTED));
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_ERROR));
+    TEST_ASSERT(((cci >> UCSI_PPM_CCI_DATA_LENGTH_SHIFT) & 0xFFu) == 1u);
+    uint8_t cam = 0;
+    ucsi_ppm_register_read(ppm, UCSI_PPM_OFFSET_MESSAGE_IN, 1, &cam);
+    TEST_ASSERT(cam == 0xFFu);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cmd_connector_reset_data_reset_not_supported(void) {
+    // Data Reset is a USB4 thing. Not Supported indicator, and the connector
+    // is left exactly as it was.
+    UcsiPpm* ppm = mock_attach(false);
+    issue_connector_reset(ppm, 1u, 1u /* Data Reset */);
+
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_NOT_SUPPORTED);
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_ERROR));
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cmd_connector_reset_rejects_other_connector(void) {
+    UcsiPpm* ppm = mock_attach(false);
+    issue_connector_reset(ppm, 2u, 0u);
+
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_ERROR);
+    TEST_ASSERT(ppm->error_info & UCSI_PPM_ERR_NONEXISTENT_CONNECTOR);
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cmd_connector_reset_dead_battery_refused(void) {
+    // §6.5.3: a sink living off the partner's VBUS with nothing else to run
+    // on must refuse — opening CC would have the charger cut our power.
+    // Error Information bit 5 tells the OPM why.
+    UcsiPpm* ppm = mock_attach(false);
+    ppm->config.has_alt_power = stub_no_alt_power;
+    issue_connector_reset(ppm, 1u, 0u);
+
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_ERROR);
+    TEST_ASSERT(ppm->error_info & UCSI_PPM_ERR_DEAD_BATTERY);
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateAttachedSnk);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkWaitForCapabilities);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cmd_connector_reset_sink_with_alt_power_recovers(void) {
+    // The whole disconnect-connect sequence: contract torn down, OPM told
+    // the partner is gone, terminations held open for tErrorRecovery, then
+    // detection restarts.
+    UcsiPpm* ppm = mock_snk_ready();
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeSnkReady);
+    mock_txns_reset();
+    issue_connector_reset(ppm, 1u, 0u);
+
+    // Completed means started.
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_ERROR));
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_NOT_SUPPORTED));
+
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateErrorRecovery);
+    TEST_ASSERT(ppm->pe_state == (int)UcsiPpmPeStateIdle);
+    TEST_ASSERT(ppm->pe_negotiated_voltage_mv == 0u);
+    TEST_ASSERT(ppm->connector_status_change & UCSI_PPM_CSC_CONNECT_CHANGE);
+    // The detach was raised inside the command; its indicator survives next
+    // to the command's own result.
+    TEST_ASSERT(cci & UCSI_PPM_CCI_CONNECTOR_CHANGE_MASK);
+    // Open terminations, no toggle: the chip was reset, SWITCHES0 was then
+    // cleared on top of the reset value (0x03 — Rd on both pins, which the
+    // partner would read as a sink that never left), and nothing re-armed.
+    TEST_ASSERT(mock_any_write_with_bits(Fusb302RegReset, 1u << 0 /* SW_RES */));
+    TEST_ASSERT(mock_any_write_to(Fusb302RegSwitches0, 0x00u));
+    TEST_ASSERT(!mock_any_write_with_bits(Fusb302RegControl2, 1u << 0 /* TOGGLE */));
+    // And a deadline to come back for.
+    TEST_ASSERT(ucsi_ppm_next_timeout_ms(ppm) <= 100u);
+
+    // Inside tErrorRecovery nothing moves. 25 ms is the spec minimum and
+    // the one a charger's tCCDebounce sleeps through — see the constant.
+    g_mock_time_ms += 50;
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateErrorRecovery);
+
+    // Past it, detection restarts.
+    g_mock_time_ms += 60;
+    mock_txns_reset();
+    ucsi_ppm_tick(ppm);
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateUnattached);
+    TEST_ASSERT(mock_any_write_with_bits(Fusb302RegControl2, 1u << 0 /* TOGGLE */));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cmd_connector_reset_source_drops_vbus(void) {
+    UcsiPpm* ppm = mock_attach(true);
+    TEST_ASSERT(g_mock_vbus_source_last);
+    g_mock_vbus_source_calls = 0;
+    issue_connector_reset(ppm, 1u, 0u);
+
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_ERROR));
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateErrorRecovery);
+    // As the source we were the one driving VBUS; a disconnect means off.
+    TEST_ASSERT(g_mock_vbus_source_calls >= 1);
+    TEST_ASSERT(!g_mock_vbus_source_last);
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
+static bool test_cmd_connector_reset_unattached_is_noop(void) {
+    // Nothing to disconnect. Success, not an error: the OPM asked for the
+    // state we are already in.
+    UcsiPpm* ppm = mock_make_ppm();
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateUnattached);
+    mock_txns_reset();
+    issue_connector_reset(ppm, 1u, 0u);
+
+    const uint32_t cci = read_cci(ppm);
+    TEST_ASSERT(cci & UCSI_PPM_CCI_COMMAND_COMPLETED);
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_ERROR));
+    TEST_ASSERT(!(cci & UCSI_PPM_CCI_NOT_SUPPORTED));
+    TEST_ASSERT(ppm->tc_state == (int)UcsiPpmTcStateUnattached);
+    // No chip reset either: the toggle that was running keeps running.
+    TEST_ASSERT(!mock_any_write_with_bits(Fusb302RegReset, 1u << 0 /* SW_RES */));
+
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 typedef struct {
     const char* name;
     bool (*fn)(void);
@@ -6882,6 +7097,13 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_cmd_set_ccom_picks_drp),
     TEST_ENTRY(test_cmd_set_ccom_rejects_empty),
     TEST_ENTRY(test_cmd_set_ccom_rejects_disabled_when_unsupported),
+    TEST_ENTRY(test_cmd_get_current_cam_reports_none),
+    TEST_ENTRY(test_cmd_connector_reset_data_reset_not_supported),
+    TEST_ENTRY(test_cmd_connector_reset_rejects_other_connector),
+    TEST_ENTRY(test_cmd_connector_reset_dead_battery_refused),
+    TEST_ENTRY(test_cmd_connector_reset_sink_with_alt_power_recovers),
+    TEST_ENTRY(test_cmd_connector_reset_source_drops_vbus),
+    TEST_ENTRY(test_cmd_connector_reset_unattached_is_noop),
     TEST_ENTRY(test_cmd_set_uor_stores_accept),
     TEST_ENTRY(test_cmd_set_uor_rejects_both_swap_bits),
     TEST_ENTRY(test_cmd_set_pdr_stores_accept),
@@ -6962,6 +7184,8 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_tc_init_disabled_no_toggle),
     TEST_ENTRY(test_tc_toggle_done_src_cc1),
     TEST_ENTRY(test_tc_toggle_done_src_cc2),
+    TEST_ENTRY(test_tc_toggle_done_snk_asserts_rd),
+    TEST_ENTRY(test_tc_disabled_mode_opens_terminations),
     TEST_ENTRY(test_tc_toggle_done_snk_cc1),
     TEST_ENTRY(test_tc_toggle_done_snk_cc2),
     TEST_ENTRY(test_tc_toggle_done_audio_rearms_toggle),
