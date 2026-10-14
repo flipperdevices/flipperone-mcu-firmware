@@ -13,25 +13,27 @@
 
 ---
 
-## 1. Обязательные UCSI-команды, которых нет 🔴
+## 1. Обязательные UCSI-команды, которых нет 🟢
 
 В [`commands.md`](commands.md) помечены MUST, в `ucsi_ppm_cmd.c` падают в
-`default` и отвечают Not Supported:
+`default` и отвечают Not Supported. Хост у нас — стандартный Linux-драйвер
+`ucsi`, и проверка по его исходникам (2026-10-14) показала, что ни одну из
+них он при нашем GET_CAPABILITY не шлёт, поэтому для v1 они не блокируют:
 
-- [ ] **CANCEL (0x02)** — хендлеры синхронные, отменять нечего, но ответ по
-      спеке нужен вместо Not Supported.
-- [ ] **SET_SINK_PATH (0x1C)**.
-- [ ] **SET_PDOS (0x1D)** — хост сможет менять PDO-листы без прошивки.
-- [ ] **GET_CABLE_PROPERTY (0x11)** — без SOP' отдаём статичный ответ.
+- [ ] **CANCEL (0x02)** — драйвер шлёт только в ответ на CCI Busy, которого у
+      нас нет (все хендлеры синхронные). Понадобится вместе с асинхронным
+      завершением swap-команд.
+- [ ] **SET_SINK_PATH (0x1C)** — драйвер не шлёт никогда.
+- [ ] **SET_PDOS (0x1D)** — драйвер не шлёт никогда; полезно только для
+      отладки без перепрошивки.
+- [ ] **GET_CABLE_PROPERTY (0x11)** — драйвер шлёт только при `Cable Details`
+      в bmOptionalFeatures, у нас бит снят. Без SOP' ответ был бы статичным.
+
+Если понадобится полная спековая комплектность (другой OPM, сертификация),
+все четыре небольшие.
 
 ## 2. Policy Engine 🟡
 
-- [ ] **PR_Swap source→sink** — ни как инициатор, ни как респондер: на
-      входящий PR_Swap отвечаем Reject (`ucsi_ppm_pe.c`, «PR_Swap / VCONN_Swap
-      aren't implemented in v1»). Нужен для сценария «зарядили партнёра,
-      теперь он заряжает нас» и для хоста, который просит питание. При
-      реализации — внести в `ucsi_ppm_pe_src_ams_in_progress()` и пропустить
-      через `pe_ams_start_allowed` (правило в [`prl-sm.md`](prl-sm.md) §7.2).
 - [ ] **Request от Sink в PE_SRC_Ready** — ренеготиация по инициативе синка не
       обрабатывается, отвечаем Not_Supported. `pe_src_handle_request` вызывается
       только из SrcSendCapabilities.
@@ -53,15 +55,22 @@
       с ними и без них одинаково), так что это только чтобы не слать
       бессмысленные Hard Reset в источник, который и так в беде. Проблему
       не решает — её с нашей стороны не решает ничто.
-- [ ] **GET_PDOS партнёра** отдаёт только кэш sink-стороны. Sink_Capabilities
-      партнёра, когда мы source, не кэшируются; поля Type и Range игнорируются
-      (`ucsi_ppm_cmd.c`, «partner PDOs aren't tracked yet»).
-- [ ] **Завершение SET_PDR / SET_UOR / SET_POWER_LEVEL по результату.** UCSI
-      3.0 §6.5.9–6.5.10: «if the swap fails for any reason, the command returns
-      an error». Мы завершаем команду в момент отправки (или парковки) AMS;
-      Reject партнёра и таймауты хост не видит. Сброс отложенной AMS уже
-      поднимает CSC Error — это костыль, честное решение — асинхронное
-      завершение (Busy → Command Completed), `cmd_state` под это заложен.
+- [ ] 🟢 **GET_PDOS партнёра** отдаёт только кэш sink-стороны.
+      Sink_Capabilities партнёра, когда мы source, не кэшируются; поля Type и
+      Range игнорируются (`ucsi_ppm_cmd.c`, «partner PDOs aren't tracked
+      yet»). Linux-драйвер шлёт GET_PDOS только при `PDO Details` в
+      bmOptionalFeatures, у нас бит снят, так что сейчас команду никто не
+      вызывает.
+- [ ] 🟢 **Завершение SET_PDR / SET_UOR / SET_POWER_LEVEL по результату.**
+      UCSI 3.0 §6.5.9–6.5.10: «if the swap fails for any reason, the command
+      returns an error». Мы завершаем команду в момент отправки (или
+      парковки) AMS. Linux-драйвер ucsi на CCI команды не смотрит вовсе:
+      `ucsi_pr_swap`/`ucsi_dr_swap` ждут Connector Change со сменой роли до
+      5 с (`UCSI_SWAP_TIMEOUT_MS`) и на Reject партнёра возвращают -ETIMEDOUT.
+      Итог для хоста верный, только медленный, поэтому не для v1. Честное
+      решение — асинхронное завершение (Busy → Command Completed с Error),
+      `cmd_state` под это заложен; тогда драйвер получит ошибку сразу из
+      `ucsi_role_cmd`.
 - [ ] Устаревший TODO в `ucsi_ppm.c` («power_supply_ready handling, CCI event
       delivery») — проверить, что оба давно работают, и убрать.
 

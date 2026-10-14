@@ -308,6 +308,12 @@ struct UcsiPpm {
     uint16_t pe_deferred_ams_current_ma;
     bool pe_deferred_ams_to_dfp;
     uint32_t pe_deferred_ams_at_ms;
+    // A PR_Swap flipped our power role and the OPM has not been told yet. The
+    // Power Direction Changed notification waits for the first explicit
+    // contract in the new role (or for the conclusion that there will be
+    // none): the Linux ucsi driver reads it as "swap finished", checks that
+    // the connector is in PD mode, and resets the connector when it is not.
+    bool pe_pr_swap_notify_pending;
 
     // Accumulated Connector Status Change bitmap (commands.md §2.17 / Table
     // 6-44). PE / TC layers OR new bits in via ucsi_ppm_notify_connector_change;

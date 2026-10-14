@@ -544,7 +544,16 @@ static void handle_bc_lvl_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     //     accessories plugged via passive adapters; the chip momentarily
     //     settles SRC during DRP toggle on a CC glitch and then steady-
     //     state BC_LVL exposes the missing Rd.
-    if(bc_lvl == UCSI_PPM_TC_BC_LVL_NO_RD || bc_lvl == UCSI_PPM_TC_BC_LVL_RA) {
+    //
+    // The first one only means that below 3.0 A. At Rp 3.0 A a connected Rd
+    // sits at ~1.68 V, above the 1.23 V the top BC_LVL code starts at, so
+    // 0b11 is what a live partner reads like — SinkTxOk in PE_SRC_Ready tore
+    // down every contract within milliseconds on the bench. At that Rp the
+    // detach is the comparator's job: MDAC moves with Rp (2.31 V, see
+    // rp_current_to_mdac) and handle_comp_changed fires on a real open.
+    const bool rp_3a = ppm->tc_source_rp_applied_valid && ppm->tc_source_rp_applied == (uint8_t)UcsiPpmRpCurrent3A;
+    const bool no_rd = bc_lvl == UCSI_PPM_TC_BC_LVL_NO_RD && !rp_3a;
+    if(no_rd || bc_lvl == UCSI_PPM_TC_BC_LVL_RA) {
         tc_enter_unattached(ppm, "src detach: bc_lvl says no Rd");
     }
 }
@@ -556,6 +565,13 @@ static void handle_comp_changed(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
     // sometimes noisy in source mode — COMP is the more reliable trigger per
     // FUSB302 datasheet §4.5.
     if(ppm->tc_state != (int)UcsiPpmTcStateAttachedSrc) return;
+    // During a source→sink PR_Swap the PE borrows the comparator to watch
+    // VBUS drain to vSafe0V (MEASURE.MEAS_VBUS=1), so COMP says nothing about
+    // CC. The first poll after the supply went off read "5 V, above 0.84 V"
+    // and this handler tore the connection down 6 ms into the swap. Rd is
+    // not going anywhere mid-swap, and the partner's departure is caught by
+    // the PR_Swap timers and BC_LVL instead.
+    if(ucsi_ppm_pe_pr_swap_in_progress(ppm)) return;
     if(event->u.comp_above) {
         tc_enter_unattached(ppm, "src detach: comp above mdac");
     }

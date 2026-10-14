@@ -107,6 +107,16 @@
 // so next_timeout_ms asks the host to wake us this often while in it.
 #define UCSI_PPM_PE_SOURCE_ON_POLL_MS 10u
 
+// PR_Swap source→sink: how long a Source may take to bring VBUS down to
+// vSafe0V after the swap is agreed (tSafe0V, PD R3.0 Table 7-24, 650 ms max).
+// The partner's PSSourceOffTimer runs 750-920 ms from its Accept, so this
+// plus the settle window below still leaves it waiting on our PS_RDY rather
+// than giving up on us. vSafe0V itself is 0..0.8 V (Table 7-23).
+#define UCSI_PPM_PE_SAFE0V_MS          650u
+#define UCSI_PPM_PE_VSAFE0V_MV         800u
+// The drain is polled over I2C the same way SourceOn polls VBUSOK.
+#define UCSI_PPM_PE_SOURCE_OFF_POLL_MS 10u
+
 // How long we hold a Sink-initiated AMS waiting for the Source to move its Rp
 // back to SinkTxOk. The spec gives no timer here — the Source is simply
 // expected to release its licence at the end of its own AMS — but a Source that
@@ -127,6 +137,7 @@ typedef enum {
     PeDeferredAmsRenegotiate,
     PeDeferredAmsDrSwap,
     PeDeferredAmsPrSwapToSource,
+    PeDeferredAmsPrSwapToSink,
 } PeDeferredAms;
 
 // --- helpers ---------------------------------------------------------------
@@ -180,6 +191,10 @@ static const char* pe_state_str(int state) {
     case UcsiPpmPePrSwapSnkSendSwap: return "PrSwapSnkSendSwap";
     case UcsiPpmPePrSwapSnkWaitForSourceOff: return "PrSwapSnkWaitSourceOff";
     case UcsiPpmPePrSwapSnkSourceOn: return "PrSwapSnkSourceOn";
+    case UcsiPpmPePrSwapSrcSendSwap: return "PrSwapSrcSendSwap";
+    case UcsiPpmPePrSwapSrcTransitionToOff: return "PrSwapSrcTransitionToOff";
+    case UcsiPpmPePrSwapSrcAssertRd: return "PrSwapSrcAssertRd";
+    case UcsiPpmPePrSwapSrcWaitSourceOn: return "PrSwapSrcWaitSourceOn";
     case UcsiPpmPeStateError: return "Error";
     }
     return "?";
@@ -209,6 +224,24 @@ static uint32_t pe_timer_remaining_ms(const UcsiPpm* ppm, uint32_t timeout_ms) {
 }
 
 // --- state-machine actions -------------------------------------------------
+
+// Connector Status Change bits a finished PR_Swap still owes the OPM, cleared
+// on the way out. Added to the notification that announces the first contract
+// in the new role — that is the moment the Linux ucsi driver expects: it
+// treats Power Direction Changed as "swap done" and wants PD mode behind it.
+static uint16_t pe_take_pr_swap_notify_bits(UcsiPpm* ppm) {
+    if(!ppm->pe_pr_swap_notify_pending) return 0u;
+    ppm->pe_pr_swap_notify_pending = false;
+    return UCSI_PPM_CSC_POWER_DIRECTION_CHANGED | UCSI_PPM_CSC_PARTNER_CHANGED;
+}
+
+// Same debt paid without a contract to attach it to: the partner turned out
+// not to speak PD in the new role. Later than ideal, but the OPM's swap wait
+// is 5 s and silence would leave it believing the old direction.
+static void pe_flush_pr_swap_notify(UcsiPpm* ppm) {
+    const uint16_t bits = pe_take_pr_swap_notify_bits(ppm);
+    if(bits) ucsi_ppm_notify_connector_change(ppm, bits);
+}
 
 static void pe_to_error(UcsiPpm* ppm) {
     // Terminal state — only used for internal errors (config/I-O) or when
@@ -257,6 +290,9 @@ static void pe_request_hard_reset(UcsiPpm* ppm) {
             // cycle. Rp still governs how much we may draw.
             UCSI_LOG_I(ppm, "partner is not PD capable, staying a type-c only sink");
             ppm->pe_typec_only = true;
+            // No contract is coming; if a swap brought us here the OPM still
+            // has to learn the direction changed, PD mode or not.
+            pe_flush_pr_swap_notify(ppm);
             return;
         }
         UCSI_LOG_E(ppm, "hard reset counter exhausted → Error");
@@ -700,7 +736,7 @@ static void pe_commit_contract(UcsiPpm* ppm) {
     pe_set_state(ppm, (int)UcsiPpmPeSnkReady);
     ppm->pe_hard_reset_counter = 0u; // clean contract — fresh budget
     // Let OPM observe the new PD contract via GET_CONNECTOR_STATUS.
-    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_POWER_OP_MODE_CHANGE | UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE);
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_POWER_OP_MODE_CHANGE | UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE | pe_take_pr_swap_notify_bits(ppm));
 }
 
 // --- message dispatcher ----------------------------------------------------
@@ -854,6 +890,67 @@ static bool pe_in_ready(const UcsiPpm* ppm) {
     return ppm->pe_state == (int)UcsiPpmPeSnkReady || ppm->pe_state == (int)UcsiPpmPeSrcReady;
 }
 
+// --- PR_Swap source→sink (PD R3.0 §8.3.3.7.2) --------------------------------
+//
+// Initiator (partner Accepted our PR_Swap) and responder (we Accepted the
+// partner's) meet in PE_PRS_SRC_SNK_Transition_to_off and share the rest:
+// supply off → vSafe0V → Assert_Rd → our PS_RDY → Wait_Source_on → partner's
+// PS_RDY → PE_SNK_Startup.
+
+static void pe_pr_swap_src_begin_transition_to_off(UcsiPpm* ppm) {
+    // The source contract is over whichever way the swap ends.
+    ppm->pe_received_pdo_count = 0u;
+    ppm->pe_requested_pdo_index = 0u;
+    ppm->pe_current_rdo = 0u;
+    ppm->pe_negotiated_voltage_mv = 0u;
+    ppm->pe_negotiated_current_ma = 0u;
+
+    ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, false);
+    // Nothing on our side pulls VBUS down once the supply is off; the partner
+    // may, a discharge path of our own does for sure. Optional in the config.
+    if(ppm->config.gpio_write_vbus_discharge) {
+        ppm->config.gpio_write_vbus_discharge(ppm->config.hal_ctx, true);
+    }
+    pe_set_state(ppm, (int)UcsiPpmPePrSwapSrcTransitionToOff);
+    pe_arm_timer(ppm); // tSafe0V
+}
+
+static void pe_pr_swap_src_discharge_done(UcsiPpm* ppm) {
+    if(ppm->config.gpio_write_vbus_discharge) {
+        ppm->config.gpio_write_vbus_discharge(ppm->config.hal_ctx, false);
+    }
+}
+
+// PE_PRS_SRC_SNK_Assert_Rd. The role flips here, before any register write:
+// the COMP-based source detach and the source-side Rp policy both key off
+// tc_state, and from the moment Rd goes on the pin neither applies.
+static void pe_pr_swap_src_assert_rd(UcsiPpm* ppm) {
+    ppm->tc_role_is_src = false;
+    // Written straight rather than through tc_set_state, which is private to
+    // the TC layer — log it here so the trace still shows every Type-C change.
+    UCSI_LOG_I(ppm, "Attached.SRC -> Attached.SNK (pr_swap)");
+    ppm->tc_state = (int)UcsiPpmTcStateAttachedSnk;
+    ppm->tc_source_rp_applied_valid = false;
+    // Whatever CC level the source side had cached means nothing to a sink.
+    // Re-read once the line has settled, in the AssertRd tick.
+    ppm->tc_last_bc_lvl = 0u;
+    ppm->tc_bc_lvl_pending_valid = false;
+    // Until the partner powers us we are a sink without VBUS. Marking it lost
+    // now means that if its PS_RDY never comes, TC's tSrcRecover eventually
+    // declares the detach instead of leaving us attached to nothing, and the
+    // I_VBUSOK that follows a real PS_RDY clears it the normal way.
+    ppm->tc_vbus_lost = true;
+    ppm->tc_vbus_lost_at_ms = ppm->config.time_ms(ppm->config.hal_ctx);
+
+    (void)ucsi_ppm_phy_set_sink_termination(ppm, (UcsiPpmPhyCc)ppm->tc_orientation);
+    // SWITCHES1.POWER_ROLE → sink, so the chip's own GoodCRC headers agree
+    // with the PS_RDY we are about to build.
+    pe_sync_phy_header_bits(ppm);
+
+    pe_set_state(ppm, (int)UcsiPpmPePrSwapSrcAssertRd);
+    pe_arm_timer(ppm); // settle window, see PrSwapSnkSourceOn for why
+}
+
 static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
     // Incoming Soft_Reset is processed regardless of current state — PRL has
     // already reset MessageID counters on detecting the SOFT_RESET frame
@@ -913,9 +1010,46 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
         ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_PARTNER_CHANGED);
         return;
     }
-    if(type == PD_MSG_TYPE_PR_SWAP || type == PD_MSG_TYPE_VCONN_SWAP) {
+    if(type == PD_MSG_TYPE_VCONN_SWAP) {
+        // We never source VCONN (no cable communication) — Reject per §6.3.x
+        // so the partner can fall back.
         if(!pe_in_ready(ppm)) return;
         (void)pe_send_control(ppm, PD_MSG_TYPE_REJECT);
+        return;
+    }
+    if(type == PD_MSG_TYPE_PR_SWAP) {
+        // PE_PRS_*_Evaluate_Swap. Outside *Ready we are mid-AMS and the
+        // request is dropped; inside, the OPM's SET_PDR accept flag decides.
+        if(!pe_in_ready(ppm)) return;
+        if(!ppm->accept_pr_swap) {
+            (void)pe_send_control(ppm, PD_MSG_TYPE_REJECT);
+            return;
+        }
+        if(ppm->pe_state == (int)UcsiPpmPeSrcReady) {
+            // Accept goes on the wire before the supply goes off: a sink
+            // that loses VBUS before it hears Accept has no reason to wait.
+            if(!pe_send_control(ppm, PD_MSG_TYPE_ACCEPT)) {
+                pe_request_hard_reset(ppm);
+                return;
+            }
+            ucsi_ppm_prl_flush_tx(ppm);
+            pe_pr_swap_src_begin_transition_to_off(ppm);
+            return;
+        }
+        // SnkReady: the partner wants us to source. Only with something to
+        // source from — as a sink the partner's VBUS may be all we have.
+        if(!ppm->config.has_alt_power(ppm->config.hal_ctx)) {
+            (void)pe_send_control(ppm, PD_MSG_TYPE_REJECT);
+            return;
+        }
+        if(!pe_send_control(ppm, PD_MSG_TYPE_ACCEPT)) {
+            pe_request_hard_reset(ppm);
+            return;
+        }
+        // From here the responder path is the initiator's after its Accept:
+        // the partner turns its VBUS off and tells us with PS_RDY.
+        pe_set_state(ppm, (int)UcsiPpmPePrSwapSnkWaitForSourceOff);
+        pe_arm_timer(ppm);
         return;
     }
 
@@ -985,18 +1119,45 @@ static void pe_handle_control_message(UcsiPpm* ppm, uint8_t type) {
             // every Type-C state change.
             UCSI_LOG_I(ppm, "Attached.SNK -> Attached.SRC (pr_swap)");
             ppm->tc_state = (int)UcsiPpmTcStateAttachedSrc;
-            ucsi_ppm_tc_apply_source_rp(ppm);
-            (void)ucsi_ppm_phy_set_source_termination(
-                ppm, (UcsiPpmPhyCc)ppm->tc_orientation);
-            ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, true);
-            // Drop the old sink contract — we'll start fresh as source.
+            // Drop the old sink contract first — we'll start fresh as source.
+            // The Rp policy below reads "contract in place" off the negotiated
+            // voltage, and with the sink contract still on record it would
+            // put SinkTxOk (3.0 A) on the pin for a partner we have no
+            // contract with yet. Rp must be the honest Type-C Current here.
             ppm->pe_received_pdo_count = 0u;
             ppm->pe_requested_pdo_index = 0u;
             ppm->pe_current_rdo = 0u;
             ppm->pe_negotiated_voltage_mv = 0u;
             ppm->pe_negotiated_current_ma = 0u;
+            ucsi_ppm_tc_apply_source_rp(ppm);
+            (void)ucsi_ppm_phy_set_source_termination(
+                ppm, (UcsiPpmPhyCc)ppm->tc_orientation);
+            ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, true);
             pe_set_state(ppm, (int)UcsiPpmPePrSwapSnkSourceOn);
             pe_arm_timer(ppm);
+        }
+        break;
+    case(int)UcsiPpmPePrSwapSrcSendSwap:
+        if(type == PD_MSG_TYPE_ACCEPT) {
+            pe_pr_swap_src_begin_transition_to_off(ppm);
+        } else if(
+            type == PD_MSG_TYPE_REJECT || type == PD_MSG_TYPE_WAIT ||
+            type == PD_MSG_TYPE_NOT_SUPPORTED) {
+            // Partner refused — we stay the source, contract intact.
+            pe_set_state(ppm, (int)UcsiPpmPeSrcReady);
+        }
+        break;
+    case(int)UcsiPpmPePrSwapSrcWaitSourceOn:
+        if(type == PD_MSG_TYPE_PS_RDY) {
+            // The partner's VBUS is up: PE_SNK_Startup, fresh Hard Reset
+            // budget, and the usual wait for its Source_Capabilities. VBUSOK
+            // follows on its own and lifts tc_vbus_lost.
+            ppm->pe_hard_reset_counter = 0u;
+            pe_set_state(ppm, (int)UcsiPpmPeSnkWaitForCapabilities);
+            pe_arm_timer(ppm);
+            // Told to the OPM with the first contract as a sink, not now — see
+            // pe_pr_swap_notify_pending.
+            ppm->pe_pr_swap_notify_pending = true;
         }
         break;
     default:
@@ -1025,6 +1186,7 @@ UcsiPpmStatus ucsi_ppm_pe_init(UcsiPpm* ppm) {
     ppm->pe_current_rdo = 0u;
     ppm->pe_hard_reset_counter = 0u;
     ppm->pe_typec_only = false;
+    ppm->pe_pr_swap_notify_pending = false;
     ppm->pe_data_role_is_dfp = false;
     ppm->pe_deferred_ams = (uint8_t)PeDeferredAmsNone;
     ppm->pe_deferred_ams_current_ma = 0u;
@@ -1096,7 +1258,7 @@ void ucsi_ppm_pe_on_power_supply_ready(UcsiPpm* ppm) {
     }
     pe_set_state(ppm, (int)UcsiPpmPeSrcReady);
     ppm->pe_hard_reset_counter = 0u;
-    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_POWER_OP_MODE_CHANGE | UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE);
+    ucsi_ppm_notify_connector_change(ppm, UCSI_PPM_CSC_POWER_OP_MODE_CHANGE | UCSI_PPM_CSC_NEGOTIATED_PL_CHANGE | pe_take_pr_swap_notify_bits(ppm));
 }
 
 void ucsi_ppm_pe_handle_message(UcsiPpm* ppm, const UcsiPpmPhyPdMsg* msg) {
@@ -1166,9 +1328,10 @@ bool ucsi_ppm_pe_src_ams_in_progress(const UcsiPpm* ppm) {
     // A parked request has already claimed the bus — Rp went to SinkTxNG the
     // moment it was armed, and the wait we are serving out is exactly tSinkTx.
     if(ppm->pe_deferred_ams != (uint8_t)PeDeferredAmsNone) return true;
-    // DR_Swap is the only AMS we initiate as a Source today. PR_Swap src→snk and
-    // Alert will belong here too once they exist.
-    return ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse;
+    // The AMSs we initiate as a Source. Alert will belong here too once it
+    // exists.
+    return ppm->pe_state == (int)UcsiPpmPeWaitForDrSwapResponse ||
+           ppm->pe_state == (int)UcsiPpmPePrSwapSrcSendSwap;
 }
 
 // True when the first Message of an AMS of ours may go on the wire right now.
@@ -1256,6 +1419,9 @@ static void pe_run_deferred_ams(UcsiPpm* ppm) {
         break;
     case PeDeferredAmsPrSwapToSource:
         status = ucsi_ppm_pe_request_pr_swap_to_source(ppm);
+        break;
+    case PeDeferredAmsPrSwapToSink:
+        status = ucsi_ppm_pe_request_pr_swap_to_sink(ppm);
         break;
     case PeDeferredAmsNone:
         break;
@@ -1346,13 +1512,31 @@ UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_source(UcsiPpm* ppm) {
     return UcsiPpmStatusOk;
 }
 
+UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_sink(UcsiPpm* ppm) {
+    if(ppm->pe_state != (int)UcsiPpmPeSrcReady) return UcsiPpmStatusInvalidArg;
+    if(!pe_ams_start_allowed(ppm)) {
+        return pe_defer_ams(ppm, PeDeferredAmsPrSwapToSink, 0u, false);
+    }
+    if(!pe_send_control(ppm, PD_MSG_TYPE_PR_SWAP)) {
+        return UcsiPpmStatusHalError;
+    }
+    pe_set_state(ppm, (int)UcsiPpmPePrSwapSrcSendSwap);
+    pe_arm_timer(ppm);
+    ucsi_ppm_prl_flush_tx(ppm);
+    return UcsiPpmStatusOk;
+}
+
 // True while a PR_Swap is mid-flight — used by TC to suppress the AttachedSnk
-// "VBUS dropped → detach" path, since during PR_Swap the partner deliberately
-// drops VBUS as part of the protocol.
+// "VBUS dropped → detach" path, since during PR_Swap VBUS is deliberately
+// taken down as part of the protocol, by the partner or by us.
 bool ucsi_ppm_pe_pr_swap_in_progress(const UcsiPpm* ppm) {
     return ppm->pe_state == (int)UcsiPpmPePrSwapSnkSendSwap ||
            ppm->pe_state == (int)UcsiPpmPePrSwapSnkWaitForSourceOff ||
-           ppm->pe_state == (int)UcsiPpmPePrSwapSnkSourceOn;
+           ppm->pe_state == (int)UcsiPpmPePrSwapSnkSourceOn ||
+           ppm->pe_state == (int)UcsiPpmPePrSwapSrcSendSwap ||
+           ppm->pe_state == (int)UcsiPpmPePrSwapSrcTransitionToOff ||
+           ppm->pe_state == (int)UcsiPpmPePrSwapSrcAssertRd ||
+           ppm->pe_state == (int)UcsiPpmPePrSwapSrcWaitSourceOn;
 }
 
 void ucsi_ppm_pe_handle_phy_event(UcsiPpm* ppm, const UcsiPpmPhyEvent* event) {
@@ -1415,6 +1599,9 @@ void ucsi_ppm_pe_on_tx_retried(UcsiPpm* ppm) {
     case(int)UcsiPpmPeWaitForSoftResetAccept:
     case(int)UcsiPpmPeWaitForDrSwapResponse:
     case(int)UcsiPpmPePrSwapSnkSendSwap:
+    case(int)UcsiPpmPePrSwapSrcSendSwap:
+    // PSSourceOnTimer: runs from our PS_RDY to the partner's.
+    case(int)UcsiPpmPePrSwapSrcWaitSourceOn:
     // PSTransitionTimer, source side: runs from the Accept we sent.
     case(int)UcsiPpmPeSrcTransitionSupply:
     // tTypeCSendSourceCap: spacing between advertisements, so from the one
@@ -1503,14 +1690,68 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
             ppm->pe_caps_counter = 0u;
             pe_set_state(ppm, (int)UcsiPpmPeSrcSendCapabilities);
             pe_arm_timer(ppm);
-            ucsi_ppm_notify_connector_change(
-                ppm, UCSI_PPM_CSC_POWER_DIRECTION_CHANGED | UCSI_PPM_CSC_PARTNER_CHANGED);
+            // Not yet: Power Direction Changed goes out with the first contract
+            // as a source. Raised here, the Linux ucsi driver read the status
+            // back 5 ms later, found no PD contract, declared the swap failed
+            // and reset the connector — seen on the bench.
+            ppm->pe_pr_swap_notify_pending = true;
         } else if(pe_timer_expired(ppm, UCSI_PPM_PE_PS_SOURCE_ON_MS)) {
             // Our OTG didn't bring VBUS up in time — escalate.
             pe_request_hard_reset(ppm);
         }
         break;
     }
+    case(int)UcsiPpmPePrSwapSrcSendSwap:
+        if(pe_timer_expired(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS)) pe_request_hard_reset(ppm);
+        break;
+    case(int)UcsiPpmPePrSwapSrcTransitionToOff: {
+        // PE_PRS_SRC_SNK_Transition_to_off: poll VBUS until it has drained to
+        // vSafe0V, then assert Rd. The comparator reads VBUS through the
+        // chip's divider, 420 mV per step, so "below 840 mV" is what we get.
+        bool above = true;
+        const bool drained =
+            ucsi_ppm_phy_measure_vbus_threshold(ppm, UCSI_PPM_PE_VSAFE0V_MV, &above) == UcsiPpmStatusOk && !above;
+        if(drained) {
+            pe_pr_swap_src_discharge_done(ppm);
+            pe_pr_swap_src_assert_rd(ppm);
+        } else if(pe_timer_expired(ppm, UCSI_PPM_PE_SAFE0V_MS)) {
+            // VBUS would not come down — something is holding it up, or the
+            // partner is. We are still the source on paper, so put the supply
+            // back before the Hard Reset restarts us as one; the partner's
+            // PSSourceOffTimer gives up on the swap on its own.
+            UCSI_LOG_W(ppm, "pr_swap: vbus did not reach vSafe0V in time");
+            pe_pr_swap_src_discharge_done(ppm);
+            ppm->config.gpio_write_vbus_source(ppm->config.hal_ctx, true);
+            pe_request_hard_reset(ppm);
+        }
+        break;
+    }
+    case(int)UcsiPpmPePrSwapSrcAssertRd: {
+        // Same settle window as the sink→source direction: the chip's TX path
+        // is not to be trusted right after a SWITCHES0 flip.
+        if(!pe_timer_expired(ppm, UCSI_PPM_PE_PR_SWAP_SRC_SETTLE_MS)) break;
+        // The partner's Rp through our Rd, now that the line has settled —
+        // the sink current limit is derived from it until a contract exists.
+        uint8_t bc_lvl = 0u;
+        if(ucsi_ppm_phy_read_bc_lvl(ppm, &bc_lvl) == UcsiPpmStatusOk) {
+            ppm->tc_last_bc_lvl = bc_lvl;
+        }
+        // PE_PRS_SRC_SNK_Wait_Source_on: PS_RDY on entry, then the partner has
+        // tPSSourceOn to bring VBUS up and say so.
+        if(!pe_send_control(ppm, PD_MSG_TYPE_PS_RDY)) {
+            pe_request_hard_reset(ppm);
+            break;
+        }
+        pe_set_state(ppm, (int)UcsiPpmPePrSwapSrcWaitSourceOn);
+        pe_arm_timer(ppm);
+        break;
+    }
+    case(int)UcsiPpmPePrSwapSrcWaitSourceOn:
+        // The partner never powered us. We are a sink with Rd on the pin and
+        // no VBUS; the Hard Reset restarts us as that sink, and if nothing
+        // ever comes TC's tSrcRecover (armed in assert_rd) ends it.
+        if(pe_timer_expired(ppm, UCSI_PPM_PE_PS_SOURCE_ON_MS)) pe_request_hard_reset(ppm);
+        break;
     case(int)UcsiPpmPeSnkWaitForPsRdy:
     case(int)UcsiPpmPeSrcTransitionSupply:
         if(pe_timer_expired(ppm, UCSI_PPM_PE_PS_TRANSITION_MS)) pe_request_hard_reset(ppm);
@@ -1538,6 +1779,7 @@ void ucsi_ppm_pe_tick(UcsiPpm* ppm) {
                 // connection to something as ordinary as a flash drive.
                 UCSI_LOG_I(ppm, "partner is not PD capable, staying a type-c only source");
                 ppm->pe_typec_only = true;
+                pe_flush_pr_swap_notify(ppm);
             } else {
                 if(!pe_src_send_caps(ppm)) {
                     pe_to_error(ppm);
@@ -1578,6 +1820,17 @@ static uint32_t pe_state_timeout_ms(const UcsiPpm* ppm) {
         const uint32_t next = settle ? settle : UCSI_PPM_PE_SOURCE_ON_POLL_MS;
         return next < give_up ? next : give_up;
     }
+    case(int)UcsiPpmPePrSwapSrcSendSwap:
+        return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_SENDER_RESPONSE_MS);
+    case(int)UcsiPpmPePrSwapSrcTransitionToOff: {
+        // Polling VBUS over I2C, never sleeping past the tSafe0V give-up.
+        const uint32_t give_up = pe_timer_remaining_ms(ppm, UCSI_PPM_PE_SAFE0V_MS);
+        return UCSI_PPM_PE_SOURCE_OFF_POLL_MS < give_up ? UCSI_PPM_PE_SOURCE_OFF_POLL_MS : give_up;
+    }
+    case(int)UcsiPpmPePrSwapSrcAssertRd:
+        return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_PR_SWAP_SRC_SETTLE_MS);
+    case(int)UcsiPpmPePrSwapSrcWaitSourceOn:
+        return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_PS_SOURCE_ON_MS);
     case(int)UcsiPpmPeSnkWaitForPsRdy:
     case(int)UcsiPpmPeSrcTransitionSupply:
         return pe_timer_remaining_ms(ppm, UCSI_PPM_PE_PS_TRANSITION_MS);

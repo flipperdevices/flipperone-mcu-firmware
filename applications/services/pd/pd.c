@@ -74,6 +74,9 @@ typedef struct {
 
 static void pd_vbus_source_set(void* context, bool enable) {
     Pd* instance = context;
+    // Logged on purpose: an OTG boost that comes up while a charger holds
+    // VBUS fights it, and nothing else in the trace would show who asked.
+    FURI_LOG_I(TAG, "vbus source %s", enable ? "on" : "off");
     if(enable) {
         // Start at vSafe5V; the partner's Request retunes us via pd_power_supply_set.
         if(!power_bq25792_set_otg_params(instance->power, 5000, 1500)) {
@@ -144,6 +147,7 @@ static bool pd_has_alt_power(void* context) {
 
 static bool pd_power_supply_set(void* context, uint16_t voltage_mv, uint16_t current_limit_ma) {
     Pd* instance = context;
+    FURI_LOG_I(TAG, "supply %u mV %u mA", voltage_mv, current_limit_ma);
     if(!power_bq25792_set_otg_params(instance->power, voltage_mv, current_limit_ma)) {
         FURI_LOG_W(TAG, "otg params %umV/%umA failed", voltage_mv, current_limit_ma);
         return false;

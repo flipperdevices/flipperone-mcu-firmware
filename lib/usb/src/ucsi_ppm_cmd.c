@@ -447,13 +447,20 @@ static uint32_t handle_set_pdr(UcsiPpm* ppm) {
         return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
     }
 
+    // Swap-to-Source and swap-to-Sink are mutually exclusive, as in SET_UOR.
+    if((role & ROLE_INITIATE_MASK) == ROLE_INITIATE_MASK) {
+        return fail_with_error(ppm, UCSI_PPM_ERR_INVALID_CMD_PARAMS);
+    }
+
     ppm->accept_pr_swap = (role & ROLE_ACCEPT_SWAPS) != 0u;
 
-    // ROLE_INITIATE_PRIMARY = "swap to Source" — kick off PR_Swap snk→src
-    // via PE. Only the snk→src direction is wired in v1; src→snk would
-    // require us to drop our own VBUS first (more careful PSU teardown).
-    if((role & ROLE_INITIATE_PRIMARY) != 0u) {
-        const UcsiPpmStatus s = ucsi_ppm_pe_request_pr_swap_to_source(ppm);
+    // Initiate a PR_Swap toward the requested role. Either needs an explicit
+    // contract in the opposite role; PE refuses otherwise, and the spec wants
+    // the command failed when there is no active connection to swap.
+    if((role & ROLE_INITIATE_MASK) != 0u) {
+        const UcsiPpmStatus s = (role & ROLE_INITIATE_PRIMARY) != 0u ?
+                                    ucsi_ppm_pe_request_pr_swap_to_source(ppm) :
+                                    ucsi_ppm_pe_request_pr_swap_to_sink(ppm);
         if(s != UcsiPpmStatusOk) {
             return fail_with_error(ppm, UCSI_PPM_ERR_PPM_POLICY_CONFLICT);
         }

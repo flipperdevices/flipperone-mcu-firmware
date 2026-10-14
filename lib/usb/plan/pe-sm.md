@@ -524,6 +524,34 @@ PE_SNK_Startup
 (Состояния `Transition_to_off` / `Assert_Rd` / `Wait_Source_On` —
 общие для initiator-а и responder-а.)
 
+Реализовано (`ucsi_ppm_pe.c`, состояния `PrSwapSrc*`):
+
+- Инициатор — `ucsi_ppm_pe_request_pr_swap_to_sink` из `PE_SRC_Ready`, через
+  гейт `pe_ams_start_allowed` (как Source ждём tSinkTx) и
+  `ucsi_ppm_pe_src_ams_in_progress`. SET_PDR bit 1 ведёт сюда.
+- Респондент — на PR_Swap в `PE_SRC_Ready` при `accept_pr_swap`: Accept
+  уходит на провод (`flush_tx`) **до** выключения VBUS, затем общий путь.
+  В `PE_SNK_Ready` респондент тоже реализован: при `accept_pr_swap` и
+  `has_alt_power()` — Accept и дальше по пути §4.4 с
+  `PrSwapSnkWaitForSourceOff`; без батареи — Reject.
+- `Transition_to_off`: `gpio_write_vbus_source(false)`, опционально
+  `gpio_write_vbus_discharge(true)`, VBUS опрашивается через
+  `ucsi_ppm_phy_measure_vbus_threshold(800 мВ)` каждые 10 мс (§4.8, но
+  опросом, не I_COMP_CHNG), бюджет tSafe0V 650 мс. Таймаут → VBUS обратно
+  включается и Hard Reset как Source.
+- `Assert_Rd`: роль и `tc_state` флипаются до записи регистров,
+  `ucsi_ppm_phy_set_sink_termination`, SWITCHES1.POWER_ROLE → sink,
+  `tc_vbus_lost` взводится (без VBUS от партнёра TC сам объявит detach по
+  tSrcRecover). 50 мс settle, как в sink→source, затем читается BC_LVL
+  (лимит тока синка) и уходит наш PS_RDY → `Wait_Source_On`.
+- `Wait_Source_On`: PS_RDY партнёра → `PE_SNK_Startup`
+  (`SnkWaitForCapabilities`, HardResetCounter = 0, CSC Power Direction
+  Changed + Partner Changed); tPSSourceOn 480 мс → Hard Reset.
+- Reject / Wait / Not_Supported на наш PR_Swap → `PE_SRC_Ready`, контракт
+  цел. Dead-battery политика §4.5.2 не понадобилась: как Source мы и так
+  на батарее, а в `Wait_Source_On` сброс ведёт в sink-рестарт, который
+  TC закрывает по tSrcRecover.
+
 ### 4.4 SNK → SRC
 
 Симметрично §4.2/§4.3 но в обратную сторону. Ключевая разница: мы
@@ -628,6 +656,15 @@ should not result in connector status change notification». Это значит
 
 То есть: нет «ждать ACK для applying изменения» (изменение уже applied),
 но event для информирования OPM посылается.
+
+**Когда посылается** (`pe_pr_swap_notify_pending`): не в момент смены роли,
+а вместе с первым explicit contract в новой роли (`pe_commit_contract` для
+sink, `ucsi_ppm_pe_on_power_supply_ready` для source), либо при выводе
+«партнёр без PD» в новой роли. Linux-драйвер ucsi по Power Direction Changed
+считает swap законченным, читает GET_CONNECTOR_STATUS и, если Power
+Operation Mode не PD, делает CONNECTOR_RESET и возвращает -EPROTO. На стенде
+нотификация в момент flip ровно к этому и приводила: статус прочитан через
+5 мс после нашего PS_RDY, когда Source_Capabilities ещё не ушли.
 
 ---
 

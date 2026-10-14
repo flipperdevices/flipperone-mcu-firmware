@@ -1,9 +1,9 @@
 #pragma once
 
 // L3 PE (Policy Engine) — PD R3.0 §8 state machines for the connector.
-// Sink and Source contract paths, DR_Swap both ways, PR_Swap sink→source,
-// Soft/Hard Reset orchestration, SinkTx collision avoidance. PR_Swap
-// source→sink is not implemented (responder Rejects it).
+// Sink and Source contract paths, DR_Swap and PR_Swap in both directions
+// (initiator and responder), Soft/Hard Reset orchestration, SinkTx
+// collision avoidance. VCONN_Swap is Rejected: we never source VCONN.
 
 #include "ucsi_ppm.h"
 #include "ucsi_ppm_i.h"
@@ -29,6 +29,12 @@ typedef enum {
     UcsiPpmPePrSwapSnkSendSwap, // PR_Swap sent, armed SenderResponseTimer
     UcsiPpmPePrSwapSnkWaitForSourceOff, // Accept received, armed PSSourceOffTimer
     UcsiPpmPePrSwapSnkSourceOn, // partner PS_RDY, OTG ramping, armed PSSourceOnTimer
+    // PR_Swap source→sink, both as initiator and as responder (PD R3.0
+    // §8.3.3.7.2). After SendSwap the two paths share the rest.
+    UcsiPpmPePrSwapSrcSendSwap, // PR_Swap sent (we are source), armed SenderResponseTimer
+    UcsiPpmPePrSwapSrcTransitionToOff, // swap agreed, our supply off, polling VBUS for vSafe0V
+    UcsiPpmPePrSwapSrcAssertRd, // Rd asserted, chip settling before our PS_RDY
+    UcsiPpmPePrSwapSrcWaitSourceOn, // our PS_RDY sent, waiting partner PS_RDY, armed PSSourceOnTimer
     UcsiPpmPeStateError, // unrecoverable: HardResetCounter exhausted
 } UcsiPpmPeState;
 
@@ -74,8 +80,17 @@ UcsiPpmStatus ucsi_ppm_pe_request_dr_swap(UcsiPpm* ppm, bool to_dfp);
 // termination to Rp, enable external VBUS source via config.gpio_write_vbus_source,
 // wait for VBUSOK, emit our PS_RDY, and start Source_Capabilities. Any
 // failure (Reject/Wait/Not_Supported/timeout) leaves the contract intact
-// in SnkReady. Source→sink direction is not implemented in v1.
+// in SnkReady.
 UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_source(UcsiPpm* ppm);
+
+// Initiates a source-to-sink PR_Swap toward the partner (PD R3.0 §8.3.3.7.2).
+// Only valid from PE_SRC_Ready. Send PR_Swap, on Accept turn our VBUS source
+// off and wait for vSafe0V, flip CC termination to Rd, emit our PS_RDY, wait
+// for the partner's PS_RDY (its VBUS is up) and continue as a sink from
+// PE_SNK_Startup. Reject/Wait/Not_Supported leave the contract intact in
+// SrcReady; a supply that will not drain or a partner that never powers us
+// escalate to Hard Reset.
+UcsiPpmStatus ucsi_ppm_pe_request_pr_swap_to_sink(UcsiPpm* ppm);
 
 // True while a PR_Swap is mid-flight. TC uses this to skip the AttachedSnk
 // "VBUS dropped → detach" handler, since the partner deliberately drops
