@@ -2869,6 +2869,17 @@ static bool test_tc_toggle_done_src_cc1(void) {
     return true;
 }
 
+static bool test_tc_toggle_stops_on_rd_only(void) {
+    // An empty e-marked cable presents Ra on its VCONN pin. With TOG_RD_ONLY
+    // clear the chip settled on it as SRC every 160 ms, forever. Ra alone is
+    // not an attach for a source (Type-C §4.5.2.2.8), so the toggle must not
+    // stop on it.
+    UcsiPpm* ppm = mock_make_ppm_with_mode(UcsiPpmCcModeDrp, false);
+    TEST_ASSERT(mock_any_write_with_bits(Fusb302RegControl2, (1u << 0) | (1u << 5) /* TOGGLE | TOG_RD_ONLY */));
+    ucsi_ppm_free(ppm);
+    return true;
+}
+
 static bool test_tc_toggle_done_snk_asserts_rd(void) {
     // Rd must be written, not inherited from the chip's reset value: after
     // ErrorRecovery the PDWN bits are deliberately clear, and the toggle FSM
@@ -7184,6 +7195,7 @@ static const TestEntry k_tests[] = {
     TEST_ENTRY(test_tc_init_disabled_no_toggle),
     TEST_ENTRY(test_tc_toggle_done_src_cc1),
     TEST_ENTRY(test_tc_toggle_done_src_cc2),
+    TEST_ENTRY(test_tc_toggle_stops_on_rd_only),
     TEST_ENTRY(test_tc_toggle_done_snk_asserts_rd),
     TEST_ENTRY(test_tc_disabled_mode_opens_terminations),
     TEST_ENTRY(test_tc_toggle_done_snk_cc1),

@@ -23,6 +23,14 @@
 
 // CONTROL2.TOG_SAVE_PWR: 40 ms tDIS between toggle cycles (datasheet).
 #define CONTROL2_TOG_SAVE_PWR 0x1u
+// CONTROL2.TOG_RD_ONLY: the toggle stops only on Rd, never on Ra alone. An
+// e-marked cable with nothing on its far end presents Ra on the VCONN pin,
+// and with this clear the chip settled on it as SRC every 160 ms: AttachWait,
+// BC_LVL check fails, chip reset, toggle again, for as long as the cable was
+// in — I2C traffic and log noise with no partner anywhere. Type-C needs Rd on
+// a pin (or Ra on both, the Audio Accessory we do not support) before a
+// source may leave Unattached, so Ra on one pin should never stop us.
+#define CONTROL2_TOG_RD_ONLY (1u << 5)
 
 // SWITCHES1.SPEC_REV — the revision the chip stamps into the GoodCRC headers it
 // builds itself. The field's encoding stops at R2.0: 00 = R1.0 (deprecated),
@@ -194,8 +202,8 @@ UcsiPpmStatus ucsi_ppm_phy_deinit(UcsiPpm* ppm) {
 // --- Type-C primitives -----------------------------------------------------
 
 UcsiPpmStatus ucsi_ppm_phy_start_toggle(UcsiPpm* ppm, UcsiPpmPhyToggleMode mode) {
-    // CONTROL2: TOGGLE=1, MODE, TOG_RD_ONLY=0 (settle on Rd or Ra),
-    // TOG_SAVE_PWR=01b (40 ms tDIS), WAKE_EN=0.
+    // CONTROL2: TOGGLE=1, MODE, TOG_RD_ONLY=1 (settle on Rd only — see the
+    // constant), TOG_SAVE_PWR=01b (40 ms tDIS), WAKE_EN=0.
     //
     // The FSM advances on the 0→1 edge of TOGGLE (FUSB302 datasheet §14.2.4),
     // so if we're re-arming after a previous attach settled, the chip already
@@ -204,7 +212,7 @@ UcsiPpmStatus ucsi_ppm_phy_start_toggle(UcsiPpm* ppm, UcsiPpmPhyToggleMode mode)
     // subsequent attach.
     UcsiPpmStatus s = phy_write_reg(ppm, Fusb302RegControl2, 0u);
     if(s != UcsiPpmStatusOk) return s;
-    const uint8_t val = (uint8_t)(1u /* TOGGLE */ | ((mode_to_field(mode) & 0x3u) << 1) | (CONTROL2_TOG_SAVE_PWR << 6));
+    const uint8_t val = (uint8_t)(1u /* TOGGLE */ | ((mode_to_field(mode) & 0x3u) << 1) | CONTROL2_TOG_RD_ONLY | (CONTROL2_TOG_SAVE_PWR << 6));
     return phy_write_reg(ppm, Fusb302RegControl2, val);
 }
 

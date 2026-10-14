@@ -66,7 +66,9 @@ FUSB302 умеет автономно циклически:
 CONTROL2.TOGGLE = 1
 CONTROL2.MODE   = 01b   (DRP)
 CONTROL2.TOG_SAVE_PWR = 00b или 01b (40 мс между циклами для энергосбережения)
-CONTROL2.TOG_RD_ONLY  = 0 (вернуть на Audio Accessory если оба CC = Ra)
+CONTROL2.TOG_RD_ONLY  = 1 (садиться только на Rd; Audio Accessory, оба CC = Ra,
+                           не в скоупе v1, а пустой e-marked кабель с Ra на
+                           VCONN-пине иначе роняет toggle в SRC каждые 160 мс)
 ```
 
 Маска: открыть `MASKA.M_TOGDONE=0`, остальное в MASKA — masked.

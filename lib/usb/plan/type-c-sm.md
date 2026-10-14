@@ -89,7 +89,7 @@ detection → settle, а нам остаётся «остаток» — debounce
 
 **Конфигурация FUSB302**:
 - `POWER = 0x0F` (все домены)
-- `CONTROL2 = { TOGGLE=1, MODE=01b (DRP), TOG_SAVE_PWR=01b (40 мс idle), TOG_RD_ONLY=0 }`
+- `CONTROL2 = { TOGGLE=1, MODE=01b (DRP), TOG_SAVE_PWR=01b (40 мс idle), TOG_RD_ONLY=1 }` — только Rd останавливает toggle; Ra на одном пине (пустой e-marked кабель) по Type-C не аттач, а с TOG_RD_ONLY=0 чип садился на него как SRC каждые 160 мс (см. [`fusb302.md`](fusb302.md) §2).
 - `CONTROL0.HOST_CUR = 11b` (3A advertised как source)
 - `MASKA.M_TOGDONE = 0` (открыто)
 - `SWITCHES0` — игнорируем; TOGGLE сам выставит.
