@@ -26,10 +26,13 @@ static const LedTypeName cli_led_type_names[] = {
     {"UsbWatt4", FuriBspLedTypeUsbWatt4},
     {"BatteryCenter", FuriBspLedTypeBatteryCenter},
     {"LineAllOff", FuriBspLedTypeAllOff},
+    // test-only: the two halves of the battery outline, normally driven together
+    {"BatteryOutline1", FuriBspLedTypeBatteryOutline1},
+    {"BatteryOutline2", FuriBspLedTypeBatteryOutline2},
 };
 
 _Static_assert(
-    COUNT_OF(cli_led_type_names) == (size_t)FuriBspLedTypeAllOff + 1,
+    COUNT_OF(cli_led_type_names) == (size_t)FuriBspLedTypeBatteryOutline2 + 1,
     "cli_led_type_names must have one entry per FuriBspLedType, see furi_bsp_led_type.h");
 
 static void cli_command_led_help(PipeSide* pipe, FuriString* args, void* context) {
@@ -40,7 +43,7 @@ static void cli_command_led_help(PipeSide* pipe, FuriString* args, void* context
     printf("Where <LED_TYPE> is:\r\n");
     for(size_t i = 0; i < COUNT_OF(cli_led_type_names); i++) {
         const LedTypeName* led_type_name = &cli_led_type_names[i];
-        printf("\t%-14s %d\r\n", led_type_name->name, (int)led_type_name->type);
+        printf("\t%-15s %d\r\n", led_type_name->name, (int)led_type_name->type);
     }
     printf(
         "Where <COLOR> is:\r\n"
@@ -81,7 +84,7 @@ void led_cli(PipeSide* pipe, FuriString* args, void* context) {
         return;
     }
     // LED type is referenced by its FuriBspLedType value
-    if(led_type < 0 || led_type > (int)FuriBspLedTypeAllOff) {
+    if(led_type < 0 || led_type > (int)FuriBspLedTypeBatteryOutline2) {
         cli_command_led_help(pipe, args, context);
         return;
     }
