@@ -39,26 +39,6 @@ static void cli_command_led_help(PipeSide* pipe, FuriString* args, void* context
         "\twhite \t\t7\r\n");
 }
 
-FuriBspLedType cli_led_types[] = {
-    FuriBspLedTypeNet,
-    FuriBspLedTypeWiFi,
-    FuriBspLedTypeEth2,
-    FuriBspLedTypeEth1,
-    FuriBspLedTypePower,
-    FuriBspLedTypeBatteryOutline,
-    FuriBspLedTypeBatteryWatt1,
-    FuriBspLedTypeBatteryWatt2,
-    FuriBspLedTypeBatteryWatt3,
-    FuriBspLedTypeBatteryWatt4,
-    FuriBspLedTypeUsbCharging,
-    FuriBspLedTypeUsbWatt1,
-    FuriBspLedTypeUsbWatt2,
-    FuriBspLedTypeUsbWatt3,
-    FuriBspLedTypeUsbWatt4,
-    FuriBspLedTypeBatteryCenter,
-    FuriBspLedTypeAllOff,
-};
-
 LedColor cli_led_colors[] = {
     LED_COLOR_RED,
     LED_COLOR_GREEN,
@@ -85,17 +65,19 @@ void led_cli(PipeSide* pipe, FuriString* args, void* context) {
         cli_command_led_help(pipe, args, context);
         return;
     }
-    if(led_type < 0 || led_type >= sizeof(cli_led_types) / sizeof(FuriBspLedType)) {
+    // LED type is referenced by its FuriBspLedType value
+    if(led_type < 0 || led_type > (int)FuriBspLedTypeAllOff) {
+        cli_command_led_help(pipe, args, context);
+        return;
+    }
+    const FuriBspLedType type = (FuriBspLedType)led_type;
+
+    if(furi_string_size(args) < 1 && type != FuriBspLedTypeAllOff) {
         cli_command_led_help(pipe, args, context);
         return;
     }
 
-    if(furi_string_size(args) < 1 && cli_led_types[led_type] != FuriBspLedTypeAllOff) {
-        cli_command_led_help(pipe, args, context);
-        return;
-    }
-
-    if(cli_led_types[led_type] != FuriBspLedTypeAllOff) {
+    if(type != FuriBspLedTypeAllOff) {
         if(!args_read_int_and_trim(args, &color)) {
             cli_command_led_help(pipe, args, context);
             return;
@@ -107,6 +89,6 @@ void led_cli(PipeSide* pipe, FuriString* args, void* context) {
     }
 
     Led* led = furi_record_open(RECORD_LEDS);
-    led_set_color_single(led, cli_led_types[led_type], cli_led_colors[color]);
+    led_set_color_single(led, type, cli_led_colors[color]);
     furi_record_close(RECORD_LEDS);
 }
