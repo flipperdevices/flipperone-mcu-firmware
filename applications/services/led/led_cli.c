@@ -3,30 +3,45 @@
 #include <cli/args.h>
 #include <led/led.h>
 
+typedef struct {
+    const char* name;
+    FuriBspLedType type;
+} LedTypeName;
+
+static const LedTypeName cli_led_type_names[] = {
+    {"Net", FuriBspLedTypeNet},
+    {"WiFi", FuriBspLedTypeWiFi},
+    {"Eth2", FuriBspLedTypeEth2},
+    {"Eth1", FuriBspLedTypeEth1},
+    {"Power", FuriBspLedTypePower},
+    {"BatteryOutline", FuriBspLedTypeBatteryOutline},
+    {"BatteryWatt1", FuriBspLedTypeBatteryWatt1},
+    {"BatteryWatt2", FuriBspLedTypeBatteryWatt2},
+    {"BatteryWatt3", FuriBspLedTypeBatteryWatt3},
+    {"BatteryWatt4", FuriBspLedTypeBatteryWatt4},
+    {"UsbCharging", FuriBspLedTypeUsbCharging},
+    {"UsbWatt1", FuriBspLedTypeUsbWatt1},
+    {"UsbWatt2", FuriBspLedTypeUsbWatt2},
+    {"UsbWatt3", FuriBspLedTypeUsbWatt3},
+    {"UsbWatt4", FuriBspLedTypeUsbWatt4},
+    {"BatteryCenter", FuriBspLedTypeBatteryCenter},
+    {"LineAllOff", FuriBspLedTypeAllOff},
+};
+
+_Static_assert(
+    COUNT_OF(cli_led_type_names) == (size_t)FuriBspLedTypeAllOff + 1,
+    "cli_led_type_names must have one entry per FuriBspLedType, see furi_bsp_led_type.h");
+
 static void cli_command_led_help(PipeSide* pipe, FuriString* args, void* context) {
     UNUSED(pipe);
     UNUSED(args);
     UNUSED(context);
-    printf(
-        "Usage: led <LED_TYPE> <COLOR>\r\n"
-        "Where <LED_TYPE> is:\r\n"
-        "\tNet \t\t0\r\n"
-        "\tWiFi \t\t1\r\n"
-        "\tEth2 \t\t2\r\n"
-        "\tEth1 \t\t3\r\n"
-        "\tPower \t\t4\r\n"
-        "\tBatteryOutline\t5\r\n"
-        "\tBatteryWatt1\t6\r\n"
-        "\tBatteryWatt2\t7\r\n"
-        "\tBatteryWatt3\t8\r\n"
-        "\tBatteryWatt4\t9\r\n"
-        "\tUsbCharging \t10\r\n"
-        "\tUsbWatt1 \t11\r\n"
-        "\tUsbWatt2 \t12\r\n"
-        "\tUsbWatt3 \t13\r\n"
-        "\tUsbWatt4 \t14\r\n"
-        "\tBatteryCenter\t15\r\n"
-        "\tLineAllOff \t16\r\n");
+    printf("Usage: led <LED_TYPE> <COLOR>\r\n");
+    printf("Where <LED_TYPE> is:\r\n");
+    for(size_t i = 0; i < COUNT_OF(cli_led_type_names); i++) {
+        const LedTypeName* led_type_name = &cli_led_type_names[i];
+        printf("\t%-14s %d\r\n", led_type_name->name, (int)led_type_name->type);
+    }
     printf(
         "Where <COLOR> is:\r\n"
         "\tred \t\t0\r\n"
