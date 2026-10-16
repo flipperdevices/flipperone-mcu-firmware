@@ -29,6 +29,7 @@ extern int32_t cli_on_system_start(void* p);
 extern int32_t rpc_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
 extern int32_t cpu_app(void* p);
+extern int32_t display_test_app(void* p);
 
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
@@ -207,6 +208,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
         .args = "maskrom",
+    },
+    {
+        .app = display_test_app,
+        .name = "Display Test",
+        .appid = "display_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
     },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
