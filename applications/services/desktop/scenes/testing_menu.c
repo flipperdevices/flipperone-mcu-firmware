@@ -10,6 +10,7 @@ typedef enum {
     TestingMenuItemKeypad,
     TestingMenuItemTouchpad,
     TestingMenuItemHaptic,
+    TestingMenuItemDisplay,
 } TestingMenuItem;
 
 typedef struct {
@@ -32,7 +33,10 @@ static void testing_menu_callback(MenuItem* item, size_t item_id, void* context)
         desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeStartTouchpadApp, scene);
     } else if(item_id == TestingMenuItemHaptic) {
         desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeStartHapticApp, scene);
+    } else if (item_id == TestingMenuItemDisplay) {
+        desktop_send_scene_event(scene_data->desktop, DesktopSceneEventTypeStartDisplayTestApp, scene);
     }
+    
 }
 
 static void testing_menu_on_enter(Scene* scene, void* context) {
