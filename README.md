@@ -25,10 +25,6 @@ Builds run automatically on every push to the `dev` branch, on tag pushes, and o
 ### [`📥 Download latest dev firmware →`](https://update.flipperzero.one/builds/flipper-one-mcu/dev/)
 **⚠️ TODO:** make a proper build server address and folder structure instead of using `flipperzero.one`
 
-## Manual build 
-
-**⚠️ TODO:** how to build manually? 
-
 ## Join development
 
 * Check the public task tracker: [MCU Firmware Project](https://github.com/orgs/flipperdevices/projects/8)
@@ -46,31 +42,9 @@ Each board is described by `targets/<name>/target.cmake`, and a target can be ba
 
 See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
 
-<details>
-<summary>Manual build (Linux / macOS)</summary>
+### Command line
 
-Prerequisites: [ARM GCC toolchain](https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases) (tested with 14.2.1), CMake 3.13+, [Pico SDK 2.3.1](https://github.com/raspberrypi/pico-sdk).
-
-On macOS, the ARM toolchain can be installed via Homebrew:
-
-```shell
-brew install --cask gcc-arm-embedded
-```
-
-```shell
-git clone --recursive https://github.com/flipperdevices/flipperone-mcu-firmware.git
-cd flipperone-mcu-firmware
-
-git clone -b 2.3.1 https://github.com/raspberrypi/pico-sdk.git ../pico-sdk
-cd ../pico-sdk && git submodule update --init && cd ../flipperone-mcu-firmware
-
-mkdir -p build && cd build
-PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build . --config Release --parallel
-```
-
-The output firmware file will be at `build/flipperone-mcu-firmware.uf2`.
-</details>
+`./fw` on Linux and macOS, `fw.cmd` on Windows: configures on the first run and builds `build/flipperone-mcu-firmware.uf2`. `./fw clean` removes the build directory, `./fw flash` writes the firmware over a debug probe. The Pico SDK and ARM toolchain are taken from `~/.pico-sdk` when the VS Code extension has installed them, and downloaded there otherwise. See [docs/building.md](docs/building.md).
 
 ## How to update MCU firmware
 

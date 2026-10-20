@@ -1,0 +1,163 @@
+#!/bin/sh
+# Command-line build for Linux and macOS (Windows: fw.cmd). See docs/building.md.
+#
+#   ./fw [build]   configure on the first run, then build -> build/flipperone-mcu-firmware.uf2
+#   ./fw clean     remove the build directory
+#   ./fw flash     build, then write the partition table and firmware over SWD (openocd)
+#   ./fw setup     fetch the Pico SDK and the ARM toolchain without building
+#
+# Variables go make-style after the command, e.g. `./fw build FW_TARGET=f1`, or in the
+# environment. FW_TARGET reconfigures the build directory for another board.
+#
+# The Pico SDK and the toolchain live in ~/.pico-sdk, the directory the Raspberry Pi
+# Pico VS Code extension uses, so one copy serves both. Versions come from CMakeLists.txt.
+set -eu
+cd "$(dirname "$0")"
+. ./fw.cfg
+
+fail() { echo "error: $*" >&2; exit 1; }
+usage() { echo "usage: $0 [build|clean|flash|setup] [NAME=value ...]" >&2; exit 2; }
+
+# One command plus NAME=value overrides, in any order. Overrides beat the environment and fw.cfg.
+command=
+for arg; do
+    case $arg in
+        *=*)
+            name=${arg%%=*}
+            case $name in
+                ''|[0-9]*|*[!A-Za-z0-9_]*) fail "not a variable name: $name" ;;
+            esac
+            export "$arg"
+            ;;
+        *)
+            [ -z "$command" ] || usage
+            command=$arg
+            ;;
+    esac
+done
+command=${command:-build}
+
+PICO_HOME=$HOME/.pico-sdk
+SDK_VERSION=$(sed -n 's/^set(sdkVersion \(.*\))$/\1/p' CMakeLists.txt)
+TOOLCHAIN_VERSION=$(sed -n 's/^set(toolchainVersion \(.*\))$/\1/p' CMakeLists.txt)
+[ -n "$SDK_VERSION" ] && [ -n "$TOOLCHAIN_VERSION" ] || fail "sdkVersion/toolchainVersion not found in CMakeLists.txt"
+ARM_RELEASE=$(echo "$TOOLCHAIN_VERSION" | tr '_A-Z' '.a-z')  # 14_2_Rel1 -> 14.2.rel1
+
+DEFAULT_SDK=$PICO_HOME/sdk/$SDK_VERSION
+DEFAULT_TOOLCHAIN=$PICO_HOME/toolchain/$TOOLCHAIN_VERSION
+export PICO_SDK_PATH="${PICO_SDK_PATH:-$DEFAULT_SDK}"
+export PICO_TOOLCHAIN_PATH="${PICO_TOOLCHAIN_PATH:-$DEFAULT_TOOLCHAIN}"
+
+# The extension's copy first, so command-line and VS Code builds share one CMake cache.
+find_tool() { # find_tool <name> <glob under ~/.pico-sdk>: the path, or nothing when not installed
+    for candidate in "$PICO_HOME"/$2; do
+        if [ -x "$candidate" ]; then echo "$candidate"; return; fi
+    done
+    command -v "$1" || true
+}
+
+# Everything the build needs from the system, reported in one go before anything is fetched.
+# c++ builds pioasm and picotool for the host; python3 with venv runs the assets step.
+check_host_tools() {
+    CMAKE=$(find_tool cmake 'cmake/*/bin/cmake')
+    NINJA=$(find_tool ninja 'ninja/*/ninja')
+    missing=
+    [ -n "$CMAKE" ] || missing="$missing cmake"
+    [ -n "$NINJA" ] || missing="$missing ninja"
+    for tool in git curl c++ python3; do
+        command -v "$tool" >/dev/null || missing="$missing $tool"
+    done
+    if command -v python3 >/dev/null && ! python3 -c 'import venv, ensurepip' 2>/dev/null; then
+        missing="$missing python3-venv"
+    fi
+    problems=
+    [ -z "$missing" ] || problems="missing:$missing"
+    # Apple's command line tools Python refuses `venv --copies`, which the assets step uses;
+    # its own venv module keys that refusal on this config variable.
+    if command -v python3 >/dev/null && python3 -c 'import sys, sysconfig; sys.exit(sysconfig.get_config_var("TRAIN_STYLE") != "DT")' 2>/dev/null; then
+        problems="${problems:+$problems
+}python3 is the Apple command line tools build, which cannot create the venv the assets step needs"
+    fi
+    [ -z "$problems" ] || fail "$problems
+  Ubuntu/Debian: sudo apt install build-essential cmake ninja-build git curl python3-venv
+  macOS:         xcode-select --install; brew install cmake ninja python"
+}
+
+ensure_sdk() {
+    [ -f "$PICO_SDK_PATH/pico_sdk_init.cmake" ] && return
+    [ "$PICO_SDK_PATH" = "$DEFAULT_SDK" ] || fail "PICO_SDK_PATH=$PICO_SDK_PATH does not contain the Pico SDK"
+    echo "Fetching Pico SDK $SDK_VERSION into $PICO_SDK_PATH"
+    rm -rf "$PICO_SDK_PATH.tmp"
+    mkdir -p "$PICO_HOME/sdk"
+    git -c advice.detachedHead=false clone --depth 1 --branch "$SDK_VERSION" "$PICO_SDK_GIT_URL" "$PICO_SDK_PATH.tmp"
+    git -C "$PICO_SDK_PATH.tmp" submodule update --init --depth 1
+    mv "$PICO_SDK_PATH.tmp" "$PICO_SDK_PATH"
+    [ -f "$PICO_SDK_PATH/pico_sdk_init.cmake" ] || fail "$PICO_SDK_PATH does not look like the Pico SDK"
+}
+
+ensure_toolchain() {
+    [ -x "$PICO_TOOLCHAIN_PATH/bin/arm-none-eabi-gcc" ] && return
+    [ "$PICO_TOOLCHAIN_PATH" = "$DEFAULT_TOOLCHAIN" ] || fail "PICO_TOOLCHAIN_PATH=$PICO_TOOLCHAIN_PATH has no bin/arm-none-eabi-gcc"
+    case "$(uname -s)-$(uname -m)" in
+        Darwin-arm64)  host=darwin-arm64 ;;
+        Darwin-x86_64) host=darwin-x86_64 ;;
+        Linux-x86_64)  host=x86_64 ;;
+        Linux-aarch64) host=aarch64 ;;
+        *) fail "no prebuilt ARM toolchain for $(uname -s)/$(uname -m); install one and set PICO_TOOLCHAIN_PATH" ;;
+    esac
+    name=arm-gnu-toolchain-$ARM_RELEASE-$host-arm-none-eabi
+    tmp=$PICO_TOOLCHAIN_PATH.tmp
+    echo "Fetching $name into $PICO_TOOLCHAIN_PATH"
+    rm -rf "$tmp"
+    mkdir -p "$tmp"
+    curl -fL --retry 3 -o "$tmp/$name.tar.xz" "$ARM_TOOLCHAIN_BASE_URL/$ARM_RELEASE/binrel/$name.tar.xz"
+    tar -xf "$tmp/$name.tar.xz" -C "$tmp"
+    rm "$tmp/$name.tar.xz"
+    mv "$tmp"/arm-gnu-toolchain-* "$PICO_TOOLCHAIN_PATH"
+    rm -rf "$tmp"
+    [ -x "$PICO_TOOLCHAIN_PATH/bin/arm-none-eabi-gcc" ] || fail "unexpected toolchain archive layout in $PICO_TOOLCHAIN_PATH"
+}
+
+build() {
+    check_host_tools
+    ensure_sdk
+    ensure_toolchain
+    if [ ! -f build/CMakeCache.txt ] || [ -n "${FW_TARGET:-}" ]; then
+        "$CMAKE" -S . -B build -G Ninja -DCMAKE_MAKE_PROGRAM="$NINJA" -DFW_TARGET="${FW_TARGET:-$DEFAULT_FW_TARGET}"
+    fi
+    "$CMAKE" --build build
+}
+
+clean() {
+    if [ -d build ]; then
+        echo "Removing $(pwd)/build ($(du -sh build | awk '{print $1}'))"
+        rm -rf build
+    else
+        echo "Nothing to clean: $(pwd)/build does not exist"
+    fi
+}
+
+flash() {
+    build
+    OPENOCD=${OPENOCD:-$(find_tool openocd 'openocd/*/openocd')}
+    [ -n "$OPENOCD" ] || fail "openocd not found. RP2350 needs the Raspberry Pi build: https://github.com/raspberrypi/openocd"
+    case $OPENOCD in
+        "$PICO_HOME"/*) set -- -s "${OPENOCD%/openocd}/scripts" ;;
+        *) set -- ;;
+    esac
+    "$OPENOCD" "$@" -f "$OPENOCD_INTERFACE" -f "$OPENOCD_TARGET" -f targets/flash.tcl
+}
+
+case $command in
+    build) build ;;
+    clean) clean ;;
+    flash) flash ;;
+    setup)
+        check_host_tools
+        ensure_sdk
+        ensure_toolchain
+        echo "Pico SDK:  $PICO_SDK_PATH"
+        echo "Toolchain: $PICO_TOOLCHAIN_PATH"
+        ;;
+    *) usage ;;
+esac
