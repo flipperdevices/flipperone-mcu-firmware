@@ -14,9 +14,10 @@ extern "C" {
 bool desktop_start_app(const FlipperInternalApplication* app);
 
 /** Stop the currently running app, if any.
+ * @param appid the appid of the app to stop
  * @return true if an app was running and an exit was requested, false if no app was running
  */
-bool desktop_stop_app(void);
+bool desktop_stop_app(const char* appid);
 
 /** Get the name of the currently running app (human-readable; equals the
  * appid for apps registered via desktop_register_app()).
