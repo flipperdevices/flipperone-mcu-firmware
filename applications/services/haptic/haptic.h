@@ -11,6 +11,8 @@ typedef enum {
    HapticDeviceDrv2605l = (1 << 0),
 } HapticDevice;
 
+#define HAPTIC_MIN_PLAYBACK_DURATION_MS 2
+
 #ifdef __cplusplus
 extern "C" {
 #endif

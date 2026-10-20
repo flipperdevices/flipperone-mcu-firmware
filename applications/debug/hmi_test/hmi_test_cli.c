@@ -14,6 +14,8 @@
 #include <cli/cli_status.h>
 #include <furi_hal.h>
 
+#define HMI_TEST_CLI_HAPTIC_CALIBRATION (255)
+
 typedef struct {
     const char* name;
     const char* arg_spec;
@@ -40,15 +42,7 @@ static void hmi_test_touchpad_event_callback(const void* value, void* ctx) {
     furi_assert(ctx);
     HmiTestTouchpadEventCtx* event_ctx = ctx;
     TouchpadTestEvent event = *(const TouchpadTestEvent*)value;
-    // furi_pubsub_publish() holds the pubsub's mutex for the duration of this
-    // call, and for events published from touchpad_test_v2's touch handlers
-    // that's on the GUI thread, under gui->mutex and view->mutex too - so a
-    // FuriWaitForever put here, if the queue were ever full, could deadlock
-    // against whichever thread would otherwise drain it (e.g. us, if we're
-    // blocked in furi_pubsub_unsubscribe() waiting on that same mutex). Bound
-    // the wait and just count drops instead; in practice the queue (16 deep)
-    // shouldn't fill since duplicate diamond hits are already deduplicated
-    // before this is invoked.
+
     if(furi_message_queue_put(event_ctx->queue, &event, 20) != FuriStatusOk) {
         event_ctx->dropped++;
     }
@@ -76,14 +70,6 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
         return true;
     }
 
-    // furi_record_open() blocks forever until the record becomes ready - fine
-    // if touchpad_test_v2 is merely slow to start, but if it never reaches
-    // furi_record_create() (crashed, or exited and tore the record back down
-    // before we get here) nothing will ever set that flag and we'd hang for
-    // good, with no way for Ctrl+C to break out since the wait loop below
-    // isn't even entered yet. Poll furi_record_exists() with a bounded budget
-    // instead, so a dead/never-started app fails with a message rather than
-    // wedging the CLI thread permanently.
     const int record_wait_budget_ms = 2000;
     int record_waited_ms = 0;
     while(!furi_record_exists(RECORD_TOUCHPAD_TEST) && record_waited_ms < record_wait_budget_ms) {
@@ -96,10 +82,6 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
         return true;
     }
 
-    // furi_pubsub_publish() runs subscriber callbacks synchronously on the
-    // publisher's (touchpad_test_v2's) thread, not ours - so the callback
-    // just forwards events into a queue, and this loop (on our own thread,
-    // where stdio is bound to `pipe`) does the actual printing.
     HmiTestTouchpadEventCtx event_ctx = {
         .queue = furi_message_queue_alloc(16, sizeof(TouchpadTestEvent)),
         .dropped = 0,
@@ -109,9 +91,6 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
 
     printf("Subscribed to touchpad test events. Press CTRL+C to stop.\r\n");
 
-    // the app can also close itself (e.g. the Back button on the device), in
-    // which case it publishes TouchpadTestStatusEnded from its own teardown;
-    // stop waiting right away instead of sitting on a dead app until Ctrl+C
     bool app_running = true;
     bool test_ok = false;
     TouchpadTestEvent event;
@@ -151,7 +130,7 @@ static bool hmi_test_cli_start_touch(PipeSide* pipe, FuriString* args) {
     if(app_running) {
         // still running - we're the ones stopping it (Ctrl+C)
         printf("Stopping touch test...\r\n");
-        desktop_stop_app();
+        desktop_stop_app(appid);
     }
 
     if(test_ok) {
@@ -178,14 +157,15 @@ static bool hmi_test_cli_haptic(PipeSide* pipe, FuriString* args) {
             printf(CLI_STATUS_ERROR);
             return false;
         }
-        if(duration == 1) {
-            duration = 2;
+
+        if(duration < HAPTIC_MIN_PLAYBACK_DURATION_MS) {
+            duration = HAPTIC_MIN_PLAYBACK_DURATION_MS;
         }
     }
 
     bool ret = false;
     Haptic* haptic = furi_record_open(RECORD_HAPTIC);
-    if(effect_id == 255) {
+    if(effect_id == HMI_TEST_CLI_HAPTIC_CALIBRATION) {
         printf("Calibrating haptic device...\r\n");
         ret = haptic_force_auto_calibrate(haptic);
     } else {
@@ -197,12 +177,7 @@ static bool hmi_test_cli_haptic(PipeSide* pipe, FuriString* args) {
     furi_record_close(RECORD_HAPTIC);
 
     if(!ret) {
-        // Arguments were fine, so keep the caller from printing usage here.
-        // Calibration now returns the real outcome: false means either the
-        // device isn't initialised or the calibration itself failed.
-        printf(
-            ANSI_FG_RED "Haptic %s failed" ANSI_RESET "\r\n",
-            effect_id == 255 ? "calibration" : "playback");
+        printf(ANSI_FG_RED "Haptic %s failed" ANSI_RESET "\r\n", effect_id == HMI_TEST_CLI_HAPTIC_CALIBRATION ? "calibration" : "playback");
         printf(CLI_STATUS_ERROR);
         return true;
     }

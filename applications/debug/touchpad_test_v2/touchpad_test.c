@@ -6,28 +6,27 @@
 #include <input_touch/input_touch.h>
 #include "touchpad_test.h"
 
-// Set to 1 to additionally clamp mapped touch points to the capsule outline
-// (so touches near the rounded ends can't land in the corners of its
-// bounding box); 0 to only map coordinates into the oval's bounding box.
-#define TOUCHPAD_CLAMP_TO_OVAL (0)
+// Define TOUCHPAD_CLAMP_TO_OVAL (e.g. -DTOUCHPAD_CLAMP_TO_OVAL in the build) to
+// additionally clamp mapped touch points to the capsule outline (so touches near
+// the rounded ends can't land in the corners of its bounding box); when the macro
+// is not defined, coordinates are only mapped into the oval's bounding box.
+#define TOUCHPAD_CLAMP_TO_OVAL
 
-// Show a marker outline at every diamond's center hit-zone; purely a debug
-// visualization, the gray-fill-on-hit behavior below is always active.
-#define TOUCHPAD_SHOW_HIT_ZONES (1)
+// Define TOUCHPAD_SHOW_HIT_ZONES to draw a marker outline at every diamond's
+// center hit-zone; purely a debug visualization, the gray-fill-on-hit behavior
+// below is always active.
+#define TOUCHPAD_SHOW_HIT_ZONES
 
-// Set to 1 to make every new touch-down act like pressing "Clear" first, so
-// the test restarts from scratch on each touch; 0 for the track to keep
-// accumulating across touches (only the "Clear"/5 key resets it).
-#define TOUCHPAD_RESET_ON_TOUCH (0)
+// Define TOUCHPAD_RESET_ON_TOUCH to make every new touch-down act like pressing
+// "Clear" first, so the test restarts from scratch on each touch; when the macro
+// is not defined, the track keeps accumulating across touches (only the
+// "Clear"/5 key resets it).
+#define TOUCHPAD_RESET_ON_TOUCH
 
-// Caps how often the canvas is actually re-rendered and pushed to the GUI.
-// Without this, every touch/input event redraws immediately, which can run
-// as fast as the input source delivers events (~80 FPS observed); a periodic
-// timer decouples rendering from input rate instead.
 #define TOUCHPAD_TARGET_FPS (60)
 #define TOUCHPAD_FRAME_INTERVAL_MS (1000 / TOUCHPAD_TARGET_FPS)
 
-#if TOUCHPAD_CLAMP_TO_OVAL
+#ifdef TOUCHPAD_CLAMP_TO_OVAL
 #include <math.h>
 #endif
 
@@ -49,10 +48,6 @@
 #define TOUCHPAD_OVAL_RADIUS   (TOUCHPAD_OVAL_HEIGHT / 2)
 #define TOUCHPAD_GRID_PITCH    (TOUCHPAD_OVAL_HEIGHT / 4)
 
-// Lattice coordinates (u = x - y, v = x + y): grid lines sit at u/v = LATTICE_U0/V0
-// + n * TOUCHPAD_GRID_PITCH, and a lattice vertex is anchored exactly at the
-// capsule's center. Kept as macros (rather than locals) so both the frame
-// renderer and the touch/hit-testing code agree on the same lattice.
 #define TOUCHPAD_BOX_X0    (TOUCHPAD_OVAL_MARGIN_X)
 #define TOUCHPAD_BOX_Y0    (TOUCHPAD_OVAL_MARGIN_Y)
 #define TOUCHPAD_BOX_X1    (TOUCHPAD_OVAL_MARGIN_X + TOUCHPAD_OVAL_WIDTH)
@@ -101,12 +96,7 @@ typedef struct {
     size_t total_diamond_count; // computed once at alloc; for the "all filled" event
 
     bool reset_pressed; // for the on-screen reset button's pressed/highlight state
-    bool touch_on_reset_button; // whether the in-progress touch stroke started on the reset button
 
-    // set whenever something changes that needs a redraw; the periodic timer
-    // clears it after rendering. Without this, the redraw timer would rewrite
-    // the canvas buffer unconditionally on every tick even while idle, which
-    // fights with the display's own refresh and tears the frame.
     bool dirty;
 
     FuriPubSub* event_pubsub; // not owned; copy of TouchpadTestApp's, so model-side
@@ -148,7 +138,7 @@ static bool touchpad_test_v2_oval_contains(int32_t x, int32_t y) {
     return (dx * dx + dy * dy) <= (TOUCHPAD_OVAL_RADIUS * TOUCHPAD_OVAL_RADIUS);
 }
 
-#if TOUCHPAD_CLAMP_TO_OVAL
+#ifdef TOUCHPAD_CLAMP_TO_OVAL
 /**
  * @brief Clamps (x, y) to the capsule outline. The capsule is convex, so a
  * line segment between two clamped points never leaves it either.
@@ -165,15 +155,21 @@ static void touchpad_test_v2_clamp_to_oval(int32_t* x, int32_t* y) {
         cx = right_cx;
     } else {
         // straight midsection: just clamp the vertical extent
-        if(*y < TOUCHPAD_OVAL_MARGIN_Y) *y = TOUCHPAD_OVAL_MARGIN_Y;
-        if(*y > TOUCHPAD_OVAL_MARGIN_Y + TOUCHPAD_OVAL_HEIGHT) *y = TOUCHPAD_OVAL_MARGIN_Y + TOUCHPAD_OVAL_HEIGHT;
+        if(*y < TOUCHPAD_OVAL_MARGIN_Y) {
+            *y = TOUCHPAD_OVAL_MARGIN_Y;
+        }
+        if(*y > TOUCHPAD_OVAL_MARGIN_Y + TOUCHPAD_OVAL_HEIGHT) {
+            *y = TOUCHPAD_OVAL_MARGIN_Y + TOUCHPAD_OVAL_HEIGHT;
+        }
         return;
     }
 
     int32_t dx = *x - cx;
     int32_t dy = *y - cy;
     int32_t dist_sq = dx * dx + dy * dy;
-    if(dist_sq <= TOUCHPAD_OVAL_RADIUS * TOUCHPAD_OVAL_RADIUS) return;
+    if(dist_sq <= TOUCHPAD_OVAL_RADIUS * TOUCHPAD_OVAL_RADIUS) {
+        return;
+    }
 
     float dist = sqrtf((float)dist_sq);
     float scale = (float)TOUCHPAD_OVAL_RADIUS / dist;
@@ -186,7 +182,9 @@ static void touchpad_test_v2_clamp_to_oval(int32_t* x, int32_t* y) {
 static int32_t touchpad_test_v2_floor_div(int32_t a, int32_t b) {
     int32_t q = a / b;
     int32_t r = a % b;
-    if(r != 0 && r < 0) q--;
+    if(r != 0 && r < 0) {
+        q--;
+    }
     return q;
 }
 
@@ -213,7 +211,9 @@ static bool touchpad_test_v2_diamond_is_reachable(int32_t cx, int32_t cy) {
     const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
     for(int32_t dy = -half; dy <= half; dy++) {
         for(int32_t dx = -half; dx <= half; dx++) {
-            if(touchpad_test_v2_oval_contains(cx + dx, cy + dy)) return true;
+            if(touchpad_test_v2_oval_contains(cx + dx, cy + dy)) {
+                return true;
+            }
         }
     }
     return false;
@@ -231,10 +231,16 @@ static size_t touchpad_test_v2_count_total_diamonds(void) {
         for(int32_t k = -TOUCHPAD_LATTICE_RANGE; k <= TOUCHPAD_LATTICE_RANGE; k++) {
             int32_t cx, cy;
             touchpad_test_v2_diamond_center(m, k, &cx, &cy);
-            if(cx < TOUCHPAD_BOX_X0 - TOUCHPAD_GRID_PITCH || cx > TOUCHPAD_BOX_X1 + TOUCHPAD_GRID_PITCH) continue;
-            if(cy < TOUCHPAD_BOX_Y0 - TOUCHPAD_GRID_PITCH || cy > TOUCHPAD_BOX_Y1 + TOUCHPAD_GRID_PITCH) continue;
+            if(cx < TOUCHPAD_BOX_X0 - TOUCHPAD_GRID_PITCH || cx > TOUCHPAD_BOX_X1 + TOUCHPAD_GRID_PITCH) {
+                continue;
+            }
+            if(cy < TOUCHPAD_BOX_Y0 - TOUCHPAD_GRID_PITCH || cy > TOUCHPAD_BOX_Y1 + TOUCHPAD_GRID_PITCH) {
+                continue;
+            }
 
-            if(touchpad_test_v2_diamond_is_reachable(cx, cy)) count++;
+            if(touchpad_test_v2_diamond_is_reachable(cx, cy)) {
+                count++;
+            }
         }
     }
 
@@ -264,15 +270,25 @@ static bool touchpad_test_v2_segment_intersects_box(
     };
     for(int i = 0; i < 4; i++) {
         if(p[i] == 0.0f) {
-            if(q[i] < 0.0f) return false; // parallel to this edge and outside it
+            if(q[i] < 0.0f) {
+                return false; // parallel to this edge and outside it
+            }
         } else {
             float r = q[i] / p[i];
             if(p[i] < 0.0f) {
-                if(r > t1) return false;
-                if(r > t0) t0 = r;
+                if(r > t1) {
+                    return false;
+                }
+                if(r > t0) {
+                    t0 = r;
+                }
             } else {
-                if(r < t0) return false;
-                if(r < t1) t1 = r;
+                if(r < t0) {
+                    return false;
+                }
+                if(r < t1) {
+                    t1 = r;
+                }
             }
         }
     }
@@ -287,7 +303,7 @@ static void touchpad_test_v2_fill_diamond(Canvas* canvas, int32_t cx, int32_t cy
     }
 }
 
-#if TOUCHPAD_SHOW_HIT_ZONES
+#ifdef TOUCHPAD_SHOW_HIT_ZONES
 /** Draws the outline of a diamond's center hit-zone, for debugging. */
 static void touchpad_test_v2_draw_zone_marker(Canvas* canvas, int32_t cx, int32_t cy, ColorA color) {
     int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
@@ -309,7 +325,9 @@ static void touchpad_test_v2_draw_diag_backslash(
     ColorA color) {
     int32_t xs = MAX(x0, c + y0);
     int32_t xe = MIN(x1, c + y1);
-    if(xs > xe) return;
+    if(xs > xe) {
+        return;
+    }
     render_draw_line(canvas, xs, xs - c, xe, xe - c, color);
 }
 
@@ -324,11 +342,12 @@ static void touchpad_test_v2_draw_diag_slash(
     ColorA color) {
     int32_t xs = MAX(x0, c - y1);
     int32_t xe = MIN(x1, c - y0);
-    if(xs > xe) return;
+    if(xs > xe) {
+        return;
+    }
     render_draw_line(canvas, xs, c - xs, xe, c - xe, color);
 }
 
-/** Button styled the same way as keypad_test.c's keypad buttons. */
 static void touchpad_test_v2_app_create_reset_button(Clay_ElementId id, Clay_String text, bool inverted) {
     CLAY(
         id,
@@ -347,42 +366,12 @@ static void touchpad_test_v2_app_create_reset_button(Clay_ElementId id, Clay_Str
     }
 }
 
-/**
- * @brief Whether (canvas_x, canvas_y) - in the same canvas-pixel coordinate
- * frame as model->last_x/y (i.e. relative to "MainContent", not the screen)
- * - falls within the on-screen "Clear" button, so a tap on it can trigger
- * the same reset as InputKey5. Reads the previous frame's layout via
- * Clay_GetElementData(), so it can be called from input handling (which
- * runs after that frame's layout, not during it).
- */
-static bool touchpad_test_v2_point_in_reset_button(int32_t canvas_x, int32_t canvas_y) {
-    Clay_ElementData main_content = Clay_GetElementData(CLAY_APP_ID("MainContent"));
-    Clay_ElementData button = Clay_GetElementData(CLAY_APP_ID("ResetButton"));
-    if(!main_content.found || !button.found) return false;
-
-    float x = (float)canvas_x + main_content.boundingBox.x;
-    float y = (float)canvas_y + main_content.boundingBox.y;
-    return x >= button.boundingBox.x && x <= button.boundingBox.x + button.boundingBox.width &&
-           y >= button.boundingBox.y && y <= button.boundingBox.y + button.boundingBox.height;
-}
-
 static void touchpad_test_v2_app_update_frame(TouchpadTestModel* model);
 
 static bool touchpad_test_v2_app_layout(void* _model) {
     furi_assert(_model);
     TouchpadTestModel* model = _model;
 
-    // Render here, synchronously on the GUI thread, while view_layout() still
-    // holds the model lock: model->image (below) is just a raw pointer into
-    // model->canvas's pixel buffer, and gui_redraw() reads through it (via
-    // clay_render_do_render(), copying pixels into the display's own canvas)
-    // *after* this callback returns and the model lock has already been
-    // released (view_layout() -> view_unlock_model() happens before
-    // Clay_EndLayout()/clay_render_do_render()). Rendering from a separate
-    // app-thread timer, as before, could still be mid-write into that same
-    // buffer while the GUI thread was reading it for the blit - an
-    // unsynchronized race the model lock never actually covered, and the
-    // real cause of the frame corruption seen while dragging.
     if(model->dirty) {
         touchpad_test_v2_app_update_frame(model);
         model->dirty = false;
@@ -481,7 +470,7 @@ static void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
     const int32_t c_slash0 = TOUCHPAD_LATTICE_V0;
     const int32_t n_max = (box_x1 - box_x0 + box_y1 - box_y0) / TOUCHPAD_GRID_PITCH + 1;
 
-#if TOUCHPAD_SHOW_HIT_ZONES
+#ifdef TOUCHPAD_SHOW_HIT_ZONES
     // debug: mark every diamond's center hit-zone. Drawn before the fill
     // below so a filled diamond's marker gets painted over (hidden), while
     // still drawn before the grid lines so those remain visible on top of
@@ -492,8 +481,12 @@ static void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
             touchpad_test_v2_diamond_center(m, k, &cx, &cy);
             // loose reject, purely to skip cells far outside the visible area;
             // the full-canvas mask below cleans up any remaining overshoot
-            if(cx < box_x0 - TOUCHPAD_GRID_PITCH || cx > box_x1 + TOUCHPAD_GRID_PITCH) continue;
-            if(cy < box_y0 - TOUCHPAD_GRID_PITCH || cy > box_y1 + TOUCHPAD_GRID_PITCH) continue;
+            if(cx < box_x0 - TOUCHPAD_GRID_PITCH || cx > box_x1 + TOUCHPAD_GRID_PITCH) {
+                continue;
+            }
+            if(cy < box_y0 - TOUCHPAD_GRID_PITCH || cy > box_y1 + TOUCHPAD_GRID_PITCH) {
+                continue;
+            }
             touchpad_test_v2_draw_zone_marker(model->canvas, cx, cy, color_black);
         }
     }
@@ -515,27 +508,17 @@ static void touchpad_test_v2_app_update_frame(TouchpadTestModel* model) {
             model->canvas, c_slash0 + n * TOUCHPAD_GRID_PITCH, box_x0, box_y0, box_x1, box_y1, color_gray);
     }
 
-    // the grid/fills above were only clipped to the bounding box (or not at
-    // all, for edge diamonds whose fill spills past it); mask the whole
-    // canvas back to the background color outside the true capsule outline,
-    // so anything drawn anywhere gets cleaned up regardless of how far it
-    // overshoots
     Color* data = canvas_get_data(model->canvas);
     size_t canvas_width = canvas_get_width(model->canvas);
     size_t canvas_height = canvas_get_height(model->canvas);
     for(size_t y = 0; y < canvas_height; y++) {
         for(size_t x = 0; x < canvas_width; x++) {
-            if(!touchpad_test_v2_oval_contains((int32_t)x, (int32_t)y)) data[y * canvas_width + x] = 0xFF;
+            if(!touchpad_test_v2_oval_contains((int32_t)x, (int32_t)y)) {
+                data[y * canvas_width + x] = 0xFF;
+            }
         }
     }
 
-    // capsule outline (drawn last so the mask above doesn't eat into it);
-    // drawn bolder once every diamond has been filled ("test ok"). The
-    // border_width param to render_draw_round_rectangle only thickens the
-    // straight top/bottom edges - its rounded corners are drawn via
-    // render_draw_arc, which always renders 1px regardless of border_width.
-    // So for a uniformly thick outline we instead stack several 1px-wide
-    // capsules, each inset by one more pixel (radius shrunk to match).
     bool test_ok = model->total_diamond_count > 0 && model->hit_diamond_count >= model->total_diamond_count;
     const int32_t border_thickness = test_ok ? 3 : 1;
     for(int32_t i = 0; i < border_thickness; i++) {
@@ -645,26 +628,15 @@ static void touchpad_test_v2_app_model_push_line(TouchpadTestModel* model, int32
             int32_t cx, cy;
             touchpad_test_v2_diamond_center(m, k, &cx, &cy);
 
-            // Cheap test first: does the segment even cross this cell's hit-zone
-            // box? Only then pay for the expensive reachability check below -
-            // this runs per candidate cell on every touch-move event (up to
-            // ~80 Hz), so order matters.
             const int32_t half = TOUCHPAD_HIT_ZONE_SIZE / 2;
             if(!touchpad_test_v2_segment_intersects_box(
-                   x0, y0, x1, y1, cx - half, cy - half, cx + half, cy + half))
+                   x0, y0, x1, y1, cx - half, cy - half, cx + half, cy + half)) {
                 continue;
+            }
 
-            // edge diamonds (center on/beyond the bounding box) are allowed
-            // to register a hit too: touchpad_test_v2_app_update_frame now
-            // masks the whole canvas against the true capsule outline, so
-            // their fill is cleaned up correctly even if it spills past the
-            // box on the side that's outside the capsule. But reject cells
-            // that aren't reachable at all (touches aren't clamped to the
-            // oval, so a segment can reach a hit-zone that's entirely off
-            // the capsule) - otherwise those inflate hit_diamond_count
-            // without matching anything counted in total_diamond_count,
-            // letting "all filled" fire before every real diamond is hit.
-            if(!touchpad_test_v2_diamond_is_reachable(cx, cy)) continue;
+            if(!touchpad_test_v2_diamond_is_reachable(cx, cy)) {
+                continue;
+            }
 
             bool already_hit = false;
             for(size_t i = 0; i < model->hit_diamond_count; i++) {
@@ -717,35 +689,24 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
                 int32_t x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
                 int32_t y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
 
-                model->touch_on_reset_button = touchpad_test_v2_point_in_reset_button(x, y);
-                if(model->touch_on_reset_button) {
-                    // tapping the on-screen "Clear" button acts the same as pressing the
-                    // InputKey5 physical key: reset the track, don't also start a draw stroke
-                    TouchpadTestLineArray_reset(model->lines);
-                    model->hit_diamond_count = 0;
-                    model->reset_pressed = true;
-                    model->pressed = false;
-                    started_reset = true;
-                } else {
-#if TOUCHPAD_RESET_ON_TOUCH
-                    // start a fresh track on every new touch-down, same as the "Clear" key
-                    TouchpadTestLineArray_reset(model->lines);
-                    model->hit_diamond_count = 0;
+#ifdef TOUCHPAD_RESET_ON_TOUCH
+                // start a fresh track on every new touch-down, same as the 5 key
+                TouchpadTestLineArray_reset(model->lines);
+                model->hit_diamond_count = 0;
 #endif
-                    model->pressed = true;
-                    model->last_x = x;
-                    model->last_y = y;
-#if TOUCHPAD_CLAMP_TO_OVAL
-                    touchpad_test_v2_clamp_to_oval(&model->last_x, &model->last_y);
+                model->pressed = true;
+                model->last_x = x;
+                model->last_y = y;
+#ifdef TOUCHPAD_CLAMP_TO_OVAL
+                touchpad_test_v2_clamp_to_oval(&model->last_x, &model->last_y);
 #endif
-                }
                 model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
                 model->dirty = true;
             },
             false);
-#if TOUCHPAD_RESET_ON_TOUCH
-        // every touch-down already resets (see above); the reset button just
-        // did the same thing again, but only publish Cleared once either way
+#ifdef TOUCHPAD_RESET_ON_TOUCH
+        // every touch-down already resets the track (see above), so publish
+        // Cleared once per touch
         started_reset = true;
 #endif
         if(started_reset) {
@@ -760,20 +721,18 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
             instance->view,
             TouchpadTestModel * model,
             {
-                if(!model->touch_on_reset_button) {
-                    int32_t new_x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
-                    int32_t new_y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
-#if TOUCHPAD_CLAMP_TO_OVAL
-                    touchpad_test_v2_clamp_to_oval(&new_x, &new_y);
+                int32_t new_x = TOUCHPAD_OVAL_MARGIN_X + (event->x - touch_resolution_padding_x) * TOUCHPAD_OVAL_WIDTH / touch_resolution_x;
+                int32_t new_y = TOUCHPAD_OVAL_MARGIN_Y + (event->y - touch_resolution_padding_y) * TOUCHPAD_OVAL_HEIGHT / touch_resolution_y;
+#ifdef TOUCHPAD_CLAMP_TO_OVAL
+                touchpad_test_v2_clamp_to_oval(&new_x, &new_y);
 #endif
-                    if(model->pressed) {
-                        touchpad_test_v2_app_model_push_line(model, model->last_x, model->last_y, new_x, new_y);
-                    }
-                    model->last_x = new_x;
-                    model->last_y = new_y;
-                    model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
-                    model->dirty = true;
+                if(model->pressed) {
+                    touchpad_test_v2_app_model_push_line(model, model->last_x, model->last_y, new_x, new_y);
                 }
+                model->last_x = new_x;
+                model->last_y = new_y;
+                model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
+                model->dirty = true;
             },
             false);
         consumed = true;
@@ -784,10 +743,6 @@ static bool touchpad_test_v2_app_input_touch(InputTouchEvent* event, void* conte
             TouchpadTestModel * model,
             {
                 model->pressed = false;
-                if(model->touch_on_reset_button) {
-                    model->reset_pressed = false;
-                    model->touch_on_reset_button = false;
-                }
                 model->pressure = event->pressure / TOUCHPAD_RESOLUTION_PRESSURE;
                 model->dirty = true;
             },
@@ -809,14 +764,7 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
     instance->event_pubsub = furi_pubsub_alloc();
 
     instance->view = view_alloc();
-    // Locking, not lock-free: the model is written both from view_input[_touch]()
-    // (touchpad_test_v2_app_input[_touch](), called on the GUI thread) and from
-    // the app thread (touchpad_test_v2_app_redraw_timer_callback(), which only
-    // flips model->dirty - the actual canvas render lives in
-    // touchpad_test_v2_app_layout() so it stays on the GUI thread, see there).
-    // With a lock-free model, model->lines (an m-array that reallocs on
-    // growth) could be torn mid-push/mid-read - a real use-after-free, not
-    // just a cosmetic tear.
+
     view_allocate_model(instance->view, ViewModelTypeLocking, sizeof(TouchpadTestModel));
 
     with_view_model(
@@ -829,11 +777,6 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
             model->pressed = false;
             model->hit_diamond_count = 0;
             model->total_diamond_count = touchpad_test_v2_count_total_diamonds();
-            // touchpad_test_v2_app_model_push_line() silently stops recording new
-            // hits past TOUCHPAD_MAX_HIT_DIAMONDS (hit_diamond_cx/cy[] is fixed-size),
-            // so if a geometry change ever raises total_diamond_count past that same
-            // cap, hit_diamond_count could never reach it and "all filled" would
-            // silently stop firing. Catch that here instead, at the source.
             furi_check(model->total_diamond_count <= TOUCHPAD_MAX_HIT_DIAMONDS);
             model->reset_pressed = false;
             model->event_pubsub = instance->event_pubsub;
@@ -853,11 +796,6 @@ static TouchpadTestApp* touchpad_test_v2_app_alloc(void) {
         instance->event_loop, touchpad_test_v2_app_redraw_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
     furi_event_loop_timer_start(instance->redraw_timer, TOUCHPAD_FRAME_INTERVAL_MS);
 
-    // If a previous instance's teardown timed out waiting for a subscriber to
-    // close the record (see touchpad_test_v2_app_free()), the record is still
-    // here with a non-NULL (now orphaned) data pointer, and furi_record_create()
-    // would hit an unexplained furi_check() assert below. Fail loudly with a
-    // clear reason instead.
     if(furi_record_exists(RECORD_TOUCHPAD_TEST)) {
         furi_crash("RECORD_TOUCHPAD_TEST still open from a previous run (a subscriber never closed it in time)");
     }
@@ -870,25 +808,14 @@ static void touchpad_test_v2_app_free(TouchpadTestApp* instance) {
     TouchpadTestEvent ended_evt = {.tp_status = TouchpadTestStatusEnded};
     furi_pubsub_publish(instance->event_pubsub, &ended_evt);
 
-    // Give subscribers (e.g. a CLI dump command running on its own thread) a
-    // chance to react to the "Ended" event and unsubscribe + furi_record_close()
-    // before we tear down the pubsub. furi_record_destroy() only succeeds once
-    // nobody still holds the record open, and furi_pubsub_free() requires an
-    // empty subscriber list - without this wait, both would race a subscriber
-    // that hasn't had a chance to run yet and furi_check() would crash.
-    // Budget is generous (3s) because a subscriber may itself be printing one
-    // line per event to a CLI pipe (up to ~50 diamonds) before it gets to
-    // unsubscribe, and a slow/blocked console host can stall that.
     bool record_destroyed = false;
     for(int i = 0; i < 300 && !record_destroyed; i++) {
         record_destroyed = furi_record_destroy(RECORD_TOUCHPAD_TEST);
-        if(!record_destroyed) furi_delay_ms(10);
+        if(!record_destroyed) {
+            furi_delay_ms(10);
+        }
     }
     if(!record_destroyed) {
-        // Leaving the record behind with a non-NULL data pointer would crash
-        // the *next* launch's furi_record_create() with an unexplained assert
-        // (see the furi_record_exists() check in touchpad_test_v2_app_alloc());
-        // fail loudly here instead, where the cause is clear.
         furi_crash("RECORD_TOUCHPAD_TEST still held by a subscriber after timeout");
     }
 

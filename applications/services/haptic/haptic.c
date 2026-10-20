@@ -233,7 +233,7 @@ bool haptic_play_effect(Haptic* instance, Drv2605lEffect effect_index, uint32_t 
             .as.play_effect =
                 {
                     .effect_index = effect_index,
-                    .time_ms = time_ms <= 1 ? HAPTIC_TIMEOUT_OFF_MS : time_ms,
+                    .time_ms = time_ms < HAPTIC_MIN_PLAYBACK_DURATION_MS ? HAPTIC_TIMEOUT_OFF_MS : time_ms,
                 },
         };
 
