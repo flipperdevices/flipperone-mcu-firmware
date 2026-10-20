@@ -46,13 +46,17 @@ static LoadImageTestReadFrameStatus load_image_test_read_frame(PipeSide* pipe, u
     uint32_t last_progress = furi_get_tick();
 
     while(true) {
-        if(pipe_state(pipe) == PipeStateBroken) return LoadImageTestReadFrameBroken;
+        if(pipe_state(pipe) == PipeStateBroken) {
+            return LoadImageTestReadFrameBroken;
+        }
 
         size_t avail = pipe_bytes_available(pipe);
         if(avail == 0) {
             if(aborted) {
                 if(furi_get_tick() - last_progress >= furi_ms_to_ticks(LOAD_IMAGE_TEST_ABORT_DRAIN_MS)) {
-                    if(out_hex_chars) *out_hex_chars = hex_chars;
+                    if(out_hex_chars) {
+                        *out_hex_chars = hex_chars;
+                    }
                     return LoadImageTestReadFrameAborted;
                 }
 
@@ -60,7 +64,9 @@ static LoadImageTestReadFrameStatus load_image_test_read_frame(PipeSide* pipe, u
                 continue;
             }
             if(furi_get_tick() - last_progress >= furi_ms_to_ticks(LOAD_IMAGE_TEST_STALL_TIMEOUT_MS)) {
-                if(out_hex_chars) *out_hex_chars = hex_chars;
+                if(out_hex_chars) {
+                    *out_hex_chars = hex_chars;
+                }
                 return LoadImageTestReadFrameTimeout;
             }
 
@@ -71,7 +77,9 @@ static LoadImageTestReadFrameStatus load_image_test_read_frame(PipeSide* pipe, u
 
         size_t to_read = MIN(avail, sizeof(chunk));
         size_t got = pipe_receive(pipe, chunk, to_read);
-        if(got < to_read) return LoadImageTestReadFrameBroken;
+        if(got < to_read) {
+            return LoadImageTestReadFrameBroken;
+        }
 
         for(size_t i = 0; i < got; i++) {
             uint8_t ch = chunk[i];
@@ -80,17 +88,31 @@ static LoadImageTestReadFrameStatus load_image_test_read_frame(PipeSide* pipe, u
                 continue;
             }
             if(ch == '\n') {
-                if(hex_chars == 0 && !aborted) continue; // stray blank line; keep waiting for the real one
-                if(out_hex_chars) *out_hex_chars = hex_chars;
-                if(aborted) return LoadImageTestReadFrameAborted;
-                if(bad_hex) return LoadImageTestReadFrameBadHex;
-                if(hex_chars != frame_size * 2) return LoadImageTestReadFrameWrongLength;
+                if(hex_chars == 0 && !aborted) {
+                    continue; // stray blank line; keep waiting for the real one
+                }
+                if(out_hex_chars) {
+                    *out_hex_chars = hex_chars;
+                }
+                if(aborted) {
+                    return LoadImageTestReadFrameAborted;
+                }
+                if(bad_hex) {
+                    return LoadImageTestReadFrameBadHex;
+                }
+                if(hex_chars != frame_size * 2) {
+                    return LoadImageTestReadFrameWrongLength;
+                }
                 return LoadImageTestReadFrameOk;
             }
-            if(ch == '\r') continue;
+            if(ch == '\r') {
+                continue;
+            }
 
             hex_chars++;
-            if(aborted || bad_hex) continue; // this line's already invalid/abandoned; keep draining to '\n'
+            if(aborted || bad_hex) {
+                continue; // this line's already invalid/abandoned; keep draining to '\n'
+            }
 
             if(!have_pending_nibble) {
                 pending_nibble = (char)ch;
@@ -104,7 +126,9 @@ static LoadImageTestReadFrameStatus load_image_test_read_frame(PipeSide* pipe, u
                 bad_hex = true;
                 continue;
             }
-            if(byte_count < frame_size) frame[byte_count] = byte;
+            if(byte_count < frame_size) {
+                frame[byte_count] = byte;
+            }
             byte_count++;
         }
     }
@@ -121,7 +145,9 @@ static LoadImageTestReadFrameStatus load_image_test_wait_for_stop(PipeSide* pipe
     uint32_t last_keepalive = furi_get_tick();
 
     while(true) {
-        if(pipe_state(pipe) == PipeStateBroken) return LoadImageTestReadFrameBroken;
+        if(pipe_state(pipe) == PipeStateBroken) {
+            return LoadImageTestReadFrameBroken;
+        }
 
         if(furi_get_tick() - last_keepalive >= furi_ms_to_ticks(LOAD_IMAGE_TEST_KEEPALIVE_MS)) {
             gui_push_frame(gui, frame);
@@ -134,8 +160,12 @@ static LoadImageTestReadFrameStatus load_image_test_wait_for_stop(PipeSide* pipe
         }
 
         int ch = getchar();
-        if(ch == EOF) return LoadImageTestReadFrameBroken;
-        if(ch == CliKeyETX) return LoadImageTestReadFrameAborted;
+        if(ch == EOF) {
+            return LoadImageTestReadFrameBroken;
+        }
+        if(ch == CliKeyETX) {
+            return LoadImageTestReadFrameAborted;
+        }
     }
 }
 
