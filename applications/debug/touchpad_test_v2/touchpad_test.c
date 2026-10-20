@@ -10,7 +10,6 @@
 // additionally clamp mapped touch points to the capsule outline (so touches near
 // the rounded ends can't land in the corners of its bounding box); when the macro
 // is not defined, coordinates are only mapped into the oval's bounding box.
-#define TOUCHPAD_CLAMP_TO_OVAL
 
 // Define TOUCHPAD_SHOW_HIT_ZONES to draw a marker outline at every diamond's
 // center hit-zone; purely a debug visualization, the gray-fill-on-hit behavior
@@ -21,7 +20,6 @@
 // "Clear" first, so the test restarts from scratch on each touch; when the macro
 // is not defined, the track keeps accumulating across touches (only the
 // "Clear"/5 key resets it).
-#define TOUCHPAD_RESET_ON_TOUCH
 
 #define TOUCHPAD_TARGET_FPS (60)
 #define TOUCHPAD_FRAME_INTERVAL_MS (1000 / TOUCHPAD_TARGET_FPS)
