@@ -40,11 +40,27 @@ typedef enum {
     DisplayTestPatternCount,
 } DisplayTestPattern;
 
+// The left/right keys and the PTT key walk different pattern sequences
+typedef enum {
+    DisplayTestSequenceLeftRight,
+    DisplayTestSequencePtt,
+} DisplayTestSequence;
+
+typedef struct {
+    DisplayTestSequence sequence;
+    int32_t delta;
+} DisplayTestInput;
+
 typedef struct {
     Canvas* canvas;
     Image image;
 
     DisplayTestPattern pattern;
+
+    // Independent cursor per input sequence, so each one keeps its own position
+    size_t pattern_index_left_right;
+    size_t pattern_index_ptt;
+
     bool dirty;
 
     // Square position in fixed point, velocity in fixed point px per frame
@@ -99,6 +115,40 @@ static uint32_t display_test_pattern_fps(DisplayTestPattern pattern) {
 static bool display_test_pattern_inverted(DisplayTestPattern pattern) {
     return pattern >= DisplayTestPatternBounceInverted15 && pattern <= DisplayTestPatternBounceInvertedUnlimited;
 }
+
+// Patterns reachable with the left/right keys
+static const DisplayTestPattern display_test_patterns_left_right[] = {
+    DisplayTestPatternBlack,
+    DisplayTestPatternWhite,
+    DisplayTestPatternVerticalEven,
+    DisplayTestPatternVerticalOdd,
+    DisplayTestPatternHorizontalEven,
+    DisplayTestPatternHorizontalOdd,
+    DisplayTestPatternDiagonalRight,
+    DisplayTestPatternDiagonalLeft,
+    DisplayTestPatternBounce15,
+    DisplayTestPatternBounce30,
+    DisplayTestPatternBounce60,
+    DisplayTestPatternBounceUnlimited,
+    DisplayTestPatternBounceInverted15,
+    DisplayTestPatternBounceInverted30,
+    DisplayTestPatternBounceInverted60,
+    DisplayTestPatternBounceInvertedUnlimited,
+};
+
+// Patterns reachable with the PTT key
+static const DisplayTestPattern display_test_patterns_ptt[] = {
+    DisplayTestPatternBlack,
+    DisplayTestPatternWhite,
+    DisplayTestPatternVerticalEven,
+    DisplayTestPatternVerticalOdd,
+    DisplayTestPatternHorizontalEven,
+    DisplayTestPatternHorizontalOdd,
+    DisplayTestPatternDiagonalRight,
+    DisplayTestPatternDiagonalLeft,
+    DisplayTestPatternBounce60,
+    DisplayTestPatternBounceInverted60,
+};
 
 static void display_test_draw_static(DisplayTestModel* model) {
     Color* data = canvas_get_data(model->canvas);
@@ -270,7 +320,8 @@ static bool display_test_layout(void* _model) {
                             .attachTo = CLAY_ATTACH_TO_PARENT,
                         },
                 }) {
-                CLAY_TEXT(clay_helper_string_from_chars(model->fps_text), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = inverted ? COLOR_BLACK : COLOR_WHITE}));
+                CLAY_TEXT(
+                    clay_helper_string_from_chars(model->fps_text), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = inverted ? COLOR_BLACK : COLOR_WHITE}));
             }
         }
     }
@@ -315,23 +366,39 @@ static void display_test_frame_timer_callback(void* context) {
     furi_check(context);
     DisplayTest* instance = context;
 
-    with_view_model(
-        instance->view,
-        DisplayTestModel * model,
-        { model->dirty = true; },
-        true);
+    with_view_model(instance->view, DisplayTestModel * model, { model->dirty = true; }, true);
 
     display_test_frame_schedule(instance);
 }
 
-static void display_test_pattern_switch(DisplayTest* instance, int32_t delta) {
+static void display_test_pattern_switch(DisplayTest* instance, DisplayTestInput input) {
     uint32_t fps = 0;
 
     with_view_model(
         instance->view,
         DisplayTestModel * model,
         {
-            model->pattern = (model->pattern + DisplayTestPatternCount + delta) % DisplayTestPatternCount;
+            const DisplayTestPattern* patterns;
+            size_t patterns_count;
+            size_t* index;
+
+            if(input.sequence == DisplayTestSequencePtt) {
+                patterns = display_test_patterns_ptt;
+                patterns_count = COUNT_OF(display_test_patterns_ptt);
+                index = &model->pattern_index_ptt;
+            } else {
+                patterns = display_test_patterns_left_right;
+                patterns_count = COUNT_OF(display_test_patterns_left_right);
+                index = &model->pattern_index_left_right;
+            }
+
+            if(input.delta > 0) {
+                *index = (*index + 1) % patterns_count;
+            } else {
+                *index = (*index + patterns_count - 1) % patterns_count;
+            }
+
+            model->pattern = patterns[*index];
             model->dirty = true;
             fps = display_test_pattern_fps(model->pattern);
             if(fps) {
@@ -356,10 +423,10 @@ static void display_test_pattern_switch(DisplayTest* instance, int32_t delta) {
 static void display_test_input_queue_callback(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     DisplayTest* instance = context;
-    int32_t delta;
+    DisplayTestInput input;
 
-    while(furi_message_queue_get(object, &delta, 0) == FuriStatusOk) {
-        display_test_pattern_switch(instance, delta);
+    while(furi_message_queue_get(object, &input, 0) == FuriStatusOk) {
+        display_test_pattern_switch(instance, input);
     }
 }
 
@@ -375,15 +442,19 @@ static bool display_test_input(InputEvent* event, void* context) {
         }
     } else if(event->type == InputTypePress || event->type == InputTypeRepeat) {
         // Timer belongs to the app thread, so pattern switching is forwarded there
-        int32_t delta = 0;
-        if(event->key == InputKeyRight || event->key == InputKeyUp) {
-            delta = 1;
-        } else if(event->key == InputKeyLeft || event->key == InputKeyDown) {
-            delta = -1;
+        DisplayTestInput input = {.sequence = DisplayTestSequenceLeftRight, .delta = 0};
+        if(event->key == InputKeyRight) {
+            input.delta = 1;
+        } else if(event->key == InputKeyLeft) {
+            input.delta = -1;
+        } else if(event->key == InputKeyPtt && event->type == InputTypePress) {
+            // PTT advances its own sequence and does not repeat while held
+            input.sequence = DisplayTestSequencePtt;
+            input.delta = 1;
         }
 
-        if(delta) {
-            furi_message_queue_put(instance->input_queue, &delta, 0);
+        if(input.delta) {
+            furi_message_queue_put(instance->input_queue, &input, 0);
             consumed = true;
         }
     }
@@ -407,7 +478,7 @@ static DisplayTest* display_test_alloc(void) {
     instance->thread = furi_thread_get_current();
 
     instance->frame_timer = furi_event_loop_timer_alloc(instance->event_loop, display_test_frame_timer_callback, FuriEventLoopTimerTypeOnce, instance);
-    instance->input_queue = furi_message_queue_alloc(DISPLAY_TEST_MESSAGE_QUEUE_SIZE, sizeof(int32_t));
+    instance->input_queue = furi_message_queue_alloc(DISPLAY_TEST_MESSAGE_QUEUE_SIZE, sizeof(DisplayTestInput));
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->input_queue, FuriEventLoopEventIn, display_test_input_queue_callback, instance);
 
     instance->view = view_alloc();
@@ -422,6 +493,9 @@ static DisplayTest* display_test_alloc(void) {
             model->canvas = canvas_alloc(width, height);
             model->image = canvas_to_image(model->canvas);
             model->pattern = DisplayTestPatternBlack;
+            // Both sequences start on Black, which is their first entry
+            model->pattern_index_left_right = 0;
+            model->pattern_index_ptt = 0;
             model->dirty = true;
             model->square_dx = 1;
             model->square_dy = 1;
