@@ -570,6 +570,24 @@ Bq25792Status bq25792_ico_enable(Bq25792* instance, bool enable) {
     return res;
 }
 
+Bq25792Status bq25792_vbus_pulldown_enable(Bq25792* instance, bool enable) {
+    furi_check(instance);
+    Bq25792Status res = Bq25792StatusUnknown;
+    Bq25792TemperatureControlRegBits temperature_control = {0};
+    do {
+        res = bq25792_read_reg8(instance, Bq25792RegTemperatureControl, (uint8_t*)&temperature_control);
+        if(res != Bq25792StatusOk) {
+            break;
+        }
+        temperature_control.vbus_pd_en = enable ? 1 : 0;
+        res = bq25792_write_reg8(instance, Bq25792RegTemperatureControl, *(uint8_t*)&temperature_control);
+    } while(0);
+    if(res != Bq25792StatusOk) {
+        FURI_LOG_E(TAG, "Failed to set VBUS pull-down!");
+    }
+    return res;
+}
+
 Bq25792Status bq25792_charge_is_enabled(Bq25792* instance, bool* enabled) {
     furi_check(instance);
     furi_check(enabled);

@@ -38,6 +38,11 @@ static void vbus_source_set(void* ctx, bool enable) {
     }
 }
 
+static void vbus_discharge_set(void* ctx, bool enable) {
+    Power* power = ctx;
+    power_bq25792_vbus_pulldown_enable(power, enable);
+}
+
 static bool power_supply_set(void* ctx, uint16_t mv, uint16_t ma) {
     Power* power = ctx;
     return power_bq25792_set_otg_params(power, mv, ma);
@@ -53,6 +58,9 @@ void example(void) {
 
     config.callback_context = furi_record_open(RECORD_POWER);
     config.vbus_source_set = vbus_source_set;
+    // Optional: bleeds VBUS to vSafe0V after OTG goes off in a PR_Swap.
+    // bq25792's internal 6 kOhm pull-down does for partners without a bleed.
+    config.vbus_discharge_set = vbus_discharge_set;
     config.power_supply_set = power_supply_set;
     config.ucsi_alert = ucsi_alert;
 

@@ -88,6 +88,12 @@ typedef struct {
  * Called from the worker thread. */
 typedef void (*UsbPdVbusSourceFn)(void* context, bool enable);
 
+/** Enable/disable a discharge path on VBUS. Optional. Used only while a
+ * source→sink PR_Swap waits for VBUS to drain to vSafe0V after
+ * vbus_source_set(false): switched on at that point and off again once VBUS
+ * is low or the wait gave up. Called from the worker thread. */
+typedef void (*UsbPdVbusDischargeFn)(void* context, bool enable);
+
 /** Program the source supply to the requested voltage/current.
  * Called from the worker thread. Return false on failure — the PE will
  * treat it as a hard error on the contract.
@@ -137,6 +143,7 @@ typedef struct {
     /* --- Power path (product-specific, hence callbacks) --- */
     void* callback_context;
     UsbPdVbusSourceFn vbus_source_set; /**< Required. */
+    UsbPdVbusDischargeFn vbus_discharge_set; /**< Optional. */
     UsbPdPowerSupplySetFn power_supply_set; /**< Required. */
     UsbPdHasAltPowerFn has_alt_power; /**< Optional. */
     UsbPdSinkCurrentLimitFn sink_current_limit_set; /**< Optional but strongly advised. */

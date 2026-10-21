@@ -141,6 +141,11 @@ static void usb_pd_hal_vbus_source(void* context, bool enable) {
     instance->config.vbus_source_set(instance->config.callback_context, enable);
 }
 
+static void usb_pd_hal_vbus_discharge(void* context, bool enable) {
+    UsbPd* instance = context;
+    instance->config.vbus_discharge_set(instance->config.callback_context, enable);
+}
+
 static UcsiPpmStatus usb_pd_hal_power_supply_set(void* context, uint16_t voltage_mv, uint16_t current_limit_ma) {
     UsbPd* instance = context;
     if(!instance->config.power_supply_set(instance->config.callback_context, voltage_mv, current_limit_ma)) {
@@ -199,6 +204,8 @@ static void usb_pd_fill_ppm_config(UsbPd* instance, UcsiPpmConfig* out) {
     out->i2c_write = usb_pd_hal_i2c_write;
     out->i2c_write_read = usb_pd_hal_i2c_write_read;
     out->gpio_write_vbus_source = usb_pd_hal_vbus_source;
+    // Optional on both sides: the core skips the discharge when it is NULL.
+    out->gpio_write_vbus_discharge = instance->config.vbus_discharge_set ? usb_pd_hal_vbus_discharge : NULL;
     out->power_supply_set = usb_pd_hal_power_supply_set;
     out->has_alt_power = usb_pd_hal_has_alt_power;
     out->sink_current_limit = usb_pd_hal_sink_current_limit;

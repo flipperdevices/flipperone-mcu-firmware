@@ -79,6 +79,12 @@ Bq25792Status bq25792_clear_charger_fault(Bq25792* instance, Bq25792FaultStatusR
 Bq25792Status bq25792_get_charger_irq_flags(Bq25792* instance, Bq25792ChargerFlagReg* irq_flags);
 Bq25792Status bq25792_adc_enable(Bq25792* instance, bool enable);
 Bq25792Status bq25792_otg_enable(Bq25792* instance, bool enable);
+
+/** REG16.VBUS_PD_EN: the internal 6 kΩ pull-down on VBUS. Off by default and
+ * after REG_RST. Meant for bleeding VBUS down to vSafe0V after OTG is turned
+ * off (PD PR_Swap source→sink); at 5 V it sinks ~0.8 mA, so it is slow for
+ * large bulk capacitance and must be switched off again once VBUS is low. */
+Bq25792Status bq25792_vbus_pulldown_enable(Bq25792* instance, bool enable);
 Bq25792Status bq25792_get_otg_voltage_mv(Bq25792* instance, uint16_t* otg_voltage);
 Bq25792Status bq25792_set_otg_voltage_mv(Bq25792* instance, uint16_t otg_voltage);
 Bq25792Status bq25792_get_otg_current_ma(Bq25792* instance, uint16_t* otg_current);

@@ -145,6 +145,20 @@ static bool pd_has_alt_power(void* context) {
     return instance->alt_power_ok;
 }
 
+// UsbPd worker thread, same as pd_vbus_source_set and with the same blocking
+// trip to the power service. Only ever called inside a source→sink PR_Swap,
+// between OTG going off and VBUS reaching vSafe0V, when the partner is
+// waiting on our PS_RDY and nothing on the bus needs servicing. The bq25792
+// pull-down is 6 kΩ — ~0.8 mA at 5 V — so this helps a partner without a
+// bleed of its own but is no substitute for one on large bulk capacitance.
+static void pd_vbus_discharge_set(void* context, bool enable) {
+    Pd* instance = context;
+    FURI_LOG_I(TAG, "vbus discharge %s", enable ? "on" : "off");
+    if(!power_bq25792_vbus_pulldown_enable(instance->power, enable)) {
+        FURI_LOG_W(TAG, "vbus pull-down %s failed", enable ? "on" : "off");
+    }
+}
+
 static bool pd_power_supply_set(void* context, uint16_t voltage_mv, uint16_t current_limit_ma) {
     Pd* instance = context;
     FURI_LOG_I(TAG, "supply %u mV %u mA", voltage_mv, current_limit_ma);
@@ -364,6 +378,7 @@ static void pd_config_fill(Pd* instance, UsbPdConfig* config) {
 
     config->callback_context = instance;
     config->vbus_source_set = pd_vbus_source_set;
+    config->vbus_discharge_set = pd_vbus_discharge_set;
     config->power_supply_set = pd_power_supply_set;
     config->sink_current_limit_set = pd_sink_current_limit_set;
     config->has_alt_power = pd_has_alt_power;

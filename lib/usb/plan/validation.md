@@ -452,7 +452,12 @@ Findings собраны в порядке: документ-для-апдейт�
 
 - **F3.3** — Реальные тайминги SinkWaitCapTimer (некоторые chargers медленнее spec). Откладывается на тестирование.
 - **F6.3** — VBUS bounce timing в Hard Reset (tSrcRecover) — сверить с USB Type-C spec.
-- **F8.2** — Стратегия discharge (external vs none) — design decision.
+- **F8.2** — Стратегия discharge (external vs none) — ✅ решено: внутренний
+  pull-down bq25792 6 кОм (`REG16.VBUS_PD_EN`) через хук
+  `gpio_write_vbus_discharge`, включается только в PR_Swap source→sink между
+  выключением OTG и vSafe0V. При 5 В это ~0.8 мА: для ёмкости ~20 мкФ около
+  220 мс, для 50 мкФ около 540 мс при бюджете tSafe0V 650 мс. Партнёр с
+  собственным bleed (ноутбук на стенде: 4 мс) разряжает быстрее сам.
 
 ---
 
