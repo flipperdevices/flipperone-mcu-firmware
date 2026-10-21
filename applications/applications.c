@@ -314,6 +314,9 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
         .callback = load_image_test_command_cli,
         .name = "load_image_test",
         .stack_size = 1024 * 4,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
         .callback = hmi_test_command_cli,
         .name = "hmi_test",
         .stack_size = 1024 * 2,
