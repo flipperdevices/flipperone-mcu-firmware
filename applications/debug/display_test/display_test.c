@@ -40,7 +40,6 @@ typedef enum {
     DisplayTestPatternCount,
 } DisplayTestPattern;
 
-// The left/right keys and the PTT key walk different pattern sequences
 typedef enum {
     DisplayTestSequenceLeftRight,
     DisplayTestSequencePtt,
@@ -462,15 +461,6 @@ static bool display_test_input(InputEvent* event, void* context) {
     return consumed;
 }
 
-static bool display_test_input_touch(InputTouchEvent* event, void* context) {
-    furi_check(context);
-    DisplayTest* instance = context;
-    UNUSED(event);
-    UNUSED(instance);
-
-    return false;
-}
-
 static DisplayTest* display_test_alloc(void) {
     DisplayTest* instance = malloc(sizeof(DisplayTest));
     instance->gui = furi_record_open(RECORD_GUI);
@@ -504,7 +494,6 @@ static DisplayTest* display_test_alloc(void) {
 
     view_set_layout_callback(instance->view, display_test_layout);
     view_set_input_callback(instance->view, display_test_input, instance);
-    view_set_input_touch_callback(instance->view, display_test_input_touch, instance);
     gui_add_view(instance->gui, instance->view, GuiViewPriorityApplication);
     return instance;
 }
