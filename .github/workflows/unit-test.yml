@@ -66,12 +66,9 @@ jobs:
         run: python3 scripts/testops.py sanity --commit "$BUILD_COMMIT" --target "$FW_TARGET"
       - name: Run units
         run: python3 scripts/testops.py unit-tests
-      - name: Collect stand logs
-        if: always()
-        run: |
-          mkdir -p test-results/stand-logs
-          cp -R "${FO_LOG_DIR:?Stand log directory is not set}/." test-results/stand-logs/
-      - name: Save flash verification and runner logs
+      # Continuous stand UART streams stay on the host. testops writes its
+      # command-specific MCU transcripts and results directly to test-results.
+      - name: Save flash verification and MCU test logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
