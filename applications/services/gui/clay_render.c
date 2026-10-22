@@ -1,11 +1,12 @@
 #include <furi.h>
+#include <string.h>
 #include "clay_render.h"
 #include "font/font_render.h"
 #include "font/fonts.h"
 
 #define TAG "Render"
 
-#define CANARY_VALUE 0xDEADBEEF
+#define CANARY_VALUE ((uint32_t)0xDEADBEEF)
 
 #ifdef RENDER_DEBUG_ENABLE
 #define RENDER_DEBUG(...) FURI_LOG_I(__VA_ARGS__)
@@ -14,9 +15,9 @@
 #endif
 
 struct Canvas {
-    uint32_t* canary_pre;
+    uint8_t* canary_pre;
     Color* data;
-    uint32_t* canary_post;
+    uint8_t* canary_post;
 
     size_t width;
     size_t height;
@@ -178,11 +179,89 @@ static inline void render_draw_circle_filled(Canvas* canvas, int32_t xc, int32_t
     }
 }
 
-static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, float deg_start, float deg_stop, ColorA color) {
+/*
+ * Fast-path helpers for 90-degree quadrant arcs (used by rounded rectangles).
+ *
+ * The original implementation computed atan2f()/fmodf() for every pixel/point,
+ * which is very expensive on the MCU (soft-libm calls, ~200-500 cycles each).
+ * Since all rounded-rectangle arcs are exact 90-degree quadrants, we can draw
+ * them with integer midpoint arithmetic (draw outline) or per-row sqrtf
+ * (fill) — producing byte-identical output but at a fraction of the cost.
+ */
+
+/** Detect an exact 90-degree quadrant arc. Returns false for any other arc. */
+static inline bool render_arc_is_quadrant(float deg_start, float deg_stop, int32_t* quad_out) {
+    // Must align to 90-degree boundaries and span exactly 90 degrees
+    if(fabsf(fmodf(deg_start, 90.0f)) > 0.001f) return false;
+    if(fabsf(fmodf(deg_stop, 90.0f)) > 0.001f) return false;
+    float span = fmodf(deg_stop - deg_start + 360.0f, 360.0f);
+    if(fabsf(span - 90.0f) > 0.001f) return false;
+    // Quadrant: 0=BR (0-90), 1=BL (90-180), 2=TL (180-270), 3=TR (270-360)
+    *quad_out = ((int32_t)(deg_start / 90.0f + 0.5f)) % 4;
+    return true;
+}
+
+/** Draw an arc outline using midpoint circle + direct quadrant point selection. */
+static inline void render_draw_arc_quadrant(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, int32_t quad, ColorA color) {
     int32_t x = 0;
     int32_t y = r;
     int32_t d = 3 - 2 * r;
+    while(x <= y) {
+        switch(quad) {
+        case 0: /* BR 0-90 */
+            render_set_pixel(canvas, xc + x, yc + y, color);
+            render_set_pixel(canvas, xc + y, yc + x, color);
+            break;
+        case 1: /* BL 90-180 */
+            render_set_pixel(canvas, xc - x, yc + y, color);
+            render_set_pixel(canvas, xc - y, yc + x, color);
+            break;
+        case 2: /* TL 180-270 */
+            render_set_pixel(canvas, xc - x, yc - y, color);
+            render_set_pixel(canvas, xc - y, yc - x, color);
+            break;
+        default: /* TR 270-360 */
+            render_set_pixel(canvas, xc + x, yc - y, color);
+            render_set_pixel(canvas, xc + y, yc - x, color);
+            break;
+        }
+        if(d < 0) {
+            d = d + 4 * x + 6;
+        } else {
+            d = d + 4 * (x - y) + 10;
+            y--;
+        }
+        x++;
+    }
+}
 
+/** Fill a 90-degree quadrant sector using per-row sqrtf (no trig). */
+static inline void render_fill_arc_quadrant(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, int32_t quad, ColorA color) {
+    const int32_t r2 = r * r;
+    for(int32_t y = 0; y <= r; y++) {
+        int32_t x_ext = (int32_t)sqrtf((float)(r2 - y * y));
+        switch(quad) {
+        case 0: /* BR 0-90: x>=0, y>=0 */
+            for(int32_t x = 0; x <= x_ext; x++)
+                render_set_pixel(canvas, xc + x, yc + y, color);
+            break;
+        case 1: /* BL 90-180: x<=0, y>=0 */
+            for(int32_t x = 0; x <= x_ext; x++)
+                render_set_pixel(canvas, xc - x, yc + y, color);
+            break;
+        case 2: /* TL 180-270: x<=0, y<=0 */
+            for(int32_t x = 0; x <= x_ext; x++)
+                render_set_pixel(canvas, xc - x, yc - y, color);
+            break;
+        default: /* TR 270-360: x>=0, y<=0 */
+            for(int32_t x = 0; x <= x_ext; x++)
+                render_set_pixel(canvas, xc + x, yc - y, color);
+            break;
+        }
+    }
+}
+
+static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32_t r, float deg_start, float deg_stop, ColorA color) {
     // Normalize angles to [0, 360)
     while(deg_start < 0)
         deg_start += 360.0f;
@@ -191,6 +270,16 @@ static inline void render_draw_arc(Canvas* canvas, int32_t xc, int32_t yc, int32
     deg_start = fmodf(deg_start, 360.0f);
     deg_stop = fmodf(deg_stop, 360.0f);
 
+    int32_t quad;
+    if(render_arc_is_quadrant(deg_start, deg_stop, &quad)) {
+        render_draw_arc_quadrant(canvas, xc, yc, r, quad, color);
+        return;
+    }
+
+    // General path (arbitrary angles) — kept for full functionality
+    int32_t x = 0;
+    int32_t y = r;
+    int32_t d = 3 - 2 * r;
     while(x <= y) {
         // 8 octant points
         int32_t points[8][2] = {
@@ -239,6 +328,13 @@ static inline void render_fill_arc(Canvas* canvas, int32_t xc, int32_t yc, int32
     deg_start = fmodf(deg_start, 360.0f);
     deg_stop = fmodf(deg_stop, 360.0f);
 
+    int32_t quad;
+    if(render_arc_is_quadrant(deg_start, deg_stop, &quad)) {
+        render_fill_arc_quadrant(canvas, xc, yc, r, quad, color);
+        return;
+    }
+
+    // General path (arbitrary angles) — kept for full functionality
     for(int32_t y = -r; y <= r; y++) {
         for(int32_t x = -r; x <= r; x++) {
             int32_t dx = x;
@@ -474,10 +570,35 @@ static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderD
     const uint8_t* data = image->data;
     switch(image->format) {
     case ImageFormatRawGray8: {
-        for(uint32_t y = 0; y < MIN(image->height, bb->height); y++) {
-            for(uint32_t x = 0; x < MIN(image->width, bb->width); x++) {
-                uint8_t pixel = data[y * image->width + x];
-                render_set_pixel(canvas, bb->x + x, bb->y + y, (ColorA){.color = pixel, .alpha = 255});
+        // Clip source dimensions to the target bounding box
+        int32_t src_w = (int32_t)MIN(image->width, bb->width);
+        int32_t src_h = (int32_t)MIN(image->height, bb->height);
+        int32_t dst_x0 = (int32_t)bb->x;
+        int32_t dst_y0 = (int32_t)bb->y;
+
+        /*
+         * Fast path (no scissor clipping needed):
+         *
+         * The source image is grayscale (1 byte/pixel) and fully opaque
+         * (alpha = 255).  Since no alpha blending is required we can
+         * memcpy entire rows at once — much faster than calling
+         * render_set_pixel() once per pixel (which does bounds checks
+         * and blending math even for opaque pixels).
+         *
+         * Slow path (with scissor clipping):
+         * Fall back to pixel-by-pixel rendering which respects the
+         * scissor rectangle.
+         */
+        if(dst_x0 >= canvas->scissors_x0 && dst_y0 >= canvas->scissors_y0 && dst_x0 + src_w <= canvas->scissors_x1 && dst_y0 + src_h <= canvas->scissors_y1) {
+            for(int32_t y = 0; y < src_h; y++) {
+                memcpy(&canvas->data[(dst_y0 + y) * canvas->width + dst_x0], &data[y * image->width], src_w);
+            }
+        } else {
+            for(int32_t y = 0; y < src_h; y++) {
+                for(int32_t x = 0; x < src_w; x++) {
+                    uint8_t pixel = data[y * image->width + x];
+                    render_set_pixel(canvas, dst_x0 + x, dst_y0 + y, (ColorA){.color = pixel, .alpha = 255});
+                }
             }
         }
         break;
@@ -592,12 +713,14 @@ void canvas_init(void) {
 
 static Canvas* canvas_alloc_in_place_internal(void* buffer, size_t width, size_t height, bool allocated_by_malloc) {
     Canvas* canvas = buffer;
-    canvas->canary_pre = (uint32_t*)((uint8_t*)buffer + sizeof(Canvas));
-    canvas->data = (Color*)(canvas->canary_pre + 1);
-    memset(canvas->data, 0xFF, sizeof(Color) * width * height);
-    canvas->canary_post = (uint32_t*)(canvas->data + width * height);
-    *(canvas->canary_pre) = CANARY_VALUE;
-    *(canvas->canary_post) = CANARY_VALUE;
+    canvas->canary_pre = (uint8_t*)buffer + sizeof(Canvas);
+    canvas->data = (Color*)(canvas->canary_pre + sizeof(CANARY_VALUE));
+    memset(canvas->data, 0xFF, sizeof(*canvas->data) * width * height);
+    canvas->canary_post = (uint8_t*)(canvas->data + width * height);
+    // canary_post can be unaligned (data is byte-sized), so access canaries via memcpy
+    const uint32_t canary = CANARY_VALUE;
+    memcpy(canvas->canary_pre, &canary, sizeof(canary));
+    memcpy(canvas->canary_post, &canary, sizeof(canary));
     canvas->width = width;
     canvas->height = height;
     render_scissor_reset(canvas);
@@ -616,8 +739,8 @@ Canvas* canvas_alloc_in_place(void* buffer, size_t width, size_t height) {
 }
 
 size_t canvas_get_required_buffer_size(size_t width, size_t height) {
-    // Canvas + canary_pre + data + canary_post
-    size_t total_size = sizeof(Canvas) + sizeof(uint32_t) + sizeof(Color) * width * height + sizeof(uint32_t);
+    // Canvas + canary_pre + data(WxH) + canary_post
+    size_t total_size = sizeof(Canvas) + sizeof(CANARY_VALUE) + (SIZEOF_MEMBER(Canvas, data[0]) * width * height) + sizeof(CANARY_VALUE);
     return total_size;
 }
 
@@ -628,8 +751,14 @@ void canvas_free(Canvas* canvas) {
 }
 
 Color* canvas_get_data(Canvas* canvas) {
-    furi_check(*canvas->canary_pre == CANARY_VALUE, "Canvas pre-canary corrupted");
-    furi_check(*canvas->canary_post == CANARY_VALUE, "Canvas post-canary corrupted");
+    // canary_post can be unaligned (data is byte-sized), so access canaries via memcpy
+    uint32_t canary_pre;
+    uint32_t canary_post;
+    memcpy(&canary_pre, canvas->canary_pre, sizeof(canary_pre));
+    memcpy(&canary_post, canvas->canary_post, sizeof(canary_post));
+    furi_check(canary_pre == CANARY_VALUE, "Canvas pre-canary corrupted");
+    furi_check(canary_post == CANARY_VALUE, "Canvas post-canary corrupted");
+
     return canvas->data;
 }
 

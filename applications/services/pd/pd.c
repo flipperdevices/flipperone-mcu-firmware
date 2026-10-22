@@ -79,14 +79,14 @@ static void pd_vbus_source_set(void* context, bool enable) {
     FURI_LOG_I(TAG, "vbus source %s", enable ? "on" : "off");
     if(enable) {
         // Start at vSafe5V; the partner's Request retunes us via pd_power_supply_set.
-        if(!power_bq25792_set_otg_params(instance->power, 5000, 1500)) {
+        if(!power_bq2579x_set_otg_params(instance->power, 5000, 1500)) {
             FURI_LOG_W(TAG, "otg params 5V/1.5A failed");
         }
-        if(!power_bq25792_otg_enable(instance->power, true)) {
+        if(!power_bq2579x_otg_enable(instance->power, true)) {
             FURI_LOG_W(TAG, "otg enable failed");
         }
     } else {
-        (void)power_bq25792_otg_enable(instance->power, false);
+        (void)power_bq2579x_otg_enable(instance->power, false);
     }
 }
 
@@ -154,7 +154,7 @@ static bool pd_has_alt_power(void* context) {
 static void pd_vbus_discharge_set(void* context, bool enable) {
     Pd* instance = context;
     FURI_LOG_I(TAG, "vbus discharge %s", enable ? "on" : "off");
-    if(!power_bq25792_vbus_pulldown_enable(instance->power, enable)) {
+    if(!power_bq2579x_vbus_pulldown_enable(instance->power, enable)) {
         FURI_LOG_W(TAG, "vbus pull-down %s failed", enable ? "on" : "off");
     }
 }
@@ -162,7 +162,7 @@ static void pd_vbus_discharge_set(void* context, bool enable) {
 static bool pd_power_supply_set(void* context, uint16_t voltage_mv, uint16_t current_limit_ma) {
     Pd* instance = context;
     FURI_LOG_I(TAG, "supply %u mV %u mA", voltage_mv, current_limit_ma);
-    if(!power_bq25792_set_otg_params(instance->power, voltage_mv, current_limit_ma)) {
+    if(!power_bq2579x_set_otg_params(instance->power, voltage_mv, current_limit_ma)) {
         FURI_LOG_W(TAG, "otg params %umV/%umA failed", voltage_mv, current_limit_ma);
         return false;
     }
@@ -190,7 +190,7 @@ static void pd_sink_current_limit_set(void* context, uint16_t current_ma, UcsiPp
     FURI_LOG_I(TAG, "input limit: %u mA (%s, ico %s)", current_ma, source_names[source], probe_allowed ? "on" : "off");
 
     // Runs on the PD worker thread, in the middle of PD event handling.
-    // power_bq25792_set_input_current_limit_ma() blocks on the power service
+    // power_bq2579x_set_input_current_limit_ma() blocks on the power service
     // thread and then talks I2C on the same bus the FUSB302 is on, so calling
     // it from here stalls PD exactly when frames need servicing. Hand it to
     // our own thread instead and return immediately.
@@ -321,14 +321,14 @@ static void pd_message_queue_callback(FuriEventLoopObject* object, void* context
     case PdMessageTypeSetInputLimit:
         // Order matters on the way up: stop the optimizer before raising the
         // ceiling, so it cannot be mid-probe with the new number.
-        if(!msg.probe_allowed && !power_bq25792_ico_enable(instance->power, false)) {
+        if(!msg.probe_allowed && !power_bq2579x_ico_enable(instance->power, false)) {
             FURI_LOG_W(TAG, "ico disable failed");
         }
-        result = power_bq25792_set_input_current_limit_ma(instance->power, msg.input_limit_ma);
+        result = power_bq2579x_set_input_current_limit_ma(instance->power, msg.input_limit_ma);
         if(!result) {
             FURI_LOG_W(TAG, "input limit %u mA failed", msg.input_limit_ma);
         }
-        if(msg.probe_allowed && !power_bq25792_ico_enable(instance->power, true)) {
+        if(msg.probe_allowed && !power_bq2579x_ico_enable(instance->power, true)) {
             FURI_LOG_W(TAG, "ico enable failed");
         }
         // No read-back here on purpose. Verifying what the charger ended up
@@ -340,7 +340,7 @@ static void pd_message_queue_callback(FuriEventLoopObject* object, void* context
         // here. Diagnostics do not belong on a bus the protocol depends on.
         break;
     case PdMessageTypeSetInputVoltageLimit:
-        result = power_bq25792_set_input_voltage_limit_mv(instance->power, msg.input_voltage_limit_mv);
+        result = power_bq2579x_set_input_voltage_limit_mv(instance->power, msg.input_voltage_limit_mv);
         if(!result) {
             FURI_LOG_W(TAG, "vindpm %u mV failed", msg.input_voltage_limit_mv);
         }

@@ -1,11 +1,13 @@
 #include "cpu_app.h"
 #include <furi.h>
 #include <furi_bsp.h>
+#include <furi_hal_resources.h>
+#include <furi_bsp_linux.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include <gui/modules/popup_menu.h>
 #include <drivers/display/display_jd9853_reg.h>
-#include <drivers/spi_get_frame/spi_get_frame.h>
+#include <drivers/pio_get_frame/pio_get_frame.h>
 #include <assets.h>
 #include <pd/pd.h>
 #include <power/power.h>
@@ -14,6 +16,7 @@
 #define TAG "CpuApp"
 
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
+#define CPU_APP_MASKROM_TIMER_INTERVAL 1000
 
 #define CPU_ARG_START   "start"
 #define CPU_ARG_MASKROM "maskrom"
@@ -52,8 +55,9 @@ typedef struct {
     PopupMenu* menu;
     FuriEventLoop* event_loop;
     FuriMessageQueue* app_queue;
-    SpiGetFrame* spi_get_frame;
+    PioGetFrame* pio_get_frame;
     size_t skip_frames;
+    FuriEventLoopTimer* maskrom_timer_off;
 } CpuApp;
 
 static void furi_hal_reset_pd_and_charger(void) {
@@ -64,34 +68,8 @@ static void furi_hal_reset_pd_and_charger(void) {
 
     Power* power = furi_record_open(RECORD_POWER);
     PowerDevice power_device;
-    power_bq25792_reset_config(power);
+    power_bq2579x_reset_config(power);
     furi_record_close(RECORD_POWER);
-}
-
-static void furi_hal_bsp_linux_reset(void) {
-    furi_bsp_main_reset();
-}
-
-static bool furi_hal_bsp_linux_is_load(void) {
-    const uint32_t mask = OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En;
-    uint32_t status = furi_bsp_expander_main_read_output();
-    return (status & mask) == mask;
-}
-
-static void furi_hal_bsp_linux_start(void) {
-    uint32_t status = furi_bsp_expander_main_read_output();
-    FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En;
-    FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
-    furi_bsp_expander_main_write_output(status);
-}
-
-static void furi_hal_bsp_linux_maskrom(void) {
-    uint32_t status = furi_bsp_expander_main_read_output();
-    FURI_LOG_I(TAG, "Current expander output status: 0x%02lX", status);
-    status |= OutputExpMainUsb20Sel | OutputExpMainVcc5v0SysS5En | OutputExpMainExpander17;
-    FURI_LOG_I(TAG, "Setting expander output status: 0x%02lX", status);
-    furi_bsp_expander_main_write_output(status);
 }
 
 static bool cpu_app_layout(void* _model) {
@@ -122,10 +100,12 @@ static bool cpu_app_layout(void* _model) {
             }) {
             if(model->frame.data) {
                 Image* image = &model->frame;
-                CLAY_AUTO_ID({
-                    .layout = {.sizing = layout_screen},
-                    .image = {.imageData = image},
-                }) {
+                CLAY(
+                    CLAY_APP_ID("FrameImage"),
+                    {
+                        .layout = {.sizing = layout_screen},
+                        .image = {.imageData = image},
+                    }) {
                 }
             }
         }
@@ -144,11 +124,20 @@ static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     return true;
 }
 
-static bool cpu_app_model_new_frame(CpuAppModel* model, void* context) {
-    model->frame.data = context;
-    model->frame.width = JD9853_WIDTH;
-    model->frame.height = JD9853_HEIGHT;
-    return true;
+/* Update the model to the latest frame WITHOUT triggering a redraw. The GUI
+ * service decides how to present the frame (direct blit or Clay composite);
+ * keeping the model in sync ensures a Clay redraw always uses the latest
+ * frame, e.g. when the menu is opened over it. */
+static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
+    with_view_model(
+        instance->display_view,
+        CpuAppModel * model,
+        {
+            model->frame.data = data;
+            model->frame.width = JD9853_WIDTH;
+            model->frame.height = JD9853_HEIGHT;
+        },
+        false);
 }
 
 static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* model, void* context), void* context) {
@@ -156,7 +145,14 @@ static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* 
     with_view_model(instance->display_view, CpuAppModel * model, { update = callback(model, context); }, update);
 }
 
-static void __isr __not_in_flash_func(cpu_app_spi_get_frame_isr)(uint8_t* data, size_t size, void* context) {
+static void cpu_app_do_shutdown(CpuApp* instance) {
+    furi_hal_reset_pd_and_charger();
+    furi_bsp_linux_reset();
+    // Do not leave the old frame on screen after the app exits.
+    gui_clear_frame(instance->gui);
+}
+
+static void __isr __not_in_flash_func(cpu_app_pio_get_frame_isr)(uint8_t* data, size_t size, void* context) {
     CpuApp* instance = context;
 
     CpuAppMessage message = {
@@ -168,7 +164,15 @@ static void __isr __not_in_flash_func(cpu_app_spi_get_frame_isr)(uint8_t* data, 
             },
     };
 
-    furi_check(furi_message_queue_put(instance->app_queue, &message, 0) == FuriStatusOk);
+    if(furi_message_queue_put(instance->app_queue, &message, 0) != FuriStatusOk) {
+        FURI_LOG_E(TAG, "cpu_app_spi_get_frame_isr message = %ld", furi_message_queue_get_count(instance->app_queue));
+    }
+}
+
+static void cpu_app_timer_callback(void* context) {
+    UNUSED(context);
+
+    furi_bsp_linux_maskrom(false);
 }
 
 static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
@@ -180,36 +184,43 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
         case CpuAppMessageTypeStart:
-            if(!furi_hal_bsp_linux_is_load()) {
-                furi_hal_bsp_linux_reset();
-                furi_hal_bsp_linux_start();
+            if(!furi_bsp_linux_is_load()) {
+                furi_bsp_linux_reset();
+                furi_bsp_linux_start();
             }
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
             break;
         case CpuAppMessageTypeReset:
             furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
-            furi_hal_bsp_linux_start();
+            furi_bsp_linux_reset();
+            furi_bsp_linux_start();
             instance->skip_frames = 2;
+            // Drop the stale frame so the screen shows the "starting" image
+            // right away instead of the old picture.
+            gui_clear_frame(instance->gui);
             cpu_app_model_apply(instance, cpu_app_model_init, NULL);
             break;
         case CpuAppMessageTypeShutdown:
-            furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
+            // The actual hardware cleanup happens in cpu_app_do_shutdown()
+            // after the event loop exits, so it covers every exit path.
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
             break;
         case CpuAppMessageTypeMaskrom:
             furi_hal_reset_pd_and_charger();
-            furi_hal_bsp_linux_reset();
-            furi_bsp_expander_main_set_control(FuriBspControlExpanderMainCpu);
-            furi_hal_bsp_linux_maskrom();
+            furi_bsp_linux_reset();
+            furi_bsp_linux_maskrom(true);
+            // Start a timer to automatically exit maskrom mode after the interval
+            furi_event_loop_timer_start(instance->maskrom_timer_off, CPU_APP_MASKROM_TIMER_INTERVAL);
             break;
         case CpuAppMessageTypeNewFrame:
             if(instance->skip_frames > 0) {
                 instance->skip_frames--;
             } else {
-                cpu_app_model_apply(instance, cpu_app_model_new_frame, message.as.new_frame.data);
+                /* Always keep the model in sync (no redraw) and hand the frame
+                 * to the GUI: it decides internally whether to blit it directly
+                 * to the display (menu hidden) or composite it via Clay (menu
+                 * drawn on top). */
+                cpu_app_model_set_frame(instance, message.as.new_frame.data);
+                gui_push_frame(instance->gui, message.as.new_frame.data);
             }
             break;
         default:
@@ -243,11 +254,13 @@ static CpuApp* cpu_app_alloc(void) {
     instance->gui = furi_record_open(RECORD_GUI);
     instance->event_loop = furi_event_loop_alloc();
     instance->app_queue = furi_message_queue_alloc(CPU_APP_MESSAGE_QUEUE_SIZE, sizeof(CpuAppMessage));
+    instance->skip_frames = 0; /* must be initialized — malloc does not zero memory */
 
-    instance->spi_get_frame = spi_get_frame_init();
-    spi_get_frame_set_callback_rx(instance->spi_get_frame, cpu_app_spi_get_frame_isr, instance);
+    instance->pio_get_frame = pio_get_frame_init(&gpio_cpu_spi_cs, &gpio_cpu_spi_sck, &gpio_cpu_spi_mosi);
+    pio_get_frame_set_callback_rx(instance->pio_get_frame, cpu_app_pio_get_frame_isr, instance);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->app_queue, FuriEventLoopEventIn, cpu_app_message_logic, instance);
+    instance->maskrom_timer_off = furi_event_loop_timer_alloc(instance->event_loop, cpu_app_timer_callback, FuriEventLoopTimerTypeOnce, instance);
 
     instance->display_view = view_alloc();
     view_allocate_model(instance->display_view, ViewModelTypeLockFree, sizeof(CpuAppModel));
@@ -264,11 +277,14 @@ static CpuApp* cpu_app_alloc(void) {
     popup_menu_add_item(instance->menu, "Reboot", CpuMenuItemReboot);
 
     gui_add_view(instance->gui, instance->menu_view, GuiViewPriorityPowerMenu);
+    gui_set_menu(instance->gui, instance->menu);
 
     return instance;
 }
 
 static void cpu_app_free(CpuApp* instance) {
+
+    gui_set_menu(instance->gui, NULL);
     gui_remove_view(instance->gui, instance->display_view);
     gui_remove_view(instance->gui, instance->menu_view);
     popup_menu_free(instance->menu);
@@ -279,9 +295,13 @@ static void cpu_app_free(CpuApp* instance) {
     view_free(instance->menu_view);
 
     furi_event_loop_unsubscribe(instance->event_loop, instance->app_queue);
+    furi_event_loop_timer_free(instance->maskrom_timer_off);
     furi_event_loop_free(instance->event_loop);
     furi_message_queue_free(instance->app_queue);
-    spi_get_frame_deinit(instance->spi_get_frame);
+
+    pio_get_frame_deinit(instance->pio_get_frame);
+
+    gui_clear_frame(instance->gui);
     free(instance);
 }
 
@@ -301,6 +321,8 @@ int32_t cpu_app(void* p) {
     }
 
     furi_event_loop_run(instance->event_loop);
+
+    cpu_app_do_shutdown(instance);
     cpu_app_free(instance);
     return 0;
 }

@@ -10,6 +10,7 @@
 #include <haptic/haptic.h>
 #include <pd/pd.h>
 #include <drivers/drv2605l/drv2605l.h>
+#include <cpu_mode/cpu_mode.h>
 
 #define TAG "I2CNegotiator"
 
@@ -23,6 +24,7 @@ typedef struct {
     Led* led;
     Haptic* haptic;
     Pd* pd;
+    CpuMode* cpu_mode;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -124,7 +126,7 @@ bool i2c_negotiator_input_sw_button_event(SwInputKey key, bool pressed, void* co
 
 //Cpu state register
 void i2c_negotiator_cpu_state(I2CNegotiator* instance, uint16_t value) {
-    FURI_LOG_I(TAG, "CPU state register write: 0x%04X", value);
+    cpu_mode_set_cpu_state(instance->cpu_mode, (CpuState)value);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_cpu_state);
 
@@ -172,25 +174,25 @@ I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_backlight_control_set);
 
 void i2c_negotiator_led_link1(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
-    led_set_color_single(instance->led, LedTypeNet, color);
+    led_set_color_single(instance->led, FuriBspLedTypeNet, color);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link1);
 
 void i2c_negotiator_led_link2(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
-    led_set_color_single(instance->led, LedTypeWiFi, color);
+    led_set_color_single(instance->led, FuriBspLedTypeWiFi, color);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link2);
 
 void i2c_negotiator_led_link3(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
-    led_set_color_single(instance->led, LedTypeEth2, color);
+    led_set_color_single(instance->led, FuriBspLedTypeEth2, color);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link3);
 
 void i2c_negotiator_led_link4(I2CNegotiator* instance, uint16_t value) {
     LedColor color = LED_COLOR_RGB565(value);
-    led_set_color_single(instance->led, LedTypeEth1, color);
+    led_set_color_single(instance->led, FuriBspLedTypeEth1, color);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4);
 
@@ -287,6 +289,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
     instance->led = furi_record_open(RECORD_LEDS);
     instance->haptic = furi_record_open(RECORD_HAPTIC);
     instance->pd = furi_record_open(RECORD_PD);
+    instance->cpu_mode = furi_record_open(RECORD_CPU_MODE);
     instance->event_loop = furi_event_loop_alloc();
 
     instance->negotiator_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
@@ -367,7 +370,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
 int32_t i2c_negotiator_srv(void* p) {
     UNUSED(p);
-
+    furi_thread_set_current_priority(FuriThreadPriorityHigh);
     I2CNegotiator* instance = i2c_negotiator_alloc();
 
     furi_event_loop_run(instance->event_loop);

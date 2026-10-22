@@ -1,13 +1,11 @@
 #include "power_cli.h"
 
 #include <cli/args.h>
-#include <toolbox/strint.h>
-#include <cli/cli_ansi.h>
-#include <cli/cli_command.h>
-#include <furi_hal.h>
+#include <furi_hal_power.h>
 #include <toolbox/property.h>
 
 #include <power/power.h>
+#include <pd/pd.h>
 #include "power_show_cli.h"
 #include "power_consumption_cli.h"
 
@@ -31,8 +29,8 @@ typedef struct {
     uint16_t charge_level_limit;
 
     struct {
-        Bq25792ChargerStatusReg charger_status;
-        Bq25792FaultStatusReg charger_fault;
+        Bq2579xChargerStatusReg charger_status;
+        Bq2579xFaultStatusReg charger_fault;
     } debug;
 } PowerInfo;
 
@@ -43,6 +41,18 @@ typedef struct {
     bool (*execute)(PipeSide*, FuriString*);
 } PowerCmd;
 
+static void power_cli_reset_pd_and_charger(void) {
+    Pd* pd = furi_record_open(RECORD_PD);
+    PdDevice pd_device;
+    pd_reset_config(pd);
+    furi_record_close(RECORD_PD);
+
+    Power* power = furi_record_open(RECORD_POWER);
+    PowerDevice power_device;
+    power_bq2579x_reset_config(power);
+    furi_record_close(RECORD_POWER);
+}
+
 static bool power_cli_off(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
     UNUSED(args);
@@ -52,11 +62,11 @@ static bool power_cli_off(PipeSide* pipe, FuriString* args) {
     furi_delay_ms(100);
     bool success = false;
     do {
-        power_bq25792_usb_is_connected(power, &success);
+        power_bq2579x_usb_is_connected(power, &success);
         furi_delay_ms(1000);
     } while(success);
 
-    success = power_bq25792_set_power_switch(power, Bq25792PowerShutdown);
+    success = power_bq2579x_set_power_switch(power, Bq2579xPowerShutdown);
 
     furi_record_close(RECORD_POWER);
     return success;
@@ -71,11 +81,11 @@ static bool power_cli_ship_mode(PipeSide* pipe, FuriString* args) {
     furi_delay_ms(100);
     bool success = false;
     do {
-        power_bq25792_usb_is_connected(power, &success);
+        power_bq2579x_usb_is_connected(power, &success);
         furi_delay_ms(1000);
     } while(success);
 
-    success = power_bq25792_set_power_switch(power, Bq25792PowerShipMode);
+    success = power_bq2579x_set_power_switch(power, Bq2579xPowerShipMode);
 
     furi_record_close(RECORD_POWER);
     return success;
@@ -84,17 +94,28 @@ static bool power_cli_ship_mode(PipeSide* pipe, FuriString* args) {
 static bool power_cli_reboot(PipeSide* pipe, FuriString* args) {
     UNUSED(pipe);
     UNUSED(args);
+
+    power_cli_reset_pd_and_charger();
+
     Power* power = furi_record_open(RECORD_POWER);
 
     furi_delay_ms(100);
     bool success = false;
     do {
-        success = power_bq25792_set_power_switch(power, Bq25792PowerReset);
+        success = power_bq2579x_set_power_switch(power, Bq2579xPowerReset);
         furi_delay_ms(1000);
     } while(!success);
 
     furi_record_close(RECORD_POWER);
     return success;
+}
+
+static bool power_cli_boot(PipeSide* pipe, FuriString* args) {
+    UNUSED(pipe);
+    UNUSED(args);
+    power_cli_reset_pd_and_charger();
+    furi_hal_power_enter_bootsel();
+    return true;
 }
 
 static void power_cli_print_property(const char* key, const char* value, bool last, void* context) {
@@ -107,12 +128,12 @@ static void power_get_info(Power* power, PowerInfo* info) {
     furi_check(power);
     furi_check(info);
 
-    power_bq25792_get_charger_status(power, &info->debug.charger_status);
-    power_bq25792_get_charger_fault(power, &info->debug.charger_fault);
+    power_bq2579x_get_charger_status(power, &info->debug.charger_status);
+    power_bq2579x_get_charger_fault(power, &info->debug.charger_fault);
 
-    info->is_charging = info->debug.charger_status.stat1.chg_stat == Bq25792ChargerStatus1ChargeNot ? false : true;
-    info->is_full_charged = info->debug.charger_status.stat1.chg_stat == Bq25792ChargerStatus1ChargeTermination ? true : false;
-    power_bq25792_charge_is_enabled(power, &info->charge_enabled);
+    info->is_charging = info->debug.charger_status.stat1.chg_stat == Bq2579xChargerStatus1ChargeNot ? false : true;
+    info->is_full_charged = info->debug.charger_status.stat1.chg_stat == Bq2579xChargerStatus1ChargeTermination ? true : false;
+    power_bq2579x_charge_is_enabled(power, &info->charge_enabled);
 
     power_bq28z620_get_relative_state_of_charge(power, &info->charge);
     power_bq28z620_get_voltage(power, &info->voltage_battery);
@@ -123,16 +144,16 @@ static void power_get_info(Power* power, PowerInfo* info) {
     //power_bq28z620_get_state_of_health(power, &info->charge_level_limit);
 
     uint16_t vsys_mv = 0;
-    power_bq25792_get_vbus_mv(power, &vsys_mv);
+    power_bq2579x_get_vbus_mv(power, &vsys_mv);
     info->voltage_usb = vsys_mv / 1000.0f;
     int16_t ibus_ma = 0;
-    power_bq25792_get_ibus_ma(power, &ibus_ma);
+    power_bq2579x_get_ibus_ma(power, &ibus_ma);
     info->current_usb = ibus_ma;
 
-    power_bq25792_get_ico_current_limit_ma(power, (uint16_t*)&info->charge_ilim_usb);
-    power_bq25792_get_charge_current_limit_ma(power, (uint16_t*)&info->charge_ilim_battery);
+    power_bq2579x_get_ico_current_limit_ma(power, (uint16_t*)&info->charge_ilim_usb);
+    power_bq2579x_get_charge_current_limit_ma(power, (uint16_t*)&info->charge_ilim_battery);
 
-    power_bq25792_get_charger_temperature(power, &info->temperature_charger);
+    power_bq2579x_get_charger_temperature(power, &info->temperature_charger);
 }
 
 static bool power_cli_info(PipeSide* pipe, FuriString* args) {
@@ -190,6 +211,7 @@ static const PowerCmd power_cmds[] = {
     {"off", "", "Power off the device, WARNING: Powers on only when connected via USB.", power_cli_off},
     {"ship", "", "Enter ship mode", power_cli_ship_mode},
     {"reboot", "", "Reboot the device", power_cli_reboot},
+    {"boot", "", "Boot MCU to bootloader", power_cli_boot}
 };
 
 static void power_cli_print_usage(void) {
