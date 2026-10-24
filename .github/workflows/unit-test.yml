@@ -28,7 +28,7 @@ jobs:
     runs-on: [fone-lab]
     timeout-minutes: 20
     container:
-      image: fo-test:preparation
+      image: fo-test:runtime
       env:
         FO_DUTS: "1"
         FO_TAGS: real
