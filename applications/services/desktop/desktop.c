@@ -430,6 +430,10 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         desktop_start_app_by_id(desktop, "haptic_test");
         consumed = true;
         break;
+    case DesktopSceneEventTypeStartDisplayTestApp:
+        desktop_start_app_by_id(desktop, "display_test");
+        consumed = true;
+        break;
     case DesktopSceneEventTypeStartAppById: {
         const char* appid = (const char*)message.data;
         furi_check(appid);
