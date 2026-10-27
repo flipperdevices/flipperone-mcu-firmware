@@ -50,9 +50,12 @@ typedef enum {
     ramwrcon = 0x3C, /* Write Memory Continue */
     getscan = 0x45, /* Return the current scan line */
     rdabcsdr = 0x68, /* Read Adaptive Brightness Control and Self-Diagnostic Result */
+    set_tcon = 0xC4, /* Timing control setting (page 0) */
+    set_oscm = 0xC5, /* Oscillator M setting (page 1) */
     rdid1 = 0xDA, /* Read ID1 Value */
     rdid2 = 0xDB, /* Read ID2 Value */
     rdid3 = 0xDC, /* Read ID3 Value */
+    set_page = 0xDE, /* Page select */
 } DisplayJd9853Reg;
 
 static const uint8_t jd9853_deinit_seq[] = {

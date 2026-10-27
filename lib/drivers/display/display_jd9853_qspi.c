@@ -20,16 +20,74 @@
 #define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        5 //5us
 #define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS 1000
 
+#define DISPLAY_JD9853_SHOW_FPS
+#define DISPLAY_JD9853_DYNAMIC_REFRESH
+
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+#define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS 10000 // 10 s
+#define DISPLAY_JD9853_TCON_PARAM_COUNT          12 // SET_TCON (0xC4) parameters
+#endif
+
 typedef struct {
     uint32_t cmd[4];
     uint8_t data[JD9853_WIDTH * JD9853_HEIGHT];
 } DisplayJd9853QSPIBufferHeader;
+
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+typedef enum {
+    DisplayJd9853Refresh10 = 0,
+    DisplayJd9853Refresh15,
+    DisplayJd9853Refresh30,
+    DisplayJd9853Refresh60,
+    DisplayJd9853RefreshMax,
+    DisplayJd9853RefreshCount,
+} DisplayJd9853RefreshStep;
+
+typedef struct {
+    uint8_t osc; // SET_OSCM: OSC_DIV[5:4] | OSCM_ADJ[1:0]
+    uint8_t vfp; // SET_TCON: VFP_NP[6:0]
+    uint8_t vbp; // SET_TCON: VBP_NP[6:0]
+    uint8_t fps; // approximate panel refresh rate, used for the downgrade decision
+} DisplayJd9853RefreshConfig;
+
+/* SET_OSCM (0xC5) = OSC_DIV[5:4] | OSCM_ADJ[1:0].
+ * OSCM_ADJ selects OSCD = 16/20/24/28 MHz (0..3), OSC_DIV divides it by 2/4/8.
+ * This panel has 144 gate lines and SLT_NP = 121, so:
+ *   frame rate = TCON / (total_lines * 121 * 4).
+ * OSC_DIV alone bottoms out at ~23 FPS, so the two lowest steps also stretch
+ * the vertical blanking (VFP/VBP) to reach 15 and 10 FPS. */
+static const DisplayJd9853RefreshConfig
+    display_jd9853_refresh_config[DisplayJd9853RefreshCount] = {
+        [DisplayJd9853Refresh10] = {0x20, 0x7F, 0x7F, 10}, // 2.0 MHz, VBP/VFP maxed -> ~10.4 FPS
+        [DisplayJd9853Refresh15] = {0x20, 0x72, 0x12, 15}, // 2.0 MHz, VFP = 114 -> ~15.0 FPS
+        [DisplayJd9853Refresh30] = {0x21, 0x0A, 0x12, 30}, // 2.5 MHz, VFP = 10 -> ~30.0 FPS
+        [DisplayJd9853Refresh60] = {0x11, 0x0A, 0x12, 60}, // 5.0 MHz, VFP = 10 -> ~60.0 FPS
+        [DisplayJd9853RefreshMax] = {0x01, 0x14, 0x12, 115}, // 10 MHz, boot values -> ~113 FPS
+};
+
+/* Baseline SET_TCON (0xC4) parameters from the init sequence. Only VFP_NP
+ * (index 4) and VBP_NP (index 5) are changed at runtime. Keep in sync with
+ * jd9853_init_seq_2025_04_01_normal_white_mod. */
+static const uint8_t display_jd9853_tcon_base[DISPLAY_JD9853_TCON_PARAM_COUNT] = {
+    0x00, 0x00, 0x48, 0x79, 0x14, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+};
+#define DISPLAY_JD9853_TCON_VFP_INDEX (4u)
+#define DISPLAY_JD9853_TCON_VBP_INDEX (5u)
+#endif
 
 struct DisplayJd9853QSPI {
     FuriSemaphore* busy;
     uint32_t dma_tx_channel;
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    volatile uint8_t refresh_step; // currently applied refresh step
+    volatile int8_t refresh_pending; // step to apply at the next frame, -1 if none
+    volatile uint32_t frames_in_window; // frames queued since the last 10 s check
+    volatile uint32_t starved_in_window; // frames the panel could not accept immediately
+    volatile uint32_t refresh_checks; // number of 10 s checks performed
+    FuriTimer* refresh_timer;
+#endif
 #ifdef DISPLAY_JD9853_SHOW_FPS
     volatile uint32_t frames_written; /* frames queued to the display */
     FuriTimer* fps_timer; /* periodic FPS logger */
@@ -46,7 +104,21 @@ static void display_jd9853_fps_timer_callback(void* ctx) {
     uint32_t fps = display->frames_written;
     display->frames_written = 0;
 
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    FURI_LOG_W(
+        TAG,
+        "Display TX: %lu FPS, panel %u FPS (step %u), checks %lu, win %lu/%lu, space %lu, fifo 0x%08lX",
+        (unsigned long)fps,
+        (unsigned)display_jd9853_refresh_config[display->refresh_step].fps,
+        (unsigned)display->refresh_step,
+        (unsigned long)display->refresh_checks,
+        (unsigned long)display->frames_in_window,
+        (unsigned long)display->starved_in_window,
+        (unsigned long)furi_semaphore_get_space(display->busy),
+        (unsigned long)hstx_fifo_hw->stat);
+#else
     FURI_LOG_W(TAG, "Display TX: %lu FPS", (unsigned long)fps);
+#endif
 }
 #endif
 
@@ -57,9 +129,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853QS
     }
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853QSPI* display) {
-    display_jd9853_hstx_wait_complete(display);
-
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_config_1_line(void) {
     hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] = HSTX_CTRL_BIT0_CLK_BITS;
 
     hstx_ctrl_hw->bit[gpio_display_sda.pin - FIRST_HSTX_PIN] = (7u << HSTX_CTRL_BIT0_SEL_P_LSB) | (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
@@ -76,9 +146,12 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853QSPI
     furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn0Hstx);
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI* display) {
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853QSPI* display) {
     display_jd9853_hstx_wait_complete(display);
+    display_jd9853_hstx_config_1_line();
+}
 
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_config_4_line(void) {
     hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] = HSTX_CTRL_BIT0_CLK_BITS;
 
     hstx_ctrl_hw->bit[gpio_display_sda.pin - FIRST_HSTX_PIN] = (28u << HSTX_CTRL_BIT0_SEL_P_LSB) | (28u << HSTX_CTRL_BIT0_SEL_N_LSB);
@@ -92,6 +165,11 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI
     hstx_ctrl_hw->csr = HSTX_CTRL_CSR_EN_BITS | (28u << HSTX_CTRL_CSR_SHIFT_LSB) | (8u << HSTX_CTRL_CSR_N_SHIFTS_LSB) | (1u << HSTX_CTRL_CSR_CLKDIV_LSB);
 
     furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn5Sio);
+}
+
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI* display) {
+    display_jd9853_hstx_wait_complete(display);
+    display_jd9853_hstx_config_4_line();
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
@@ -149,6 +227,94 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* disp
     display_jd9853_cs_up();
 }
 
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+/* Apply the pending refresh step. Called with the display idle (busy
+ * semaphore held), so no frame transfer can be in progress. The page 1
+ * SET_OSCM register is changed together with VFP/VBP in page 0 SET_TCON. */
+static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
+    int8_t pending = display->refresh_pending;
+
+    if(pending < 0 || pending >= DisplayJd9853RefreshCount) {
+        return;
+    }
+
+    const DisplayJd9853RefreshConfig* config = &display_jd9853_refresh_config[pending];
+    uint8_t tcon[DISPLAY_JD9853_TCON_PARAM_COUNT];
+    for(size_t i = 0; i < DISPLAY_JD9853_TCON_PARAM_COUNT; i++) {
+        tcon[i] = display_jd9853_tcon_base[i];
+    }
+    tcon[DISPLAY_JD9853_TCON_VFP_INDEX] = config->vfp;
+    tcon[DISPLAY_JD9853_TCON_VBP_INDEX] = config->vbp;
+
+    uint8_t page0 = 0x00;
+    uint8_t page1 = 0x01;
+    uint8_t osc = config->osc;
+
+    display_jd9853_hstx_init_1_line(display);
+
+    display_jd9853_write_reg(display, set_page);
+    display_jd9853_write_data(display, &page0, 1);
+
+    display_jd9853_write_reg(display, set_tcon);
+    display_jd9853_write_data(display, tcon, sizeof(tcon));
+
+    display_jd9853_write_reg(display, set_page);
+    display_jd9853_write_data(display, &page1, 1);
+
+    display_jd9853_write_reg(display, set_oscm);
+    display_jd9853_write_data(display, &osc, 1);
+
+    display_jd9853_write_reg(display, set_page);
+    display_jd9853_write_data(display, &page0, 1);
+
+    display_jd9853_hstx_init_4_line(display);
+
+    display->refresh_step = (uint8_t)pending;
+    display->refresh_pending = -1;
+}
+
+/* Runs in the Furi timer service thread once per 10 s. Lowers the refresh
+ * rate by one step when the incoming frame rate leaves enough headroom,
+ * unless the panel was starved during the window. */
+static void display_jd9853_refresh_timer_callback(void* ctx) {
+    DisplayJd9853QSPI* display = ctx;
+
+    if(display_instance != display) {
+        return;
+    }
+
+    display->refresh_checks++;
+
+    uint32_t frames = display->frames_in_window;
+    uint32_t starved = display->starved_in_window;
+    display->frames_in_window = 0;
+    display->starved_in_window = 0;
+
+    if(starved != 0) {
+        return;
+    }
+
+    uint8_t current = display->refresh_step;
+    if(current == DisplayJd9853Refresh10) {
+        return;
+    }
+
+    uint32_t window_s = DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS / 1000u;
+    uint32_t incoming_fps = frames / window_s;
+    uint8_t next = current - 1;
+    uint32_t next_fps = display_jd9853_refresh_config[next].fps;
+
+    /* Require 20% headroom above the measured incoming frame rate. */
+    if((next_fps * 100u) >= (incoming_fps * 120u)) {
+        display->refresh_pending = (int8_t)next;
+        if(furi_semaphore_acquire(display->busy, 0) == FuriStatusOk) {
+            display_jd9853_apply_refresh(display);
+            furi_semaphore_release(display->busy);
+        }
+    }
+}
+#endif
+
 void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* config) {
     display_jd9853_hstx_init_1_line(display);
     while(*config) {
@@ -197,7 +363,29 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
     display->frames_written++;
 #endif
 
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    display->frames_in_window++;
+
+    /* If the previous frame has not been pushed out yet, the panel refresh is
+     * slower than the incoming frame rate: request the next step up. It is
+     * applied below, once the previous frame is fully sent. */
+    if(furi_semaphore_get_space(display->busy) == 0) {
+        display->starved_in_window++;
+        uint8_t target = (display->refresh_pending >= 0) ? (uint8_t)display->refresh_pending :
+                                                           display->refresh_step;
+        if(target < DisplayJd9853RefreshMax) {
+            display->refresh_pending = (int8_t)(target + 1);
+        }
+    }
+#endif
+
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
+
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    /* The previous frame is fully sent now, so the panel is idle and the
+     * pending refresh step can be applied safely. */
+    display_jd9853_apply_refresh(display);
+#endif
 
     memcpy(display->buffer_header.data, buffer, size);
 
@@ -286,6 +474,14 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     DisplayJd9853QSPI* display = malloc(sizeof(DisplayJd9853QSPI));
     display_instance = display;
     display->busy = furi_semaphore_alloc(1, 1);
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    display->refresh_step = DisplayJd9853RefreshMax;
+    display->refresh_pending = -1;
+    display->frames_in_window = 0;
+    display->starved_in_window = 0;
+    display->refresh_checks = 0;
+    display->refresh_timer = NULL;
+#endif
 #ifdef DISPLAY_JD9853_SHOW_FPS
     display->frames_written = 0;
 
@@ -350,11 +546,28 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
 
     display_jd9853_enable(display, true);
 
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    /* Start the periodic refresh-rate downgrade check in the existing Furi
+     * timer service thread. */
+    display->refresh_timer =
+        furi_timer_alloc(display_jd9853_refresh_timer_callback, FuriTimerTypePeriodic, display);
+    furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
+#endif
+
     return display;
 }
 
 void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     furi_check(display);
+
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    if(display->refresh_timer) {
+        furi_timer_stop(display->refresh_timer);
+        furi_timer_free(display->refresh_timer);
+        display->refresh_timer = NULL;
+    }
+    display->refresh_pending = -1;
+#endif
 
     furi_hal_gpio_remove_int_callback(&gpio_display_te);
     display_jd9853_load_config(display, jd9853_deinit_seq);
