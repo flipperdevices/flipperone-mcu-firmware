@@ -20,6 +20,7 @@
 #define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        (5u) //5us
 #define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS (1000u)
 #define DISPLAY_JD9853_DEINIT_TIMEOUT_MS           (100u)
+#define DISPLAY_JD9853_RESET_DELAY_MS              (150u)
 
 #define DISPLAY_JD9853_SHOW_FPS
 #define DISPLAY_JD9853_DYNAMIC_REFRESH
@@ -36,14 +37,13 @@ typedef struct {
     uint8_t data[JD9853_WIDTH * JD9853_HEIGHT];
 } DisplayJd9853QSPIBufferHeader;
 
-
 struct DisplayJd9853QSPI {
     FuriSemaphore* busy;
     uint32_t dma_tx_channel;
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-    volatile DisplayJd9853RefreshStep refresh_step; 
+    volatile DisplayJd9853RefreshStep refresh_step;
     volatile DisplayJd9853RefreshStep refresh_pending;
     volatile uint32_t frames_in_window;
     volatile bool refresh_backpressure;
@@ -69,10 +69,12 @@ static void display_jd9853_fps_timer_callback(void* ctx) {
     display->frames_written = 0;
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-    FURI_LOG_W(TAG, "Display TX: %lu FPS, panel %u FPS (step %u)",
-               (unsigned long)fps,
-               (unsigned)jd9853_refresh_config[display->refresh_step].fps,
-               (unsigned)display->refresh_step);
+    FURI_LOG_W(
+        TAG,
+        "Display TX: %lu FPS, panel %u FPS (step %u)",
+        (unsigned long)fps,
+        (unsigned)jd9853_refresh_config[display->refresh_step].fps,
+        (unsigned)display->refresh_step);
 #else
     FURI_LOG_W(TAG, "Display TX: %lu FPS", (unsigned long)fps);
 #endif
@@ -249,8 +251,7 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
     }
 
     if(display->refresh_step != DisplayJd9853Refresh10) {
-        furi_timer_start(
-            display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
+        furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
     }
 }
 #endif
@@ -498,7 +499,11 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_hal_gpio_write(&gpio_display_reset, false);
     furi_delay_ms(30);
     furi_hal_gpio_write(&gpio_display_reset, true);
-    furi_delay_ms(30);
+    /* A reset during sleep out (an MCU reboot while the panel is running)
+     * needs up to 120 ms before commands are accepted, and the internal
+     * reset sequence runs slower when the dynamic refresh left the panel
+     * on the low-power step. Commands sent earlier are silently dropped. */
+    furi_delay_ms(DISPLAY_JD9853_RESET_DELAY_MS);
 
     //todo set gpio functions add implement furi hal gpio
     furi_hal_gpio_set_function(&gpio_display_scl, GpioAltFn0Hstx);
@@ -522,8 +527,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display_jd9853_enable(display, true);
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-    display->refresh_timer =
-        furi_timer_alloc(display_jd9853_refresh_timer_callback, FuriTimerTypeOnce, display);
+    display->refresh_timer = furi_timer_alloc(display_jd9853_refresh_timer_callback, FuriTimerTypeOnce, display);
     furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
 #endif
 

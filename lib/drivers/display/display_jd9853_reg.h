@@ -65,7 +65,7 @@ static const uint8_t jd9853_deinit_seq[] = {
 };
 
 static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
-        1, 20, 0x01,                                // Software reset
+        1, 30, 0x01,                                // Software reset, 150 ms: needs >= 120 ms in sleep out
         3, 0, 0xDF, 0x98, 0x53,                     // SET_PASSWD
         2, 0, 0xDE, 0x00,                           // Page0
         2, 0, 0xB2, 0x28,                           // Vcom !64 //does not affect in any way
