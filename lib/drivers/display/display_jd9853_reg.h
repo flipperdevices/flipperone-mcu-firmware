@@ -132,8 +132,7 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
         0,                                      // Terminate list
 };
 
-/* Dynamic refresh sequences. Same format as the init sequence:
- * { size, delay_5ms, reg, data... }, terminated by 0.
+/* Dynamic refresh sequences.
  *
  * Only two registers change between steps:
  *   C5 SET_OSCM - OSC_DIV [5:4] (oscillator divider for the timing
@@ -193,7 +192,7 @@ static const uint8_t jd9853_refresh_seq_max[] = {
 };
 
 typedef enum {
-    DisplayJd9853RefreshNone = -1, // no step requested
+    DisplayJd9853RefreshNone = -1,
     DisplayJd9853Refresh10 = 0,
     DisplayJd9853Refresh15,
     DisplayJd9853Refresh30,
@@ -203,9 +202,9 @@ typedef enum {
 } DisplayJd9853RefreshStep;
 
 typedef struct {
-    const uint8_t* config; // 0-terminated register sequence
-    uint8_t fps; // approximate panel refresh rate
-    uint32_t fast_delta_us; // frame interval below this means "faster than panel"
+    const uint8_t* config;
+    uint8_t fps;
+    uint32_t fast_delta_us;
 } DisplayJd9853RefreshConfig;
 
 /* fast_delta_us is 5/6 of the panel frame period, precomputed:

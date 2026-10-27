@@ -16,19 +16,19 @@
 
 #define TAG "DisplayDriver"
 
-#define FIRST_HSTX_PIN                             12
-#define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        5 //5us
-#define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS 1000
-#define DISPLAY_JD9853_DEINIT_TIMEOUT_MS           100
+#define FIRST_HSTX_PIN                             (12u)
+#define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        (5u) //5us
+#define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS (1000u)
+#define DISPLAY_JD9853_DEINIT_TIMEOUT_MS           (100u)
 
 #define DISPLAY_JD9853_SHOW_FPS
 #define DISPLAY_JD9853_DYNAMIC_REFRESH
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-#define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS 2000 // 2 s
-#define DISPLAY_JD9853_REFRESH_FAST_FRAMES       4 // consecutive fast frames needed to step up
-#define DISPLAY_JD9853_REFRESH_HOLD_MS           5000 // no step down this long after a step up
-#define DISPLAY_JD9853_REFRESH_IDLE_US           2000000u // a frame after this much idle jumps to max
+#define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS (2000u) // 2 s
+#define DISPLAY_JD9853_REFRESH_FAST_FRAMES       (4u) // consecutive fast frames needed to step up
+#define DISPLAY_JD9853_REFRESH_HOLD_MS           (5000u) // no step down this long after a step up
+#define DISPLAY_JD9853_REFRESH_IDLE_US           (2000000u) // a frame after this much idle jumps to max
 #endif
 
 typedef struct {
@@ -43,21 +43,18 @@ struct DisplayJd9853QSPI {
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-    /* refresh_pending, frames_in_window, refresh_backpressure and
-     * refresh_hold_until are shared between the GUI thread and the timer
-     * service thread: access them only inside FURI_CRITICAL sections. */
-    volatile DisplayJd9853RefreshStep refresh_step; // currently applied refresh step, written with busy held
-    volatile DisplayJd9853RefreshStep refresh_pending; // step to apply at the next frame, None if none
-    volatile uint32_t frames_in_window; // frames queued since the last refresh check
-    volatile bool refresh_backpressure; // a frame had to wait for the previous one during the window
-    volatile uint32_t refresh_hold_until; // tick before which the timer must not step down
-    uint32_t last_frame_us; // timestamp of the previous frame submission, GUI thread only
-    uint32_t fast_frames; // consecutive frames arriving faster than the panel, GUI thread only
+    volatile DisplayJd9853RefreshStep refresh_step; 
+    volatile DisplayJd9853RefreshStep refresh_pending;
+    volatile uint32_t frames_in_window;
+    volatile bool refresh_backpressure;
+    volatile uint32_t refresh_hold_until;
+    uint32_t last_frame_us;
+    uint32_t fast_frames;
     FuriTimer* refresh_timer;
 #endif
 #ifdef DISPLAY_JD9853_SHOW_FPS
-    volatile uint32_t frames_written; /* frames queued to the display */
-    FuriTimer* fps_timer; /* periodic FPS logger */
+    volatile uint32_t frames_written;
+    FuriTimer* fps_timer;
 #endif
 };
 
@@ -188,12 +185,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* disp
 }
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-/* Apply the pending refresh step. Called with the display idle (busy
- * semaphore held), so no frame transfer can be in progress. The complete
- * register sequence is precomputed in display_jd9853_reg.h. */
 static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
-    /* Take the request atomically: a new one posted while the registers are
-     * being written stays pending for the next frame instead of being lost. */
     DisplayJd9853RefreshStep pending;
     {
         FURI_CRITICAL_ENTER();
@@ -211,11 +203,6 @@ static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
     display->refresh_step = pending;
 }
 
-/* Runs in the Furi timer service thread. Lowers the refresh rate by one step
- * when the incoming frame rate leaves enough headroom, unless a frame had to
- * wait for the panel during the window or a step up happened recently. The
- * timer is one-shot: while a lower step is reachable it re-arms itself, at
- * the minimum rate it stays stopped. */
 static void display_jd9853_refresh_timer_callback(void* ctx) {
     DisplayJd9853QSPI* display = ctx;
 
@@ -244,8 +231,6 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
 
         /* Require 20% headroom above the measured incoming frame rate. */
         if((next_fps * 100u) >= (incoming_fps * 120u)) {
-            /* Never override a request already posted by the GUI thread:
-             * a pending step up must win over a step down. */
             bool requested = false;
             {
                 FURI_CRITICAL_ENTER();
@@ -263,8 +248,6 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
         }
     }
 
-    /* One-shot: re-arm only while there is a lower step to reach. At the
-     * minimum rate the timer stays stopped until a step-up arms it again. */
     if(display->refresh_step != DisplayJd9853Refresh10) {
         furi_timer_start(
             display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
@@ -286,8 +269,6 @@ void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* confi
     display_jd9853_hstx_init_4_line(display);
 }
 
-/* Command writes share HSTX with frame transfers and with refresh changes made
- * from the timer thread, so every command path holds the busy semaphore. */
 static void display_jd9853_enable(DisplayJd9853QSPI* display, bool enable) {
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     display_jd9853_hstx_init_1_line(display);
@@ -333,10 +314,6 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
 
     bool panel_busy = (furi_semaphore_get_count(display->busy) == 0);
 
-    /* The first frame after idle jumps straight to the maximum rate so the
-     * UI reacts without ramping up step by step. Otherwise step up only after
-     * several frames in a row arrive faster than the current panel refresh:
-     * a single frame says nothing about the next one. */
     bool jump_to_max = false;
     bool step_up = false;
     if(delta_us >= DISPLAY_JD9853_REFRESH_IDLE_US) {
@@ -360,9 +337,6 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
         }
 
         if(jump_to_max || step_up) {
-            /* Base the step up on whichever is higher, the applied or the
-             * pending step. A pending step down from the timer is always
-             * dropped, even when the panel is already at the maximum. */
             DisplayJd9853RefreshStep step = display->refresh_step;
             DisplayJd9853RefreshStep base = MAX(step, display->refresh_pending);
             DisplayJd9853RefreshStep target = jump_to_max ? DisplayJd9853RefreshMax : MIN(base + 1, DisplayJd9853RefreshMax);
@@ -373,8 +347,6 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
         FURI_CRITICAL_EXIT();
     }
 
-    /* Wake the downgrade timer up again if it stopped at the minimum refresh
-     * rate. The timer is gone after deinit. */
     if(stepped_up && display->refresh_timer) {
         furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
     }
@@ -383,8 +355,6 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-    /* The previous frame is fully sent now, so the panel is idle and the
-     * pending refresh step can be applied safely. */
     if(display->refresh_pending != DisplayJd9853RefreshNone) {
         display_jd9853_apply_refresh(display);
     }
@@ -552,8 +522,6 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display_jd9853_enable(display, true);
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-    /* Start the periodic refresh-rate downgrade check in the existing Furi
-     * timer service thread. */
     display->refresh_timer =
         furi_timer_alloc(display_jd9853_refresh_timer_callback, FuriTimerTypeOnce, display);
     furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
@@ -578,9 +546,6 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     furi_timer_free(display->fps_timer);
 #endif
 
-    /* Let an in-flight frame finish before the deinit commands go out on
-     * HSTX. Bounded wait: a disconnected panel never raises TE, so the
-     * transfer would never complete. */
     bool idle = furi_semaphore_acquire(display->busy, furi_ms_to_ticks(DISPLAY_JD9853_DEINIT_TIMEOUT_MS)) == FuriStatusOk;
     furi_hal_gpio_remove_int_callback(&gpio_display_te);
     display_jd9853_load_config(display, jd9853_deinit_seq);
