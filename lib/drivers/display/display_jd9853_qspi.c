@@ -24,7 +24,9 @@
 #define DISPLAY_JD9853_DYNAMIC_REFRESH
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-#define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS 10000 // 10 s
+#define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS 2000 // 2 s
+#define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_S  (DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS / 1000u)
+#define DISPLAY_JD9853_REFRESH_FAST_FRAMES       2 // frames needed to step up
 #define DISPLAY_JD9853_TCON_PARAM_COUNT          12 // SET_TCON (0xC4) parameters
 #endif
 
@@ -48,6 +50,7 @@ typedef struct {
     uint8_t vfp; // SET_TCON: VFP_NP[6:0]
     uint8_t vbp; // SET_TCON: VBP_NP[6:0]
     uint8_t fps; // approximate panel refresh rate, used for the downgrade decision
+    uint32_t fast_delta_us; // frame interval below this means "faster than panel"
 } DisplayJd9853RefreshConfig;
 
 /* SET_OSCM (0xC5) = OSC_DIV[5:4] | OSCM_ADJ[1:0].
@@ -58,11 +61,11 @@ typedef struct {
  * the vertical blanking (VFP/VBP) to reach 15 and 10 FPS. */
 static const DisplayJd9853RefreshConfig
     display_jd9853_refresh_config[DisplayJd9853RefreshCount] = {
-        [DisplayJd9853Refresh10] = {0x20, 0x7F, 0x7F, 10}, // 2.0 MHz, VBP/VFP maxed -> ~10.4 FPS
-        [DisplayJd9853Refresh15] = {0x20, 0x72, 0x12, 15}, // 2.0 MHz, VFP = 114 -> ~15.0 FPS
-        [DisplayJd9853Refresh30] = {0x21, 0x0A, 0x12, 30}, // 2.5 MHz, VFP = 10 -> ~30.0 FPS
-        [DisplayJd9853Refresh60] = {0x11, 0x0A, 0x12, 60}, // 5.0 MHz, VFP = 10 -> ~60.0 FPS
-        [DisplayJd9853RefreshMax] = {0x01, 0x14, 0x12, 115}, // 10 MHz, boot values -> ~113 FPS
+        [DisplayJd9853Refresh10] = {0x20, 0x7F, 0x7F, 10, 83333}, // 2.0 MHz, VBP/VFP maxed -> ~10.4 FPS
+        [DisplayJd9853Refresh15] = {0x20, 0x72, 0x12, 15, 55555}, // 2.0 MHz, VFP = 114 -> ~15.0 FPS
+        [DisplayJd9853Refresh30] = {0x21, 0x0A, 0x12, 30, 27777}, // 2.5 MHz, VFP = 10 -> ~30.0 FPS
+        [DisplayJd9853Refresh60] = {0x11, 0x0A, 0x12, 60, 13888}, // 5.0 MHz, VFP = 10 -> ~60.0 FPS
+        [DisplayJd9853RefreshMax] = {0x01, 0x14, 0x12, 115, 7245}, // 10 MHz, boot values -> ~113 FPS
 };
 
 /* Baseline SET_TCON (0xC4) parameters from the init sequence. Only VFP_NP
@@ -83,9 +86,10 @@ struct DisplayJd9853QSPI {
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     volatile uint8_t refresh_step; // currently applied refresh step
     volatile int8_t refresh_pending; // step to apply at the next frame, -1 if none
-    volatile uint32_t frames_in_window; // frames queued since the last 10 s check
-    volatile uint32_t starved_in_window; // frames the panel could not accept immediately
-    volatile uint32_t refresh_checks; // number of 10 s checks performed
+    volatile uint32_t frames_in_window; // frames queued since the last refresh check
+    volatile bool refresh_starved; // panel could not accept a frame during the window
+    uint32_t last_frame_us; // timestamp of the previous frame submission
+    uint32_t fast_frames; // consecutive frames arriving faster than the panel
     FuriTimer* refresh_timer;
 #endif
 #ifdef DISPLAY_JD9853_SHOW_FPS
@@ -105,17 +109,10 @@ static void display_jd9853_fps_timer_callback(void* ctx) {
     display->frames_written = 0;
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-    FURI_LOG_W(
-        TAG,
-        "Display TX: %lu FPS, panel %u FPS (step %u), checks %lu, win %lu/%lu, space %lu, fifo 0x%08lX",
-        (unsigned long)fps,
-        (unsigned)display_jd9853_refresh_config[display->refresh_step].fps,
-        (unsigned)display->refresh_step,
-        (unsigned long)display->refresh_checks,
-        (unsigned long)display->frames_in_window,
-        (unsigned long)display->starved_in_window,
-        (unsigned long)furi_semaphore_get_space(display->busy),
-        (unsigned long)hstx_fifo_hw->stat);
+    FURI_LOG_W(TAG, "Display TX: %lu FPS, panel %u FPS (step %u)",
+               (unsigned long)fps,
+               (unsigned)display_jd9853_refresh_config[display->refresh_step].fps,
+               (unsigned)display->refresh_step);
 #else
     FURI_LOG_W(TAG, "Display TX: %lu FPS", (unsigned long)fps);
 #endif
@@ -273,7 +270,7 @@ static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
     display->refresh_pending = -1;
 }
 
-/* Runs in the Furi timer service thread once per 10 s. Lowers the refresh
+/* Runs in the Furi timer service thread periodically. Lowers the refresh
  * rate by one step when the incoming frame rate leaves enough headroom,
  * unless the panel was starved during the window. */
 static void display_jd9853_refresh_timer_callback(void* ctx) {
@@ -283,14 +280,12 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
         return;
     }
 
-    display->refresh_checks++;
-
     uint32_t frames = display->frames_in_window;
-    uint32_t starved = display->starved_in_window;
+    bool starved = display->refresh_starved;
     display->frames_in_window = 0;
-    display->starved_in_window = 0;
+    display->refresh_starved = false;
 
-    if(starved != 0) {
+    if(starved) {
         return;
     }
 
@@ -299,8 +294,7 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
         return;
     }
 
-    uint32_t window_s = DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS / 1000u;
-    uint32_t incoming_fps = frames / window_s;
+    uint32_t incoming_fps = frames / DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_S;
     uint8_t next = current - 1;
     uint32_t next_fps = display_jd9853_refresh_config[next].fps;
 
@@ -366,16 +360,29 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     display->frames_in_window++;
 
-    /* If the previous frame has not been pushed out yet, the panel refresh is
-     * slower than the incoming frame rate: request the next step up. It is
-     * applied below, once the previous frame is fully sent. */
-    if(furi_semaphore_get_space(display->busy) == 0) {
-        display->starved_in_window++;
-        uint8_t target = (display->refresh_pending >= 0) ? (uint8_t)display->refresh_pending :
-                                                           display->refresh_step;
-        if(target < DisplayJd9853RefreshMax) {
-            display->refresh_pending = (int8_t)(target + 1);
+    /* Step up only after several frames in a row arrive faster than the
+     * current panel refresh. A single frame says nothing about the next one. */
+    uint32_t now_us = time_us_32();
+    uint32_t delta_us = now_us - display->last_frame_us;
+    display->last_frame_us = now_us;
+
+    bool panel_busy = (furi_semaphore_get_count(display->busy) == 0);
+    if(panel_busy) {
+        display->refresh_starved = true;
+    }
+
+    if(panel_busy ||
+       (delta_us < display_jd9853_refresh_config[display->refresh_step].fast_delta_us)) {
+        if(++display->fast_frames >= DISPLAY_JD9853_REFRESH_FAST_FRAMES) {
+            uint8_t target = (display->refresh_pending >= 0) ? (uint8_t)display->refresh_pending :
+                                                               display->refresh_step;
+            if(target < DisplayJd9853RefreshMax) {
+                display->refresh_pending = (int8_t)(target + 1);
+            }
+            display->fast_frames = 0;
         }
+    } else {
+        display->fast_frames = 0;
     }
 #endif
 
@@ -384,7 +391,9 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     /* The previous frame is fully sent now, so the panel is idle and the
      * pending refresh step can be applied safely. */
-    display_jd9853_apply_refresh(display);
+    if(display->refresh_pending >= 0) {
+        display_jd9853_apply_refresh(display);
+    }
 #endif
 
     memcpy(display->buffer_header.data, buffer, size);
@@ -478,8 +487,9 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display->refresh_step = DisplayJd9853RefreshMax;
     display->refresh_pending = -1;
     display->frames_in_window = 0;
-    display->starved_in_window = 0;
-    display->refresh_checks = 0;
+    display->refresh_starved = false;
+    display->last_frame_us = 0;
+    display->fast_frames = 0;
     display->refresh_timer = NULL;
 #endif
 #ifdef DISPLAY_JD9853_SHOW_FPS
