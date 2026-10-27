@@ -130,4 +130,79 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
         1, 20, 0x11,                            // Exit sleep mode
         0,                                      // Terminate list
 };
+
+/* Dynamic refresh sequences. Same format as the init sequence:
+ * { size, delay_5ms, reg, data... }, terminated by 0.
+ * SET_TCON (0xC4) is precomputed per step; only VFP_NP (byte 5) and
+ * VBP_NP (byte 6) differ from the normal init sequence. */
+static const uint8_t jd9853_refresh_seq_10fps[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x7F, 0x7F, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x20,                                                           // OSCM: 2.0 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+static const uint8_t jd9853_refresh_seq_15fps[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x72, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x20,                                                           // OSCM: 2.0 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+static const uint8_t jd9853_refresh_seq_30fps[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x0A, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x21,                                                           // OSCM: 2.5 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+static const uint8_t jd9853_refresh_seq_60fps[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x0A, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x11,                                                           // OSCM: 5.0 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+static const uint8_t jd9853_refresh_seq_max[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x14, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x01,                                                           // OSCM: 10 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+typedef enum {
+    DisplayJd9853Refresh10 = 0,
+    DisplayJd9853Refresh15,
+    DisplayJd9853Refresh30,
+    DisplayJd9853Refresh60,
+    DisplayJd9853RefreshMax,
+    DisplayJd9853RefreshCount,
+} DisplayJd9853RefreshStep;
+
+typedef struct {
+    const uint8_t* config; // 0-terminated register sequence
+    uint8_t fps; // approximate panel refresh rate
+    uint32_t fast_delta_us; // frame interval below this means "faster than panel"
+} DisplayJd9853RefreshConfig;
+
+/* fast_delta_us is 5/6 of the panel frame period, precomputed:
+ * 10 FPS -> 83333 us, 15 -> 55555, 30 -> 27777, 60 -> 13888, 115 -> 7245. */
+static const DisplayJd9853RefreshConfig
+    jd9853_refresh_config[DisplayJd9853RefreshCount] = {
+        [DisplayJd9853Refresh10] = {jd9853_refresh_seq_10fps, 10, 83333}, // ~10.4 FPS
+        [DisplayJd9853Refresh15] = {jd9853_refresh_seq_15fps, 15, 55555}, // ~15.0 FPS
+        [DisplayJd9853Refresh30] = {jd9853_refresh_seq_30fps, 30, 27777}, // ~30.0 FPS
+        [DisplayJd9853Refresh60] = {jd9853_refresh_seq_60fps, 60, 13888}, // ~60.0 FPS
+        [DisplayJd9853RefreshMax] = {jd9853_refresh_seq_max, 115, 7245}, // ~113 FPS
+};
 /* clang-format on */

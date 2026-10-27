@@ -27,7 +27,6 @@
 #define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS 2000 // 2 s
 #define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_S  (DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS / 1000u)
 #define DISPLAY_JD9853_REFRESH_FAST_FRAMES       2 // frames needed to step up
-#define DISPLAY_JD9853_TCON_PARAM_COUNT          12 // SET_TCON (0xC4) parameters
 #endif
 
 typedef struct {
@@ -35,48 +34,6 @@ typedef struct {
     uint8_t data[JD9853_WIDTH * JD9853_HEIGHT];
 } DisplayJd9853QSPIBufferHeader;
 
-#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
-typedef enum {
-    DisplayJd9853Refresh10 = 0,
-    DisplayJd9853Refresh15,
-    DisplayJd9853Refresh30,
-    DisplayJd9853Refresh60,
-    DisplayJd9853RefreshMax,
-    DisplayJd9853RefreshCount,
-} DisplayJd9853RefreshStep;
-
-typedef struct {
-    uint8_t osc; // SET_OSCM: OSC_DIV[5:4] | OSCM_ADJ[1:0]
-    uint8_t vfp; // SET_TCON: VFP_NP[6:0]
-    uint8_t vbp; // SET_TCON: VBP_NP[6:0]
-    uint8_t fps; // approximate panel refresh rate, used for the downgrade decision
-    uint32_t fast_delta_us; // frame interval below this means "faster than panel"
-} DisplayJd9853RefreshConfig;
-
-/* SET_OSCM (0xC5) = OSC_DIV[5:4] | OSCM_ADJ[1:0].
- * OSCM_ADJ selects OSCD = 16/20/24/28 MHz (0..3), OSC_DIV divides it by 2/4/8.
- * This panel has 144 gate lines and SLT_NP = 121, so:
- *   frame rate = TCON / (total_lines * 121 * 4).
- * OSC_DIV alone bottoms out at ~23 FPS, so the two lowest steps also stretch
- * the vertical blanking (VFP/VBP) to reach 15 and 10 FPS. */
-static const DisplayJd9853RefreshConfig
-    display_jd9853_refresh_config[DisplayJd9853RefreshCount] = {
-        [DisplayJd9853Refresh10] = {0x20, 0x7F, 0x7F, 10, 83333}, // 2.0 MHz, VBP/VFP maxed -> ~10.4 FPS
-        [DisplayJd9853Refresh15] = {0x20, 0x72, 0x12, 15, 55555}, // 2.0 MHz, VFP = 114 -> ~15.0 FPS
-        [DisplayJd9853Refresh30] = {0x21, 0x0A, 0x12, 30, 27777}, // 2.5 MHz, VFP = 10 -> ~30.0 FPS
-        [DisplayJd9853Refresh60] = {0x11, 0x0A, 0x12, 60, 13888}, // 5.0 MHz, VFP = 10 -> ~60.0 FPS
-        [DisplayJd9853RefreshMax] = {0x01, 0x14, 0x12, 115, 7245}, // 10 MHz, boot values -> ~113 FPS
-};
-
-/* Baseline SET_TCON (0xC4) parameters from the init sequence. Only VFP_NP
- * (index 4) and VBP_NP (index 5) are changed at runtime. Keep in sync with
- * jd9853_init_seq_2025_04_01_normal_white_mod. */
-static const uint8_t display_jd9853_tcon_base[DISPLAY_JD9853_TCON_PARAM_COUNT] = {
-    0x00, 0x00, 0x48, 0x79, 0x14, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
-};
-#define DISPLAY_JD9853_TCON_VFP_INDEX (4u)
-#define DISPLAY_JD9853_TCON_VBP_INDEX (5u)
-#endif
 
 struct DisplayJd9853QSPI {
     FuriSemaphore* busy;
@@ -111,7 +68,7 @@ static void display_jd9853_fps_timer_callback(void* ctx) {
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     FURI_LOG_W(TAG, "Display TX: %lu FPS, panel %u FPS (step %u)",
                (unsigned long)fps,
-               (unsigned)display_jd9853_refresh_config[display->refresh_step].fps,
+               (unsigned)jd9853_refresh_config[display->refresh_step].fps,
                (unsigned)display->refresh_step);
 #else
     FURI_LOG_W(TAG, "Display TX: %lu FPS", (unsigned long)fps);
@@ -226,8 +183,8 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* disp
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
 /* Apply the pending refresh step. Called with the display idle (busy
- * semaphore held), so no frame transfer can be in progress. The page 1
- * SET_OSCM register is changed together with VFP/VBP in page 0 SET_TCON. */
+ * semaphore held), so no frame transfer can be in progress. The complete
+ * register sequence is precomputed in display_jd9853_reg.h. */
 static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
     int8_t pending = display->refresh_pending;
 
@@ -235,44 +192,16 @@ static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
         return;
     }
 
-    const DisplayJd9853RefreshConfig* config = &display_jd9853_refresh_config[pending];
-    uint8_t tcon[DISPLAY_JD9853_TCON_PARAM_COUNT];
-    for(size_t i = 0; i < DISPLAY_JD9853_TCON_PARAM_COUNT; i++) {
-        tcon[i] = display_jd9853_tcon_base[i];
-    }
-    tcon[DISPLAY_JD9853_TCON_VFP_INDEX] = config->vfp;
-    tcon[DISPLAY_JD9853_TCON_VBP_INDEX] = config->vbp;
-
-    uint8_t page0 = 0x00;
-    uint8_t page1 = 0x01;
-    uint8_t osc = config->osc;
-
-    display_jd9853_hstx_init_1_line(display);
-
-    display_jd9853_write_reg(display, set_page);
-    display_jd9853_write_data(display, &page0, 1);
-
-    display_jd9853_write_reg(display, set_tcon);
-    display_jd9853_write_data(display, tcon, sizeof(tcon));
-
-    display_jd9853_write_reg(display, set_page);
-    display_jd9853_write_data(display, &page1, 1);
-
-    display_jd9853_write_reg(display, set_oscm);
-    display_jd9853_write_data(display, &osc, 1);
-
-    display_jd9853_write_reg(display, set_page);
-    display_jd9853_write_data(display, &page0, 1);
-
-    display_jd9853_hstx_init_4_line(display);
+    display_jd9853_load_config(display, jd9853_refresh_config[pending].config);
 
     display->refresh_step = (uint8_t)pending;
     display->refresh_pending = -1;
 }
 
-/* Runs in the Furi timer service thread periodically. Lowers the refresh
- * rate by one step when the incoming frame rate leaves enough headroom,
- * unless the panel was starved during the window. */
+/* Runs in the Furi timer service thread. Lowers the refresh rate by one step
+ * when the incoming frame rate leaves enough headroom, unless the panel was
+ * starved during the window. The timer is one-shot: while a lower step is
+ * reachable it re-arms itself, at the minimum rate it stays stopped. */
 static void display_jd9853_refresh_timer_callback(void* ctx) {
     DisplayJd9853QSPI* display = ctx;
 
@@ -285,26 +214,27 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
     display->frames_in_window = 0;
     display->refresh_starved = false;
 
-    if(starved) {
-        return;
-    }
-
     uint8_t current = display->refresh_step;
-    if(current == DisplayJd9853Refresh10) {
-        return;
+    if(!starved && (current != DisplayJd9853Refresh10)) {
+        uint32_t incoming_fps = frames / DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_S;
+        uint8_t next = current - 1;
+        uint32_t next_fps = jd9853_refresh_config[next].fps;
+
+        /* Require 20% headroom above the measured incoming frame rate. */
+        if((next_fps * 100u) >= (incoming_fps * 120u)) {
+            display->refresh_pending = (int8_t)next;
+            if(furi_semaphore_acquire(display->busy, 0) == FuriStatusOk) {
+                display_jd9853_apply_refresh(display);
+                furi_semaphore_release(display->busy);
+            }
+        }
     }
 
-    uint32_t incoming_fps = frames / DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_S;
-    uint8_t next = current - 1;
-    uint32_t next_fps = display_jd9853_refresh_config[next].fps;
-
-    /* Require 20% headroom above the measured incoming frame rate. */
-    if((next_fps * 100u) >= (incoming_fps * 120u)) {
-        display->refresh_pending = (int8_t)next;
-        if(furi_semaphore_acquire(display->busy, 0) == FuriStatusOk) {
-            display_jd9853_apply_refresh(display);
-            furi_semaphore_release(display->busy);
-        }
+    /* One-shot: re-arm only while there is a lower step to reach. At the
+     * minimum rate the timer stays stopped until a step-up arms it again. */
+    if(display->refresh_step != DisplayJd9853Refresh10) {
+        furi_timer_start(
+            display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
     }
 }
 #endif
@@ -372,12 +302,17 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
     }
 
     if(panel_busy ||
-       (delta_us < display_jd9853_refresh_config[display->refresh_step].fast_delta_us)) {
+       (delta_us < jd9853_refresh_config[display->refresh_step].fast_delta_us)) {
         if(++display->fast_frames >= DISPLAY_JD9853_REFRESH_FAST_FRAMES) {
             uint8_t target = (display->refresh_pending >= 0) ? (uint8_t)display->refresh_pending :
                                                                display->refresh_step;
             if(target < DisplayJd9853RefreshMax) {
                 display->refresh_pending = (int8_t)(target + 1);
+                /* Wake the downgrade timer up again if it stopped at the
+                 * minimum refresh rate. */
+                furi_timer_start(
+                    display->refresh_timer,
+                    furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
             }
             display->fast_frames = 0;
         }
@@ -560,7 +495,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     /* Start the periodic refresh-rate downgrade check in the existing Furi
      * timer service thread. */
     display->refresh_timer =
-        furi_timer_alloc(display_jd9853_refresh_timer_callback, FuriTimerTypePeriodic, display);
+        furi_timer_alloc(display_jd9853_refresh_timer_callback, FuriTimerTypeOnce, display);
     furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
 #endif
 
