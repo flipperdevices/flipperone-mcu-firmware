@@ -1,0 +1,78 @@
+name: Unit tests
+
+on:
+  workflow_call:
+    inputs:
+      commit_sha:
+        required: true
+        type: string
+      firmware_commit:
+        description: Commit stamped by the build into device_info
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+      artifact_suffix:
+        required: true
+        type: string
+      target:
+        type: string
+        default: f2
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    runs-on: [fone-lab]
+    timeout-minutes: 20
+    container:
+      image: fo-test:preparation
+      env:
+        FO_DUTS: "1"
+        FO_TAGS: real
+        FO_SUITE: mcu
+        FO_COMPONENT: mcu
+        # Preparation needs CPU/probe control to quiesce Linux before SWD.
+        FO_UARTS: cpu-console,mcu-cli,mcu-log,probe-cli
+        FO_USB: probe
+    steps:
+      - name: Checkout code at the build's commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.commit_sha }}
+          persist-credentials: false
+      - name: Validate the stand's hardware target
+        env:
+          FW_TARGET: ${{ inputs.target }}
+        run: test "$FW_TARGET" = f2
+      - name: Download ordinary firmware build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: firmware
+      - name: Flash firmware
+        id: flashing
+        uses: ./.github/actions/flash-device
+        with:
+          firmware: firmware/flipper-one-mcu-${{ inputs.target }}-firmware-${{ inputs.artifact_suffix }}.uf2
+          report: test-results/prepared.json
+      - name: Check MCU availability and identity (post-flash)
+        if: steps.flashing.outcome == 'success'
+        env:
+          BUILD_COMMIT: ${{ inputs.firmware_commit }}
+          FW_TARGET: ${{ inputs.target }}
+        run: python3 scripts/testops.py sanity --commit "$BUILD_COMMIT" --target "$FW_TARGET"
+      - name: Run units
+        run: python3 scripts/testops.py unit-tests
+      # Continuous stand UART streams stay on the host. testops writes its
+      # command-specific MCU transcripts and results directly to test-results.
+      - name: Save flash verification and MCU test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcu-unit-test-results
+          path: test-results/
+          if-no-files-found: warn
+      # fo-lab restores MCU baseline + NVM after teardown, then verifies FREE.

@@ -18,10 +18,12 @@ extern int32_t headphones_srv(void* p);
 extern int32_t usb_mux_srv(void* p);
 extern int32_t cli_uart_srv(void* p);
 extern int32_t cli_vcp_srv(void* p);
+extern int32_t cpu_mode_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
 extern int32_t touchpad_test_app(void* p);
+extern int32_t touchpad_test_v2_app(void* p);
 extern int32_t haptic_test_app(void* p);
 extern int32_t self_check_app(void* p);
 extern int32_t font_test_app(void* p);
@@ -29,6 +31,7 @@ extern int32_t cli_on_system_start(void* p);
 extern int32_t rpc_on_system_start(void* p);
 extern int32_t dmesg_app(void* p);
 extern int32_t cpu_app(void* p);
+extern int32_t display_test_app(void* p);
 
 // CLI commands
 extern void power_cli(PipeSide* pipe, FuriString* args, void* context);
@@ -39,6 +42,8 @@ extern void input_cli_command(PipeSide* pipe, FuriString* args, void* context);
 extern void unit_tests_cli_command(PipeSide* pipe, FuriString* args, void* context);
 extern void saradc_command_cli(PipeSide* pipe, FuriString* args, void* context);
 extern void desktop_command_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void load_image_test_command_cli(PipeSide* pipe, FuriString* args, void* context);
+extern void hmi_test_command_cli(PipeSide* pipe, FuriString* args, void* context);
 
 const FlipperInternalApplication FLIPPER_SERVICES[] = {
     {
@@ -153,6 +158,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .stack_size = 1024,
         .flags = FlipperInternalApplicationFlagDefault,
     },
+    {
+        .app = cpu_mode_srv,
+        .name = "CpuModeSrv",
+        .appid = "cpu_mode_srv",
+        .stack_size = 1024,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
 };
 const size_t FLIPPER_SERVICES_COUNT = COUNT_OF(FLIPPER_SERVICES);
 
@@ -175,6 +187,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .app = touchpad_test_app,
         .name = "Touchpad Test",
         .appid = "touchpad_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+        {
+        .app = touchpad_test_v2_app,
+        .name = "Touchpad Test V2",
+        .appid = "touchpad_test_v2",
         .stack_size = 2048,
         .flags = FlipperInternalApplicationFlagDefault,
     },
@@ -207,6 +226,13 @@ const FlipperInternalApplication FLIPPER_APPS[] = {
         .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
         .args = "maskrom",
+    },
+    {
+        .app = display_test_app,
+        .name = "Display Test",
+        .appid = "display_test",
+        .stack_size = 2048,
+        .flags = FlipperInternalApplicationFlagDefault,
     },
 };
 const size_t FLIPPER_APPS_COUNT = COUNT_OF(FLIPPER_APPS);
@@ -289,6 +315,18 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     {
         .callback = desktop_command_cli,
         .name = "desktop",
+        .stack_size = 1024 * 2,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = load_image_test_command_cli,
+        .name = "load_image_test",
+        .stack_size = 1024 * 4,
+        .flags = CliCommandFlagParallelSafe,
+    },
+    {
+        .callback = hmi_test_command_cli,
+        .name = "hmi_test",
         .stack_size = 1024 * 2,
         .flags = CliCommandFlagParallelSafe,
     },
