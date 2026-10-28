@@ -15,6 +15,7 @@ extern "C" {
 #include "test_test/test_test.h"
 #include "cb_test/circular_buffer_test.h"
 #include "nvm_test/nvm_test.h"
+#include "otp_test/otp_test.h"
 #include "clay_test/clay_test.h"
 #undef TEST_FUNCTION_DECLS
 
@@ -25,6 +26,7 @@ static TestCallback unit_test_callbacks[] = {
 #include "test_test/test_test.h"
 #include "cb_test/circular_buffer_test.h"
 #include "nvm_test/nvm_test.h"
+#include "otp_test/otp_test.h"
 #include "clay_test/clay_test.h"
 #undef TEST_FUNCTION_REFS
 };
