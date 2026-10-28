@@ -1,4 +1,5 @@
 #include <furi.h>
+#include <furi_hal_version.h>
 #include <gui/gui.h>
 #include <furi_hal_power.h>
 #include <headphones/headphones.h>
@@ -358,6 +359,25 @@ static void i2c_negotiator_setup_updater(I2CNegotiator* instance) {
     updater_set_state_callback(instance->updater, i2c_updater_state_callback, instance);
 }
 
+static void i2c_negotiator_add_device_name_registers(void) {
+    static_assert(I2C_DEVICE_NAME_REG_COUNT * 2 >= FURI_HAL_VERSION_NAME_LENGTH, "Device name does not fit in its registers");
+
+    const char* name = furi_hal_version_get_name_ptr();
+    const size_t len = name ? strlen(name) : 0;
+
+    i2c_register_add_readable(I2C_DEVICE_NAME_LENGTH_REG_ADDRESS, len);
+    for(size_t i = 0; i < I2C_DEVICE_NAME_REG_COUNT; i++) {
+        uint16_t value = 0;
+        if(2 * i < len) {
+            value |= (uint8_t)name[2 * i];
+        }
+        if(2 * i + 1 < len) {
+            value |= (uint16_t)(uint8_t)name[2 * i + 1] << 8;
+        }
+        i2c_register_add_readable(I2C_DEVICE_NAME_REG_ADDRESS + 2 * i, value);
+    }
+}
+
 I2CNegotiator* i2c_negotiator_alloc() {
     I2CNegotiator* instance = malloc(sizeof(I2CNegotiator));
     instance->gui = furi_record_open(RECORD_GUI);
@@ -375,6 +395,9 @@ I2CNegotiator* i2c_negotiator_alloc() {
     {
         // Version
         i2c_register_add_readable(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION);
+
+        // Device name
+        i2c_negotiator_add_device_name_registers();
 
         // Input
         // Interrupt register

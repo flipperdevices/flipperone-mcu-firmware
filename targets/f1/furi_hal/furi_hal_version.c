@@ -1,4 +1,5 @@
 #include <furi_hal_version.h>
+#include <furi_hal_otp.h>
 
 #include <furi.h>
 #include <pico/unique_id.h>
@@ -10,6 +11,22 @@
 #define FLIPPER_MAC_2 0x22
 
 static uint8_t ble_mac[6] = {FLIPPER_MAC_0, FLIPPER_MAC_1, FLIPPER_MAC_2, 0, 0, 0};
+
+static char furi_hal_version_name[FURI_HAL_VERSION_ARRAY_NAME_LENGTH];
+
+void furi_hal_version_init(void) {
+    char name[FURI_HAL_VERSION_ARRAY_NAME_LENGTH] = {0};
+    if(furi_hal_otp_read_device_name(name, sizeof(name))) {
+        FURI_LOG_I(TAG, "Device name: %s", name);
+    } else {
+        FURI_LOG_W(TAG, "Device name is not programmed");
+    }
+    memcpy(furi_hal_version_name, name, sizeof(furi_hal_version_name));
+}
+
+const char* furi_hal_version_get_name_ptr(void) {
+    return furi_hal_version_name[0] ? furi_hal_version_name : NULL;
+}
 
 const struct Version* furi_hal_version_get_firmware_version(void) {
     return version_get();
