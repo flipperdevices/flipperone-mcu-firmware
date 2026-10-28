@@ -71,12 +71,12 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
         2, 0, 0xB2, 0x28,                           // Vcom !64 //does not affect in any way
         // GAMMA_SET
         5, 0, 0xB7, 0x0,                            // VGSP_S 0v
-                    0x7D,                           // VGMP_S 6.6v
+                    0x67,                           // VGMP_S 6.05v (was 0x7D 6.6v), tuned with VGMN against flicker at 10/15 FPS
                     0x0,                            // VGSN_S 0v
-                    0x7D,                           // VGMN_S -5.6v
+                    0x6D,                           // VGMN_S -5.2v (was 0x7D -5.6v)
         2, 0, 0xB9, 0b00000101,                     // AP AP[2:0] : 0x0, MVZ_E: 0x1, VGM_E: 0x1
         // Voltage settings
-        7, 0, 0xBB, 0b00000000,                     // VGHZ_S =11V VGLZ_S =-9.25V VGHZ_S[1:0] =0x0 VGLZ_S[1:0]=0x0
+        7, 0, 0xBB, 0b00000110,                     // VGHZ_S = 11V, VGLZ_S = -11.5V (was 0: -7V), less TFT leakage at 10/15 FPS
                     0b00100011,                     // VGHZ_RT  AVDDZ_S  VGLZ_RT  AVEEZ_S    VGHZ_RT[1:0]  : 0x0 AVDDZ_S[1:0] : 0x2  VGLZ_RT[1:0] : 0x0 AVEEZ_S[1:0]: 0x3
                     0b01010101,                     // VGHZ_CLK  VGLZ_CLK
                     0b01100001,                     // MVZ_S_CLK  MVZ_G_CLK
