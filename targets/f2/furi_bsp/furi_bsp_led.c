@@ -138,7 +138,7 @@ static bool led_line_is_wanna_power(uint32_t* line_buffer, size_t led_count) {
 
 static FURI_ALWAYS_INLINE bool led_start_off_timer(FuriBspLed* instance, bool check_line, StatusLedPower line_power) {
     furi_assert(instance);
-    if(check_line != (instance->led_state.mask_power & line_power)) {
+    if(check_line != ((instance->led_state.mask_power & line_power) != 0)) {
         if(check_line) {
             instance->led_state.mask_power |= line_power;
             furi_bsp_expander_control_led_power(instance->led_state.mask_power);
