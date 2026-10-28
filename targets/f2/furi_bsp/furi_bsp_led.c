@@ -48,7 +48,6 @@ static LedUpdateLine led_get_update_line_by_type(FuriBspLedType type) {
 
     // Line 2
     case FuriBspLedTypeBatteryOutline ... FuriBspLedTypeBatteryWatt4:
-    // the two halves of the battery outline, test-only
     case FuriBspLedTypeBatteryOutline1:
     case FuriBspLedTypeBatteryOutline2:
         return LedUpdateLine2;
@@ -67,8 +66,6 @@ static LedUpdateLine led_get_update_line_by_type(FuriBspLedType type) {
 
 static uint8_t led_type_to_physical_index(FuriBspLedType type) {
     switch(type) {
-    // The battery outline is a pair of adjacent LEDs: FuriBspLedTypeBatteryOutline
-    // drives both, while the test-only ...1/...2 variants address them one by one.
     case FuriBspLedTypeBatteryOutline1:
         return (uint8_t)FuriBspLedTypeBatteryOutline;
     case FuriBspLedTypeBatteryOutline2:
@@ -78,14 +75,11 @@ static uint8_t led_type_to_physical_index(FuriBspLedType type) {
     }
 
     if(type > FuriBspLedTypeBatteryOutline) {
-        // LedTypeBatteryOutline occupies two physical LEDs
         return (uint8_t)(type + 1);
     }
     return (uint8_t)type;
 }
 
-// FuriBspLedTypeAllOff is a command rather than an addressable LED, and the two
-// test-only halves of the battery outline are addressable.
 static bool led_type_is_addressable(FuriBspLedType type) {
     return type <= FuriBspLedTypeBatteryCenter || type == FuriBspLedTypeBatteryOutline1 ||
            type == FuriBspLedTypeBatteryOutline2;

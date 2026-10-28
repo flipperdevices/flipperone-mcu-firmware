@@ -16,8 +16,6 @@
 #define LED_BACKLIGHT_TIME_MAX     ((UINT16_MAX) * 100) // I2C: 16-bit register with 100ms resolution
 
 typedef struct {
-    // Colors of the physical LEDs, indexed by address in the WS2812 buffer the BSP
-    // pushes via DMA (see furi_bsp_led_get_physical_index)
     LedColor colors[LED_TOTAL_LEDS_COUNT];
     FuriState* brightness[LedGroupMax];
     FuriState* backlight_time;
@@ -91,7 +89,6 @@ static LedGroup led_get_led_group_by_led_type(FuriBspLedType type) {
     case FuriBspLedTypePower:
         return LedGroupPower;
     case FuriBspLedTypeBatteryOutline ... FuriBspLedTypeBatteryCenter:
-    // the two halves of the battery outline, test-only
     case FuriBspLedTypeBatteryOutline1:
     case FuriBspLedTypeBatteryOutline2:
         return LedGroupWattmeter;
@@ -140,7 +137,6 @@ static const size_t leds_in_group_count[LedGroupMax] = {
 };
 
 static void led_set_color(Led* instance, FuriBspLedType type, LedColor color, uint8_t brightness) {
-    // a type can cover more than one LED, so fill every address it drives
     const uint8_t first_index = furi_bsp_led_get_physical_index(type);
     const uint8_t leds_count = furi_bsp_led_get_leds_count(type);
     for(uint8_t i = 0; i < leds_count; i++) {
@@ -183,7 +179,6 @@ static void led_backlight_ping(Led* instance) {
 static void led_process_set_color_batch(Led* instance, LedItem* items, size_t count) {
     for(size_t i = 0; i < count; i++) {
         switch(items[i].type) {
-        // regular leds, plus the two test-only halves of the battery outline
         case FuriBspLedTypeNet ... FuriBspLedTypeBatteryCenter:
         case FuriBspLedTypeBatteryOutline1:
         case FuriBspLedTypeBatteryOutline2: {

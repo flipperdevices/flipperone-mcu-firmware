@@ -83,7 +83,6 @@ void led_cli(PipeSide* pipe, FuriString* args, void* context) {
         cli_command_led_help(pipe, args, context);
         return;
     }
-    // LED type is referenced by its FuriBspLedType value
     if(led_type < 0 || led_type > (int)FuriBspLedTypeBatteryOutline2) {
         cli_command_led_help(pipe, args, context);
         return;
