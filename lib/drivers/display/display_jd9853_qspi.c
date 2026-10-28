@@ -499,10 +499,6 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_hal_gpio_write(&gpio_display_reset, false);
     furi_delay_ms(30);
     furi_hal_gpio_write(&gpio_display_reset, true);
-    /* A reset during sleep out (an MCU reboot while the panel is running)
-     * needs up to 120 ms before commands are accepted, and the internal
-     * reset sequence runs slower when the dynamic refresh left the panel
-     * on the low-power step. Commands sent earlier are silently dropped. */
     furi_delay_ms(DISPLAY_JD9853_RESET_DELAY_MS);
 
     //todo set gpio functions add implement furi hal gpio
