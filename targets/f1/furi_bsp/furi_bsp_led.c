@@ -8,11 +8,12 @@
 
 #define TAG "FuriBspLed"
 
-#define LED_LINES_COUNT             (3U)
-#define LED_WAIT_POWER_ON_WS2812_MS (5U)
-#define LED_LINE1_INDEX             (0U)
-#define LED_LINE2_INDEX             (1U)
-#define LED_LINE3_INDEX             (2U)
+#define LED_LINES_COUNT                (3U)
+#define LED_WAIT_POWER_ON_WS2812_MS    (5U)
+#define LED_BATTERY_OUTLINE_LEDS_COUNT (2U)
+#define LED_LINE1_INDEX                (0U)
+#define LED_LINE2_INDEX                (1U)
+#define LED_LINE3_INDEX                (2U)
 
 typedef enum {
     LedUpdateLine1 = (1 << 0U),
@@ -39,6 +40,8 @@ static LedUpdateLine led_get_update_line_by_type(FuriBspLedType type) {
 
     // Line 2
     case FuriBspLedTypePower ... FuriBspLedTypeBatteryWatt4:
+    case FuriBspLedTypeBatteryOutline1:
+    case FuriBspLedTypeBatteryOutline2:
         return LedUpdateLine2;
 
     // Line 3
@@ -54,6 +57,15 @@ static LedUpdateLine led_get_update_line_by_type(FuriBspLedType type) {
 }
 
 static uint8_t led_type_to_physical_index(FuriBspLedType type) {
+    switch(type) {
+    case FuriBspLedTypeBatteryOutline1:
+        return (uint8_t)FuriBspLedTypeBatteryOutline;
+    case FuriBspLedTypeBatteryOutline2:
+        return (uint8_t)((uint8_t)FuriBspLedTypeBatteryOutline + 1U);
+    default:
+        break;
+    }
+
     if(type > FuriBspLedTypeBatteryOutline) {
         // LedTypeBatteryOutline occupies two physical LEDs
         return (uint8_t)(type + 1);
@@ -61,9 +73,23 @@ static uint8_t led_type_to_physical_index(FuriBspLedType type) {
     return (uint8_t)type;
 }
 
+static bool led_type_is_addressable(FuriBspLedType type) {
+    return type <= FuriBspLedTypeBatteryCenter || type == FuriBspLedTypeBatteryOutline1 ||
+           type == FuriBspLedTypeBatteryOutline2;
+}
+
+uint8_t furi_bsp_led_get_physical_index(FuriBspLedType type) {
+    furi_check(led_type_is_addressable(type));
+    return led_type_to_physical_index(type);
+}
+
+uint8_t furi_bsp_led_get_leds_count(FuriBspLedType type) {
+    return (type == FuriBspLedTypeBatteryOutline) ? LED_BATTERY_OUTLINE_LEDS_COUNT : 1U;
+}
+
 void furi_bsp_led_set(FuriBspLed* instance, FuriBspLedType type, uint8_t r, uint8_t g, uint8_t b) {
     furi_assert(instance);
-    furi_check(type <= FuriBspLedTypeBatteryCenter);
+    furi_check(led_type_is_addressable(type));
     const uint32_t color = ws2812_urgb_u32(r, g, b);
     const uint8_t index = led_type_to_physical_index(type);
     instance->led_state.line[index] = color;

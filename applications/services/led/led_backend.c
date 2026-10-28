@@ -89,6 +89,8 @@ static LedGroup led_get_led_group_by_led_type(FuriBspLedType type) {
     case FuriBspLedTypePower:
         return LedGroupPower;
     case FuriBspLedTypeBatteryOutline ... FuriBspLedTypeBatteryCenter:
+    case FuriBspLedTypeBatteryOutline1:
+    case FuriBspLedTypeBatteryOutline2:
         return LedGroupWattmeter;
     default:
         furi_crash("FuriBspLedType");
@@ -135,7 +137,11 @@ static const size_t leds_in_group_count[LedGroupMax] = {
 };
 
 static void led_set_color(Led* instance, FuriBspLedType type, LedColor color, uint8_t brightness) {
-    instance->led_state.colors[type] = color;
+    const uint8_t first_index = furi_bsp_led_get_physical_index(type);
+    const uint8_t leds_count = furi_bsp_led_get_leds_count(type);
+    for(uint8_t i = 0; i < leds_count; i++) {
+        instance->led_state.colors[first_index + i] = color;
+    }
 
     LedColor adjusted_color = {
         ((float)color.r * brightness) / 255.0f * LED_RGB_BRIGHTNESS_MULTIPLIER,
@@ -173,8 +179,9 @@ static void led_backlight_ping(Led* instance) {
 static void led_process_set_color_batch(Led* instance, LedItem* items, size_t count) {
     for(size_t i = 0; i < count; i++) {
         switch(items[i].type) {
-        // regular leds
-        case FuriBspLedTypeNet ... FuriBspLedTypeBatteryCenter: {
+        case FuriBspLedTypeNet ... FuriBspLedTypeBatteryCenter:
+        case FuriBspLedTypeBatteryOutline1:
+        case FuriBspLedTypeBatteryOutline2: {
             LedGroup group = led_get_led_group_by_led_type(items[i].type);
 
             uint8_t brightness;
@@ -206,7 +213,8 @@ static void led_process_set_brightness(Led* instance, LedGroup group, uint8_t br
 
         for(size_t i = 0; i < group_leds_count; i++) {
             FuriBspLedType type = group_leds[i];
-            led_set_color(instance, type, instance->led_state.colors[type], brightness);
+            const uint8_t index = furi_bsp_led_get_physical_index(type);
+            led_set_color(instance, type, instance->led_state.colors[index], brightness);
         }
 
         furi_bsp_led_update(instance->bsp_led);
