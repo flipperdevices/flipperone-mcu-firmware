@@ -16,11 +16,12 @@ fw_sources(
     lib/corelibs/lib/version/*.c*
     lib/toolbox/*.c*
     lib/tusb/*.c*
+    lib/usb/src/*.c*
+    lib/usb_v2/src/*.c*
     lib/drivers/bq2579x/*.c*
     lib/drivers/bq28z620/*.c*
     lib/drivers/display/*.c*
     lib/drivers/drv2605l/*.c*
-    lib/drivers/fusb302/*.c*
     lib/drivers/hd3ss3220/*.c*
     lib/drivers/headphones/*.c*
     lib/drivers/i2c_slave/*.c*
@@ -41,6 +42,9 @@ fw_includes(
     lib/corelibs/lib/furi
     lib/corelibs/lib/version
     lib/tusb
+    lib/usb/include
+    lib/usb/src
+    lib/usb_v2/include
     lib/corelibs/lib
     lib/freertos
     lib/corelibs/lib/mlib

@@ -19,6 +19,14 @@
 #define BQ2579X_OTG_WATCHDOG_TIME      Bq2579xWatchdogTime0_5s
 #define BQ2579X_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
 
+// Startup input limit only. What the port actually allows is decided by the
+// Type-C Rp advertisement and then by the PD contract, and the pd service
+// applies both through power_bq2579x_set_input_current_limit_ma(). Booting at
+// the hardware maximum instead would let the charger ramp past what the
+// source permits during the ~190 ms it takes PD to negotiate, browning out
+// the source and getting the connection Hard Reset.
+#define BQ2579X_BAT_STARTUP_INPUT_CURRENT 500
+
 typedef enum {
     PowerEventTypeIsr = (1 << 0),
     PowerEventTypeAll = (PowerEventTypeIsr),
@@ -58,7 +66,7 @@ static Bq2579xStatus power_bq2579x_reset_and_load_config(Power* instance) {
             FURI_LOG_E(TAG, "Failed to set BQ2579X charge current limit: %d", res);
             break;
         }
-        res = bq2579x_set_input_current_limit_ma(instance->bq2579x_header, FURI_POWER_CONFIG_BQ2579X_BAT_MAX_INPUT_CURRENT);
+        res = bq2579x_set_input_current_limit_ma(instance->bq2579x_header, BQ2579X_BAT_STARTUP_INPUT_CURRENT);
         if(res != Bq2579xStatusOk) {
             FURI_LOG_E(TAG, "Failed to set BQ2579X input current limit: %d", res);
             break;
@@ -186,6 +194,10 @@ API_WRAPPER_PARAM(bq2579x_get_charger_fault, Bq2579xStatus, Bq2579x*, Bq2579xFau
 API_WRAPPER_PARAM(bq2579x_get_charger_irq_flags, Bq2579xStatus, Bq2579x*, Bq2579xChargerFlagReg*);
 API_WRAPPER_PARAM(bq2579x_adc_enable, Bq2579xStatus, Bq2579x*, bool);
 API_WRAPPER(bq2579x_watchdog_reset, Bq2579xStatus, Bq2579x*);
+API_WRAPPER_PARAM(bq2579x_get_input_voltage_limit_mv, Bq2579xStatus, Bq2579x*, uint16_t*);
+API_WRAPPER_PARAM(bq2579x_set_input_voltage_limit_mv, Bq2579xStatus, Bq2579x*, uint16_t);
+API_WRAPPER_PARAM(bq2579x_ico_enable, Bq2579xStatus, Bq2579x*, bool);
+API_WRAPPER_PARAM(bq2579x_vbus_pulldown_enable, Bq2579xStatus, Bq2579x*, bool);
 
 /* Wrapper for power-side BQ2579X reset/config function so it can be queued via PowerMessage */
 API_WRAPPER(power_bq2579x_reset_and_load_config, Bq2579xStatus, Power*);
@@ -558,6 +570,20 @@ bool power_bq2579x_get_input_current_limit_ma(Power* instance, uint16_t* input_c
     return result == Bq2579xStatusOk;
 }
 
+bool power_bq2579x_get_input_voltage_limit_mv(Power* instance, uint16_t* input_voltage_limit) {
+    furi_check(instance);
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_get_input_voltage_limit_mv, instance->bq2579x_header, input_voltage_limit, result);
+    return result == Bq2579xStatusOk;
+}
+
+bool power_bq2579x_set_input_voltage_limit_mv(Power* instance, uint16_t input_voltage_limit) {
+    furi_check(instance);
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_set_input_voltage_limit_mv, instance->bq2579x_header, input_voltage_limit, result);
+    return result == Bq2579xStatusOk;
+}
+
 bool power_bq2579x_set_input_current_limit_ma(Power* instance, uint16_t input_current_limit) {
     furi_check(instance);
     Bq2579xStatus result;
@@ -597,6 +623,20 @@ bool power_bq2579x_charge_enable(Power* instance, bool enable) {
     furi_check(instance);
     Bq2579xStatus result;
     POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_charge_enable, instance->bq2579x_header, enable, result);
+    return result == Bq2579xStatusOk;
+}
+
+bool power_bq2579x_ico_enable(Power* instance, bool enable) {
+    furi_check(instance);
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_ico_enable, instance->bq2579x_header, enable, result);
+    return result == Bq2579xStatusOk;
+}
+
+bool power_bq2579x_vbus_pulldown_enable(Power* instance, bool enable) {
+    furi_check(instance);
+    Bq2579xStatus result;
+    POWER_API_CALL_PARAM(PowerDeviceBq2579x, bq2579x_vbus_pulldown_enable, instance->bq2579x_header, enable, result);
     return result == Bq2579xStatusOk;
 }
 

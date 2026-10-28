@@ -9,6 +9,11 @@
 #define BQ25798_DEVICE_PART_NUMBER        0b011 //BQ25798
 #define BQ2579X_MAX_INPUT_DEFAULT_CURRENT 500 // mA
 
+
+// VINDPM register range (datasheet §9.5.1.4): 8 bits, 100 mV per LSB.
+#define BQ2579X_VINDPM_MIN_MV 3600
+#define BQ2579X_VINDPM_MAX_MV 22000
+
 #ifdef BQ2579X_DEBUG_ENABLE
 #define BQ2579X_DEBUG(...) FURI_LOG_D(__VA_ARGS__)
 #else
@@ -185,7 +190,9 @@ Bq2579xStatus bq2579x_load_default_config(Bq2579x* instance) {
             break;
         }
 
-        // Disable Dp/Dm detection
+        // Disable Dp/Dm detection. D+/D- are unconnected on this hardware, so
+        // BC1.2 would read floating pins — and its verdict lands straight in
+        // the input current limit, overriding what Type-C and PD told us.
         Bq2579xChargerControl2RegBits charger_control_2 = {0};
         res = bq2579x_write_reg8(instance, Bq2579xRegChargerControl2, *(uint8_t*)&charger_control_2);
         if(res != Bq2579xStatusOk) {
@@ -215,8 +222,13 @@ Bq2579xStatus bq2579x_load_default_config(Bq2579x* instance) {
         if(res != Bq2579xStatusOk) {
             break;
         }
-        // Enabling automatic adjustment of input current
-        charger_control_0.en_ico = 1; // Enable ICO current limit
+        // ICO probes upward past the configured input current limit to find
+        // what the source can really deliver. That is the right thing only
+        // for a source that never tells us — with a PD contract or a Type-C
+        // Rp advertisement the limit is known, and overshooting it browns the
+        // source out. Off by default; whoever knows the port's state turns it
+        // on via bq2579x_ico_enable().
+        charger_control_0.en_ico = 0;
         res = bq2579x_write_reg8(instance, Bq2579xRegChargerControl0, *(uint8_t*)&charger_control_0);
         if(res != Bq2579xStatusOk) {
             break;
@@ -403,6 +415,34 @@ Bq2579xStatus bq2579x_get_charger_temperature(Bq2579x* instance, float* temperat
     return res;
 }
 
+Bq2579xStatus bq2579x_get_input_voltage_limit_mv(Bq2579x* instance, uint16_t* input_voltage_limit) {
+    furi_check(instance);
+    furi_check(input_voltage_limit);
+    uint8_t raw = 0;
+    Bq2579xStatus res = bq2579x_read_reg8(instance, Bq2579xRegInputVoltageLimit, &raw);
+    if(res == Bq2579xStatusOk) {
+        *input_voltage_limit = (uint16_t)raw * 100u; // 100 mV per LSB, no offset
+    } else {
+        FURI_LOG_E(TAG, "Failed to get input voltage limit!");
+    }
+    return res;
+}
+
+Bq2579xStatus bq2579x_set_input_voltage_limit_mv(Bq2579x* instance, uint16_t input_voltage_limit) {
+    furi_check(instance);
+    if(input_voltage_limit < BQ2579X_VINDPM_MIN_MV) input_voltage_limit = BQ2579X_VINDPM_MIN_MV;
+    if(input_voltage_limit > BQ2579X_VINDPM_MAX_MV) input_voltage_limit = BQ2579X_VINDPM_MAX_MV;
+    // 100 mV per LSB, no offset. Truncating rather than rounding keeps the
+    // threshold at or below what the caller asked for, so a rounding step can
+    // never make us give up on a source we were told to tolerate.
+    const uint8_t raw = (uint8_t)(input_voltage_limit / 100u);
+    Bq2579xStatus res = bq2579x_write_reg8(instance, Bq2579xRegInputVoltageLimit, raw);
+    if(res != Bq2579xStatusOk) {
+        FURI_LOG_E(TAG, "Failed to set input voltage limit!");
+    }
+    return res;
+}
+
 Bq2579xStatus bq2579x_get_input_current_limit_ma(Bq2579x* instance, uint16_t* input_current_limit) {
     furi_check(instance);
     furi_check(input_current_limit);
@@ -525,6 +565,42 @@ Bq2579xStatus bq2579x_charge_enable(Bq2579x* instance, bool enable) {
     } while(0);
     if(res != Bq2579xStatusOk) {
         FURI_LOG_E(TAG, "Failed to set charge enable!");
+    }
+    return res;
+}
+
+Bq2579xStatus bq2579x_ico_enable(Bq2579x* instance, bool enable) {
+    furi_check(instance);
+    Bq2579xStatus res = Bq2579xStatusUnknown;
+    Bq2579xChargerControl0RegBits charger_control_0 = {0};
+    do {
+        res = bq2579x_read_reg8(instance, Bq2579xRegChargerControl0, (uint8_t*)&charger_control_0);
+        if(res != Bq2579xStatusOk) {
+            break;
+        }
+        charger_control_0.en_ico = enable ? 1 : 0;
+        res = bq2579x_write_reg8(instance, Bq2579xRegChargerControl0, *(uint8_t*)&charger_control_0);
+    } while(0);
+    if(res != Bq2579xStatusOk) {
+        FURI_LOG_E(TAG, "Failed to set ICO enable!");
+    }
+    return res;
+}
+
+Bq2579xStatus bq2579x_vbus_pulldown_enable(Bq2579x* instance, bool enable) {
+    furi_check(instance);
+    Bq2579xStatus res = Bq2579xStatusUnknown;
+    Bq2579xTemperatureControlRegBits temperature_control = {0};
+    do {
+        res = bq2579x_read_reg8(instance, Bq2579xRegTemperatureControl, (uint8_t*)&temperature_control);
+        if(res != Bq2579xStatusOk) {
+            break;
+        }
+        temperature_control.vbus_pd_en = enable ? 1 : 0;
+        res = bq2579x_write_reg8(instance, Bq2579xRegTemperatureControl, *(uint8_t*)&temperature_control);
+    } while(0);
+    if(res != Bq2579xStatusOk) {
+        FURI_LOG_E(TAG, "Failed to set VBUS pull-down!");
     }
     return res;
 }

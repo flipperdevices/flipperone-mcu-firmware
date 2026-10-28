@@ -66,6 +66,32 @@ Bq2579xStatus bq2579x_get_charger_irq_flags(Bq2579x* instance, Bq2579xChargerFla
 Bq2579xStatus bq2579x_adc_enable(Bq2579x* instance, bool enable);
 Bq2579xStatus bq2579x_mppt_enable(Bq2579x* instance, bool enable);
 Bq2579xStatus bq2579x_otg_enable(Bq2579x* instance, bool enable);
+
+/** VINDPM: the input voltage the charger regulates down to before it starts
+ * cutting input current. Hardware resets it to 3600 mV whenever the adapter
+ * is unplugged, so it cannot be configured once at boot. */
+Bq2579xStatus bq2579x_get_input_voltage_limit_mv(Bq2579x* instance, uint16_t* input_voltage_limit);
+
+/** Sets VINDPM. Must be re-applied per PD contract, not once at boot: the
+ * hardware picks its own value from the VBUS it measures at plug-in, which is
+ * vSafe5V, and never revisits it when we negotiate a higher voltage. Left
+ * alone, a 15 V contract keeps a ~4.4 V threshold and the charger will hold
+ * full input current while the source collapses instead of backing off.
+ * Clamped to the register's 3.6-22 V range. */
+Bq2579xStatus bq2579x_set_input_voltage_limit_mv(Bq2579x* instance, uint16_t input_voltage_limit);
+
+/** Input Current Optimization. When on, the charger probes above the
+ * configured input current limit until the source droops, to discover what it
+ * can really deliver — useful only for a source that does not advertise its
+ * capability. Off after bq2579x_load_default_config(): overshooting a limit
+ * we already know from PD or Type-C browns the source out. */
+Bq2579xStatus bq2579x_ico_enable(Bq2579x* instance, bool enable);
+
+/** REG16.VBUS_PD_EN: the internal 6 kΩ pull-down on VBUS. Off by default and
+ * after REG_RST. Meant for bleeding VBUS down to vSafe0V after OTG is turned
+ * off (PD PR_Swap source→sink); at 5 V it sinks ~0.8 mA, so it is slow for
+ * large bulk capacitance and must be switched off again once VBUS is low. */
+Bq2579xStatus bq2579x_vbus_pulldown_enable(Bq2579x* instance, bool enable);
 Bq2579xStatus bq2579x_get_otg_voltage_mv(Bq2579x* instance, uint16_t* otg_voltage);
 Bq2579xStatus bq2579x_set_otg_voltage_mv(Bq2579x* instance, uint16_t otg_voltage);
 Bq2579xStatus bq2579x_get_otg_current_ma(Bq2579x* instance, uint16_t* otg_current);

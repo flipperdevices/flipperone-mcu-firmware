@@ -14,6 +14,7 @@
 */
 #define I2C_STATUS_REG_ADDRESS   (0x0000)
 #define I2C_STATUS_REG_BIT_INPUT (0)
+#define I2C_STATUS_REG_BIT_UCSI  (1)
 
 // CPU state registers
 /*
@@ -50,6 +51,10 @@
 #define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
 #define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
 #define I2C_INPUT_INTERRUPT_REG_BIT_SW_BUTTONS (3)
+
+#define I2C_UCSI_INTERRUPT_REG_ADDRESS      (0x0100 + 2)
+#define I2C_UCSI_INTERRUPT_MASK_REG_ADDRESS (0x0180 + 2)
+#define I2C_UCSI_INTERRUPT_REG_BIT_UCSI     (0)
 
 // Buttons state register
 /*
@@ -159,10 +164,10 @@
 
 // Haptic registers
 /*
- * 0x0400 + 0: 2 bytes
- * bit 15 - Play effect (1 - play, 0 - stop)
- * bits 14:8 - Effect number (0..123)
- * bits 7:0 - Duration of the effect, ms (0 or 1 - play full effect, 2..255 - play ms)
+* 0x0400 + 0: 2 bytes
+* bit 15 - Play effect (1 - play, 0 - stop)
+* bits 14:8 - Effect number (0..123)
+* bits 7:0 - Duration of the effect, ms (0 or 1 - play full effect, 2..255 - play ms)
 */
 #define I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS (0x0400 + 0)
 #define I2C_HAPTIC_PLAY_EFFECT_BIT         (15)
@@ -170,3 +175,22 @@
 #define I2C_HAPTIC_NUM_EFFECT_SHIFT        (8)
 #define I2C_HAPTIC_DURATION_MASK           (0x00FF)
 #define I2C_HAPTIC_DURATION_SHIFT          (0)
+
+// UCSI register file
+/*
+ * 0x0500   UCSI register file, 528 bytes (read, write)
+ *          Byte-addressed, unlike the 16-bit registers above. The layout
+ *          inside the window is UCSI 3.0 Table 4-1 and is deliberately not
+ *          redefined here — take the offsets from the spec:
+ *              +0x000 VERSION     3 bytes + 1 reserved   (read)
+ *              +0x004 CCI         4 bytes                (read)
+ *              +0x008 CONTROL     8 bytes                (write)
+ *              +0x010 MESSAGE_IN  255 bytes + 1 reserved (read)
+ *              +0x110 MESSAGE_OUT 255 bytes + 1 reserved (write)
+ *          Writing the LAST byte of CONTROL (0x050F) dispatches the command;
+ *          write the parameters and MESSAGE_OUT before it. Completion is
+ *          reported through CCI and the UCSI interrupt below.
+ *          VERSION reads back as 0 when the PD stack is unavailable.
+*/
+#define I2C_UCSI_REG_UCSI        (0x0500)
+#define I2C_UCSI_REG_UCSI_LENGTH (528)

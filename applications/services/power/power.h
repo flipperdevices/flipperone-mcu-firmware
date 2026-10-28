@@ -55,6 +55,23 @@ bool power_bq2579x_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t
 bool power_bq2579x_otg_enable(Power* instance, bool enable);
 bool power_bq2579x_usb_is_connected(Power* instance, bool* usb_connected);
 
+/** VINDPM read-back, see bq2579x_get_input_voltage_limit_mv(). */
+bool power_bq2579x_get_input_voltage_limit_mv(Power* instance, uint16_t* input_voltage_limit);
+/** VINDPM, see bq2579x_set_input_voltage_limit_mv() — must follow the PD
+ * contract voltage, the hardware default only ever matches vSafe5V. */
+bool power_bq2579x_set_input_voltage_limit_mv(Power* instance, uint16_t input_voltage_limit);
+
+/** Input Current Optimization, see bq2579x_ico_enable(). Enable it only for a
+ * source whose real capability we cannot know — with a PD contract or a
+ * Type-C Rp advertisement the limit is already exact and probing past it
+ * browns the source out. */
+bool power_bq2579x_ico_enable(Power* instance, bool enable);
+
+/** VBUS 6 kΩ pull-down, see bq2579x_vbus_pulldown_enable(). Used by the PD
+ * stack to bleed VBUS to vSafe0V after OTG goes off in a PR_Swap; off at all
+ * other times. */
+bool power_bq2579x_vbus_pulldown_enable(Power* instance, bool enable);
+
 /** OTG overcurrent (IINDPM/IOTG) callback. Runs in the BQ2579X IRQ worker thread — keep it short. */
 void power_bq2579x_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context);
 

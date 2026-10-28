@@ -25,6 +25,5 @@ void furi_hal_deinit_early(void) {
 void furi_hal_init(void) {
     furi_hal_gpio_interrupt_init();
     furi_hal_adc_init();
-
     furi_hal_otp_init();
 }
