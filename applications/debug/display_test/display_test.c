@@ -37,6 +37,12 @@ typedef enum {
     DisplayTestPatternBounceInverted30,
     DisplayTestPatternBounceInverted60,
     DisplayTestPatternBounceInvertedUnlimited,
+    DisplayTestPatternGray7,
+    DisplayTestPatternGray12,
+    DisplayTestPatternGray25,
+    DisplayTestPatternGray45,
+    DisplayTestPatternGray80,
+    DisplayTestPatternGrayUnlimited,
     DisplayTestPatternCount,
 } DisplayTestPattern;
 
@@ -93,6 +99,16 @@ typedef struct {
 
 static uint32_t display_test_pattern_fps(DisplayTestPattern pattern) {
     switch(pattern) {
+    case DisplayTestPatternGray7:
+        return 7;
+    case DisplayTestPatternGray12:
+        return 12;
+    case DisplayTestPatternGray25:
+        return 25;
+    case DisplayTestPatternGray45:
+        return 45;
+    case DisplayTestPatternGray80:
+        return 80;
     case DisplayTestPatternBounce15:
     case DisplayTestPatternBounceInverted15:
         return 15;
@@ -104,6 +120,7 @@ static uint32_t display_test_pattern_fps(DisplayTestPattern pattern) {
         return 60;
     case DisplayTestPatternBounceUnlimited:
     case DisplayTestPatternBounceInvertedUnlimited:
+    case DisplayTestPatternGrayUnlimited:
         return DISPLAY_TEST_FPS_UNLIMITED;
     default:
         return 0;
@@ -113,6 +130,11 @@ static uint32_t display_test_pattern_fps(DisplayTestPattern pattern) {
 // Black square on white background instead of white on black
 static bool display_test_pattern_inverted(DisplayTestPattern pattern) {
     return pattern >= DisplayTestPatternBounceInverted15 && pattern <= DisplayTestPatternBounceInvertedUnlimited;
+}
+
+// Grayscale ramps redrawn every frame instead of the bouncing square
+static bool display_test_pattern_gray(DisplayTestPattern pattern) {
+    return pattern >= DisplayTestPatternGray7 && pattern <= DisplayTestPatternGrayUnlimited;
 }
 
 // Patterns reachable with the left/right keys
@@ -133,6 +155,12 @@ static const DisplayTestPattern display_test_patterns_left_right[] = {
     DisplayTestPatternBounceInverted30,
     DisplayTestPatternBounceInverted60,
     DisplayTestPatternBounceInvertedUnlimited,
+    DisplayTestPatternGray7,
+    DisplayTestPatternGray12,
+    DisplayTestPatternGray25,
+    DisplayTestPatternGray45,
+    DisplayTestPatternGray80,
+    DisplayTestPatternGrayUnlimited,
 };
 
 // Patterns reachable with the PTT key
@@ -204,6 +232,50 @@ static void display_test_draw_bounce(DisplayTestModel* model) {
     for(int32_t y = y0; y < y0 + DISPLAY_TEST_SQUARE_SIZE; y++) {
         memset(&data[y * width + x0], square, DISPLAY_TEST_SQUARE_SIZE);
     }
+}
+
+// Fills rows [y_start, y_end) with a ramp: tone index starts at first, changes by step every period
+// columns (at column offset within the period), clamped to the table
+static void display_test_draw_gray_band(
+    DisplayTestModel* model,
+    int32_t y_start,
+    int32_t y_end,
+    const uint8_t* tones,
+    size_t tones_count,
+    int32_t first,
+    int32_t step,
+    int32_t period,
+    int32_t offset) {
+    Color* data = canvas_get_data(model->canvas);
+    const int32_t width = canvas_get_width(model->canvas);
+    int32_t index = first;
+
+    for(int32_t x = 0; x < width; x++) {
+        const Color tone = tones[CLAMP(index, (int32_t)tones_count - 1, 0)];
+        for(int32_t y = y_start; y < y_end; y++) {
+            data[y * width + x] = tone;
+        }
+        if(x % period == offset) {
+            index += step;
+        }
+    }
+}
+
+// 16 and 8 tone ramps, up and down, with a white strip on top and a black strip at the bottom
+static void display_test_draw_gray(DisplayTestModel* model) {
+    static const uint8_t tones16[] = {0xFC, 0x00, 0x11, 0x22, 0x32, 0x43, 0x54, 0x65, 0x76, 0x86, 0x97, 0xA8, 0xB9, 0xCA, 0xDA, 0xEB, 0xFC, 0x00};
+    static const uint8_t tones8[] = {0xFC, 0x00, 36, 72, 108, 144, 180, 216, 252, 0x00};
+    Color* data = canvas_get_data(model->canvas);
+    const int32_t width = canvas_get_width(model->canvas);
+    const int32_t height = canvas_get_height(model->canvas);
+
+    display_test_draw_gray_band(model, 0, 40, tones16, COUNT_OF(tones16), 1, 1, 16, 10);
+    display_test_draw_gray_band(model, 40, 70, tones16, COUNT_OF(tones16), 16, -1, 16, 10);
+    display_test_draw_gray_band(model, 70, 105, tones8, COUNT_OF(tones8), 1, 1, 32, 26);
+    display_test_draw_gray_band(model, 105, height, tones8, COUNT_OF(tones8), 8, -1, 32, 26);
+
+    memset(data, DISPLAY_TEST_COLOR_ON, width * 10);
+    memset(&data[(height - 10) * width], DISPLAY_TEST_COLOR_OFF, width * 10);
 }
 
 static void display_test_fps_update(DisplayTestModel* model) {
@@ -280,15 +352,21 @@ static bool display_test_layout(void* _model) {
     const bool dynamic = fps != 0;
     const bool unlimited = fps == DISPLAY_TEST_FPS_UNLIMITED;
     const bool inverted = display_test_pattern_inverted(model->pattern);
+    const bool gray = display_test_pattern_gray(model->pattern);
 
     if(unlimited) {
-        display_test_square_step_elapsed(model);
+        if(!gray) {
+            display_test_square_step_elapsed(model);
+        }
         model->dirty = true;
     }
 
     if(model->dirty) {
         model->dirty = false;
-        if(dynamic) {
+        if(gray) {
+            display_test_draw_gray(model);
+            display_test_fps_update(model);
+        } else if(dynamic) {
             if(!unlimited) {
                 // One step per drawn frame: timer ticks that land while a frame is still pending
                 // only re-set the flag, so the square never jumps over an undrawn position
