@@ -250,8 +250,10 @@ header file. header file. Already defined unconditionally above as vFreeRTOSAsse
     }
 #endif
 
-extern __attribute__((__noreturn__)) void furi_thread_catch(void);
-#define configTASK_RETURN_ADDRESS (furi_thread_catch + 2)
+/* Naked trampoline with .cfi_undefined lr (see furi/core/thread.c) - the
+ * unwinder stops at the thread boundary, so no "+ 2" prologue skip needed. */
+extern __attribute__((naked, __noreturn__)) void furi_thread_catch(void);
+#define configTASK_RETURN_ADDRESS furi_thread_catch
 
 // // Must be last line of config because of recursion
 // #include <core/check.h>
