@@ -47,6 +47,11 @@ size_t gui_get_height(Gui* gui);
  * static. Raising it above the current rate switches the panel immediately.
  */
 void gui_set_display_min_refresh(Gui* gui, DisplayJd9853RefreshStep step);
+
+/**
+ * Get the lowest refresh rate the display may drop to when the picture is
+ * static.
+ */
 DisplayJd9853RefreshStep gui_get_display_min_refresh(Gui* gui);
 
 /**
