@@ -1,2 +1,7 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Build scripts: shell on LF, Windows cmd on CRLF regardless of the checkout
+/fw     text eol=lf
+/fw.cfg text eol=lf
+/fw.cmd text eol=crlf
