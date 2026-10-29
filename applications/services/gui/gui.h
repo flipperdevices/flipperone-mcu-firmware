@@ -2,6 +2,7 @@
 #include <input/input.h>
 #include <input_touch/input_touch.h>
 #include "view.h"
+#include <drivers/display/display_jd9853_refresh.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,6 +41,18 @@ void gui_remove_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, 
 
 size_t gui_get_width(Gui* gui);
 size_t gui_get_height(Gui* gui);
+
+/**
+ * Set the lowest refresh rate the display may drop to when the picture is
+ * static. Raising it above the current rate switches the panel immediately.
+ */
+void gui_set_display_min_refresh(Gui* gui, DisplayJd9853RefreshStep step);
+
+/**
+ * Get the lowest refresh rate the display may drop to when the picture is
+ * static.
+ */
+DisplayJd9853RefreshStep gui_get_display_min_refresh(Gui* gui);
 
 /**
  * Feed a full-screen frame to the GUI for display.

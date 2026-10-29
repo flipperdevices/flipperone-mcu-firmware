@@ -1,4 +1,6 @@
 #pragma once
+#include "display_jd9853_refresh.h"
+
 /* clang-format off */
 #define JD9853_WIDTH        (258u)
 #define JD9853_HEIGHT       (144u)
@@ -50,9 +52,12 @@ typedef enum {
     ramwrcon = 0x3C, /* Write Memory Continue */
     getscan = 0x45, /* Return the current scan line */
     rdabcsdr = 0x68, /* Read Adaptive Brightness Control and Self-Diagnostic Result */
+    set_tcon = 0xC4, /* Timing control setting (page 0) */
+    set_oscm = 0xC5, /* Oscillator M setting (page 1) */
     rdid1 = 0xDA, /* Read ID1 Value */
     rdid2 = 0xDB, /* Read ID2 Value */
     rdid3 = 0xDC, /* Read ID3 Value */
+    set_page = 0xDE, /* Page select */
 } DisplayJd9853Reg;
 
 static const uint8_t jd9853_deinit_seq[] = {
@@ -62,18 +67,18 @@ static const uint8_t jd9853_deinit_seq[] = {
 };
 
 static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
-        1, 20, 0x01,                                // Software reset
+        1, 30, 0x01,                                // Software reset, 150 ms: needs >= 120 ms in sleep out
         3, 0, 0xDF, 0x98, 0x53,                     // SET_PASSWD
         2, 0, 0xDE, 0x00,                           // Page0
         2, 0, 0xB2, 0x28,                           // Vcom !64 //does not affect in any way
         // GAMMA_SET
         5, 0, 0xB7, 0x0,                            // VGSP_S 0v
-                    0x7D,                           // VGMP_S 6.6v
+                    0x67,                           // VGMP_S 6.05v (was 0x7D 6.6v), tuned with VGMN against flicker at 10/15 FPS
                     0x0,                            // VGSN_S 0v
-                    0x7D,                           // VGMN_S -5.6v
+                    0x6D,                           // VGMN_S -5.2v (was 0x7D -5.6v)
         2, 0, 0xB9, 0b00000101,                     // AP AP[2:0] : 0x0, MVZ_E: 0x1, VGM_E: 0x1
         // Voltage settings
-        7, 0, 0xBB, 0b00000000,                     // VGHZ_S =11V VGLZ_S =-9.25V VGHZ_S[1:0] =0x0 VGLZ_S[1:0]=0x0
+        7, 0, 0xBB, 0b00000110,                     // VGHZ_S = 11V, VGLZ_S = -11.5V (was 0: -7V), less TFT leakage at 10/15 FPS
                     0b00100011,                     // VGHZ_RT  AVDDZ_S  VGLZ_RT  AVEEZ_S    VGHZ_RT[1:0]  : 0x0 AVDDZ_S[1:0] : 0x2  VGLZ_RT[1:0] : 0x0 AVEEZ_S[1:0]: 0x3
                     0b01010101,                     // VGHZ_CLK  VGLZ_CLK
                     0b01100001,                     // MVZ_S_CLK  MVZ_G_CLK
@@ -101,17 +106,18 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
         3, 0, 0xD7, 0x00, 0x30,                     // RAMCTRL
         2, 0, 0xE6, 0x14,                           // ECO
         2, 0, 0xDE, 0x01,                           // page1
-        //2, 0, 0xB2, 0x12,                           // option ??????????
+        //2, 0, 0xB2, 0x12,                         // option ??????????
         6, 0, 0xB7, 0x07, 0x13, 0x0F, 0x39, 0x2D,   // DCDC_OPT
         4, 0, 0xC1, 0x34, 0x15, 0xE0,               // SETRGB
         4, 0, 0xC2, 0x06, 0x3A, 0xC7,               // SETSTBA2
         3, 0, 0xC4, 0x7A, 0x1A,                     // SET_GAMMAOP
-        //2, 0, 0xC5, 0x11,                           // OSC 60FPS
-        // 80 FPS on purpose: the CPU streams frames to us at 60 FPS, so the
+        //2, 0, 0xC5, 0x11,                          // OSC 60FPS
+        // ~113 FPS on purpose: the CPU streams frames to us at 60 FPS, so the
         // panel refresh must be faster than the incoming frame rate to push
         // each received frame out to the display before the next one arrives.
-        2, 0, 0xC5, 0x01,                           // OSC 80FPS
-        // 2, 0, 0xBE, 0x00,                           // GAMMA_POWER_TEST
+        // Same as jd9853_refresh_seq_max, the dynamic refresh starts from it.
+        2, 0, 0xC5, 0x01,                           // OSC ~113FPS
+        // 2, 0, 0xBE, 0x00,                        // GAMMA_POWER_TEST
         2, 0, 0xDE, 0x02,                           // page2
         3, 0, 0xB5, 0x0A, 0x1C,                     //
         2, 0, 0xDE, 0x00,                           // page0
@@ -126,5 +132,81 @@ static const uint8_t jd9853_init_seq_2025_04_01_normal_white_mod[] = {
         2, 0, 0x36, 0b11001000,                 // Set MADCTL: row then column, refresh is bottom to top ????
         1, 20, 0x11,                            // Exit sleep mode
         0,                                      // Terminate list
+};
+
+/* Dynamic refresh sequences.
+ *
+ * Only two registers change between steps:
+ *   C5 SET_OSCM - OSC_DIV [5:4] (oscillator divider for the timing
+ *                 generator) and OSCM_ADJ [1:0] (oscillator frequency);
+ *   C4 SET_TCON - VFP_NP and VBP_NP (data bytes 5 and 6), extra lines.
+ * Frame time = (144 + VFP + VBP) * 484 / (f_OSC / OSC_DIV), i.e. 484
+ * oscillator clocks per line and 144 gate lines per frame.
+ *
+ * The 10 FPS step is the low-power one: it is the only step that also drops
+ * OSCM_ADJ to 16 MHz. That oscillator clocks the charge pumps (BBh), so they
+ * run 20% slower there. The max step is identical to the init sequence. */
+static const uint8_t jd9853_refresh_seq_10fps[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        // VFP = VBP = 127: 144 + 254 = 398 lines
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x7F, 0x7F, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x20,                                                           // OSCM 16 MHz, TCON /8: 2 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+static const uint8_t jd9853_refresh_seq_15fps[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        // VFP = VBP = 100: 144 + 200 = 344 lines
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x64, 0x64, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x21,                                                           // OSCM 20 MHz, TCON /8: 2.5 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+static const uint8_t jd9853_refresh_seq_30fps[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x0A, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x21,                                                           // OSCM 20 MHz, TCON /8: 2.5 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+static const uint8_t jd9853_refresh_seq_60fps[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x0A, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x11,                                                           // OSCM 20 MHz, TCON /4: 5 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+static const uint8_t jd9853_refresh_seq_max[] = {
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        13, 0, 0xC4, 0x00, 0x00, 0x48, 0x79, 0x14, 0x12, 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82,
+        2, 0, 0xDE, 0x01,                                                           // page 1
+        2, 0, 0xC5, 0x01,                                                           // OSCM 20 MHz, TCON /2: 10 MHz
+        2, 0, 0xDE, 0x00,                                                           // page 0
+        0,                                                                          // Terminate list
+};
+
+typedef struct {
+    const uint8_t* config;
+    uint8_t fps;
+    uint32_t fast_delta_us;
+} DisplayJd9853RefreshConfig;
+
+/* fast_delta_us is 5/6 of the panel frame period, precomputed:
+ * 10 FPS -> 83333 us, 15 -> 55555, 30 -> 27777, 60 -> 13888, 115 -> 7245. */
+static const DisplayJd9853RefreshConfig
+    jd9853_refresh_config[DisplayJd9853RefreshCount] = {
+        [DisplayJd9853Refresh10] = {jd9853_refresh_seq_10fps, 10, 83333}, // ~10.4 FPS, low power
+        [DisplayJd9853Refresh15] = {jd9853_refresh_seq_15fps, 15, 55555}, // ~15.0 FPS
+        [DisplayJd9853Refresh30] = {jd9853_refresh_seq_30fps, 30, 27777}, // ~30.0 FPS
+        [DisplayJd9853Refresh60] = {jd9853_refresh_seq_60fps, 60, 13888}, // ~60.0 FPS
+        [DisplayJd9853RefreshMax] = {jd9853_refresh_seq_max, 115, 7245}, // ~113 FPS
 };
 /* clang-format on */

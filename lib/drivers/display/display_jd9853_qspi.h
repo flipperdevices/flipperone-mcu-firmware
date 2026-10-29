@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "display_jd9853_refresh.h"
 
 typedef struct DisplayJd9853QSPI DisplayJd9853QSPI;
 
@@ -17,6 +18,8 @@ void display_jd9853_qspi_on_sleep_exit(void);
 void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* display, const uint8_t* buffer, size_t size);
 void display_jd9853_qspi_fill(DisplayJd9853QSPI* display, uint8_t color);
 void display_jd9853_qspi_eco_mode(DisplayJd9853QSPI* display, bool enable);
+void display_jd9853_qspi_set_min_refresh(DisplayJd9853QSPI* display, DisplayJd9853RefreshStep step);
+DisplayJd9853RefreshStep display_jd9853_qspi_get_min_refresh(DisplayJd9853QSPI* display);
 bool display_jd9853_qspi_is_init(void);
 
 void display_jd9853_irq_qspi_write_buffer(const uint8_t* buffer, size_t size);
