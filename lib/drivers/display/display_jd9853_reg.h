@@ -1,4 +1,6 @@
 #pragma once
+#include "display_jd9853_qspi.h"
+
 /* clang-format off */
 #define JD9853_WIDTH        (258u)
 #define JD9853_HEIGHT       (144u)
@@ -190,16 +192,6 @@ static const uint8_t jd9853_refresh_seq_max[] = {
         2, 0, 0xDE, 0x00,                                                           // page 0
         0,                                                                          // Terminate list
 };
-
-typedef enum {
-    DisplayJd9853RefreshNone = -1,
-    DisplayJd9853Refresh10 = 0,
-    DisplayJd9853Refresh15,
-    DisplayJd9853Refresh30,
-    DisplayJd9853Refresh60,
-    DisplayJd9853RefreshMax,
-    DisplayJd9853RefreshCount,
-} DisplayJd9853RefreshStep;
 
 typedef struct {
     const uint8_t* config;

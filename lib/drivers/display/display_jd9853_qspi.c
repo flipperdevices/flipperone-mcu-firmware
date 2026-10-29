@@ -22,7 +22,7 @@
 #define DISPLAY_JD9853_DEINIT_TIMEOUT_MS           (100u)
 #define DISPLAY_JD9853_RESET_DELAY_MS              (150u)
 
-//#define DISPLAY_JD9853_SHOW_FPS
+#define DISPLAY_JD9853_SHOW_FPS
 #define DISPLAY_JD9853_DYNAMIC_REFRESH
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
@@ -45,6 +45,7 @@ struct DisplayJd9853QSPI {
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     volatile DisplayJd9853RefreshStep refresh_step;
     volatile DisplayJd9853RefreshStep refresh_pending;
+    volatile DisplayJd9853RefreshStep refresh_min;
     volatile uint32_t frames_in_window;
     volatile bool refresh_backpressure;
     volatile uint32_t refresh_hold_until;
@@ -196,6 +197,10 @@ static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
         FURI_CRITICAL_EXIT();
     }
 
+    if(pending != DisplayJd9853RefreshNone && pending < display->refresh_min) {
+        pending = display->refresh_min;
+    }
+
     if(pending == DisplayJd9853RefreshNone || pending >= DisplayJd9853RefreshCount || pending == display->refresh_step) {
         return;
     }
@@ -226,7 +231,7 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
     }
 
     DisplayJd9853RefreshStep current = display->refresh_step;
-    if(!backpressure && !hold && (current != DisplayJd9853Refresh10)) {
+    if(!backpressure && !hold && (current > display->refresh_min)) {
         uint32_t incoming_fps = frames * 1000u / DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS;
         DisplayJd9853RefreshStep next = current - 1;
         uint32_t next_fps = jd9853_refresh_config[next].fps;
@@ -250,7 +255,7 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
         }
     }
 
-    if(display->refresh_step != DisplayJd9853Refresh10) {
+    if(display->refresh_step > display->refresh_min) {
         furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
     }
 }
@@ -451,6 +456,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     display->refresh_step = DisplayJd9853RefreshMax;
     display->refresh_pending = DisplayJd9853RefreshNone;
+    display->refresh_min = DisplayJd9853Refresh10;
     display->frames_in_window = 0;
     display->refresh_backpressure = false;
     display->refresh_hold_until = 0;
@@ -584,6 +590,34 @@ void display_jd9853_qspi_eco_mode(DisplayJd9853QSPI* display, bool enable) {
     }
     display_jd9853_hstx_init_4_line(display);
     furi_semaphore_release(display->busy);
+}
+
+void display_jd9853_qspi_set_min_refresh(DisplayJd9853QSPI* display, DisplayJd9853RefreshStep step) {
+    furi_check(display);
+    furi_check(step >= DisplayJd9853Refresh10 && step < DisplayJd9853RefreshCount);
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    bool step_up = false;
+    {
+        FURI_CRITICAL_ENTER();
+        display->refresh_min = step;
+        if(display->refresh_step < step && (display->refresh_pending == DisplayJd9853RefreshNone || display->refresh_pending < step)) {
+            display->refresh_pending = step;
+            step_up = true;
+        }
+        FURI_CRITICAL_EXIT();
+    }
+
+    if(step_up) {
+        furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
+        display_jd9853_apply_refresh(display);
+        furi_semaphore_release(display->busy);
+    } else if(display->refresh_step > step && display->refresh_timer) {
+        furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
+    }
+    FURI_LOG_I(TAG, "Min refresh %u FPS", (unsigned)jd9853_refresh_config[step].fps);
+#else
+    UNUSED(step);
+#endif
 }
 
 bool display_jd9853_qspi_is_init(void) {
