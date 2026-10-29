@@ -22,7 +22,7 @@
 #define DISPLAY_JD9853_DEINIT_TIMEOUT_MS           (100u)
 #define DISPLAY_JD9853_RESET_DELAY_MS              (150u)
 
-#define DISPLAY_JD9853_SHOW_FPS
+//#define DISPLAY_JD9853_SHOW_FPS
 #define DISPLAY_JD9853_DYNAMIC_REFRESH
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
@@ -617,6 +617,15 @@ void display_jd9853_qspi_set_min_refresh(DisplayJd9853QSPI* display, DisplayJd98
     FURI_LOG_I(TAG, "Min refresh %u FPS", (unsigned)jd9853_refresh_config[step].fps);
 #else
     UNUSED(step);
+#endif
+}
+
+DisplayJd9853RefreshStep display_jd9853_qspi_get_min_refresh(DisplayJd9853QSPI* display) {
+    furi_check(display);
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    return display->refresh_min;
+#else
+    return DisplayJd9853RefreshMax;
 #endif
 }
 

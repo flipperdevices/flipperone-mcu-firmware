@@ -1,17 +1,14 @@
 #include "cpu_app.h"
 #include <furi.h>
-#include <furi_bsp.h>
 #include <furi_hal_resources.h>
 #include <furi_bsp_linux.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include <gui/modules/popup_menu.h>
-#include <drivers/display/display_jd9853_reg.h>
 #include <drivers/pio_get_frame/pio_get_frame.h>
 #include <assets.h>
 #include <pd/pd.h>
 #include <power/power.h>
-#include <i2c_negotiator/i2c_negotiator.h>
 
 #define TAG "CpuApp"
 
@@ -28,6 +25,8 @@ typedef enum {
 
 typedef struct {
     Image frame;
+    size_t screen_width;
+    size_t screen_height;
 } CpuAppModel;
 
 typedef enum {
@@ -62,12 +61,10 @@ typedef struct {
 
 static void furi_hal_reset_pd_and_charger(void) {
     Pd* pd = furi_record_open(RECORD_PD);
-    PdDevice pd_device;
     pd_reset_config(pd);
     furi_record_close(RECORD_PD);
 
     Power* power = furi_record_open(RECORD_POWER);
-    PowerDevice power_device;
     power_bq2579x_reset_config(power);
     furi_record_close(RECORD_POWER);
 }
@@ -76,7 +73,7 @@ static bool cpu_app_layout(void* _model) {
     furi_assert(_model);
     CpuAppModel* model = (CpuAppModel*)_model;
     Clay_Sizing layout_expand = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)};
-    Clay_Sizing layout_screen = {.width = CLAY_SIZING_FIXED(JD9853_WIDTH), .height = CLAY_SIZING_FIXED(JD9853_HEIGHT)};
+    Clay_Sizing layout_screen = {.width = CLAY_SIZING_FIXED(model->screen_width), .height = CLAY_SIZING_FIXED(model->screen_height)};
 
     CLAY(
         CLAY_APP_ID("OuterContainer"),
@@ -120,7 +117,10 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
 }
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
+    CpuApp* instance = context;
     model->frame = display_starting;
+    model->screen_width = gui_get_width(instance->gui);
+    model->screen_height = gui_get_height(instance->gui);
     return true;
 }
 
@@ -134,8 +134,8 @@ static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
         CpuAppModel * model,
         {
             model->frame.data = data;
-            model->frame.width = JD9853_WIDTH;
-            model->frame.height = JD9853_HEIGHT;
+            model->frame.width = gui_get_width(instance->gui);
+            model->frame.height = gui_get_height(instance->gui);
         },
         false);
 }
@@ -197,7 +197,7 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             // Drop the stale frame so the screen shows the "starting" image
             // right away instead of the old picture.
             gui_clear_frame(instance->gui);
-            cpu_app_model_apply(instance, cpu_app_model_init, NULL);
+            cpu_app_model_apply(instance, cpu_app_model_init, instance);
             break;
         case CpuAppMessageTypeShutdown:
             // The actual hardware cleanup happens in cpu_app_do_shutdown()
@@ -252,6 +252,7 @@ static void cpu_app_menu_item_selected(size_t item_id, void* context) {
 static CpuApp* cpu_app_alloc(void) {
     CpuApp* instance = malloc(sizeof(CpuApp));
     instance->gui = furi_record_open(RECORD_GUI);
+    gui_set_display_min_refresh(instance->gui, DisplayJd9853Refresh30);
     instance->event_loop = furi_event_loop_alloc();
     instance->app_queue = furi_message_queue_alloc(CPU_APP_MESSAGE_QUEUE_SIZE, sizeof(CpuAppMessage));
     instance->skip_frames = 0; /* must be initialized — malloc does not zero memory */
@@ -264,7 +265,7 @@ static CpuApp* cpu_app_alloc(void) {
 
     instance->display_view = view_alloc();
     view_allocate_model(instance->display_view, ViewModelTypeLockFree, sizeof(CpuAppModel));
-    cpu_app_model_apply(instance, cpu_app_model_init, NULL);
+    cpu_app_model_apply(instance, cpu_app_model_init, instance);
 
     view_set_layout_callback(instance->display_view, cpu_app_layout);
     gui_add_view(instance->gui, instance->display_view, GuiViewPriorityApplication);
@@ -289,6 +290,7 @@ static void cpu_app_free(CpuApp* instance) {
     gui_remove_view(instance->gui, instance->menu_view);
     popup_menu_free(instance->menu);
 
+    gui_set_display_min_refresh(instance->gui, DisplayJd9853Refresh10);
     furi_record_close(RECORD_GUI);
 
     view_free(instance->display_view);

@@ -1,5 +1,5 @@
 #pragma once
-#include "display_jd9853_qspi.h"
+#include "display_jd9853_refresh.h"
 
 /* clang-format off */
 #define JD9853_WIDTH        (258u)
