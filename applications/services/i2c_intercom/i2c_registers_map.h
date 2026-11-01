@@ -29,6 +29,20 @@
 #define I2C_INTERCOM_VERSION_REG_ADDRESS (0x0080)
 #define I2C_INTERCOM_VERSION             (0x0001)
 
+// Device name registers
+/*
+ * 0x00C0+0 Device name length              (read), number of characters, 0 if no name is programmed in OTP
+ * 0x00C0+2 Device name characters 0 and 1  (read), low byte is character 0
+ * 0x00C0+4 Device name characters 2 and 3  (read)
+ * 0x00C0+6 Device name characters 4 and 5  (read)
+ * 0x00C0+8 Device name characters 6 and 7  (read)
+ * Reading 10 bytes from 0x00C0 returns the length (low byte first) followed by the name, padded with zeros.
+ * The values are read from OTP at boot.
+*/
+#define I2C_DEVICE_NAME_LENGTH_REG_ADDRESS (0x00C0 + 0)
+#define I2C_DEVICE_NAME_REG_ADDRESS        (0x00C0 + 2)
+#define I2C_DEVICE_NAME_REG_COUNT          (4)
+
 // Input interrupt register and mask
 /*
  * 0x0100+0 Input interrupt register    (read, read to clear)
