@@ -6,7 +6,7 @@ on:
 
 concurrency:
   group: copilot-review-request-${{ github.event.pull_request.number }}
-  cancel-in-progress: false
+  queue: max
 
 env:
   SERVICE_ACCOUNT_LOGIN: furippa
