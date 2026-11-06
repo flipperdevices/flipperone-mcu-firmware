@@ -5,6 +5,7 @@
 #include "display_jd9853_refresh.h"
 
 typedef struct DisplayJd9853QSPI DisplayJd9853QSPI;
+typedef struct DisplayJd9853Seq DisplayJd9853Seq;
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,7 +13,7 @@ extern "C" {
 
 DisplayJd9853QSPI* display_jd9853_qspi_init(void);
 void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display);
-void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* config);
+void display_jd9853_load_config(DisplayJd9853QSPI* display, const DisplayJd9853Seq* seq);
 void display_jd9853_qspi_on_sleep_enter(void);
 void display_jd9853_qspi_on_sleep_exit(void);
 void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* display, const uint8_t* buffer, size_t size);

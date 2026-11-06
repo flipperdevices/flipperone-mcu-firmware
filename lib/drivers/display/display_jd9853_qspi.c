@@ -261,16 +261,17 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
 }
 #endif
 
-void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* config) {
+void display_jd9853_load_config(DisplayJd9853QSPI* display, const DisplayJd9853Seq* seq) {
     display_jd9853_hstx_init_1_line(display);
-    while(*config) {
-        display_jd9853_write_reg(display, (DisplayJd9853Reg)(*(config + 2)));
-
-        if(*(config)) {
-            display_jd9853_write_data(display, (uint8_t*)(config + 3), *(config)-1);
+    for(size_t i = 0; i < seq->count; i++) {
+        const DisplayJd9853Cmd* cmd = &seq->cmds[i];
+        display_jd9853_write_reg(display, (DisplayJd9853Reg)cmd->reg);
+        if(cmd->len) {
+            display_jd9853_write_data(display, (uint8_t*)cmd->data, cmd->len);
         }
-        furi_delay_ms(*(config + 1) * 5);
-        config += *(config) + 2;
+        if(cmd->delay_ms) {
+            furi_delay_ms(cmd->delay_ms);
+        }
     }
     display_jd9853_hstx_init_4_line(display);
 }
@@ -279,7 +280,7 @@ static void display_jd9853_enable(DisplayJd9853QSPI* display, bool enable) {
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     display_jd9853_hstx_init_1_line(display);
 
-    display_jd9853_write_reg(display, enable ? dispon : dispoff);
+    display_jd9853_write_reg(display, enable ? DisplayJd9853RegDispon : DisplayJd9853RegDispoff);
 
     display_jd9853_hstx_init_4_line(display);
     furi_semaphore_release(display->busy);
@@ -292,10 +293,10 @@ static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853QSPI* disp
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     display_jd9853_hstx_init_1_line(display);
 
-    display_jd9853_write_reg(display, caset); // Column address set
+    display_jd9853_write_reg(display, DisplayJd9853RegCaset); // Column address set
     display_jd9853_write_data(display, caset_data, sizeof(caset_data));
 
-    display_jd9853_write_reg(display, paset); // Page address set
+    display_jd9853_write_reg(display, DisplayJd9853RegPaset); // Page address set
     display_jd9853_write_data(display, paset_data, sizeof(paset_data));
 
     display_jd9853_hstx_init_4_line(display);
@@ -516,7 +517,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_hal_gpio_set_function(&gpio_display_d2, GpioAltFn0Hstx);
 
     //Initialization sequence
-    display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_white_mod);
+    display_jd9853_load_config(display, &jd9853_init_seq_2025_04_01_normal_white_mod);
 
     display->display_is_connected = display_jd9853_qspi_check_connection(display, DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS);
     if(!display->display_is_connected) {
@@ -554,7 +555,7 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
 
     bool idle = furi_semaphore_acquire(display->busy, furi_ms_to_ticks(DISPLAY_JD9853_DEINIT_TIMEOUT_MS)) == FuriStatusOk;
     furi_hal_gpio_remove_int_callback(&gpio_display_te);
-    display_jd9853_load_config(display, jd9853_deinit_seq);
+    display_jd9853_load_config(display, &jd9853_deinit_seq);
     if(idle) {
         furi_semaphore_release(display->busy);
     }
@@ -584,9 +585,9 @@ void display_jd9853_qspi_eco_mode(DisplayJd9853QSPI* display, bool enable) {
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     display_jd9853_hstx_init_1_line(display);
     if(enable) {
-        display_jd9853_write_reg(display, idmon);
+        display_jd9853_write_reg(display, DisplayJd9853RegIdmon);
     } else {
-        display_jd9853_write_reg(display, idmoff);
+        display_jd9853_write_reg(display, DisplayJd9853RegIdmoff);
     }
     display_jd9853_hstx_init_4_line(display);
     furi_semaphore_release(display->busy);
