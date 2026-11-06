@@ -1,6 +1,5 @@
 .DS_Store
 build
-assets/python/.venv/*
 .cache
 .vscode
 

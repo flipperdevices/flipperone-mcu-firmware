@@ -26,7 +26,7 @@ def png_to_c_array(input_png, output_c, var_name):
         f.write(f"    .data = {var_name}_data,\n")
         f.write(f"}};\n")
 
-    print(f"Converted {input_png} ({width}x{height}) -> {output_c}")
+    # print(f"Converted {input_png} ({width}x{height}) -> {output_c}")
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:

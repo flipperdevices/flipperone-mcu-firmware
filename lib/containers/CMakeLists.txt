@@ -7,7 +7,7 @@ set(INCLUDES
 )
 
 # Expand source file globs into a list before passing to target_sources
-file(GLOB CONTAINERS_SOURCES
+file(GLOB CONTAINERS_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.c"
 )
 

@@ -1,0 +1,151 @@
+name: Set up firmware toolchain
+description: >
+  Installs everything the firmware build needs on a Linux x86_64 runner: the Arm
+  GNU toolchain, pico-sdk, a prebuilt picotool, cmake and libusb. Versions are
+  not configured here — they are read from the `sdkVersion`, `toolchainVersion`
+  and `picotoolVersion` lines in CMakeLists.txt, the same header the Raspberry Pi
+  Pico VS Code extension uses, so CI and developers build with identical tools
+  and bumping a version is a one-line change.
+
+inputs:
+  firmware_dir:
+    description: Checkout of this repository, where CMakeLists.txt is read from
+    required: false
+    default: ${{ github.workspace }}
+  install_dir:
+    description: >
+      Where the toolchain and picotool are unpacked. Pick a place that survives
+      whatever the job does to the checkout; e.g. runner.temp when the build runs
+      `git clean` in the workspace.
+    required: false
+    default: ${{ github.workspace }}
+  pico_sdk_tools_build:
+    description: >
+      Build number <N> of the raspberrypi/pico-sdk-tools release the prebuilt
+      picotool comes from (tag v<picotoolVersion>-<N>). Upstream bumps it when a
+      tools release is rebuilt for the same SDK.
+    required: false
+    default: '0'
+
+outputs:
+  pico_sdk_path:
+    description: Absolute path of the pico-sdk checkout, for PICO_SDK_PATH
+    value: ${{ github.workspace }}/pico-sdk
+  picotool_dir:
+    description: Directory with picotoolConfig.cmake, for -Dpicotool_DIR
+    value: ${{ inputs.install_dir }}/picotool
+  sdk_version:
+    description: sdkVersion from CMakeLists.txt
+    value: ${{ steps.versions.outputs.sdk }}
+  toolchain_version:
+    description: toolchainVersion from CMakeLists.txt
+    value: ${{ steps.versions.outputs.toolchain }}
+  picotool_version:
+    description: picotoolVersion from CMakeLists.txt
+    value: ${{ steps.versions.outputs.picotool }}
+
+runs:
+  using: composite
+  steps:
+    - name: Read tool versions from CMakeLists.txt
+      id: versions
+      shell: bash
+      working-directory: ${{ inputs.firmware_dir }}
+      run: |
+        read_version() {
+          local value
+          value=$(sed -n "s/^set($1 \(.*\))\$/\1/p" CMakeLists.txt)
+          if [ -z "$value" ]; then
+            echo "::error file=CMakeLists.txt::no 'set($1 ...)' line found"
+            exit 1
+          fi
+          echo "$1=$value"
+          echo "$2=$value" >> "$GITHUB_OUTPUT"
+        }
+        read_version sdkVersion sdk
+        read_version toolchainVersion toolchain
+        read_version picotoolVersion picotool
+        # The extension names Arm releases 14_2_Rel1; Arm's download URLs say 14.2.rel1
+        arm_release=$(sed -n 's/^set(toolchainVersion \(.*\))$/\1/p' CMakeLists.txt | tr '_' '.' | tr '[:upper:]' '[:lower:]')
+        echo "arm_release=$arm_release" >> "$GITHUB_OUTPUT"
+
+    - name: Restore cached toolchain, pico-sdk and picotool
+      id: cache
+      uses: actions/cache/restore@v5
+      with:
+        path: |
+          ${{ inputs.install_dir }}/arm-none-eabi-gcc
+          ${{ inputs.install_dir }}/picotool
+          ${{ github.workspace }}/pico-sdk
+        key: toolchain-${{ steps.versions.outputs.toolchain }}-sdk-${{ steps.versions.outputs.sdk }}-picotool-${{ steps.versions.outputs.picotool }}-${{ inputs.pico_sdk_tools_build }}
+
+    # libusb-1.0-0 is a runtime dependency of the prebuilt picotool
+    - name: Install cmake and libusb
+      shell: bash
+      run: sudo apt-get install -y cmake libusb-1.0-0
+
+    # The same archive the VS Code extension installs for this toolchainVersion,
+    # from Arm's download mirror (see supportedToolchains.ini in the extension).
+    - name: Install Arm GNU toolchain ${{ steps.versions.outputs.toolchain }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      env:
+        ARCHIVE: arm-gnu-toolchain-${{ steps.versions.outputs.arm_release }}-x86_64-arm-none-eabi.tar.xz
+        BASE_URL: https://armkeil.blob.core.windows.net/developer/Files/downloads/gnu/${{ steps.versions.outputs.arm_release }}/binrel
+      run: |
+        wget -q "$BASE_URL/$ARCHIVE" "$BASE_URL/$ARCHIVE.sha256asc"
+        sha256sum -c "$ARCHIVE.sha256asc"
+        mkdir -p "${{ inputs.install_dir }}"
+        tar -xJf "$ARCHIVE"
+        mv "${ARCHIVE%.tar.xz}" "${{ inputs.install_dir }}/arm-none-eabi-gcc"
+        rm "$ARCHIVE" "$ARCHIVE.sha256asc"
+
+    # Without an installed picotool the SDK's pico_init_picotool() falls back to
+    # cloning and building it from source with the host compiler at configure
+    # time. The prebuilt archive ships the picotoolConfig.cmake layout that
+    # find_package(picotool CONFIG) expects.
+    - name: Install picotool ${{ steps.versions.outputs.picotool }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ runner.temp }}
+      env:
+        ARCHIVE: picotool-${{ steps.versions.outputs.picotool }}-x86_64-lin.tar.gz
+      run: |
+        wget -q https://github.com/raspberrypi/pico-sdk-tools/releases/download/v${{ steps.versions.outputs.picotool }}-${{ inputs.pico_sdk_tools_build }}/$ARCHIVE
+        mkdir -p "${{ inputs.install_dir }}"
+        tar -xzf "$ARCHIVE" -C "${{ inputs.install_dir }}" picotool
+        rm "$ARCHIVE"
+
+    - name: Checkout pico-sdk ${{ steps.versions.outputs.sdk }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/checkout@v6
+      with:
+        repository: raspberrypi/pico-sdk
+        ref: ${{ steps.versions.outputs.sdk }}
+        path: pico-sdk
+
+    - name: Checkout pico-sdk submodules
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: ${{ github.workspace }}/pico-sdk
+      run: git submodule update --init
+
+    # Saved right away: the toolchain is good regardless of how the build goes
+    - name: Save toolchain cache
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: |
+          ${{ inputs.install_dir }}/arm-none-eabi-gcc
+          ${{ inputs.install_dir }}/picotool
+          ${{ github.workspace }}/pico-sdk
+        key: ${{ steps.cache.outputs.cache-primary-key }}
+
+    - name: Add the toolchain to PATH and check it
+      shell: bash
+      run: |
+        echo "${{ inputs.install_dir }}/arm-none-eabi-gcc/bin" >> "$GITHUB_PATH"
+        "${{ inputs.install_dir }}/arm-none-eabi-gcc/bin/arm-none-eabi-gcc" --version | head -1
+        "${{ inputs.install_dir }}/picotool/picotool" version
+        cmake --version | head -1

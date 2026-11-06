@@ -2,6 +2,10 @@ name: Onboard to MemBrowse
 
 # Backfills historical memory data by rebuilding the last N commits and
 # uploading a MemBrowse report for each. Run manually from the Actions tab.
+#
+# The onboard action checks out each commit in place and runs `git clean -fdx`
+# before every build, so everything the build needs and that is not part of the
+# repository must live outside the checkout or survive git clean.
 on:
   workflow_dispatch:
     inputs:
@@ -13,23 +17,40 @@ on:
 
 env:
   BUILD_TYPE: Release
-  ARM_NONE_EABI_GCC_VERSION: 14.2.1-1.1
-  PICO_SDK_VERSION: 2.3.1
+  # Tool versions come from the CMakeLists.txt header, see setup-toolchain
 
 jobs:
+  # Same discovery as in build.yml: every targets/*/target.cmake is a target
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.list.outputs.list }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: targets
+
+      - name: List targets
+        id: list
+        run: |
+          list=$(for d in targets/*/; do
+            [ -f "$d/target.cmake" ] && basename "$d"
+          done | jq -R . | jq -sc .)
+          echo "targets: $list"
+          echo "list=$list" >> $GITHUB_OUTPUT
+
   onboard:
     runs-on: ubuntu-latest
+    needs: targets
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # One MemBrowse target per board
+        target: ${{ fromJson(needs.targets.outputs.list) }}
+
     steps:
-      - name: Install cmake
-        run: sudo apt-get update && sudo apt-get install -y cmake
-
-      - name: Install ARM GCC ${{ env.ARM_NONE_EABI_GCC_VERSION }}
-        run: |
-          wget -q https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases/download/v${{ env.ARM_NONE_EABI_GCC_VERSION }}/xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
-          tar -xzf xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }}-linux-x64.tar.gz
-          mv xpack-arm-none-eabi-gcc-${{ env.ARM_NONE_EABI_GCC_VERSION }} "$HOME/arm-none-eabi-gcc"
-          echo "$HOME/arm-none-eabi-gcc/bin" >> $GITHUB_PATH
-
       # Checked out at the workspace root so the onboard action can walk history.
       - name: Checkout firmware
         uses: actions/checkout@v6
@@ -37,44 +58,43 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # Kept outside the repo so per-commit checkouts don't disturb it.
-      - name: Checkout pico-sdk/${{ env.PICO_SDK_VERSION }}
-        uses: actions/checkout@v6
+      # Toolchain and picotool go to runner.temp, out of reach of `git clean`.
+      # pico-sdk lands in the workspace as a nested git repo, which git clean
+      # leaves alone.
+      - name: Set up toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
         with:
-          repository: raspberrypi/pico-sdk
-          ref: ${{ env.PICO_SDK_VERSION }}
-          path: pico-sdk
+          install_dir: ${{ runner.temp }}
 
-      - name: Checkout pico-sdk submodules
-        working-directory: ${{ github.workspace }}/pico-sdk
-        run: git submodule update --init
+      # Taken from HEAD once: historical commits may not have the script at all.
+      - name: Stash helper script outside the checkout
+        run: cp scripts/membrowse_ldscripts.sh ${{ runner.temp }}/
 
+      # The build fails on purpose for commits predating the target: the action
+      # then uploads an empty report instead of attributing an f1 build to f2.
+      # f1 is the implicit target of every commit before targets/<name>/ existed.
       - name: Run MemBrowse Onboard Action
         uses: membrowse/membrowse-action/onboard-action@v1
         with:
-          target_name: rp2350-flipperone
+          target_name: flipper-one-mcu-${{ matrix.target }}
           num_commits: ${{ github.event.inputs.num_commits }}
           build_script: >
+            ([ "${{ matrix.target }}" = f1 ] || test -f targets/${{ matrix.target }}/target.cmake) &&
             cmake -E make_directory build &&
             cd build &&
-            PICO_SDK_PATH=${{ github.workspace }}/pico-sdk cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
+            PICO_SDK_PATH=${{ steps.toolchain.outputs.pico_sdk_path }} cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -Dpicotool_DIR=${{ steps.toolchain.outputs.picotool_dir }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
             cmake --build . --config $BUILD_TYPE --parallel $(nproc) &&
-            mkdir -p ldscripts &&
-            cp ${{ github.workspace }}/pico-sdk/src/rp2350/pico_platform/memmap_default.ld ldscripts/ &&
-            cp ${{ github.workspace }}/pico-sdk/src/rp2_common/pico_standard_link/script_include/*.incl ldscripts/ &&
-            cp ${{ github.workspace }}/pico-sdk/src/rp2350/pico_platform/script_include/*.incl ldscripts/ &&
-            (cp generated/pico_standard_link/*/*.incl ldscripts/ 2>/dev/null || true) &&
-            cp pico-sdk/src/rp2_common/pico_standard_link/pico_psram_region.ld ldscripts/ &&
-            cp ${{github.workspace}}/firmware/targets/memory_flash.incl ldscripts/
+            ${{ runner.temp }}/membrowse_ldscripts.sh ${{ github.workspace }} $PWD ${{ steps.toolchain.outputs.pico_sdk_path }}
           elf: build/flipperone-mcu-firmware.elf
-          # See build.yml for why the tree is flattened and the regions passed by hand
           ld: build/ldscripts/memmap_default.ld
+          map_file: build/flipperone-mcu-firmware.elf.map
+          # Same values as in build.yml, see the comment there
           linker_vars: >-
             RAM_ORIGIN=0x20000000 RAM_LENGTH=512k
             SCRATCH_X_ORIGIN=0x20080000 SCRATCH_X_LENGTH=4k
             SCRATCH_Y_ORIGIN=0x20081000 SCRATCH_Y_LENGTH=4k
             XIP_RAM_ORIGIN=0x13FFC000 XIP_RAM_LENGTH=16k
-          map_file: build/flipperone-mcu-firmware.elf.map
           binary_search: 'true'
           api_key: ${{ secrets.MEMBROWSE_API_KEY }}
           api_url: ${{ vars.MEMBROWSE_API_URL }}
