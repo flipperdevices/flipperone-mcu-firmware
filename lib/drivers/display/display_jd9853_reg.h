@@ -197,12 +197,12 @@ JD9853_SEQ(jd9853_init_seq_2025_04_01_normal_white_mod,
  * The 10 FPS step is the low-power one: it is the only step that also drops
  * OSCM_ADJ to 16 MHz. That oscillator clocks the charge pumps (BBh), so they
  * run 20% slower there. The max step is identical to the init sequence. */
-#define JD9853_REFRESH_SEQ(_name, _vfp, _vbp, _oscm)                                                   \
-    JD9853_SEQ(_name,                                                                                  \
-            JD9853_PAGE(0),                                                                            \
+#define JD9853_REFRESH_SEQ(_name, _vfp, _vbp, _oscm)                                                                               \
+    JD9853_SEQ(_name,                                                                                                              \
+            JD9853_PAGE(0),                                                                                                        \
                 JD9853_CMD(DisplayJd9853RegP0SetTcon, 0x00, 0x00, 0x48, 0x79, (_vfp), (_vbp), 0x16, 0x79, 0x0C, 0x0A, 0x16, 0x82), \
-            JD9853_PAGE(1),                                                                            \
-                JD9853_CMD(DisplayJd9853RegP1SetOscm, (_oscm)),                                                      \
+            JD9853_PAGE(1),                                                                                                        \
+                JD9853_CMD(DisplayJd9853RegP1SetOscm, (_oscm)),                                                                    \
             JD9853_PAGE(0))
 
 //                                              VFP   VBP   OSCM
@@ -237,6 +237,6 @@ static const DisplayJd9853RefreshConfig
         [DisplayJd9853Refresh15] = JD9853_REFRESH_CONFIG(jd9853_refresh_seq_15fps, 15),   // ~15.0 FPS
         [DisplayJd9853Refresh30] = JD9853_REFRESH_CONFIG(jd9853_refresh_seq_30fps, 30),   // ~30.0 FPS
         [DisplayJd9853Refresh60] = JD9853_REFRESH_CONFIG(jd9853_refresh_seq_60fps, 60),   // ~60.0 FPS
-        [DisplayJd9853RefreshMax] = JD9853_REFRESH_CONFIG(jd9853_refresh_seq_max, 115),   // ~113 FPS
+        [DisplayJd9853RefreshMax] = JD9853_REFRESH_CONFIG(jd9853_refresh_seq_max, 115),   // ~115.0 FPS
 };
 /* clang-format on */
