@@ -264,7 +264,7 @@ static void display_test_draw_gray_band(
 // 16 and 8 tone ramps, up and down, with a white strip on top and a black strip at the bottom
 static void display_test_draw_gray(DisplayTestModel* model) {
     static const uint8_t tones16[] = {0xFC, 0x00, 0x11, 0x22, 0x32, 0x43, 0x54, 0x65, 0x76, 0x86, 0x97, 0xA8, 0xB9, 0xCA, 0xDA, 0xEB, 0xFC, 0x00};
-    static const uint8_t tones8[] = {0xFC, 0x00, 36, 72, 108, 144, 180, 216, 252, 0x00};
+    static const uint8_t tones8[] = {0xFC, 0x00, 0x24, 0x48, 0x6C, 0x90, 0xB4, 0xD8, 0xFC, 0x00};
     Color* data = canvas_get_data(model->canvas);
     const int32_t width = canvas_get_width(model->canvas);
     const int32_t height = canvas_get_height(model->canvas);
