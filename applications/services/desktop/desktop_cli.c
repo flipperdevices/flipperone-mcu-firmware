@@ -70,7 +70,7 @@ static bool desktop_cli_stop_app(PipeSide* pipe, FuriString* args) {
 
     const char* appid = desktop_get_running_app_id();
 
-    if(!desktop_stop_app()) {
+    if(!desktop_stop_app(appid)) {
         printf("no app is running\r\n");
     } else {
         printf("stop requested: %s\r\n", appid ? appid : "unknown app");

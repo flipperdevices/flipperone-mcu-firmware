@@ -214,6 +214,17 @@ jobs:
         path: artifacts/*.uf2
         if-no-files-found: error
 
+  unit-tests:
+    needs: firmware
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    uses: ./.github/workflows/unit-test.yml
+    with:
+      commit_sha: ${{ github.sha }}
+      firmware_commit: ${{ github.event.pull_request.head.sha || github.sha }}
+      artifact_name: firmware-f2
+      artifact_suffix: ${{ needs.firmware.outputs.suffix }}
+      target: f2
+
   publish:
     runs-on: ubuntu-latest
     needs: firmware
@@ -295,7 +306,7 @@ jobs:
   # is added — so the required check is this fixed-name job instead.
   build:
     runs-on: ubuntu-latest
-    needs: [firmware, publish]
+    needs: [firmware, publish, unit-tests]
     if: always()
 
     steps:
@@ -305,5 +316,7 @@ jobs:
       run: |
         echo "firmware: ${{ needs.firmware.result }}"
         echo "publish:  ${{ needs.publish.result }}"
+        echo "unit-tests: ${{ needs.unit-tests.result }}"
         [ "${{ needs.firmware.result }}" = "success" ] || exit 1
         case "${{ needs.publish.result }}" in success|skipped) ;; *) exit 1 ;; esac
+        case "${{ needs.unit-tests.result }}" in success|skipped) ;; *) exit 1 ;; esac

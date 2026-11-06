@@ -87,7 +87,7 @@ bool drv2605l_auto_calibration(Drv2605l* instance) {
         .n_erm_lra = 1, //LRA
         .brake_factor = 3, //4x
         .loop_gain = 1, //Medium
-        .bemf_gain = 2, //1.365x
+        .bemf_gain = 2, //LRA: 15x (default)
     };
     
     Drv2605lMode mode_reg = {
@@ -100,13 +100,41 @@ bool drv2605l_auto_calibration(Drv2605l* instance) {
         .go_bit = 1, //Start auto-calibration
     };
 
-    drv2605l_write_reg(instance, Drv2605lRegRatedVoltage, &rated_voltage_reg);
-    drv2605l_write_reg(instance, Drv2605lRegOverdriveClamp, &overdrive_clamp_reg);
-    drv2605l_write_reg(instance, Drv2605lRegFeedback, (uint8_t*)&feedback_reg);
-    drv2605l_write_reg(instance, Drv2605lRegMode, (uint8_t*)&mode_reg);
-    drv2605l_write_reg(instance, Drv2605lRegGo, (uint8_t*)&go_reg);
+    int ret = 0;
+    do {
+        ret = drv2605l_write_reg(instance, Drv2605lRegRatedVoltage, &rated_voltage_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Rated Voltage reg for auto-calibration");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegOverdriveClamp, &overdrive_clamp_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Overdrive Clamp reg for auto-calibration");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegFeedback, (uint8_t*)&feedback_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Feedback reg for auto-calibration");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegMode, (uint8_t*)&mode_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to write Mode reg for auto-calibration");
+            break;
+        }
+        ret = drv2605l_write_reg(instance, Drv2605lRegGo, (uint8_t*)&go_reg);
+        if(ret < PICO_OK) {
+            FURI_LOG_E(TAG, "Failed to start auto-calibration");
+            break;
+        }
+    } while(0);
+
+    if(ret < PICO_OK) {
+        return false;
+    }
 
     // Wait for completion
+    bool completed = false;
     uint32_t timeout = furi_get_tick() + 2000;
     while(furi_get_tick() < timeout) {
         uint8_t go_status = 0;
@@ -116,9 +144,15 @@ bool drv2605l_auto_calibration(Drv2605l* instance) {
         }
         Drv2605lGo* go_reg_status = (Drv2605lGo*)&go_status;
         if(go_reg_status->go_bit == 0) {
+            completed = true;
             break;
         }
         furi_delay_ms(10);
+    }
+
+    if(!completed) {
+        FURI_LOG_E(TAG, "Auto-calibration timed out");
+        return false;
     }
 
     uint8_t status = 0;
@@ -129,7 +163,17 @@ bool drv2605l_auto_calibration(Drv2605l* instance) {
     Drv2605lStatus* status_reg = (Drv2605lStatus*)&status;
 
     if(status_reg->diagnostic_result) {
-        FURI_LOG_E(TAG, "Auto-calibration failed");
+        FURI_LOG_E(TAG, "Auto-calibration failed: diagnostic result set");
+        return false;
+    }
+
+    if(status_reg->over_current_flag) {
+        FURI_LOG_E(TAG, "Auto-calibration failed: over-current flag set");
+        return false;
+    }
+
+    if(status_reg->over_temperature_flag) {
+        FURI_LOG_E(TAG, "Auto-calibration failed: over-temperature flag set");
         return false;
     }
 
@@ -253,7 +297,7 @@ static bool drv2605l_load_settings(Drv2605l* instance) {
         .lra_open_loop = 0, //Auto-resonance mode
     };
     Drv2605lControl4 control4_reg = {
-        .auto_cal_time = 2, //1000:1200 ms
+        .auto_cal_time = 2, //500:700 ms (default)
         .otp_status = 0,
         .otp_program = 0, //OTP Memory has not been programmed
         .zc_det_time = 0, //100us

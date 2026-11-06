@@ -1,0 +1,22 @@
+name: Flash device
+description: Flash a MCU firmware UF2 through its fo-lab lease
+
+inputs:
+  firmware:
+    description: Unmodified firmware UF2 from the regular build artifact
+    required: true
+  report:
+    description: Destination for the preparation report
+    default: test-results/prepared.json
+
+runs:
+  using: composite
+  steps:
+    - name: Upload and flash MCU firmware
+      shell: bash
+      env:
+        FIRMWARE: ${{ inputs.firmware }}
+        REPORT: ${{ inputs.report }}
+      run: |
+        set -euo pipefail
+        fo flash dut0 "$FIRMWARE" --report "$REPORT"
