@@ -143,8 +143,14 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
     hstx_fifo_hw->fifo = data;
 }
 
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete_isr(void) {
+    while(!(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS)) {
+        tight_loop_contents();
+    }
+}
+
 static FURI_ALWAYS_INLINE void display_jd9853_dma_put_buffer(DisplayJd9853QSPI* display, const uint8_t* data, size_t size) {
-    display_jd9853_hstx_wait_complete(display);
+    display_jd9853_hstx_wait_complete_isr();
 
     dma_channel_set_read_addr(display->dma_tx_channel, data, false);
     dma_channel_set_transfer_count(display->dma_tx_channel, size / 4, false);
@@ -392,7 +398,6 @@ static void display_jd9853_qspi_clear(DisplayJd9853QSPI* display) {
 
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
 
-    // Don't wait for TE, send the buffer instantly
     furi_hal_gpio_write(&gpio_display_cs, false);
     display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
 
@@ -403,6 +408,9 @@ static void display_jd9853_qspi_clear(DisplayJd9853QSPI* display) {
 
 static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
     DisplayJd9853QSPI* display = (DisplayJd9853QSPI*)ctx;
+    if(dma_channel_is_busy(display->dma_tx_channel) || !(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS)) {
+        return;
+    }
     furi_hal_gpio_write(&gpio_display_cs, false);
     display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
 }
@@ -573,10 +581,17 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
 
     bool idle = furi_semaphore_acquire(display->busy, furi_ms_to_ticks(DISPLAY_JD9853_DEINIT_TIMEOUT_MS)) == FuriStatusOk;
     furi_hal_gpio_remove_int_callback(&gpio_display_te);
-    display_jd9853_load_config(display, &jd9853_deinit_seq);
-    if(idle) {
-        furi_semaphore_release(display->busy);
+
+    if(!idle) {
+        hw_clear_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
+        dma_channel_abort(display->dma_tx_channel);
+        dma_hw->ints3 = 1u << display->dma_tx_channel;
+        furi_delay_us(DISPLAY_JD9853_HSTX_END_TX_DELAY_US * 4);
+        furi_hal_gpio_write(&gpio_display_cs, true);
     }
+
+    // HSTX is idle now, the panel can be put to sleep
+    display_jd9853_load_config(display, &jd9853_deinit_seq);
     furi_hal_gpio_init_ex(&gpio_display_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_sda, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
@@ -586,14 +601,14 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     furi_hal_gpio_init_ex(&gpio_display_d2, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
 
     clock_stop(clk_hstx);
-    furi_semaphore_free(display->busy);
 
-    //deinit dma
+    //deinit dma, before freeing anything its IRQ uses
     irq_set_enabled(DMA_IRQ_3, false);
     irq_remove_handler(DMA_IRQ_3, display_jd9853_dma_irq_handler);
     hw_clear_bits(&dma_hw->inte3, (1u << display->dma_tx_channel) | (1u << display->dma_copy_channel));
     dma_channel_unclaim(display->dma_tx_channel);
     dma_channel_unclaim(display->dma_copy_channel);
+    furi_semaphore_free(display->busy);
     furi_semaphore_free(display->wait_dma);
 
     free(display);
