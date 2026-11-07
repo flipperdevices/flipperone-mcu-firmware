@@ -39,16 +39,20 @@ typedef struct {
 
 struct DisplayJd9853QSPI {
     FuriSemaphore* busy;
+    FuriSemaphore* wait_dma;
     uint32_t dma_tx_channel;
+    uint32_t dma_copy_channel;
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     volatile DisplayJd9853RefreshStep refresh_step;
     volatile DisplayJd9853RefreshStep refresh_pending;
     volatile DisplayJd9853RefreshStep refresh_min;
-    volatile uint32_t frames_in_window;
-    volatile bool refresh_backpressure;
+    volatile uint32_t frames_total;
+    volatile uint32_t busy_frames_total;
     volatile uint32_t refresh_hold_until;
+    uint32_t frames_seen;
+    uint32_t busy_frames_seen;
     uint32_t last_frame_us;
     uint32_t fast_frames;
     FuriTimer* refresh_timer;
@@ -188,14 +192,14 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* disp
 }
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+static void display_jd9853_refresh_timer_restart(DisplayJd9853QSPI* display) {
+    display->frames_seen = display->frames_total;
+    display->busy_frames_seen = display->busy_frames_total;
+    furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
+}
+
 static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
-    DisplayJd9853RefreshStep pending;
-    {
-        FURI_CRITICAL_ENTER();
-        pending = display->refresh_pending;
-        display->refresh_pending = DisplayJd9853RefreshNone;
-        FURI_CRITICAL_EXIT();
-    }
+    DisplayJd9853RefreshStep pending = __atomic_exchange_n(&display->refresh_pending, DisplayJd9853RefreshNone, __ATOMIC_ACQ_REL);
 
     if(pending != DisplayJd9853RefreshNone && pending < display->refresh_min) {
         pending = display->refresh_min;
@@ -217,18 +221,13 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
         return;
     }
 
-    uint32_t frames;
-    bool backpressure;
-    bool hold;
-    {
-        FURI_CRITICAL_ENTER();
-        frames = display->frames_in_window;
-        backpressure = display->refresh_backpressure;
-        hold = (int32_t)(furi_get_tick() - display->refresh_hold_until) < 0;
-        display->frames_in_window = 0;
-        display->refresh_backpressure = false;
-        FURI_CRITICAL_EXIT();
-    }
+    uint32_t frames_total = display->frames_total;
+    uint32_t busy_frames_total = display->busy_frames_total;
+    uint32_t frames = frames_total - display->frames_seen;
+    bool backpressure = (busy_frames_total != display->busy_frames_seen);
+    display->frames_seen = frames_total;
+    display->busy_frames_seen = busy_frames_total;
+    bool hold = (int32_t)(furi_get_tick() - display->refresh_hold_until) < 0;
 
     DisplayJd9853RefreshStep current = display->refresh_step;
     if(!backpressure && !hold && (current > display->refresh_min)) {
@@ -238,15 +237,9 @@ static void display_jd9853_refresh_timer_callback(void* ctx) {
 
         /* Require 20% headroom above the measured incoming frame rate. */
         if((next_fps * 100u) >= (incoming_fps * 120u)) {
-            bool requested = false;
-            {
-                FURI_CRITICAL_ENTER();
-                if(display->refresh_pending == DisplayJd9853RefreshNone) {
-                    display->refresh_pending = next;
-                    requested = true;
-                }
-                FURI_CRITICAL_EXIT();
-            }
+            DisplayJd9853RefreshStep expected = DisplayJd9853RefreshNone;
+            bool requested = __atomic_compare_exchange_n(
+                &display->refresh_pending, &expected, next, false, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED);
 
             if(requested && furi_semaphore_acquire(display->busy, 0) == FuriStatusOk) {
                 display_jd9853_apply_refresh(display);
@@ -305,7 +298,8 @@ static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853QSPI* disp
 
 FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* display, const uint8_t* buffer, size_t size) {
     furi_assert(display);
-    furi_check(size == JD9853_WIDTH * JD9853_HEIGHT); //size must be equal to full buffer size
+    furi_check(size == JD9853_WIDTH * JD9853_HEIGHT);
+    furi_check(((uintptr_t)buffer & 3u) == 0);
 
     if(!display->display_is_connected) {
         return; // Don't attempt to write if display is not connected
@@ -320,7 +314,15 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
     display->last_frame_us = now_us;
 
     bool panel_busy = (furi_semaphore_get_count(display->busy) == 0);
+#endif
 
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
+
+    // Copy the frame by DMA
+    dma_channel_set_write_addr(display->dma_copy_channel, display->buffer_header.data, false);
+    dma_channel_transfer_from_buffer_now(display->dma_copy_channel, buffer, size / 4);
+
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     bool jump_to_max = false;
     bool step_up = false;
     if(delta_us >= DISPLAY_JD9853_REFRESH_IDLE_US) {
@@ -335,39 +337,33 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
         display->fast_frames = 0;
     }
 
-    bool stepped_up = false;
-    {
-        FURI_CRITICAL_ENTER();
-        display->frames_in_window++;
-        if(panel_busy) {
-            display->refresh_backpressure = true;
-        }
+    display->frames_total++;
+    if(panel_busy) {
+        display->busy_frames_total++;
+    }
 
-        if(jump_to_max || step_up) {
-            DisplayJd9853RefreshStep step = display->refresh_step;
-            DisplayJd9853RefreshStep base = MAX(step, display->refresh_pending);
+    if(jump_to_max || step_up) {
+        DisplayJd9853RefreshStep step = display->refresh_step;
+        DisplayJd9853RefreshStep pending = __atomic_load_n(&display->refresh_pending, __ATOMIC_RELAXED);
+        DisplayJd9853RefreshStep desired;
+        do {
+            DisplayJd9853RefreshStep base = MAX(step, pending);
             DisplayJd9853RefreshStep target = jump_to_max ? DisplayJd9853RefreshMax : MIN(base + 1, DisplayJd9853RefreshMax);
-            display->refresh_pending = (target > step) ? target : DisplayJd9853RefreshNone;
-            display->refresh_hold_until = furi_get_tick() + furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_HOLD_MS);
-            stepped_up = true;
+            desired = (target > step) ? target : DisplayJd9853RefreshNone;
+        } while(!__atomic_compare_exchange_n(&display->refresh_pending, &pending, desired, true, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED));
+        display->refresh_hold_until = furi_get_tick() + furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_HOLD_MS);
+
+        if(display->refresh_timer) {
+            display_jd9853_refresh_timer_restart(display);
         }
-        FURI_CRITICAL_EXIT();
     }
 
-    if(stepped_up && display->refresh_timer) {
-        furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
-    }
-#endif
-
-    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
-
-#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     if(display->refresh_pending != DisplayJd9853RefreshNone) {
         display_jd9853_apply_refresh(display);
     }
 #endif
 
-    memcpy(display->buffer_header.data, buffer, size);
+    furi_check(furi_semaphore_acquire(display->wait_dma, FuriWaitForever) == FuriStatusOk);
 
     furi_hal_gpio_enable_int_callback(&gpio_display_te);
 }
@@ -420,9 +416,19 @@ static int64_t __isr __not_in_flash_func(display_jd9853_end_tx_hstx_callback)(al
 }
 
 static void __isr __not_in_flash_func(display_jd9853_dma_irq_handler)(void) {
-    add_alarm_in_us(DISPLAY_JD9853_HSTX_END_TX_DELAY_US, display_jd9853_end_tx_hstx_callback, NULL, true);
-    // Clear the interrupt request.
-    dma_hw->ints3 = 1u << display_instance->dma_tx_channel;
+    uint32_t ints = dma_hw->ints3;
+
+    if(ints & (1u << display_instance->dma_copy_channel)) {
+        // Clear the interrupt request.
+        dma_hw->ints3 = 1u << display_instance->dma_copy_channel;
+        furi_semaphore_release(display_instance->wait_dma);
+    }
+
+    if(ints & (1u << display_instance->dma_tx_channel)) {
+        add_alarm_in_us(DISPLAY_JD9853_HSTX_END_TX_DELAY_US, display_jd9853_end_tx_hstx_callback, NULL, true);
+        // Clear the interrupt request.
+        dma_hw->ints3 = 1u << display_instance->dma_tx_channel;
+    }
 }
 
 static void display_jd9853_hstx_clock_init(void) {
@@ -458,8 +464,10 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     display->refresh_step = DisplayJd9853RefreshMax;
     display->refresh_pending = DisplayJd9853RefreshNone;
     display->refresh_min = DisplayJd9853Refresh10;
-    display->frames_in_window = 0;
-    display->refresh_backpressure = false;
+    display->frames_total = 0;
+    display->busy_frames_total = 0;
+    display->frames_seen = 0;
+    display->busy_frames_seen = 0;
     display->refresh_hold_until = 0;
     display->last_frame_us = 0;
     display->fast_frames = 0;
@@ -486,8 +494,18 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     dma_channel_set_write_addr(display->dma_tx_channel, &hstx_fifo_hw->fifo, false);
     dma_channel_set_config(display->dma_tx_channel, &c, false);
 
+    // Frame copy channel: memory to memory, unpaced, no byte swap
+    display->wait_dma = furi_semaphore_alloc(1, 0);
+    display->dma_copy_channel = dma_claim_unused_channel(true);
+    furi_check(dma_channel_is_claimed(display->dma_copy_channel));
+    dma_channel_config copy_c = dma_channel_get_default_config(display->dma_copy_channel);
+    channel_config_set_transfer_data_size(&copy_c, DMA_SIZE_32);
+    channel_config_set_read_increment(&copy_c, true);
+    channel_config_set_write_increment(&copy_c, true);
+    dma_channel_set_config(display->dma_copy_channel, &copy_c, false);
+
     // Set up the DMA_IRQ_3 not used SDK
-    hw_set_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
+    hw_set_bits(&dma_hw->inte3, (1u << display->dma_tx_channel) | (1u << display->dma_copy_channel));
     irq_set_exclusive_handler(DMA_IRQ_3, display_jd9853_dma_irq_handler);
     irq_set_enabled(DMA_IRQ_3, true);
 
@@ -531,7 +549,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
 
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
     display->refresh_timer = furi_timer_alloc(display_jd9853_refresh_timer_callback, FuriTimerTypeOnce, display);
-    furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
+    display_jd9853_refresh_timer_restart(display);
 #endif
 
     return display;
@@ -573,8 +591,10 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     //deinit dma
     irq_set_enabled(DMA_IRQ_3, false);
     irq_remove_handler(DMA_IRQ_3, display_jd9853_dma_irq_handler);
-    hw_clear_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
+    hw_clear_bits(&dma_hw->inte3, (1u << display->dma_tx_channel) | (1u << display->dma_copy_channel));
     dma_channel_unclaim(display->dma_tx_channel);
+    dma_channel_unclaim(display->dma_copy_channel);
+    furi_semaphore_free(display->wait_dma);
 
     free(display);
     display_instance = NULL;
@@ -597,15 +617,15 @@ void display_jd9853_qspi_set_min_refresh(DisplayJd9853QSPI* display, DisplayJd98
     furi_check(display);
     furi_check(step >= DisplayJd9853Refresh10 && step < DisplayJd9853RefreshCount);
 #ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    display->refresh_min = step;
+
     bool step_up = false;
-    {
-        FURI_CRITICAL_ENTER();
-        display->refresh_min = step;
-        if(display->refresh_step < step && (display->refresh_pending == DisplayJd9853RefreshNone || display->refresh_pending < step)) {
-            display->refresh_pending = step;
+    DisplayJd9853RefreshStep pending = __atomic_load_n(&display->refresh_pending, __ATOMIC_RELAXED);
+    while(display->refresh_step < step && (pending == DisplayJd9853RefreshNone || pending < step)) {
+        if(__atomic_compare_exchange_n(&display->refresh_pending, &pending, step, true, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
             step_up = true;
+            break;
         }
-        FURI_CRITICAL_EXIT();
     }
 
     if(step_up) {
@@ -613,7 +633,7 @@ void display_jd9853_qspi_set_min_refresh(DisplayJd9853QSPI* display, DisplayJd98
         display_jd9853_apply_refresh(display);
         furi_semaphore_release(display->busy);
     } else if(display->refresh_step > step && display->refresh_timer) {
-        furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
+        display_jd9853_refresh_timer_restart(display);
     }
     FURI_LOG_I(TAG, "Min refresh %u FPS", (unsigned)jd9853_refresh_config[step].fps);
 #else
