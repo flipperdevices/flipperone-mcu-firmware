@@ -527,6 +527,16 @@ size_t gui_get_height(Gui* gui) {
     return canvas_get_height(gui->render_canvas);
 }
 
+void gui_set_display_min_refresh(Gui* gui, DisplayJd9853RefreshStep step) {
+    furi_check(gui);
+    display_jd9853_qspi_set_min_refresh(gui->display, step);
+}
+
+DisplayJd9853RefreshStep gui_get_display_min_refresh(Gui* gui) {
+    furi_check(gui);
+    return display_jd9853_qspi_get_min_refresh(gui->display);
+}
+
 void gui_push_frame(Gui* gui, const uint8_t* data) {
     furi_check(gui);
     furi_check(data);

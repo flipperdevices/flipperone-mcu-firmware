@@ -16,9 +16,21 @@
 
 #define TAG "DisplayDriver"
 
-#define FIRST_HSTX_PIN                             12
-#define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        5 //5us
-#define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS 1000
+#define FIRST_HSTX_PIN                             (12u)
+#define DISPLAY_JD9853_HSTX_END_TX_DELAY_US        (5u) //5us
+#define DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS (1000u)
+#define DISPLAY_JD9853_DEINIT_TIMEOUT_MS           (100u)
+#define DISPLAY_JD9853_RESET_DELAY_MS              (150u)
+
+//#define DISPLAY_JD9853_SHOW_FPS
+#define DISPLAY_JD9853_DYNAMIC_REFRESH
+
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+#define DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS (2000u) // 2 s
+#define DISPLAY_JD9853_REFRESH_FAST_FRAMES       (4u) // consecutive fast frames needed to step up
+#define DISPLAY_JD9853_REFRESH_HOLD_MS           (5000u) // no step down this long after a step up
+#define DISPLAY_JD9853_REFRESH_IDLE_US           (2000000u) // a frame after this much idle jumps to max
+#endif
 
 typedef struct {
     uint32_t cmd[4];
@@ -27,12 +39,27 @@ typedef struct {
 
 struct DisplayJd9853QSPI {
     FuriSemaphore* busy;
+    FuriSemaphore* wait_dma;
     uint32_t dma_tx_channel;
+    uint32_t dma_copy_channel;
     DisplayJd9853QSPIBufferHeader buffer_header;
     bool display_is_connected;
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    volatile DisplayJd9853RefreshStep refresh_step;
+    volatile DisplayJd9853RefreshStep refresh_pending;
+    volatile DisplayJd9853RefreshStep refresh_min;
+    volatile uint32_t frames_total;
+    volatile uint32_t busy_frames_total;
+    volatile uint32_t refresh_hold_until;
+    uint32_t frames_seen;
+    uint32_t busy_frames_seen;
+    uint32_t last_frame_us;
+    uint32_t fast_frames;
+    FuriTimer* refresh_timer;
+#endif
 #ifdef DISPLAY_JD9853_SHOW_FPS
-    volatile uint32_t frames_written; /* frames queued to the display */
-    FuriTimer* fps_timer; /* periodic FPS logger */
+    volatile uint32_t frames_written;
+    FuriTimer* fps_timer;
 #endif
 };
 
@@ -46,7 +73,16 @@ static void display_jd9853_fps_timer_callback(void* ctx) {
     uint32_t fps = display->frames_written;
     display->frames_written = 0;
 
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    FURI_LOG_W(
+        TAG,
+        "Display TX: %lu FPS, panel %u FPS (step %u)",
+        (unsigned long)fps,
+        (unsigned)jd9853_refresh_config[display->refresh_step].fps,
+        (unsigned)display->refresh_step);
+#else
     FURI_LOG_W(TAG, "Display TX: %lu FPS", (unsigned long)fps);
+#endif
 }
 #endif
 
@@ -57,9 +93,7 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete(DisplayJd9853QS
     }
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853QSPI* display) {
-    display_jd9853_hstx_wait_complete(display);
-
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_config_1_line(void) {
     hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] = HSTX_CTRL_BIT0_CLK_BITS;
 
     hstx_ctrl_hw->bit[gpio_display_sda.pin - FIRST_HSTX_PIN] = (7u << HSTX_CTRL_BIT0_SEL_P_LSB) | (7u << HSTX_CTRL_BIT0_SEL_N_LSB);
@@ -76,9 +110,12 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853QSPI
     furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn0Hstx);
 }
 
-static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI* display) {
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_1_line(DisplayJd9853QSPI* display) {
     display_jd9853_hstx_wait_complete(display);
+    display_jd9853_hstx_config_1_line();
+}
 
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_config_4_line(void) {
     hstx_ctrl_hw->bit[gpio_display_scl.pin - FIRST_HSTX_PIN] = HSTX_CTRL_BIT0_CLK_BITS;
 
     hstx_ctrl_hw->bit[gpio_display_sda.pin - FIRST_HSTX_PIN] = (28u << HSTX_CTRL_BIT0_SEL_P_LSB) | (28u << HSTX_CTRL_BIT0_SEL_N_LSB);
@@ -94,6 +131,11 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI
     furi_hal_gpio_set_function(&gpio_display_cs, GpioAltFn5Sio);
 }
 
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_init_4_line(DisplayJd9853QSPI* display) {
+    display_jd9853_hstx_wait_complete(display);
+    display_jd9853_hstx_config_4_line();
+}
+
 static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
     while(hstx_fifo_hw->stat & HSTX_FIFO_STAT_FULL_BITS) {
         furi_thread_yield();
@@ -101,8 +143,14 @@ static FURI_ALWAYS_INLINE void display_jd9853_hstx_put_word(uint32_t data) {
     hstx_fifo_hw->fifo = data;
 }
 
+static FURI_ALWAYS_INLINE void display_jd9853_hstx_wait_complete_isr(void) {
+    while(!(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS)) {
+        tight_loop_contents();
+    }
+}
+
 static FURI_ALWAYS_INLINE void display_jd9853_dma_put_buffer(DisplayJd9853QSPI* display, const uint8_t* data, size_t size) {
-    display_jd9853_hstx_wait_complete(display);
+    display_jd9853_hstx_wait_complete_isr();
 
     dma_channel_set_read_addr(display->dma_tx_channel, data, false);
     dma_channel_set_transfer_count(display->dma_tx_channel, size / 4, false);
@@ -149,46 +197,115 @@ static FURI_ALWAYS_INLINE void display_jd9853_write_data(DisplayJd9853QSPI* disp
     display_jd9853_cs_up();
 }
 
-void display_jd9853_load_config(DisplayJd9853QSPI* display, const uint8_t* config) {
-    display_jd9853_hstx_init_1_line(display);
-    while(*config) {
-        display_jd9853_write_reg(display, (DisplayJd9853Reg)(*(config + 2)));
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+static void display_jd9853_refresh_timer_restart(DisplayJd9853QSPI* display) {
+    display->frames_seen = display->frames_total;
+    display->busy_frames_seen = display->busy_frames_total;
+    furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
+}
 
-        if(*(config)) {
-            display_jd9853_write_data(display, (uint8_t*)(config + 3), *(config)-1);
+static void display_jd9853_apply_refresh(DisplayJd9853QSPI* display) {
+    DisplayJd9853RefreshStep pending = __atomic_exchange_n(&display->refresh_pending, DisplayJd9853RefreshNone, __ATOMIC_ACQ_REL);
+
+    if(pending != DisplayJd9853RefreshNone && pending < display->refresh_min) {
+        pending = display->refresh_min;
+    }
+
+    if(pending == DisplayJd9853RefreshNone || pending >= DisplayJd9853RefreshCount || pending == display->refresh_step) {
+        return;
+    }
+
+    display_jd9853_load_config(display, jd9853_refresh_config[pending].config);
+
+    display->refresh_step = pending;
+}
+
+static void display_jd9853_refresh_timer_callback(void* ctx) {
+    DisplayJd9853QSPI* display = ctx;
+
+    if(display_instance != display) {
+        return;
+    }
+
+    uint32_t frames_total = display->frames_total;
+    uint32_t busy_frames_total = display->busy_frames_total;
+    uint32_t frames = frames_total - display->frames_seen;
+    bool backpressure = (busy_frames_total != display->busy_frames_seen);
+    display->frames_seen = frames_total;
+    display->busy_frames_seen = busy_frames_total;
+    bool hold = (int32_t)(furi_get_tick() - display->refresh_hold_until) < 0;
+
+    DisplayJd9853RefreshStep current = display->refresh_step;
+    if(!backpressure && !hold && (current > display->refresh_min)) {
+        uint32_t incoming_fps = frames * 1000u / DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS;
+        DisplayJd9853RefreshStep next = current - 1;
+        uint32_t next_fps = jd9853_refresh_config[next].fps;
+
+        /* Require 20% headroom above the measured incoming frame rate. */
+        if((next_fps * 100u) >= (incoming_fps * 120u)) {
+            DisplayJd9853RefreshStep expected = DisplayJd9853RefreshNone;
+            bool requested = __atomic_compare_exchange_n(
+                &display->refresh_pending, &expected, next, false, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED);
+
+            if(requested && furi_semaphore_acquire(display->busy, 0) == FuriStatusOk) {
+                display_jd9853_apply_refresh(display);
+                furi_semaphore_release(display->busy);
+            }
         }
-        furi_delay_ms(*(config + 1) * 5);
-        config += *(config) + 2;
+    }
+
+    if(display->refresh_step > display->refresh_min) {
+        furi_timer_start(display->refresh_timer, furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_CHECK_INTERVAL_MS));
+    }
+}
+#endif
+
+void display_jd9853_load_config(DisplayJd9853QSPI* display, const DisplayJd9853Seq* seq) {
+    display_jd9853_hstx_init_1_line(display);
+    for(size_t i = 0; i < seq->count; i++) {
+        const DisplayJd9853Cmd* cmd = &seq->cmds[i];
+        display_jd9853_write_reg(display, (DisplayJd9853Reg)cmd->reg);
+        if(cmd->len) {
+            display_jd9853_write_data(display, (uint8_t*)cmd->data, cmd->len);
+        }
+        if(cmd->delay_ms) {
+            furi_delay_ms(cmd->delay_ms);
+        }
     }
     display_jd9853_hstx_init_4_line(display);
 }
 
 static void display_jd9853_enable(DisplayJd9853QSPI* display, bool enable) {
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     display_jd9853_hstx_init_1_line(display);
 
-    display_jd9853_write_reg(display, enable ? dispon : dispoff);
+    display_jd9853_write_reg(display, enable ? DisplayJd9853RegDispon : DisplayJd9853RegDispoff);
 
     display_jd9853_hstx_init_4_line(display);
+    furi_semaphore_release(display->busy);
 }
 
 static FURI_ALWAYS_INLINE void display_jd9853_set_window(DisplayJd9853QSPI* display, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     uint8_t caset_data[4] = {(uint8_t)(x0 >> 8), (uint8_t)(x0 & 0xFF), (uint8_t)(x1 >> 8), (uint8_t)(x1 & 0xFF)};
     uint8_t paset_data[4] = {(uint8_t)(y0 >> 8), (uint8_t)(y0 & 0xFF), (uint8_t)(y1 >> 8), (uint8_t)(y1 & 0xFF)};
 
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     display_jd9853_hstx_init_1_line(display);
 
-    display_jd9853_write_reg(display, caset); // Column address set
+    display_jd9853_write_reg(display, DisplayJd9853RegCaset); // Column address set
     display_jd9853_write_data(display, caset_data, sizeof(caset_data));
 
-    display_jd9853_write_reg(display, paset); // Page address set
+    display_jd9853_write_reg(display, DisplayJd9853RegPaset); // Page address set
     display_jd9853_write_data(display, paset_data, sizeof(paset_data));
 
     display_jd9853_hstx_init_4_line(display);
+    furi_semaphore_release(display->busy);
 }
 
 FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* display, const uint8_t* buffer, size_t size) {
     furi_assert(display);
-    furi_check(size == JD9853_WIDTH * JD9853_HEIGHT); //size must be equal to full buffer size
+    furi_check(size == JD9853_WIDTH * JD9853_HEIGHT);
+    furi_check(((uintptr_t)buffer & 3u) == 0);
 
     if(!display->display_is_connected) {
         return; // Don't attempt to write if display is not connected
@@ -197,9 +314,62 @@ FURI_ALWAYS_INLINE void display_jd9853_qspi_write_buffer(DisplayJd9853QSPI* disp
     display->frames_written++;
 #endif
 
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    uint32_t now_us = time_us_32();
+    uint32_t delta_us = now_us - display->last_frame_us;
+    display->last_frame_us = now_us;
+
+    bool panel_busy = (furi_semaphore_get_count(display->busy) == 0);
+#endif
+
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
 
-    memcpy(display->buffer_header.data, buffer, size);
+    // Copy the frame by DMA
+    dma_channel_set_write_addr(display->dma_copy_channel, display->buffer_header.data, false);
+    dma_channel_transfer_from_buffer_now(display->dma_copy_channel, buffer, size / 4);
+
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    bool jump_to_max = false;
+    bool step_up = false;
+    if(delta_us >= DISPLAY_JD9853_REFRESH_IDLE_US) {
+        jump_to_max = true;
+        display->fast_frames = 0;
+    } else if(panel_busy || (delta_us < jd9853_refresh_config[display->refresh_step].fast_delta_us)) {
+        if(++display->fast_frames >= DISPLAY_JD9853_REFRESH_FAST_FRAMES) {
+            step_up = true;
+            display->fast_frames = 0;
+        }
+    } else {
+        display->fast_frames = 0;
+    }
+
+    display->frames_total++;
+    if(panel_busy) {
+        display->busy_frames_total++;
+    }
+
+    if(jump_to_max || step_up) {
+        DisplayJd9853RefreshStep step = display->refresh_step;
+        DisplayJd9853RefreshStep pending = __atomic_load_n(&display->refresh_pending, __ATOMIC_RELAXED);
+        DisplayJd9853RefreshStep desired;
+        do {
+            DisplayJd9853RefreshStep base = MAX(step, pending);
+            DisplayJd9853RefreshStep target = jump_to_max ? DisplayJd9853RefreshMax : MIN(base + 1, DisplayJd9853RefreshMax);
+            desired = (target > step) ? target : DisplayJd9853RefreshNone;
+        } while(!__atomic_compare_exchange_n(&display->refresh_pending, &pending, desired, true, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED));
+        display->refresh_hold_until = furi_get_tick() + furi_ms_to_ticks(DISPLAY_JD9853_REFRESH_HOLD_MS);
+
+        if(display->refresh_timer) {
+            display_jd9853_refresh_timer_restart(display);
+        }
+    }
+
+    if(display->refresh_pending != DisplayJd9853RefreshNone) {
+        display_jd9853_apply_refresh(display);
+    }
+#endif
+
+    furi_check(furi_semaphore_acquire(display->wait_dma, FuriWaitForever) == FuriStatusOk);
 
     furi_hal_gpio_enable_int_callback(&gpio_display_te);
 }
@@ -228,7 +398,6 @@ static void display_jd9853_qspi_clear(DisplayJd9853QSPI* display) {
 
     furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
 
-    // Don't wait for TE, send the buffer instantly
     furi_hal_gpio_write(&gpio_display_cs, false);
     display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
 
@@ -239,6 +408,9 @@ static void display_jd9853_qspi_clear(DisplayJd9853QSPI* display) {
 
 static void __isr __not_in_flash_func(display_jd9853_te_callback)(void* ctx) {
     DisplayJd9853QSPI* display = (DisplayJd9853QSPI*)ctx;
+    if(dma_channel_is_busy(display->dma_tx_channel) || !(hstx_fifo_hw->stat & HSTX_FIFO_STAT_EMPTY_BITS)) {
+        return;
+    }
     furi_hal_gpio_write(&gpio_display_cs, false);
     display_jd9853_dma_put_buffer(display, (uint8_t*)&display->buffer_header, sizeof(display->buffer_header));
 }
@@ -252,9 +424,19 @@ static int64_t __isr __not_in_flash_func(display_jd9853_end_tx_hstx_callback)(al
 }
 
 static void __isr __not_in_flash_func(display_jd9853_dma_irq_handler)(void) {
-    add_alarm_in_us(DISPLAY_JD9853_HSTX_END_TX_DELAY_US, display_jd9853_end_tx_hstx_callback, NULL, true);
-    // Clear the interrupt request.
-    dma_hw->ints3 = 1u << display_instance->dma_tx_channel;
+    uint32_t ints = dma_hw->ints3;
+
+    if(ints & (1u << display_instance->dma_copy_channel)) {
+        // Clear the interrupt request.
+        dma_hw->ints3 = 1u << display_instance->dma_copy_channel;
+        furi_semaphore_release(display_instance->wait_dma);
+    }
+
+    if(ints & (1u << display_instance->dma_tx_channel)) {
+        add_alarm_in_us(DISPLAY_JD9853_HSTX_END_TX_DELAY_US, display_jd9853_end_tx_hstx_callback, NULL, true);
+        // Clear the interrupt request.
+        dma_hw->ints3 = 1u << display_instance->dma_tx_channel;
+    }
 }
 
 static void display_jd9853_hstx_clock_init(void) {
@@ -286,6 +468,19 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     DisplayJd9853QSPI* display = malloc(sizeof(DisplayJd9853QSPI));
     display_instance = display;
     display->busy = furi_semaphore_alloc(1, 1);
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    display->refresh_step = DisplayJd9853RefreshMax;
+    display->refresh_pending = DisplayJd9853RefreshNone;
+    display->refresh_min = DisplayJd9853Refresh10;
+    display->frames_total = 0;
+    display->busy_frames_total = 0;
+    display->frames_seen = 0;
+    display->busy_frames_seen = 0;
+    display->refresh_hold_until = 0;
+    display->last_frame_us = 0;
+    display->fast_frames = 0;
+    display->refresh_timer = NULL;
+#endif
 #ifdef DISPLAY_JD9853_SHOW_FPS
     display->frames_written = 0;
 
@@ -307,8 +502,18 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     dma_channel_set_write_addr(display->dma_tx_channel, &hstx_fifo_hw->fifo, false);
     dma_channel_set_config(display->dma_tx_channel, &c, false);
 
+    // Frame copy channel: memory to memory, unpaced, no byte swap
+    display->wait_dma = furi_semaphore_alloc(1, 0);
+    display->dma_copy_channel = dma_claim_unused_channel(true);
+    furi_check(dma_channel_is_claimed(display->dma_copy_channel));
+    dma_channel_config copy_c = dma_channel_get_default_config(display->dma_copy_channel);
+    channel_config_set_transfer_data_size(&copy_c, DMA_SIZE_32);
+    channel_config_set_read_increment(&copy_c, true);
+    channel_config_set_write_increment(&copy_c, true);
+    dma_channel_set_config(display->dma_copy_channel, &copy_c, false);
+
     // Set up the DMA_IRQ_3 not used SDK
-    hw_set_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
+    hw_set_bits(&dma_hw->inte3, (1u << display->dma_tx_channel) | (1u << display->dma_copy_channel));
     irq_set_exclusive_handler(DMA_IRQ_3, display_jd9853_dma_irq_handler);
     irq_set_enabled(DMA_IRQ_3, true);
 
@@ -327,7 +532,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_hal_gpio_write(&gpio_display_reset, false);
     furi_delay_ms(30);
     furi_hal_gpio_write(&gpio_display_reset, true);
-    furi_delay_ms(30);
+    furi_delay_ms(DISPLAY_JD9853_RESET_DELAY_MS);
 
     //todo set gpio functions add implement furi hal gpio
     furi_hal_gpio_set_function(&gpio_display_scl, GpioAltFn0Hstx);
@@ -338,7 +543,7 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
     furi_hal_gpio_set_function(&gpio_display_d2, GpioAltFn0Hstx);
 
     //Initialization sequence
-    display_jd9853_load_config(display, jd9853_init_seq_2025_04_01_normal_white_mod);
+    display_jd9853_load_config(display, &jd9853_init_seq_2025_04_01_normal_white_mod);
 
     display->display_is_connected = display_jd9853_qspi_check_connection(display, DISPLAY_JD9853_CONNECTION_CHECK_TIMEOUT_MS);
     if(!display->display_is_connected) {
@@ -350,14 +555,43 @@ DisplayJd9853QSPI* display_jd9853_qspi_init(void) {
 
     display_jd9853_enable(display, true);
 
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    display->refresh_timer = furi_timer_alloc(display_jd9853_refresh_timer_callback, FuriTimerTypeOnce, display);
+    display_jd9853_refresh_timer_restart(display);
+#endif
+
     return display;
 }
 
 void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     furi_check(display);
 
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    if(display->refresh_timer) {
+        furi_timer_stop(display->refresh_timer);
+        furi_timer_free(display->refresh_timer);
+        display->refresh_timer = NULL;
+    }
+    display->refresh_pending = DisplayJd9853RefreshNone;
+#endif
+#ifdef DISPLAY_JD9853_SHOW_FPS
+    furi_timer_stop(display->fps_timer);
+    furi_timer_free(display->fps_timer);
+#endif
+
+    bool idle = furi_semaphore_acquire(display->busy, furi_ms_to_ticks(DISPLAY_JD9853_DEINIT_TIMEOUT_MS)) == FuriStatusOk;
     furi_hal_gpio_remove_int_callback(&gpio_display_te);
-    display_jd9853_load_config(display, jd9853_deinit_seq);
+
+    if(!idle) {
+        hw_clear_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
+        dma_channel_abort(display->dma_tx_channel);
+        dma_hw->ints3 = 1u << display->dma_tx_channel;
+        furi_delay_us(DISPLAY_JD9853_HSTX_END_TX_DELAY_US * 4);
+        furi_hal_gpio_write(&gpio_display_cs, true);
+    }
+
+    // HSTX is idle now, the panel can be put to sleep
+    display_jd9853_load_config(display, &jd9853_deinit_seq);
     furi_hal_gpio_init_ex(&gpio_display_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_sda, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
@@ -367,13 +601,15 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
     furi_hal_gpio_init_ex(&gpio_display_d2, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
 
     clock_stop(clk_hstx);
-    furi_semaphore_free(display->busy);
 
-    //deinit dma
+    //deinit dma, before freeing anything its IRQ uses
     irq_set_enabled(DMA_IRQ_3, false);
     irq_remove_handler(DMA_IRQ_3, display_jd9853_dma_irq_handler);
-    hw_clear_bits(&dma_hw->inte3, 1u << display->dma_tx_channel);
+    hw_clear_bits(&dma_hw->inte3, (1u << display->dma_tx_channel) | (1u << display->dma_copy_channel));
     dma_channel_unclaim(display->dma_tx_channel);
+    dma_channel_unclaim(display->dma_copy_channel);
+    furi_semaphore_free(display->busy);
+    furi_semaphore_free(display->wait_dma);
 
     free(display);
     display_instance = NULL;
@@ -381,13 +617,52 @@ void display_jd9853_qspi_deinit(DisplayJd9853QSPI* display) {
 
 void display_jd9853_qspi_eco_mode(DisplayJd9853QSPI* display, bool enable) {
     furi_check(display);
+    furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
     display_jd9853_hstx_init_1_line(display);
     if(enable) {
-        display_jd9853_write_reg(display, idmon);
+        display_jd9853_write_reg(display, DisplayJd9853RegIdmon);
     } else {
-        display_jd9853_write_reg(display, idmoff);
+        display_jd9853_write_reg(display, DisplayJd9853RegIdmoff);
     }
     display_jd9853_hstx_init_4_line(display);
+    furi_semaphore_release(display->busy);
+}
+
+void display_jd9853_qspi_set_min_refresh(DisplayJd9853QSPI* display, DisplayJd9853RefreshStep step) {
+    furi_check(display);
+    furi_check(step >= DisplayJd9853Refresh10 && step < DisplayJd9853RefreshCount);
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    display->refresh_min = step;
+
+    bool step_up = false;
+    DisplayJd9853RefreshStep pending = __atomic_load_n(&display->refresh_pending, __ATOMIC_RELAXED);
+    while(display->refresh_step < step && (pending == DisplayJd9853RefreshNone || pending < step)) {
+        if(__atomic_compare_exchange_n(&display->refresh_pending, &pending, step, true, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) {
+            step_up = true;
+            break;
+        }
+    }
+
+    if(step_up) {
+        furi_check(furi_semaphore_acquire(display->busy, FuriWaitForever) == FuriStatusOk);
+        display_jd9853_apply_refresh(display);
+        furi_semaphore_release(display->busy);
+    } else if(display->refresh_step > step && display->refresh_timer) {
+        display_jd9853_refresh_timer_restart(display);
+    }
+    FURI_LOG_I(TAG, "Min refresh %u FPS", (unsigned)jd9853_refresh_config[step].fps);
+#else
+    UNUSED(step);
+#endif
+}
+
+DisplayJd9853RefreshStep display_jd9853_qspi_get_min_refresh(DisplayJd9853QSPI* display) {
+    furi_check(display);
+#ifdef DISPLAY_JD9853_DYNAMIC_REFRESH
+    return display->refresh_min;
+#else
+    return DisplayJd9853RefreshMax;
+#endif
 }
 
 bool display_jd9853_qspi_is_init(void) {

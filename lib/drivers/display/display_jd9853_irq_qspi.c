@@ -86,15 +86,16 @@ static FURI_ALWAYS_INLINE void display_jd9853_irq_write_data(uint8_t* data, size
     display_jd9853_irq_cs_up();
 }
 
-static void display_jd9853_irq_load_config(const uint8_t* config) {
-    while(*config) {
-        display_jd9853_irq_write_reg((DisplayJd9853Reg)(*(config + 2)));
-
-        if(*(config)) {
-            display_jd9853_irq_write_data((uint8_t*)(config + 3), *(config)-1);
+static void display_jd9853_irq_load_config(const DisplayJd9853Seq* seq) {
+    for(size_t i = 0; i < seq->count; i++) {
+        const DisplayJd9853Cmd* cmd = &seq->cmds[i];
+        display_jd9853_irq_write_reg((DisplayJd9853Reg)cmd->reg);
+        if(cmd->len) {
+            display_jd9853_irq_write_data((uint8_t*)cmd->data, cmd->len);
         }
-        furi_delay_ms(*(config + 1) * 5);
-        config += *(config) + 2;
+        if(cmd->delay_ms) {
+            furi_delay_ms(cmd->delay_ms);
+        }
     }
 }
 
@@ -132,11 +133,11 @@ static void display_jd9853_irq_qspi_init(void) {
     display_jd9853_irq_hstx_init_1_line();
 
     //Initialization sequence
-    display_jd9853_irq_load_config(jd9853_init_seq_2025_04_01_normal_white_mod);
+    display_jd9853_irq_load_config(&jd9853_init_seq_2025_04_01_normal_white_mod);
 }
 
 void display_jd9853_irq_qspi_deinit(void) {
-    display_jd9853_irq_load_config(jd9853_deinit_seq);
+    display_jd9853_irq_load_config(&jd9853_deinit_seq);
     furi_hal_gpio_init_ex(&gpio_display_reset, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_cs, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
     furi_hal_gpio_init_ex(&gpio_display_sda, GpioModeInput, GpioPullNo, GpioSpeedLow, GpioAltFnUnused);
@@ -156,7 +157,7 @@ void display_jd9853_irq_qspi_write_buffer(const uint8_t* buffer, size_t size) {
     }
 
     display_jd9853_irq_hstx_init_1_line();
-    display_jd9853_irq_write_reg(ramwr); // Memory write
+    display_jd9853_irq_write_reg(DisplayJd9853RegRamwr); // Memory write
     display_jd9853_irq_write_data((uint8_t*)buffer, size);
     display_jd9853_irq_hstx_init_4_line();
 }
