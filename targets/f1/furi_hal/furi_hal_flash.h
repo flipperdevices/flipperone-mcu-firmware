@@ -25,9 +25,10 @@ bool furi_hal_flash_get_partition_info(FlashPartitionId partition_id, size_t* ba
 
 /** Get partition id from which we are running now
  *
- * @return     partition id of the active firmware
+ * @param[out] partition_id  pointer to the active firmware partition id
+ * @return     true if the partition was determined, false otherwise
  */
-FlashPartitionId furi_hal_flash_get_active_fw_partition(void);
+bool furi_hal_flash_get_active_fw_partition(FlashPartitionId* partition_id);
 
 /** Check if firmware partition is valid (contains IMAGE_DEF block)
  *

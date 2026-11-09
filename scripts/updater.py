@@ -66,6 +66,11 @@ def crc16_xmodem(data):
     """CRC-16/XMODEM (CCITT 0x1021, init 0x0000), matching the MCU's updater_crc16."""
     return binascii.crc_hqx(data, 0)
 
+
+def _addr16(address):
+    return struct.pack(">H", address)
+
+
 class McuI2C:
     def __init__(self, bus="/dev/i2c-0"):
         self.i2c = I2C(bus)
@@ -81,15 +86,16 @@ class McuI2C:
 
     def read_register(self, address):
         read_msg = I2C.Message(bytes(2), read=True)
-        self.i2c.transfer(MCU_ADDR, [I2C.Message(struct.pack(">H", address)), read_msg])
+        self.i2c.transfer(MCU_ADDR, [I2C.Message(_addr16(address)), read_msg])
         return struct.unpack("<H", read_msg.data)[0]
 
     def write_register(self, address, value):
         # Little-endian value: the MCU fires the write callback on the high byte
-        self.i2c.transfer(MCU_ADDR, [I2C.Message(struct.pack(">H", address) + struct.pack("<H", value))])
+        self.i2c.transfer(MCU_ADDR, [I2C.Message(_addr16(address) + struct.pack("<H", value))])
 
     def write_block(self, address, buf):
-        self.i2c.transfer(MCU_ADDR, [I2C.Message(struct.pack(">H", address) + bytes(buf))])
+        self.i2c.transfer(MCU_ADDR, [I2C.Message(_addr16(address) + bytes(buf))])
+
 
 def get_state(mcu) -> tuple[UpdaterState, UpdaterError]:
     status = mcu.read_register(Reg.STATUS)
@@ -169,6 +175,9 @@ def main() -> int:
             if state != UpdaterState.IDLE:
                 print("Aborting previous update")
                 send_command(mcu, UpdaterCommand.ABORT)
+                state, error = wait_for_state(mcu, UpdaterState.IDLE, ERASE_TIMEOUT_S)
+                if state != UpdaterState.IDLE:
+                    raise UpdateError(f"Failed to abort previous update: state={state.name}, error={error.name}")
 
             run_update(mcu, firmware, block_count)
     except UpdateError as exc:

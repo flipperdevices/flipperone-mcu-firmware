@@ -62,8 +62,9 @@ bool furi_hal_flash_get_partition_info(FlashPartitionId partition_id, size_t* ba
     // See datasheet 5.4.8.16; 5.9.4.2 for more details
     uint32_t buffer[(3 * 4) + 1] = {0}; // maximum of 3 partitions, each with maximum of 4 words returned, plus 1 for header
     int ret = rom_get_partition_table_info(buffer, COUNT_OF(buffer), PT_INFO_PARTITION_LOCATION_AND_FLAGS | PT_INFO_PARTITION_ID);
-
-    furi_check(buffer[0] == (PT_INFO_PARTITION_LOCATION_AND_FLAGS | PT_INFO_PARTITION_ID));
+    if(ret <= 0 || buffer[0] != (PT_INFO_PARTITION_LOCATION_AND_FLAGS | PT_INFO_PARTITION_ID)) {
+        return false;
+    }
 
     uint32_t partition_count = (ret - 1) / 4;
     for(size_t i = 0; i < partition_count; i++) {
@@ -81,11 +82,22 @@ bool furi_hal_flash_get_partition_info(FlashPartitionId partition_id, size_t* ba
     return false;
 }
 
-FlashPartitionId furi_hal_flash_get_active_fw_partition(void) {
+bool furi_hal_flash_get_active_fw_partition(FlashPartitionId* partition_id) {
+    furi_check(partition_id);
     boot_info_t boot_info = {};
-    int ret = rom_get_boot_info(&boot_info);
-    furi_check(ret);
-    return boot_info.partition == 0 ? FlashPartitionIdFwA : FlashPartitionIdFwB;
+    if(!rom_get_boot_info(&boot_info)) {
+        FURI_LOG_E("furi_hal_flash", "Failed to get boot info");
+        return false;
+    }
+    if(boot_info.partition == 0) {
+        *partition_id = FlashPartitionIdFwA;
+    } else if(boot_info.partition == 1) {
+        *partition_id = FlashPartitionIdFwB;
+    } else {
+        FURI_LOG_E("furi_hal_flash", "Boot partition %d is not a firmware partition", boot_info.partition);
+        return false;
+    }
+    return true;
 }
 
 bool furi_hal_flash_fw_partition_is_valid(FlashPartitionId partition_id) {

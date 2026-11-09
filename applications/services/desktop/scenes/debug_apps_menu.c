@@ -83,10 +83,13 @@ static bool debug_menu_input(InputEvent* event, void* context) {
         bool rollback_available = false;
         with_view_model(view, DebugMenuViewModel * model, { rollback_available = model->rollback_available; }, false);
         if(rollback_available) {
-            if(!furi_hal_flash_fw_partition_invalidate(furi_hal_flash_get_active_fw_partition())) {
+            FlashPartitionId active_partition;
+            if(!furi_hal_flash_get_active_fw_partition(&active_partition) ||
+               !furi_hal_flash_fw_partition_invalidate(active_partition)) {
                 FURI_LOG_E(TAG, "Failed to invalidate active partition");
+            } else {
+                furi_hal_power_reset();
             }
-            furi_hal_power_reset();
             consumed = true;
         }
     } else if((event->type == InputTypePress) || (event->type == InputTypeRepeat)) {
@@ -118,8 +121,12 @@ static void debug_menu_on_enter(Scene* scene, void* context) {
     view_set_input_callback(view, debug_menu_input, scene);
 
     bool rollback_available = false;
-    FlashPartitionId rollback_part = furi_hal_flash_get_active_fw_partition() == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
-    rollback_available = furi_hal_flash_fw_partition_is_valid(rollback_part);
+    FlashPartitionId active_partition;
+    if(furi_hal_flash_get_active_fw_partition(&active_partition)) {
+        FlashPartitionId rollback_part =
+            active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
+        rollback_available = furi_hal_flash_fw_partition_is_valid(rollback_part);
+    }
 
     with_view_model(
         view,

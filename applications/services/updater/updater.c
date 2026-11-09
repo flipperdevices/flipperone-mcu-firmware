@@ -433,14 +433,14 @@ int32_t updater_srv(void* p) {
     furi_event_loop_set_custom_event_callback(instance->event_loop, updater_custom_event_callback, instance);
 
     // Nothing below may crash: the negotiator blocks on RECORD_UPDATER
-    instance->active_partition = furi_hal_flash_get_active_fw_partition();
-
-    FlashPartitionId inactive_partition =
-        instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
-    instance->update_supported = furi_hal_flash_get_partition_info(
-        inactive_partition, &instance->inactive_partition_address, &instance->inactive_partition_size);
-    if(instance->update_supported) {
-        instance->update_supported = instance->inactive_partition_address % FLASH_SECTOR_SIZE == 0;
+    if(furi_hal_flash_get_active_fw_partition(&instance->active_partition)) {
+        FlashPartitionId inactive_partition =
+            instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
+        instance->update_supported = furi_hal_flash_get_partition_info(
+            inactive_partition, &instance->inactive_partition_address, &instance->inactive_partition_size);
+        if(instance->update_supported) {
+            instance->update_supported = instance->inactive_partition_address % FLASH_SECTOR_SIZE == 0;
+        }
     }
     if(!instance->update_supported) {
         FURI_LOG_E(TAG, "Inactive partition unavailable, updates disabled");
