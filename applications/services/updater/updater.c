@@ -13,6 +13,8 @@
 #define UPDATER_ISR_ERROR_QUEUE_FULL   (1 << 0)
 #define UPDATER_ISR_ERROR_OUT_OF_ORDER (1 << 1)
 
+#define UPDATER_CUSTOM_EVENT_ERROR (1 << 0)
+
 typedef union {
     struct {
         uint16_t version;
@@ -86,13 +88,12 @@ typedef struct {
     };
 } UpdaterMessage;
 
-// Queues a message from interrupt context. On queue overflow, records the
-// failure in isr_error instead of crashing: the event loop promotes it to
-// UpdaterErrorProtocolError and the host aborts and retries.
+// ISR queue put: overflow records an error instead of crashing
 static void __isr __not_in_flash_func(updater_message_queue_put_from_isr)(Updater* updater, const UpdaterMessage* msg) {
-    if(furi_message_queue_put(updater->message_queue, msg, 0) != FuriStatusOk) {
-        updater->isr_error |= UPDATER_ISR_ERROR_QUEUE_FULL;
-    }
+    if(furi_message_queue_put(updater->message_queue, msg, 0) == FuriStatusOk) return;
+
+    updater->isr_error |= UPDATER_ISR_ERROR_QUEUE_FULL;
+    furi_event_loop_set_custom_event(updater->event_loop, UPDATER_CUSTOM_EVENT_ERROR);
 }
 
 // I2C write callbacks, called from interrupt context
@@ -145,6 +146,7 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
         // Out-of-order write: record a protocol error and discard the rest of
         // the block; the next block (offset 0) restarts reception cleanly.
         updater->isr_error |= UPDATER_ISR_ERROR_OUT_OF_ORDER;
+        furi_event_loop_set_custom_event(updater->event_loop, UPDATER_CUSTOM_EVENT_ERROR);
         updater->i2c_rx.offset = 0;
         return true;
     }
@@ -275,6 +277,25 @@ static uint32_t updater_isr_error_get_and_clear(Updater* updater) {
     return error;
 }
 
+static bool updater_promote_isr_error(Updater* updater) {
+    if(!updater_isr_error_get_and_clear(updater)) return false;
+
+    FURI_LOG_E(TAG, "I2C protocol error");
+    updater->update_params.crc_set = false;
+    updater->update_params.size_set = false;
+    updater->update_params.blocks = 0;
+    updater_state_change(updater, UpdaterStateError, UpdaterErrorProtocolError);
+    return true;
+}
+
+static void updater_custom_event_callback(uint32_t events, void* context) {
+    UNUSED(events);
+    Updater* updater = context;
+    furi_check(updater);
+
+    updater_promote_isr_error(updater);
+}
+
 static void updater_handle_message(Updater* updater, const UpdaterMessage* msg);
 
 // Erases the inactive partition. Each sector erase stalls XIP and masks
@@ -283,8 +304,7 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg);
 static bool updater_erase_inactive_partition(Updater* updater) {
     FURI_LOG_I(TAG, "Erase start");
     for(size_t i = 0; i < updater->update_params.blocks; i += UPDATER_BLOCKS_PER_SECTOR) {
-        // Process pending messages between sectors so that Abort (or an ISR
-        // protocol error) interrupts the erase instead of waiting for the end.
+        // Serve pending messages so Abort interrupts the erase
         UpdaterMessage msg;
         while(furi_message_queue_get(updater->message_queue, &msg, 0) == FuriStatusOk) {
             updater_handle_message(updater, &msg);
@@ -294,7 +314,7 @@ static bool updater_erase_inactive_partition(Updater* updater) {
             }
         }
         furi_hal_flash_erase_sector(updater->inactive_partition_address + i * UPDATER_BLOCK_SIZE);
-        furi_delay_ms(1); // Yield between sectors: GUI and other services stay responsive
+        furi_delay_ms(1); // Yield between sectors
     }
     FURI_LOG_I(TAG, "Erase done");
     return true;
@@ -306,14 +326,7 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
 
     // Promote ISR-recorded protocol errors (queue overflow, out-of-order
     // writes) before processing anything else; the host aborts and retries.
-    if(updater_isr_error_get_and_clear(updater)) {
-        FURI_LOG_E(TAG, "I2C protocol error");
-        updater->update_params.crc_set = false;
-        updater->update_params.size_set = false;
-        updater->update_params.blocks = 0;
-        updater_state_change(updater, UpdaterStateError, UpdaterErrorProtocolError);
-        return;
-    }
+    if(updater_promote_isr_error(updater)) return;
 
     if((msg->type == UpdaterMessageStartUpdate) && (updater->state == UpdaterStateIdle)) {
         if(!updater->update_supported) {
@@ -369,6 +382,7 @@ int32_t updater_srv(void* p) {
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(8, sizeof(UpdaterMessage));
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, updater_message_callback, instance);
+    furi_event_loop_set_custom_event_callback(instance->event_loop, updater_custom_event_callback, instance);
 
     instance->state = UpdaterStateIdle;
     instance->isr_error = 0;
