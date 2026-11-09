@@ -34,17 +34,21 @@ struct I2CIntercom {
 
 static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
     uint8_t data;
-    with_i2c_register({
-        if(!i2c_register_read_start(instance->mem_address, &data)) {
-            data = I2C_INTERCOM_INVALID_ADDRESS_VALUE;
-            FURI_LOG_W(TAG, "read from invalid addr 0x%04X", instance->mem_address);
-        }
-        uint8_t len = furi_hal_i2c_slave_write_blocking(handle, &data, 1);
-        if(len) {
+    bool valid = false;
+    with_i2c_register({ valid = i2c_register_read_start(instance->mem_address, &data); });
+    if(!valid) {
+        data = I2C_INTERCOM_INVALID_ADDRESS_VALUE;
+        // TODO: add error signalling instead of printing from isr
+        FURI_LOG_W(TAG, "read from invalid addr 0x%04X", instance->mem_address);
+    }
+
+    uint8_t len = furi_hal_i2c_slave_write_blocking(handle, &data, 1);
+    if(len) {
+        with_i2c_register({
             i2c_register_read_commit(instance->mem_address);
             instance->mem_address++;
-        }
-    });
+        });
+    }
 }
 
 static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {

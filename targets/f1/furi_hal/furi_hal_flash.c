@@ -94,7 +94,7 @@ bool furi_hal_flash_fw_partition_is_valid(FlashPartitionId partition_id) {
     furi_check(ret);
 
     const uint8_t* start_ptr = furi_hal_flash_get_read_ptr(part_base);
-    uint8_t* picobin_ptr = find_picobin_block(start_ptr, 4096);
+    uint8_t* picobin_ptr = find_picobin_block(start_ptr, 4096 - PICOBIN_MAX_BLOCK_SIZE);
 
     return (picobin_ptr != NULL);
 }
@@ -115,14 +115,13 @@ bool furi_hal_flash_fw_partition_invalidate(FlashPartitionId partition_id) {
     uint8_t* page_buf = malloc(FLASH_PAGE_SIZE);
     furi_hal_flash_read(part_base + page_nb * FLASH_PAGE_SIZE, page_buf, FLASH_PAGE_SIZE);
     memset(&page_buf[page_offset], 0, 4);
-    furi_hal_flash_write(part_base + page_nb * FLASH_PAGE_SIZE, page_buf, FLASH_PAGE_SIZE);
 
-    const uint8_t* verify_ptr = furi_hal_flash_get_read_ptr(part_base + page_nb * FLASH_PAGE_SIZE);
-    if (memcmp(&verify_ptr[page_offset], &page_buf[page_offset], 4) != 0) {
+    bool written = furi_hal_flash_write(part_base + page_nb * FLASH_PAGE_SIZE, page_buf, FLASH_PAGE_SIZE);
+    free(page_buf);
+
+    if(!written) {
         furi_crash("Picobin overwrite failed"); // Should never happen
     }
-
-    free(page_buf);
 
     return true;
 }
@@ -169,12 +168,14 @@ void furi_hal_flash_erase_sector(size_t address) {
     FURI_CRITICAL_EXIT();
 }
 
-void furi_hal_flash_write(size_t address, const void* data, size_t size) {
+bool furi_hal_flash_write(size_t address, const void* data, size_t size) {
     furi_check(data);
     furi_check(size % FLASH_PAGE_SIZE == 0);
     FURI_CRITICAL_ENTER();
     flash_range_program(address, data, size);
     FURI_CRITICAL_EXIT();
+
+    return memcmp(furi_hal_flash_get_read_ptr(address), data, size) == 0;
 }
 
 void furi_hal_flash_read(size_t address, void* data, size_t size) {

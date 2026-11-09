@@ -93,6 +93,7 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     I2cSlave* slave = &i2c_slaves[i2c_index];
     slave->callback = callback;
     slave->address = address;
+    i2c_transaction_active[i2c_index] = false;
 
     // Note: The I2C slave does clock stretching implicitly after a RD_REQ, while the Tx FIFO is empty.
     // Clock stretching while the Rx FIFO is full is also enabled by default.

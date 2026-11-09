@@ -88,8 +88,9 @@ void furi_hal_flash_erase_sector(size_t address);
  * @param[in]  address  address to write to
  * @param[in]  data     pointer to data to write
  * @param[in]  size     size of data to write, must be multiple of flash page size (256 bytes)
+ * @return              true if the write was verified
  */
-void furi_hal_flash_write(size_t address, const void* data, size_t size);
+bool furi_hal_flash_write(size_t address, const void* data, size_t size);
 
 /** Read data from flash
  *

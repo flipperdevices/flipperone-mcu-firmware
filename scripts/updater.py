@@ -18,7 +18,7 @@ BLOCK_SIZE = 256
 BLOCK_HEADER_SIZE = 4  # block index (2 bytes) + block CRC (2 bytes), little-endian
 BLOCK_FRAME_SIZE = BLOCK_SIZE + BLOCK_HEADER_SIZE
 
-ERASE_TIMEOUT_S = 60
+ERASE_TIMEOUT_S = 120
 BLOCK_TIMEOUT_S = 5
 FINALIZE_TIMEOUT_S = 5
 
@@ -39,6 +39,7 @@ class UpdaterError(Enum):
     FW_CRC_ERROR = 5
     FW_VERSION_ERROR = 6
     PROTOCOL_ERROR = 7
+    FW_WRITE_ERROR = 8
 
 class UpdaterCommand(Enum):
     NONE = 0
@@ -125,10 +126,14 @@ def wait_for_state(mcu, target_state, timeout_s) -> tuple[UpdaterState, UpdaterE
         time.sleep(0.1)
 
 def main():
-    crc16 = Crc16()
-    mcu = McuI2C("/dev/i2c-0")
-
     parser = argparse.ArgumentParser(description="MCU updater demo")
+    parser.add_argument(
+        "--bus",
+        dest="bus_path",
+        type=str,
+        default="/dev/i2c-0",
+        help="I2C bus device (default: /dev/i2c-0)",
+    )
     parser.add_argument(
         "--file",
         dest="file_path",
@@ -137,6 +142,9 @@ def main():
         help="Path to the firmware file to send to the MCU",
     )
     args = parser.parse_args()
+
+    crc16 = Crc16()
+    mcu = McuI2C(args.bus_path)
 
     state, error = get_state(mcu)
     reg_fw_version = mcu.read_register(REG_FW_VERSION)

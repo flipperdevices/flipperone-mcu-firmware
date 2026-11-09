@@ -22,6 +22,7 @@ typedef enum {
     UpdaterErrorFwCrcError,
     UpdaterErrorFwVersionError,
     UpdaterErrorProtocolError, // I2C queue overflow or out-of-order data write
+    UpdaterErrorFwWriteError,
 } UpdaterError;
 
 typedef enum {
@@ -42,7 +43,7 @@ void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback,
 
 // I2C intercom callbacks, registered by i2c_negotiator; called from the I2C slave ISR.
 // Definitions carry the __isr/__not_in_flash_func attributes.
-bool updater_on_i2c_data_write(void* updater, uint16_t offset, uint8_t value);
+bool updater_on_i2c_data_write(void* context, uint16_t offset, uint8_t value);
 
 void updater_on_i2c_crc_reg_write(void* context, uint16_t address, uint16_t value);
 

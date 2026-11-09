@@ -83,7 +83,9 @@ static bool debug_menu_input(InputEvent* event, void* context) {
         bool rollback_available = false;
         with_view_model(view, DebugMenuViewModel * model, { rollback_available = model->rollback_available; }, false);
         if(rollback_available) {
-            furi_hal_flash_fw_partition_invalidate(furi_hal_flash_get_active_fw_partition());
+            if(!furi_hal_flash_fw_partition_invalidate(furi_hal_flash_get_active_fw_partition())) {
+                FURI_LOG_E(TAG, "Failed to invalidate active partition");
+            }
             furi_hal_power_reset();
             consumed = true;
         }
