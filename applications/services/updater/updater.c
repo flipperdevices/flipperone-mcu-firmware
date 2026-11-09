@@ -123,6 +123,9 @@ void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, 
     Updater* updater = context;
     furi_check(updater);
 
+    // Only exact command values are meaningful (guards against bus mis-sync)
+    if(value != UpdaterCommandStart && value != UpdaterCommandAbort) return;
+
     const UpdaterMessage msg = {
         .type = (value == UpdaterCommandStart) ? UpdaterMessageStartUpdate : UpdaterMessageAbortUpdate,
     };
@@ -143,8 +146,7 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     }
 
     if(offset != updater->i2c_rx.offset) {
-        // Out-of-order write: record a protocol error and discard the rest of
-        // the block; the next block (offset 0) restarts reception cleanly.
+        // Out-of-order: record the error and drop the rest of the block
         updater->isr_error |= UPDATER_ISR_ERROR_OUT_OF_ORDER;
         furi_event_loop_set_custom_event(updater->event_loop, UPDATER_CUSTOM_EVENT_ERROR);
         updater->i2c_rx.offset = 0;
@@ -298,9 +300,7 @@ static void updater_custom_event_callback(uint32_t events, void* context) {
 
 static void updater_handle_message(Updater* updater, const UpdaterMessage* msg);
 
-// Erases the inactive partition. Each sector erase stalls XIP and masks
-// interrupts for the duration of the flash operation; the 1ms delay only
-// yields between sectors. Returns false if the host aborted mid-erase.
+// XIP stalls and IRQs are masked for each sector erase
 static bool updater_erase_inactive_partition(Updater* updater) {
     FURI_LOG_I(TAG, "Erase start");
     for(size_t i = 0; i < updater->update_params.blocks; i += UPDATER_BLOCKS_PER_SECTOR) {
@@ -324,8 +324,6 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
     furi_check(updater);
     furi_check(msg);
 
-    // Promote ISR-recorded protocol errors (queue overflow, out-of-order
-    // writes) before processing anything else; the host aborts and retries.
     if(updater_promote_isr_error(updater)) return;
 
     if((msg->type == UpdaterMessageStartUpdate) && (updater->state == UpdaterStateIdle)) {
@@ -388,15 +386,9 @@ int32_t updater_srv(void* p) {
     instance->isr_error = 0;
     instance->i2c_rx.offset = 0;
 
-    // Create the record before anything that can fail: i2c_negotiator blocks in
-    // furi_record_open(RECORD_UPDATER) until the record is ready, and a dead
-    // updater would prevent the I2C intercom from starting up at all.
-    furi_record_create(RECORD_UPDATER, instance);
-
+    // Nothing below may crash: the negotiator blocks on RECORD_UPDATER
     instance->active_partition = furi_hal_flash_get_active_fw_partition();
 
-    // Locate the inactive partition. Degrade gracefully on failure instead of
-    // crashing: the record above already exists, the intercom keeps working.
     FlashPartitionId inactive_partition =
         instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
     instance->update_supported = furi_hal_flash_get_partition_info(
@@ -425,6 +417,9 @@ int32_t updater_srv(void* p) {
         instance->current_version.version = 0;
         instance->current_version.counter = 0;
     }
+
+    // The negotiator reads current_version right after opening the record
+    furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);
 
