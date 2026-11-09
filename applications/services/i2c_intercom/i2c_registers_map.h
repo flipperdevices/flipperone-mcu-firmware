@@ -12,7 +12,7 @@
  *          Bit 0: Input interrupt flag (cleared when input interrupt register is cleared)
  *          Bit 1-15: Reserved
 */
-#define I2C_STATUS_REG_BASE    (0x0000)
+#define I2C_STATUS_REG_BASE      (0x0000)
 #define I2C_STATUS_REG_ADDRESS   (I2C_STATUS_REG_BASE + 0x00)
 #define I2C_STATUS_REG_BIT_INPUT (0)
 
@@ -47,9 +47,9 @@
  *          Bit 3: SW buttons input interrupt masked
  *          Bit 4-15: Reserved
 */
-#define I2C_INPUT_INTERRUPT_REG_BASE      (0x0100)
-#define I2C_INPUT_INTERRUPT_REG_ADDRESS      (I2C_INPUT_INTERRUPT_REG_BASE + 0x00)
-#define I2C_INPUT_INTERRUPT_MASK_REG_BASE    (0x0180)
+#define I2C_INPUT_INTERRUPT_REG_BASE           (0x0100)
+#define I2C_INPUT_INTERRUPT_REG_ADDRESS        (I2C_INPUT_INTERRUPT_REG_BASE + 0x00)
+#define I2C_INPUT_INTERRUPT_MASK_REG_BASE      (0x0180)
 #define I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS   (I2C_INPUT_INTERRUPT_MASK_REG_BASE + 0x00)
 #define I2C_INPUT_INTERRUPT_REG_BIT_BUTTONS    (0)
 #define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
@@ -74,7 +74,7 @@
  *          Bit 12: InputKeyPtt state
  *          Bit 13-15: Reserved
 */
-#define I2C_INPUT_STATE_REG_BASE       (0x0200)
+#define I2C_INPUT_STATE_REG_BASE           (0x0200)
 #define I2C_BUTTONS_STATE_REG_ADDRESS      (I2C_INPUT_STATE_REG_BASE + 0x00)
 #define I2C_BUTTONS_STATE_REG_BIT_KEY2     (0)
 #define I2C_BUTTONS_STATE_REG_BIT_KEY1     (1)
@@ -134,7 +134,7 @@
  * 0x0300+2 Power LED group brightness     (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
  * 0x0300+4 Wattmeter LED group brightness (read, write), 0 is off, 255 is max brightness. This value stored in the flash. Can be changed from the MCU state.
 */
-#define I2C_LED_BRIGHTNESS_REG_BASE                (0x0300)
+#define I2C_LED_BRIGHTNESS_REG_BASE              (0x0300)
 #define I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS      (I2C_LED_BRIGHTNESS_REG_BASE + 0x00)
 #define I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS     (I2C_LED_BRIGHTNESS_REG_BASE + 0x02)
 #define I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS (I2C_LED_BRIGHTNESS_REG_BASE + 0x04)
@@ -159,7 +159,7 @@
  * 0x0350+2 Backlight time register (read, write), in 100ms intervals, should be greater than 0
  * 0x0350+4 Backlight control register (read, write)
 */
-#define I2C_BACKLIGHT_REG_BASE                (0x0350)
+#define I2C_BACKLIGHT_REG_BASE                 (0x0350)
 #define I2C_BACKLIGHT_LEVEL                    (I2C_BACKLIGHT_REG_BASE + 0x00)
 #define I2C_BACKLIGHT_TIMEOUT                  (I2C_BACKLIGHT_REG_BASE + 0x02) // * 100 ms, 10 = 1s
 #define I2C_BACKLIGHT_CONTROL                  (I2C_BACKLIGHT_REG_BASE + 0x04) // bit 0 - override backlight timeout, bit 1 - ping backlight
@@ -173,7 +173,7 @@
  * bits 14:8 - Effect number (0..123)
  * bits 7:0 - Duration of the effect, ms (0 or 1 - play full effect, 2..255 - play ms)
 */
-#define I2C_HAPTIC_REG_BASE               (0x0400)
+#define I2C_HAPTIC_REG_BASE                (0x0400)
 #define I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS (I2C_HAPTIC_REG_BASE + 0x00)
 #define I2C_HAPTIC_PLAY_EFFECT_BIT         (15)
 #define I2C_HAPTIC_NUM_EFFECT_MASK         (0x7F00)
@@ -200,6 +200,6 @@
 #define I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS    (I2C_UPDATER_REG_BASE + 0x20)
 #define I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS (I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS + 2)
 
-#define I2C_UPDATER_BLOCK_SIZE (256) // payload bytes per block
+#define I2C_UPDATER_BLOCK_SIZE   (256) // payload bytes per block
 #define I2C_UPDATER_DATA_ADDRESS (I2C_UPDATER_REG_BASE + 0x40)
 #define I2C_UPDATER_DATA_LEN     (I2C_UPDATER_BLOCK_SIZE + 2 /* block index */ + 2 /* block CRC */)
