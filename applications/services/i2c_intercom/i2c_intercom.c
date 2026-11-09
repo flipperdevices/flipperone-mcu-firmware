@@ -13,6 +13,7 @@
 #define I2C_INTERCOM_THREAD_SETUP_END_FLAG (1 << 0)
 
 #define I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER 0x00
+#define I2C_INTERCOM_LOG_PERIOD_MS            1000
 #define I2C_INTERCOM_INVALID_ADDRESS_VALUE    0x00
 
 typedef enum {
@@ -30,6 +31,9 @@ struct I2CIntercom {
 
     volatile I2CIntercomState state;
     volatile size_t mem_address;
+    volatile uint32_t invalid_read_count;
+    volatile uint32_t invalid_write_count;
+    volatile uint32_t dropped_byte_count;
 };
 
 static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
@@ -38,8 +42,7 @@ static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle,
     with_i2c_register({ valid = i2c_register_read_start(instance->mem_address, &data); });
     if(!valid) {
         data = I2C_INTERCOM_INVALID_ADDRESS_VALUE;
-        // TODO: add error signalling instead of printing from isr
-        FURI_LOG_W(TAG, "read from invalid addr 0x%04X", instance->mem_address);
+        instance->invalid_read_count++;
     }
 
     uint8_t len = furi_hal_i2c_slave_write_blocking(handle, &data, 1);
@@ -48,6 +51,13 @@ static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle,
             i2c_register_read_commit(instance->mem_address);
             instance->mem_address++;
         });
+    }
+}
+
+static inline void i2c_intercom_drain(const FuriHalI2cBusHandle* handle) {
+    // Discard late bytes; SCL is stretched until the FIFO is drained
+    uint8_t data;
+    while(furi_hal_i2c_slave_read_blocking(handle, &data, 1)) {
     }
 }
 
@@ -61,8 +71,7 @@ static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle
             bool valid = false;
             with_i2c_register({ valid = i2c_register_write(instance->mem_address, data); });
             if(!valid) {
-                // TODO: add error signalling instead of printing from isr
-                FURI_LOG_W(TAG, "write to invalid addr 0x%04X", instance->mem_address);
+                instance->invalid_write_count++;
             }
             instance->mem_address++;
         }
@@ -99,7 +108,10 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
         break;
     case FuriHalI2cBusSlaveEventWrite:
         if(instance->state == I2CIntercomStateIdle) {
-            furi_crash("I2CIntercom: Write event in invalid state");
+            // Late bytes after transaction close: drain instead of crashing
+            instance->dropped_byte_count++;
+            i2c_intercom_drain(handle);
+            break;
         }
         // Master is writing data to slave
         if(instance->state == I2CIntercomStateStart) {
@@ -172,7 +184,21 @@ int32_t i2c_intercom_srv(void* p) {
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
 
     while(1) {
-        furi_delay_ms(FuriWaitForever);
+        furi_delay_ms(I2C_INTERCOM_LOG_PERIOD_MS);
+        uint32_t invalid_reads = instance->invalid_read_count;
+        uint32_t invalid_writes = instance->invalid_write_count;
+        uint32_t dropped_bytes = instance->dropped_byte_count;
+        if(invalid_reads || invalid_writes || dropped_bytes) {
+            FURI_LOG_W(
+                TAG,
+                "invalid access: %lu reads, %lu writes, %lu dropped bytes",
+                invalid_reads,
+                invalid_writes,
+                dropped_bytes);
+            instance->invalid_read_count = 0;
+            instance->invalid_write_count = 0;
+            instance->dropped_byte_count = 0;
+        }
     }
 
     return 0;

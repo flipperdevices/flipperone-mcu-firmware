@@ -91,7 +91,7 @@ FlashPartitionId furi_hal_flash_get_active_fw_partition(void) {
 bool furi_hal_flash_fw_partition_is_valid(FlashPartitionId partition_id) {
     size_t part_base;
     bool ret = furi_hal_flash_get_partition_info(partition_id, &part_base, NULL);
-    furi_check(ret);
+    if(!ret) return false;
 
     const uint8_t* start_ptr = furi_hal_flash_get_read_ptr(part_base);
     uint8_t* picobin_ptr = find_picobin_block(start_ptr, 4096 - PICOBIN_MAX_BLOCK_SIZE);
@@ -102,7 +102,7 @@ bool furi_hal_flash_fw_partition_is_valid(FlashPartitionId partition_id) {
 bool furi_hal_flash_fw_partition_invalidate(FlashPartitionId partition_id) {
     size_t part_base;
     bool ret = furi_hal_flash_get_partition_info(partition_id, &part_base, NULL);
-    furi_check(ret);
+    if(!ret) return false;
 
     const uint8_t* start_ptr = furi_hal_flash_get_read_ptr(part_base);
     uint8_t* picobin_ptr = find_picobin_block(start_ptr, 4096);

@@ -2,6 +2,7 @@ from periphery import I2C
 from enum import Enum
 import time
 import argparse
+import sys
 
 MCU_ADDR = 0x69
 
@@ -40,6 +41,8 @@ class UpdaterError(Enum):
     FW_VERSION_ERROR = 6
     PROTOCOL_ERROR = 7
     FW_WRITE_ERROR = 8
+    FW_INVALIDATE_ERROR = 9
+    FW_PARAMS_ERROR = 10
 
 class UpdaterCommand(Enum):
     NONE = 0
@@ -170,7 +173,8 @@ def main():
     print("Erasing flash area...")
     state, error = wait_for_state(mcu, UpdaterState.RUNNING, ERASE_TIMEOUT_S)
     if state != UpdaterState.RUNNING:
-        return
+        print(f"Failed to start update: state={state.name}, error={error.name}")
+        sys.exit(1)
 
     start_time = time.perf_counter()
 
@@ -187,14 +191,16 @@ def main():
         print(f"Sending block {block_idx}/{block_count}")
         state, error = wait_for_state(mcu, UpdaterState.RUNNING, BLOCK_TIMEOUT_S)
         if state != UpdaterState.RUNNING:
-            return
+            print(f"Block {block_idx}: state={state.name}, error={error.name}")
+            sys.exit(1)
         mcu.write_block(REG_FW_DATA, data)
 
     end_time = time.perf_counter()
 
     state, error = wait_for_state(mcu, UpdaterState.DONE, FINALIZE_TIMEOUT_S)
     if state != UpdaterState.DONE:
-        return
+        print(f"Finalize failed: state={state.name}, error={error.name}")
+        sys.exit(1)
     print(f"State: {state.name}")
 
     print(f"Written in {end_time - start_time:.2f}s ({len(firmware_data)/(end_time - start_time)/1024*8:.2f} Kbits/s)")

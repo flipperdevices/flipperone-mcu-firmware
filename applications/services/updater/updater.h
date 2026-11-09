@@ -23,6 +23,8 @@ typedef enum {
     UpdaterErrorFwVersionError,
     UpdaterErrorProtocolError, // I2C queue overflow or out-of-order data write
     UpdaterErrorFwWriteError,
+    UpdaterErrorFwInvalidateError,
+    UpdaterErrorFwParamsError,
 } UpdaterError;
 
 typedef enum {

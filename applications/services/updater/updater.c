@@ -222,7 +222,11 @@ static void updater_finalize_update(Updater* updater) {
     }
 
     if(do_downgrade) {
-        furi_hal_flash_fw_partition_invalidate(updater->active_partition);
+        if(!furi_hal_flash_fw_partition_invalidate(updater->active_partition)) {
+            FURI_LOG_E(TAG, "Failed to invalidate active partition");
+            updater_state_change(updater, UpdaterStateError, UpdaterErrorFwInvalidateError);
+            return;
+        }
     }
 
     updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
@@ -335,7 +339,8 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
     furi_check(updater);
     furi_check(msg);
 
-    if(updater_promote_isr_error(updater)) return;
+    // Promote ISR errors first, but never drop Abort: it is the recovery path
+    if(updater_promote_isr_error(updater) && msg->type != UpdaterMessageAbortUpdate) return;
 
     if((msg->type == UpdaterMessageStartUpdate) && (updater->state == UpdaterStateIdle)) {
         if(!updater->update_supported) {
@@ -361,9 +366,11 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
     } else if((msg->type == UpdaterMessageWriteBlockStart) && (updater->state == UpdaterStateRunning)) {
         updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
     } else if((msg->type == UpdaterMessageWriteBlockDone) && (updater->state == UpdaterStateBusy)) {
-        // Running before the flash write lets the host pipeline the next block
-        updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
+        // Running only after the write: the host's RUNNING poll throttles it
         updater_process_block(updater, msg);
+        if(updater->state == UpdaterStateBusy) {
+            updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
+        }
     } else if((msg->type == UpdaterMessageSetCrc) && (updater->state == UpdaterStateIdle)) {
         updater->update_params.crc = msg->fw_crc;
         updater->update_params.crc_set = true;
