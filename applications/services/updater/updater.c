@@ -346,16 +346,17 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
         if(!updater->update_supported) {
             FURI_LOG_E(TAG, "Update not supported: inactive partition unavailable");
             updater_state_change(updater, UpdaterStateError, UpdaterErrorNotStarted);
-        } else if(updater->update_params.crc_set && updater->update_params.size_set) {
-            if((updater->update_params.blocks < UPDATER_MIN_BLOCKS) ||
-               (updater->update_params.blocks * UPDATER_BLOCK_SIZE > updater->inactive_partition_size)) {
-                updater_state_change(updater, UpdaterStateError, UpdaterErrorSizeError);
-            } else {
-                updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
-                updater->current_block = 0;
-                if(updater_erase_inactive_partition(updater) && updater->state == UpdaterStateBusy) {
-                    updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
-                }
+        } else if(!updater->update_params.crc_set || !updater->update_params.size_set) {
+            FURI_LOG_E(TAG, "Start without CRC/blocks parameters");
+            updater_state_change(updater, UpdaterStateError, UpdaterErrorFwParamsError);
+        } else if((updater->update_params.blocks < UPDATER_MIN_BLOCKS) ||
+                  (updater->update_params.blocks * UPDATER_BLOCK_SIZE > updater->inactive_partition_size)) {
+            updater_state_change(updater, UpdaterStateError, UpdaterErrorSizeError);
+        } else {
+            updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
+            updater->current_block = 0;
+            if(updater_erase_inactive_partition(updater) && updater->state == UpdaterStateBusy) {
+                updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
             }
         }
     } else if((msg->type == UpdaterMessageAbortUpdate) && (updater->state != UpdaterStateIdle)) {

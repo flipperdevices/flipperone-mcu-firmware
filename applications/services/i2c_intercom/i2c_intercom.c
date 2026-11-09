@@ -54,11 +54,14 @@ static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle,
     }
 }
 
-static inline void i2c_intercom_drain(const FuriHalI2cBusHandle* handle) {
+static inline size_t i2c_intercom_drain(const FuriHalI2cBusHandle* handle) {
     // Discard late bytes; SCL is stretched until the FIFO is drained
     uint8_t data;
+    size_t count = 0;
     while(furi_hal_i2c_slave_read_blocking(handle, &data, 1)) {
+        count++;
     }
+    return count;
 }
 
 static inline size_t i2c_intercom_data_receive(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
@@ -111,8 +114,7 @@ static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_idle_state)(const
     switch(event) {
     case FuriHalI2cBusSlaveEventWrite:
         // Late bytes after transaction close
-        instance->dropped_byte_count++;
-        i2c_intercom_drain(handle);
+        instance->dropped_byte_count += i2c_intercom_drain(handle);
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
         instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
@@ -128,6 +130,7 @@ static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_start_state)(cons
     case FuriHalI2cBusSlaveEventWrite:
         return i2c_intercom_address_then_data(handle, instance);
     case FuriHalI2cBusSlaveEventRepeatedStart:
+        // Failed re-read keeps the previous address (deliberate)
         return i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
     case FuriHalI2cBusSlaveEventStop:
         i2c_intercom_address_then_data(handle, instance);
@@ -151,14 +154,17 @@ static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_address_set_state
 }
 
 static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_address_noset_state)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event) {
-    UNUSED(handle);
     switch(event) {
+    case FuriHalI2cBusSlaveEventWrite:
+        // No address: drain instead of holding the bus stretched
+        instance->dropped_byte_count += i2c_intercom_drain(handle);
+        break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
         instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
         break;
     case FuriHalI2cBusSlaveEventStop:
         return I2CIntercomStateIdle;
-    default: // Write: no address, ignore the bytes
+    default:
         break;
     }
     return I2CIntercomStateAddressNoSet;
@@ -166,18 +172,25 @@ static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_address_noset_sta
 
 static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_data_transmitted_state)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event) {
     switch(event) {
+    case FuriHalI2cBusSlaveEventWrite:
+        // Bytes after a read belong to no transaction: drain
+        instance->dropped_byte_count += i2c_intercom_drain(handle);
+        return I2CIntercomStateDataTransmitted;
     case FuriHalI2cBusSlaveEventRepeatedStart:
+        // Failed re-read keeps the previous address (deliberate)
         return i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
     case FuriHalI2cBusSlaveEventStop:
         return I2CIntercomStateIdle;
-    default: // Write: ignore
+    default:
         return I2CIntercomStateDataTransmitted;
     }
 }
 
 typedef I2CIntercomState (*I2CIntercomStateHandler)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event);
 
-I2CIntercomStateHandler i2c_intercom_state_handlers[] = {
+// Explicit .data section: the ISR must not read from flash while a flash
+// operation holds XIP, and the compiler promotes static const-like arrays to .rodata.
+static I2CIntercomStateHandler i2c_intercom_state_handlers[] __attribute__((section(".data"))) = {
     [I2CIntercomStateIdle] = i2c_intercom_idle_state,
     [I2CIntercomStateStart] = i2c_intercom_start_state,
     [I2CIntercomStateAddressSet] = i2c_intercom_address_set_state,
@@ -235,9 +248,15 @@ int32_t i2c_intercom_srv(void* p) {
 
     while(1) {
         furi_delay_ms(I2C_INTERCOM_LOG_PERIOD_MS);
+        FURI_CRITICAL_ENTER();
         uint32_t invalid_reads = instance->invalid_read_count;
         uint32_t invalid_writes = instance->invalid_write_count;
         uint32_t dropped_bytes = instance->dropped_byte_count;
+        instance->invalid_read_count = 0;
+        instance->invalid_write_count = 0;
+        instance->dropped_byte_count = 0;
+        FURI_CRITICAL_EXIT();
+
         if(invalid_reads || invalid_writes || dropped_bytes) {
             FURI_LOG_W(
                 TAG,
@@ -245,9 +264,6 @@ int32_t i2c_intercom_srv(void* p) {
                 invalid_reads,
                 invalid_writes,
                 dropped_bytes);
-            instance->invalid_read_count = 0;
-            instance->invalid_write_count = 0;
-            instance->dropped_byte_count = 0;
         }
     }
 
