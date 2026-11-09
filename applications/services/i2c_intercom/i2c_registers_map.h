@@ -179,14 +179,15 @@
  * 0xF000 + 0x04: Updater command register (write), UpdaterCommand
  * 0xF000 + 0x20: Updater new firmware CRC register (write), 2 bytes, CRC16 of the new firmware
  * 0xF000 + 0x22: Updater new firmware blocks register (write), 2 bytes, number of blocks of the new firmware
- * 0xF000 + 0x40: Updater data register (write), 256 bytes of data, followed by 2 bytes of block index and 2 bytes of CRC16. 
+ * 0xF000 + 0x40: Updater data register (write), 256 bytes of data, followed by 2 bytes of block index and 2 bytes of CRC16.
 */
 #define I2C_UPDATER_STATUS_REG_ADDRESS     (0xF000 + 0x00)
-#define I2C_UPDATER_FW_VERSION_REG_ADDRESS (0xF000 + 2)
-#define I2C_UPDATER_CMD_REG_ADDRESS        (0xF000 + 4)
+#define I2C_UPDATER_FW_VERSION_REG_ADDRESS (0xF000 + 0x02)
+#define I2C_UPDATER_CMD_REG_ADDRESS        (0xF000 + 0x04)
 
 #define I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS    (0xF000 + 0x20)
-#define I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS (0xF000 + 0x20 + 2)
+#define I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS (I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS + 2)
 
+#define I2C_UPDATER_BLOCK_SIZE (256) // payload bytes per block
 #define I2C_UPDATER_DATA_ADDRESS (0xF000 + 0x40)
-#define I2C_UPDATER_DATA_LEN     (256 + 2 + 2)
+#define I2C_UPDATER_DATA_LEN     (I2C_UPDATER_BLOCK_SIZE + 2 /* block index */ + 2 /* block CRC */)

@@ -4,6 +4,9 @@
 
 #define RECORD_UPDATER "updater"
 
+// Updater block size, bytes; must match I2C_UPDATER_BLOCK_SIZE in i2c_registers_map.h
+#define UPDATER_BLOCK_SIZE (256)
+
 // Keep in sync with Linux updater code
 typedef enum {
     UpdaterStateIdle = 0,

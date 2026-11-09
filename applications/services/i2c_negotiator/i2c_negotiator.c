@@ -327,6 +327,9 @@ I2CNegotiator* i2c_negotiator_alloc() {
         i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, instance->updater);
         i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, instance->updater);
         i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, instance->updater);
+        static_assert(
+            I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
+            "I2C updater data window must match the updater block layout");
         i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, instance->updater);
         updater_set_state_callback(instance->updater, i2c_updater_state_callback, NULL);
     }
