@@ -20,9 +20,7 @@ typedef struct {
 DICT_DEF2(I2CRegMap, uint16_t, M_DEFAULT_OPLIST, I2CReg, M_POD_OPLIST);
 
 typedef struct {
-    // pointer to the interrupt mask register corresponding to this interrupt
     I2CReg* mask_reg;
-    // which bit in the status register corresponds to this interrupt
     uint8_t status_register_bit;
 } I2CInterruptInfo;
 
@@ -44,10 +42,8 @@ DICT_DEF2(I2CInterruptCallbackMap, uint16_t, M_DEFAULT_OPLIST, I2CRegisterCallba
 #define REG16_CLR_LO(v)    ((v) &= 0xFF00)
 #define REG16_CLR_HI(v)    ((v) &= 0x00FF)
 
-// A byte-addressed window backed by an external owner, see
-// i2c_register_add_region. Kept in a plain array rather than a dict: it is
-// looked up on every single byte from the I2C slave ISR, so the lookup must
-// be allocation-free and cheaper than hashing.
+// Byte-addressed window backed by an external owner (see i2c_register_add_region).
+// Plain array, not a dict: hit on every I2C byte in the ISR, so it must stay cheap.
 typedef struct {
     uint16_t base;
     uint16_t length;
@@ -57,16 +53,11 @@ typedef struct {
 } I2CRegion;
 
 typedef struct {
-    // hashmap of registers, key is register address, value is register struct
     I2CRegMap_t map;
-    // hashmap of status registers to their corresponding info
     I2CInterruptInfoMap_t interrupt_info_map;
-    // hashmap of interrupt registers to their corresponding callbacks
     I2CInterruptCallbackMap_t interrupt_callback_map;
-    // status register pointer
     I2CReg* status_register;
-    // byte-addressed regions, matched before the register map
-    I2CRegion regions[I2C_REGISTERS_MAX_REGIONS];
+    I2CRegion regions[I2C_REGISTERS_MAX_REGIONS]; // checked before the register map
     size_t region_count;
 } I2CRegisters;
 
@@ -135,8 +126,8 @@ void i2c_registers_init(void) {
 }
 
 static void i2c_register_add_internal(uint16_t address, uint16_t default_value, uint32_t flags) {
-    furi_check(address % 2 == 0); // only even addresses are valid
-    furi_check(i2c_register_get(address) == NULL); // address must not exist
+    furi_check(address % 2 == 0); // registers are 16-bit, even-aligned
+    furi_check(i2c_register_get(address) == NULL);
     // Regions win the lookup, so a register inside one would never be reached
     furi_check(i2c_region_find(address) == NULL);
     furi_check(i2c_region_find(address + 1) == NULL);
@@ -147,14 +138,13 @@ static void i2c_register_add_internal(uint16_t address, uint16_t default_value, 
 
 void i2c_register_add_region(uint16_t base, uint16_t length, I2CRegionReadFn read, I2CRegionWriteFn write, void* context) {
     furi_check(length > 0);
-    furi_check(base % 2 == 0); // only even base addresses are valid
-    furi_check((uint32_t)base + length <= 0x10000); // must not wrap the address space
+    furi_check(base % 2 == 0);
+    furi_check((uint32_t)base + length <= 0x10000);
     furi_check(i2c.region_count < I2C_REGISTERS_MAX_REGIONS);
 
-    // Validation runs outside the critical section: it walks the whole
-    // region and would keep interrupts off for too long. Registration only
-    // ever happens at startup, single-threaded, before the I2C slave is
-    // enabled — the critical section below just guards the array append.
+    // Validation is O(region length), too long to hold interrupts off, and
+    // registration is startup-only, before the I2C slave is enabled.
+    // The critical section below just guards the array append.
 
     // Must not overlap another region...
     for(size_t i = 0; i < i2c.region_count; ++i) {
@@ -162,10 +152,8 @@ void i2c_register_add_region(uint16_t base, uint16_t length, I2CRegionReadFn rea
         const bool disjoint = (uint32_t)base + length <= other->base || base >= (uint32_t)other->base + other->length;
         furi_check(disjoint);
     }
-    // ...nor shadow an already registered register. Probing the map beats
-    // iterating it: this relies only on the lookup used everywhere else in
-    // this file. Base is even and the step is 2, so every probed address is
-    // the even address a register would be keyed by.
+    // ...nor shadow an already registered register (probe via the same
+    // lookup used elsewhere; step 2 hits only valid even addresses).
     for(uint32_t address = base; address < (uint32_t)base + length; address += 2) {
         furi_check(i2c_register_get((uint16_t)address) == NULL);
     }
@@ -233,8 +221,7 @@ bool __isr __not_in_flash_func(i2c_register_read_start)(uint16_t address, uint8_
 }
 
 bool __isr __not_in_flash_func(i2c_register_read_commit)(uint16_t address) {
-    // Regions have no read-to-clear semantics — nothing to commit. Bailing
-    // out here keeps the per-byte cost of a region read down to one lookup.
+    // Regions have no read-to-clear semantics; keep per-byte cost to one lookup.
     if(i2c_region_find(address)) return false;
 
     bool result = false;
@@ -282,7 +269,7 @@ bool __isr __not_in_flash_func(i2c_register_write)(uint16_t address, uint8_t val
             if(is_hi_byte) {
                 REG16_SET_HI(reg->value, value);
 
-                // we assume that if hi byte is written, then the whole register is being written
+                // hi byte written means the whole register value is ready
                 I2CRegisterCallbackWithContext* callback_with_context = i2c_interrupt_callback_get(even_address);
                 if(callback_with_context && callback_with_context->callback) {
                     callback_with_context->callback(callback_with_context->context, even_address, reg->value);
@@ -299,7 +286,7 @@ bool __isr __not_in_flash_func(i2c_register_write)(uint16_t address, uint8_t val
 
 bool __isr __not_in_flash_func(i2c_register_update)(uint16_t address, uint16_t value, uint16_t mask) {
     I2CReg* reg = i2c_register_get(address);
-    furi_check(reg); // address must exist
+    furi_check(reg);
     uint16_t old_value = reg->value;
     reg->value = (reg->value & ~mask) | (value & mask);
     return reg->value != old_value;
@@ -322,6 +309,6 @@ void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_b
 
 uint16_t i2c_register_get_value(uint16_t address) {
     I2CReg* reg = i2c_register_get(address);
-    furi_check(reg); // address must exist
+    furi_check(reg);
     return reg->value;
 }
