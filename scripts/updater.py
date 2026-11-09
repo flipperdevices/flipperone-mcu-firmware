@@ -14,6 +14,14 @@ REG_FW_BLOCKS = 0xF022
 
 REG_FW_DATA = 0xF040
 
+BLOCK_SIZE = 256
+BLOCK_HEADER_SIZE = 4  # block index (2 bytes) + block CRC (2 bytes), little-endian
+BLOCK_FRAME_SIZE = BLOCK_SIZE + BLOCK_HEADER_SIZE
+
+ERASE_TIMEOUT_S = 60
+BLOCK_TIMEOUT_S = 5
+FINALIZE_TIMEOUT_S = 5
+
 # Keep in sync with UpdaterState/UpdaterError/UpdaterCommand from the MCU firmware
 class UpdaterState(Enum):
     IDLE = 0
@@ -83,10 +91,11 @@ class McuI2C:
         addr_high = (register_address >> 8) & 0xFF
         addr_low = register_address & 0xFF
 
-        value_high = value & 0xFF
-        value_low = (value >> 8) & 0xFF
-    
-        write_msg = I2C.Message([addr_high, addr_low, value_high, value_low])
+        # Little-endian: low byte first, the MCU fires the callback on the high byte
+        value_lo = value & 0xFF
+        value_hi = (value >> 8) & 0xFF
+
+        write_msg = I2C.Message([addr_high, addr_low, value_lo, value_hi])
         self.i2c.transfer(MCU_ADDR, [write_msg])
     
     def write_block(self, register_address, buf):
@@ -102,6 +111,18 @@ def get_state(mcu) -> tuple[UpdaterState, UpdaterError]:
 
 def send_command(mcu, command: UpdaterCommand):
     mcu.write_register(REG_FW_COMMAND, int(command.value))
+
+def wait_for_state(mcu, target_state, timeout_s) -> tuple[UpdaterState, UpdaterError]:
+    """Polls until target_state, ERROR, or timeout; the caller must compare the result."""
+    deadline = time.perf_counter() + timeout_s
+    while True:
+        state, error = get_state(mcu)
+        if state == target_state or state == UpdaterState.ERROR:
+            return state, error
+        if time.perf_counter() >= deadline:
+            print(f"Timeout while waiting for state {target_state.name}")
+            return state, error
+        time.sleep(0.1)
 
 def main():
     crc16 = Crc16()
@@ -127,9 +148,9 @@ def main():
     with open(args.file_path, "rb") as f:
         firmware_data = f.read()
 
-    # pad firmware_data to a multiple of 256 bytes
-    firmware_data += bytes((256 - len(firmware_data) % 256) % 256)
-    block_count = (len(firmware_data) + 255) // 256
+    # pad firmware_data to a multiple of BLOCK_SIZE bytes
+    firmware_data += bytes((BLOCK_SIZE - len(firmware_data) % BLOCK_SIZE) % BLOCK_SIZE)
+    block_count = (len(firmware_data) + BLOCK_SIZE - 1) // BLOCK_SIZE
     print(f"Firmware size: {len(firmware_data)} bytes, {block_count} blocks")
     
     fw_crc = crc16.compute(firmware_data)
@@ -139,56 +160,33 @@ def main():
     send_command(mcu, UpdaterCommand.START)  # Start update
 
     print("Erasing flash area...")
-
-    state, error = get_state(mcu)
-    while state != UpdaterState.RUNNING:
-        time.sleep(1)
-        state, error = get_state(mcu)
-        print(f"State: {state.name}")
-        if state == UpdaterState.ERROR:
-            print(f"Error: {error.name}")
-            return
+    state, error = wait_for_state(mcu, UpdaterState.RUNNING, ERASE_TIMEOUT_S)
+    if state != UpdaterState.RUNNING:
+        return
 
     start_time = time.perf_counter()
 
-    data = bytearray(256+4)
-    for i in range(block_count):
-        block_idx = i
-        data[:256] = firmware_data[block_idx*256:(block_idx+1)*256]
-        data[256] = block_idx & 0xFF
-        data[257] = (block_idx >> 8) & 0xFF
-        crc_calc = crc16.compute(data[:256])
-        data[258] = crc_calc & 0xFF
-        data[259] = (crc_calc >> 8) & 0xFF
+    data = bytearray(BLOCK_FRAME_SIZE)
+    for block_idx in range(block_count):
+        data[:BLOCK_SIZE] = firmware_data[block_idx * BLOCK_SIZE:(block_idx + 1) * BLOCK_SIZE]
+        data[BLOCK_SIZE] = block_idx & 0xFF
+        data[BLOCK_SIZE + 1] = (block_idx >> 8) & 0xFF
+        crc_calc = crc16.compute(data[:BLOCK_SIZE])
+        data[BLOCK_SIZE + 2] = crc_calc & 0xFF
+        data[BLOCK_SIZE + 3] = (crc_calc >> 8) & 0xFF
 
-        state, error = get_state(mcu)
-        print(f"State: {state.name}, Sending block {block_idx}/{block_count}")
-        block_start_time = time.perf_counter()
-        while state == UpdaterState.BUSY:
-            if time.perf_counter() - block_start_time > 5:  # 5 seconds timeout
-                print("Timeout while waiting for MCU to be ready")
-                return
-            time.sleep(0.1)
-            state, error = get_state(mcu)
-
-        if state == UpdaterState.ERROR:
-            print(f"Error: {error.name}")
+        # Wait until the MCU finished the previous block (state left BUSY)
+        print(f"Sending block {block_idx}/{block_count}")
+        state, error = wait_for_state(mcu, UpdaterState.RUNNING, BLOCK_TIMEOUT_S)
+        if state != UpdaterState.RUNNING:
             return
-        
         mcu.write_block(REG_FW_DATA, data)
 
     end_time = time.perf_counter()
 
-    state, error = get_state(mcu)
-    while state != UpdaterState.DONE:
-        if time.perf_counter() - end_time > 5:  # 5 seconds timeout
-            print("Timeout while waiting for MCU to be ready")
-            return
-        time.sleep(0.1)
-        state, error = get_state(mcu)
-        if state == UpdaterState.ERROR:
-            print(f"Error: {error.name}")
-            return
+    state, error = wait_for_state(mcu, UpdaterState.DONE, FINALIZE_TIMEOUT_S)
+    if state != UpdaterState.DONE:
+        return
     print(f"State: {state.name}")
 
     print(f"Written in {end_time - start_time:.2f}s ({len(firmware_data)/(end_time - start_time)/1024*8:.2f} Kbits/s)")

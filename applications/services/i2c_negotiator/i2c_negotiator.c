@@ -253,7 +253,7 @@ static void i2c_negotiator_backlight_timeout_callback(const void* item, void* co
     with_i2c_register({ i2c_register_update(I2C_BACKLIGHT_TIMEOUT, *timeout / 100, 0xFFFF); });
 }
 
-static void i2c_updater_update_state_callback(UpdaterState state, UpdaterError error, void* context) {
+static void i2c_updater_state_callback(UpdaterState state, UpdaterError error, void* context) {
     UNUSED(context);
     with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, (error << 8) | state, 0xFFFF); });
 }
@@ -328,7 +328,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
         i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, instance->updater);
         i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, instance->updater);
         i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, instance->updater);
-        updater_set_state_callback(instance->updater, i2c_updater_update_state_callback, NULL);
+        updater_set_state_callback(instance->updater, i2c_updater_state_callback, NULL);
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);

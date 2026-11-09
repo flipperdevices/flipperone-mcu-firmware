@@ -5,6 +5,10 @@
 
 #define TAG "Updater"
 
+#define UPDATER_BLOCK_SIZE        (256)
+#define UPDATER_BLOCKS_PER_SECTOR (FLASH_SECTOR_SIZE / UPDATER_BLOCK_SIZE)
+#define UPDATER_MIN_BLOCKS        (4 * UPDATER_BLOCKS_PER_SECTOR)
+
 // ISR-reported protocol errors, promoted to UpdaterStateError by the event loop
 #define UPDATER_ISR_ERROR_QUEUE_FULL   (1 << 0)
 #define UPDATER_ISR_ERROR_OUT_OF_ORDER (1 << 1)
@@ -17,23 +21,38 @@ typedef union {
     uint16_t raw[2];
 } ImageVersion;
 
+typedef struct {
+    uint16_t crc;
+    uint16_t blocks;
+    bool crc_set;
+    bool size_set;
+} UpdateParams;
+
+typedef struct {
+    union {
+        struct {
+            uint8_t data[UPDATER_BLOCK_SIZE];
+            uint16_t block_idx;
+            uint16_t block_crc;
+        };
+        uint8_t raw[UPDATER_BLOCK_SIZE + 4];
+    };
+    size_t offset;
+} UpdaterI2cRx;
+
 struct Updater {
     FuriEventLoop* event_loop;
     FuriMessageQueue* message_queue;
     UpdaterState state;
 
-    uint16_t fw_crc;
-    uint16_t fw_blocks;
-    bool crc_set;
-    bool size_set;
-
+    UpdateParams update_params;
     uint16_t current_block;
 
     FlashPartitionId active_partition;
     ImageVersion current_version;
 
-    size_t write_partition_address;
-    size_t write_partition_size;
+    size_t inactive_partition_address;
+    size_t inactive_partition_size;
     uint8_t first_sector_buf[FLASH_SECTOR_SIZE];
 
     // Set by the I2C ISR callbacks, read and cleared by the event loop thread
@@ -43,17 +62,9 @@ struct Updater {
     UpdaterStateCallback state_callback;
     void* state_callback_context;
 
-    union {
-        struct {
-            uint8_t data[256];
-            uint16_t idx;
-            uint16_t crc16;
-        };
-        uint8_t raw[256 + 2 + 2];
-    } i2c_data;
-    size_t i2c_data_offset;
+    UpdaterI2cRx i2c_rx;
 };
-static_assert(sizeof(((struct Updater*)0)->i2c_data.raw) == (sizeof(((struct Updater*)0)->i2c_data.data) + 2 + 2));
+static_assert(sizeof(((struct Updater*)0)->i2c_rx.raw) == (sizeof(((struct Updater*)0)->i2c_rx.data) + 4));
 
 typedef struct {
     enum {
@@ -70,7 +81,7 @@ typedef struct {
         struct {
             uint16_t block_idx;
             uint16_t block_crc;
-            uint8_t data[256];
+            uint8_t data[UPDATER_BLOCK_SIZE];
         } block;
     };
 } UpdaterMessage;
@@ -121,32 +132,32 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     Updater* updater = context;
     furi_check(updater);
 
-    if(offset >= sizeof(updater->i2c_data.raw)) return false;
+    if(offset >= sizeof(updater->i2c_rx.raw)) return false;
 
     if(offset == 0) {
-        memset(updater->i2c_data.raw, 0, sizeof(updater->i2c_data.raw));
-        updater->i2c_data_offset = 0;
+        memset(updater->i2c_rx.raw, 0, sizeof(updater->i2c_rx.raw));
+        updater->i2c_rx.offset = 0;
         const UpdaterMessage msg = {.type = UpdaterMessageWriteBlockStart};
         updater_message_queue_put_from_isr(updater, &msg);
     }
 
-    if(offset != updater->i2c_data_offset) {
+    if(offset != updater->i2c_rx.offset) {
         // Out-of-order write: record a protocol error and discard the rest of
         // the block; the next block (offset 0) restarts reception cleanly.
         updater->isr_error |= UPDATER_ISR_ERROR_OUT_OF_ORDER;
-        updater->i2c_data_offset = 0;
+        updater->i2c_rx.offset = 0;
         return true;
     }
 
-    updater->i2c_data.raw[updater->i2c_data_offset++] = value;
+    updater->i2c_rx.raw[updater->i2c_rx.offset++] = value;
 
-    if(updater->i2c_data_offset == sizeof(updater->i2c_data.raw)) {
+    if(updater->i2c_rx.offset == sizeof(updater->i2c_rx.raw)) {
         UpdaterMessage msg = {
             .type = UpdaterMessageWriteBlockDone,
-            .block.block_idx = updater->i2c_data.idx,
-            .block.block_crc = updater->i2c_data.crc16,
+            .block.block_idx = updater->i2c_rx.block_idx,
+            .block.block_crc = updater->i2c_rx.block_crc,
         };
-        memcpy(msg.block.data, updater->i2c_data.data, sizeof(msg.block.data));
+        memcpy(msg.block.data, updater->i2c_rx.data, sizeof(msg.block.data));
         updater_message_queue_put_from_isr(updater, &msg);
     }
 
@@ -163,7 +174,7 @@ static void updater_state_change(Updater* updater, UpdaterState new_state, Updat
     }
 }
 
-static void updater_write_first_sector(Updater* updater) {
+static void updater_finalize_update(Updater* updater) {
     ImageVersion new_version;
     bool success = furi_hal_flash_get_image_version(updater->first_sector_buf, new_version.raw);
     if(!success) {
@@ -199,7 +210,7 @@ static void updater_write_first_sector(Updater* updater) {
 
     furi_check(furi_hal_flash_set_image_version(updater->first_sector_buf, new_version.raw));
 
-    furi_hal_flash_write(updater->write_partition_address, updater->first_sector_buf, FLASH_SECTOR_SIZE);
+    furi_hal_flash_write(updater->inactive_partition_address, updater->first_sector_buf, FLASH_SECTOR_SIZE);
 
     if(do_downgrade) {
         furi_hal_flash_fw_partition_invalidate(updater->active_partition);
@@ -214,7 +225,7 @@ static void updater_process_block(Updater* updater, const UpdaterMessage* msg) {
     furi_check(msg);
 
     uint16_t crc_check = updater_crc16(msg->block.data, sizeof(msg->block.data), 0xFFFF);
-    FURI_LOG_I(TAG, "block %u/%u", msg->block.block_idx, updater->fw_blocks);
+    FURI_LOG_D(TAG, "block %u/%u", msg->block.block_idx, updater->update_params.blocks);
 
     if(crc_check != msg->block.block_crc) {
         FURI_LOG_E(TAG, "Block %u CRC mismatch: expected %04X, got %04X", msg->block.block_idx, msg->block.block_crc, crc_check);
@@ -222,32 +233,35 @@ static void updater_process_block(Updater* updater, const UpdaterMessage* msg) {
         return;
     }
 
-    if((msg->block.block_idx >= updater->fw_blocks) || (msg->block.block_idx != updater->current_block)) {
+    if((msg->block.block_idx >= updater->update_params.blocks) || (msg->block.block_idx != updater->current_block)) {
         FURI_LOG_E(TAG, "Block %u out of order: expected %u", msg->block.block_idx, updater->current_block);
         updater_state_change(updater, UpdaterStateError, UpdaterErrorBlockIndexError);
         return;
     }
 
-    if(msg->block.block_idx < FLASH_SECTOR_SIZE / 256) {
-        memcpy(updater->first_sector_buf + (msg->block.block_idx * 256), msg->block.data, 256);
+    if(msg->block.block_idx < UPDATER_BLOCKS_PER_SECTOR) {
+        memcpy(updater->first_sector_buf + (msg->block.block_idx * UPDATER_BLOCK_SIZE), msg->block.data, UPDATER_BLOCK_SIZE);
     } else {
-        size_t write_address = updater->write_partition_address + (msg->block.block_idx * 256);
-        furi_hal_flash_write(write_address, msg->block.data, 256);
+        size_t write_address = updater->inactive_partition_address + (msg->block.block_idx * UPDATER_BLOCK_SIZE);
+        furi_hal_flash_write(write_address, msg->block.data, UPDATER_BLOCK_SIZE);
     }
 
     updater->current_block++;
 
-    if(updater->current_block == updater->fw_blocks) {
-        const uint8_t* flash_ptr = furi_hal_flash_get_read_ptr(updater->write_partition_address);
+    if(updater->current_block == updater->update_params.blocks) {
+        const uint8_t* flash_ptr = furi_hal_flash_get_read_ptr(updater->inactive_partition_address);
         uint16_t crc_final = updater_crc16(updater->first_sector_buf, FLASH_SECTOR_SIZE, 0xFFFF);
-        crc_final = updater_crc16((uint8_t*)flash_ptr + FLASH_SECTOR_SIZE, updater->fw_blocks * 256 - FLASH_SECTOR_SIZE, crc_final);
-        if(crc_final != updater->fw_crc) {
-            FURI_LOG_E(TAG, "Image CRC mismatch: expected %04X, got %04X", updater->fw_crc, crc_final);
+        crc_final = updater_crc16(
+            (uint8_t*)flash_ptr + FLASH_SECTOR_SIZE,
+            updater->update_params.blocks * UPDATER_BLOCK_SIZE - FLASH_SECTOR_SIZE,
+            crc_final);
+        if(crc_final != updater->update_params.crc) {
+            FURI_LOG_E(TAG, "Image CRC mismatch: expected %04X, got %04X", updater->update_params.crc, crc_final);
             updater_state_change(updater, UpdaterStateError, UpdaterErrorFwCrcError);
             return;
         }
 
-        updater_write_first_sector(updater);
+        updater_finalize_update(updater);
 
         furi_hal_flash_flush_cache();
     }
@@ -268,7 +282,7 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg);
 // yields between sectors. Returns false if the host aborted mid-erase.
 static bool updater_erase_inactive_partition(Updater* updater) {
     FURI_LOG_I(TAG, "Erase start");
-    for(size_t i = 0; i < updater->fw_blocks; i += FLASH_SECTOR_SIZE / 256) {
+    for(size_t i = 0; i < updater->update_params.blocks; i += UPDATER_BLOCKS_PER_SECTOR) {
         // Process pending messages between sectors so that Abort (or an ISR
         // protocol error) interrupts the erase instead of waiting for the end.
         UpdaterMessage msg;
@@ -279,7 +293,7 @@ static bool updater_erase_inactive_partition(Updater* updater) {
                 return false;
             }
         }
-        furi_hal_flash_erase_sector(updater->write_partition_address + i * 256);
+        furi_hal_flash_erase_sector(updater->inactive_partition_address + i * UPDATER_BLOCK_SIZE);
         furi_delay_ms(1); // Yield between sectors: GUI and other services stay responsive
     }
     FURI_LOG_I(TAG, "Erase done");
@@ -294,9 +308,9 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
     // writes) before processing anything else; the host aborts and retries.
     if(updater_isr_error_get_and_clear(updater)) {
         FURI_LOG_E(TAG, "I2C protocol error");
-        updater->crc_set = false;
-        updater->size_set = false;
-        updater->fw_blocks = 0;
+        updater->update_params.crc_set = false;
+        updater->update_params.size_set = false;
+        updater->update_params.blocks = 0;
         updater_state_change(updater, UpdaterStateError, UpdaterErrorProtocolError);
         return;
     }
@@ -305,9 +319,9 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
         if(!updater->update_supported) {
             FURI_LOG_E(TAG, "Update not supported: inactive partition unavailable");
             updater_state_change(updater, UpdaterStateError, UpdaterErrorNotStarted);
-        } else if(updater->crc_set && updater->size_set) {
-            if((updater->fw_blocks < (FLASH_SECTOR_SIZE * 4 / 256)) ||
-               (updater->fw_blocks * 256 > updater->write_partition_size)) {
+        } else if(updater->update_params.crc_set && updater->update_params.size_set) {
+            if((updater->update_params.blocks < UPDATER_MIN_BLOCKS) ||
+               (updater->update_params.blocks * UPDATER_BLOCK_SIZE > updater->inactive_partition_size)) {
                 updater_state_change(updater, UpdaterStateError, UpdaterErrorSizeError);
             } else {
                 updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
@@ -318,9 +332,9 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
             }
         }
     } else if((msg->type == UpdaterMessageAbortUpdate) && (updater->state != UpdaterStateIdle)) {
-        updater->crc_set = false;
-        updater->size_set = false;
-        updater->fw_blocks = 0;
+        updater->update_params.crc_set = false;
+        updater->update_params.size_set = false;
+        updater->update_params.blocks = 0;
         updater_state_change(updater, UpdaterStateIdle, UpdaterErrorNone);
     } else if((msg->type == UpdaterMessageWriteBlockStart) && (updater->state == UpdaterStateRunning)) {
         updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
@@ -329,11 +343,11 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
         updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
         updater_process_block(updater, msg);
     } else if(msg->type == UpdaterMessageSetCrc) {
-        updater->fw_crc = msg->fw_crc;
-        updater->crc_set = true;
+        updater->update_params.crc = msg->fw_crc;
+        updater->update_params.crc_set = true;
     } else if(msg->type == UpdaterMessageSetSize) {
-        updater->fw_blocks = msg->fw_blocks;
-        updater->size_set = true;
+        updater->update_params.blocks = msg->fw_blocks;
+        updater->update_params.size_set = true;
     }
 }
 
@@ -358,7 +372,7 @@ int32_t updater_srv(void* p) {
 
     instance->state = UpdaterStateIdle;
     instance->isr_error = 0;
-    instance->i2c_data_offset = 0;
+    instance->i2c_rx.offset = 0;
 
     // Create the record before anything that can fail: i2c_negotiator blocks in
     // furi_record_open(RECORD_UPDATER) until the record is ready, and a dead
@@ -372,9 +386,9 @@ int32_t updater_srv(void* p) {
     FlashPartitionId inactive_partition =
         instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
     instance->update_supported = furi_hal_flash_get_partition_info(
-        inactive_partition, &instance->write_partition_address, &instance->write_partition_size);
+        inactive_partition, &instance->inactive_partition_address, &instance->inactive_partition_size);
     if(instance->update_supported) {
-        instance->update_supported = instance->write_partition_address % FLASH_SECTOR_SIZE == 0;
+        instance->update_supported = instance->inactive_partition_address % FLASH_SECTOR_SIZE == 0;
     }
     if(!instance->update_supported) {
         FURI_LOG_E(TAG, "Inactive partition unavailable, updates disabled");

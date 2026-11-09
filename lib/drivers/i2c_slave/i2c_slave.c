@@ -8,14 +8,36 @@ typedef struct {
 } I2cSlave;
 
 static I2cSlave i2c_slaves[2];
-static bool i2c_started[2] = {false, false};
+static bool i2c_transaction_active[2] = {false, false};
+
+static void __isr __not_in_flash_func(i2c_slave_handle_stop)(i2c_inst_t* i2c, I2cSlave* slave, bool* is_started, uint32_t intr_stat) {
+    i2c_hw_t* hw = i2c_get_hw(i2c);
+    if(intr_stat & (I2C_IC_INTR_STAT_R_STOP_DET_BITS | I2C_IC_INTR_STAT_R_TX_ABRT_BITS)) {
+        (void)hw->clr_stop_det;
+        (void)hw->clr_tx_abrt;
+        slave->callback(i2c, I2cSlaveEventStop);
+        *is_started = false;
+    }
+}
+
+// Clears latched flags when idle, otherwise the interrupt re-fires forever
+static void __isr __not_in_flash_func(i2c_slave_clear_latched)(i2c_inst_t* i2c) {
+    i2c_hw_t* hw = i2c_get_hw(i2c);
+    (void)hw->clr_restart_det;
+    (void)hw->clr_rd_req;
+    (void)hw->clr_stop_det;
+    (void)hw->clr_tx_abrt;
+    while(hw->rxflr) {
+        (void)hw->data_cmd;
+    }
+}
 
 static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
     uint i2c_index = __get_current_exception() - VTABLE_FIRST_IRQ - I2C0_IRQ;
     I2cSlave* slave = &i2c_slaves[i2c_index];
     i2c_inst_t* i2c = i2c_get_instance(i2c_index);
     i2c_hw_t* hw = i2c_get_hw(i2c);
-    bool* is_started = &i2c_started[i2c_index];
+    bool* is_started = &i2c_transaction_active[i2c_index];
 
     uint32_t intr_stat = hw->intr_stat;
     if(intr_stat == 0) {
@@ -35,52 +57,30 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
             (void)hw->clr_rd_req;
             slave->callback(i2c, I2cSlaveEventRequest);
         }
-        if(intr_stat & (I2C_IC_INTR_STAT_R_STOP_DET_BITS | I2C_IC_INTR_STAT_R_TX_ABRT_BITS)) {
-            (void)hw->clr_stop_det;
-            (void)hw->clr_tx_abrt;
-            slave->callback(i2c, I2cSlaveEventStop);
-            *is_started = false;
-        }
+        i2c_slave_handle_stop(i2c, slave, is_started, intr_stat);
         if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
             (void)hw->clr_start_det;
             slave->callback(i2c, I2cSlaveEventStart);
             *is_started = true;
         }
-    } else {
-        if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
-            (void)hw->clr_start_det;
-            slave->callback(i2c, I2cSlaveEventStart);
-            *is_started = true;
-            if(intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
-                slave->callback(i2c, I2cSlaveEventReceive);
-            }
-            if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
-                (void)hw->clr_rd_req;
-                slave->callback(i2c, I2cSlaveEventRequest);
-            }
-            if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
-                (void)hw->clr_restart_det;
-                slave->callback(i2c, I2cSlaveEventRepeatedStart);
-            }
-            if(intr_stat & (I2C_IC_INTR_STAT_R_STOP_DET_BITS | I2C_IC_INTR_STAT_R_TX_ABRT_BITS)) {
-                (void)hw->clr_stop_det;
-                (void)hw->clr_tx_abrt;
-                slave->callback(i2c, I2cSlaveEventStop);
-                *is_started = false;
-            }
-        } else {
-            // No transaction is active, yet flags are latched: a stop or abort
-            // from a transaction to another device on the bus, or a restart
-            // after an aborted transfer. Clear everything and drain the Rx
-            // FIFO, otherwise the interrupt would re-fire forever.
-            (void)hw->clr_restart_det;
+    } else if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
+        (void)hw->clr_start_det;
+        slave->callback(i2c, I2cSlaveEventStart);
+        *is_started = true;
+        if(intr_stat & I2C_IC_INTR_STAT_R_RX_FULL_BITS) {
+            slave->callback(i2c, I2cSlaveEventReceive);
+        }
+        if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
             (void)hw->clr_rd_req;
-            (void)hw->clr_stop_det;
-            (void)hw->clr_tx_abrt;
-            while(hw->rxflr) {
-                (void)hw->data_cmd;
-            }
+            slave->callback(i2c, I2cSlaveEventRequest);
         }
+        if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
+            (void)hw->clr_restart_det;
+            slave->callback(i2c, I2cSlaveEventRepeatedStart);
+        }
+        i2c_slave_handle_stop(i2c, slave, is_started, intr_stat);
+    } else {
+        i2c_slave_clear_latched(i2c);
     }
 }
 
@@ -102,7 +102,7 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     hw->intr_mask = I2C_IC_INTR_MASK_M_RX_FULL_BITS | I2C_IC_INTR_MASK_M_RD_REQ_BITS | I2C_IC_INTR_MASK_M_TX_ABRT_BITS | I2C_IC_INTR_MASK_M_STOP_DET_BITS |
                     I2C_IC_INTR_MASK_M_START_DET_BITS | I2C_IC_INTR_MASK_M_RESTART_DET_BITS;
 
-    // Set Rx FIFO threshold to 2 bytes and enable clock stretching on Rx FIFO full
+    // Trigger RX_FULL at 2+ Rx bytes (rx_tl + 1); stretch SCL while the FIFO is full
     i2c->hw->enable = 0;
     i2c->hw->rx_tl = 1;
     i2c->hw->con |= I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS; // Enable clock stretching
@@ -123,7 +123,7 @@ void i2c_slave_deinit(i2c_inst_t* i2c) {
 
     slave->callback = NULL;
     slave->address = 0;
-    i2c_started[i2c_index] = false;
+    i2c_transaction_active[i2c_index] = false;
 
     uint32_t num = I2C0_IRQ + i2c_index;
     irq_set_enabled(num, false);

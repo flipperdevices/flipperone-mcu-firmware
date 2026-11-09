@@ -129,12 +129,12 @@ include(lib/corelibs/lib/version/CMakeLists.txt)
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 pico_set_program_version(${PROJECT_NAME} "0.1")
 
-# Bump the version numbers on release
+# Bump the version numbers on release. Packed into the picobin MAJOR word;
+# the picobin MINOR word is the updater's boot counter (always 0 at build).
 set(FW_IMAGE_MAJOR 0) # 0-15
 set(FW_IMAGE_MINOR 1) # 0-255
 set(FW_IMAGE_PATCH 0) # 0-15
 
-# Setting the image version: major - real version packed into 16 bits, minor - always 0, increased during update
 math(EXPR VERSION_PACKED "(${FW_IMAGE_MAJOR} & 0x0F) << 12 | (${FW_IMAGE_MINOR} & 0xFF) << 4 | (${FW_IMAGE_PATCH} & 0x0F)")
 pico_set_binary_version(${PROJECT_NAME} MAJOR ${VERSION_PACKED} MINOR 0)
 
