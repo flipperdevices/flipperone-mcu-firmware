@@ -126,7 +126,7 @@ def wait_for_state(mcu, target_state, timeout_s) -> tuple[UpdaterState, UpdaterE
         if time.perf_counter() >= deadline:
             print(f"Timeout while waiting for state {target_state.name}")
             return state, error
-        time.sleep(0.1)
+        time.sleep(0.01)
 
 def main():
     parser = argparse.ArgumentParser(description="MCU updater demo")
