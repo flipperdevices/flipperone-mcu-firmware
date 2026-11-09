@@ -335,6 +335,45 @@ static bool updater_erase_inactive_partition(Updater* updater) {
     return true;
 }
 
+static void updater_start_update(Updater* updater) {
+    if(!updater->update_supported) {
+        FURI_LOG_E(TAG, "Update not supported: inactive partition unavailable");
+        updater_state_change(updater, UpdaterStateError, UpdaterErrorNotStarted);
+        return;
+    }
+    if(!updater->update_params.crc_set || !updater->update_params.size_set) {
+        FURI_LOG_E(TAG, "Start without CRC/blocks parameters");
+        updater_state_change(updater, UpdaterStateError, UpdaterErrorFwParamsError);
+        return;
+    }
+    if((updater->update_params.blocks < UPDATER_MIN_BLOCKS) ||
+       (updater->update_params.blocks * UPDATER_BLOCK_SIZE > updater->inactive_partition_size)) {
+        updater_state_change(updater, UpdaterStateError, UpdaterErrorSizeError);
+        return;
+    }
+
+    updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
+    updater->current_block = 0;
+    if(updater_erase_inactive_partition(updater) && updater->state == UpdaterStateBusy) {
+        updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
+    }
+}
+
+static void updater_abort_update(Updater* updater) {
+    updater->update_params.crc_set = false;
+    updater->update_params.size_set = false;
+    updater->update_params.blocks = 0;
+    updater_state_change(updater, UpdaterStateIdle, UpdaterErrorNone);
+}
+
+static void updater_write_block_done(Updater* updater, const UpdaterMessage* msg) {
+    // Running only after the write: the host's RUNNING poll throttles it
+    updater_process_block(updater, msg);
+    if(updater->state == UpdaterStateBusy) {
+        updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
+    }
+}
+
 static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) {
     furi_check(updater);
     furi_check(msg);
@@ -342,42 +381,35 @@ static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) 
     // Promote ISR errors first, but never drop Abort: it is the recovery path
     if(updater_promote_isr_error(updater) && msg->type != UpdaterMessageAbortUpdate) return;
 
-    if((msg->type == UpdaterMessageStartUpdate) && (updater->state == UpdaterStateIdle)) {
-        if(!updater->update_supported) {
-            FURI_LOG_E(TAG, "Update not supported: inactive partition unavailable");
-            updater_state_change(updater, UpdaterStateError, UpdaterErrorNotStarted);
-        } else if(!updater->update_params.crc_set || !updater->update_params.size_set) {
-            FURI_LOG_E(TAG, "Start without CRC/blocks parameters");
-            updater_state_change(updater, UpdaterStateError, UpdaterErrorFwParamsError);
-        } else if((updater->update_params.blocks < UPDATER_MIN_BLOCKS) ||
-                  (updater->update_params.blocks * UPDATER_BLOCK_SIZE > updater->inactive_partition_size)) {
-            updater_state_change(updater, UpdaterStateError, UpdaterErrorSizeError);
-        } else {
+    switch(msg->type) {
+    case UpdaterMessageStartUpdate:
+        if(updater->state == UpdaterStateIdle) updater_start_update(updater);
+        break;
+    case UpdaterMessageAbortUpdate:
+        if(updater->state != UpdaterStateIdle) updater_abort_update(updater);
+        break;
+    case UpdaterMessageWriteBlockStart:
+        if(updater->state == UpdaterStateRunning) {
             updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
-            updater->current_block = 0;
-            if(updater_erase_inactive_partition(updater) && updater->state == UpdaterStateBusy) {
-                updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
-            }
         }
-    } else if((msg->type == UpdaterMessageAbortUpdate) && (updater->state != UpdaterStateIdle)) {
-        updater->update_params.crc_set = false;
-        updater->update_params.size_set = false;
-        updater->update_params.blocks = 0;
-        updater_state_change(updater, UpdaterStateIdle, UpdaterErrorNone);
-    } else if((msg->type == UpdaterMessageWriteBlockStart) && (updater->state == UpdaterStateRunning)) {
-        updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
-    } else if((msg->type == UpdaterMessageWriteBlockDone) && (updater->state == UpdaterStateBusy)) {
-        // Running only after the write: the host's RUNNING poll throttles it
-        updater_process_block(updater, msg);
-        if(updater->state == UpdaterStateBusy) {
-            updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
+        break;
+    case UpdaterMessageWriteBlockDone:
+        if(updater->state == UpdaterStateBusy) updater_write_block_done(updater, msg);
+        break;
+    case UpdaterMessageSetCrc:
+        if(updater->state == UpdaterStateIdle) {
+            updater->update_params.crc = msg->fw_crc;
+            updater->update_params.crc_set = true;
         }
-    } else if((msg->type == UpdaterMessageSetCrc) && (updater->state == UpdaterStateIdle)) {
-        updater->update_params.crc = msg->fw_crc;
-        updater->update_params.crc_set = true;
-    } else if((msg->type == UpdaterMessageSetSize) && (updater->state == UpdaterStateIdle)) {
-        updater->update_params.blocks = msg->fw_blocks;
-        updater->update_params.size_set = true;
+        break;
+    case UpdaterMessageSetSize:
+        if(updater->state == UpdaterStateIdle) {
+            updater->update_params.blocks = msg->fw_blocks;
+            updater->update_params.size_set = true;
+        }
+        break;
+    default:
+        break;
     }
 }
 
