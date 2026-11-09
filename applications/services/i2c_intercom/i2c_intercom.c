@@ -99,57 +99,107 @@ static inline I2CIntercomState i2c_intercom_receive_address(const FuriHalI2cBusH
     }
 }
 
-void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveEvent event, void* context) {
-    I2CIntercom* instance = context;
-    switch(event) {
-    case FuriHalI2cBusSlaveEventStart:
-        // Master has sent a Start signal, prepare to receive address
-        instance->state = I2CIntercomStateStart;
-        break;
-    case FuriHalI2cBusSlaveEventWrite:
-        if(instance->state == I2CIntercomStateIdle) {
-            // Late bytes after transaction close: drain instead of crashing
-            instance->dropped_byte_count++;
-            i2c_intercom_drain(handle);
-            break;
-        }
-        // Master is writing data to slave
-        if(instance->state == I2CIntercomStateStart) {
-            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
-        }
-        if(instance->state == I2CIntercomStateAddressSet) {
-            i2c_intercom_data_receive(handle, instance);
-        }
+static inline I2CIntercomState i2c_intercom_address_then_data(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
+    I2CIntercomState next = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
+    if(next == I2CIntercomStateAddressSet) {
+        i2c_intercom_data_receive(handle, instance);
+    }
+    return next;
+}
 
-        break;
-    case FuriHalI2cBusSlaveEventRead:
-        // Master is requesting data from slave
-        instance->state = I2CIntercomStateDataTransmitted;
-        i2c_intercom_data_transmit(handle, instance);
+static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_idle_state)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event) {
+    switch(event) {
+    case FuriHalI2cBusSlaveEventWrite:
+        // Late bytes after transaction close
+        instance->dropped_byte_count++;
+        i2c_intercom_drain(handle);
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
-        if(instance->state == I2CIntercomStateStart || instance->state == I2CIntercomStateDataTransmitted) {
-            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
-        }
-        if(instance->state == I2CIntercomStateAddressNoSet || instance->state == I2CIntercomStateIdle) {
-            instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
-        }
+        instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
         break;
-    case FuriHalI2cBusSlaveEventStop:
-        // Master has sent a Stop signal, finalize any ongoing operations
-        if(instance->state == I2CIntercomStateStart) {
-            instance->state = i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
-        }
-        if(instance->state == I2CIntercomStateAddressSet) {
-            i2c_intercom_data_receive(handle, instance);
-        }
-
-        instance->state = I2CIntercomStateIdle;
-
-        break;
-
     default:
         break;
+    }
+    return I2CIntercomStateIdle;
+}
+
+static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_start_state)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event) {
+    switch(event) {
+    case FuriHalI2cBusSlaveEventWrite:
+        return i2c_intercom_address_then_data(handle, instance);
+    case FuriHalI2cBusSlaveEventRepeatedStart:
+        return i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
+    case FuriHalI2cBusSlaveEventStop:
+        i2c_intercom_address_then_data(handle, instance);
+        return I2CIntercomStateIdle;
+    default:
+        return I2CIntercomStateStart;
+    }
+}
+
+static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_address_set_state)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event) {
+    switch(event) {
+    case FuriHalI2cBusSlaveEventWrite:
+        i2c_intercom_data_receive(handle, instance);
+        return I2CIntercomStateAddressSet;
+    case FuriHalI2cBusSlaveEventStop:
+        i2c_intercom_data_receive(handle, instance);
+        return I2CIntercomStateIdle;
+    default:
+        return I2CIntercomStateAddressSet;
+    }
+}
+
+static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_address_noset_state)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event) {
+    UNUSED(handle);
+    switch(event) {
+    case FuriHalI2cBusSlaveEventRepeatedStart:
+        instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
+        break;
+    case FuriHalI2cBusSlaveEventStop:
+        return I2CIntercomStateIdle;
+    default: // Write: no address, ignore the bytes
+        break;
+    }
+    return I2CIntercomStateAddressNoSet;
+}
+
+static I2CIntercomState __isr __not_in_flash_func(i2c_intercom_data_transmitted_state)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event) {
+    switch(event) {
+    case FuriHalI2cBusSlaveEventRepeatedStart:
+        return i2c_intercom_receive_address(handle, (size_t*)&instance->mem_address);
+    case FuriHalI2cBusSlaveEventStop:
+        return I2CIntercomStateIdle;
+    default: // Write: ignore
+        return I2CIntercomStateDataTransmitted;
+    }
+}
+
+typedef I2CIntercomState (*I2CIntercomStateHandler)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, FuriHalI2cBusSlaveEvent event);
+
+I2CIntercomStateHandler i2c_intercom_state_handlers[] = {
+    [I2CIntercomStateIdle] = i2c_intercom_idle_state,
+    [I2CIntercomStateStart] = i2c_intercom_start_state,
+    [I2CIntercomStateAddressSet] = i2c_intercom_address_set_state,
+    [I2CIntercomStateAddressNoSet] = i2c_intercom_address_noset_state,
+    [I2CIntercomStateDataTransmitted] = i2c_intercom_data_transmitted_state,
+};
+
+void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveEvent event, void* context) {
+    I2CIntercom* instance = context;
+
+    if(event == FuriHalI2cBusSlaveEventStart) {
+        instance->state = I2CIntercomStateStart;
+        return;
+    }
+    if(event == FuriHalI2cBusSlaveEventRead) {
+        instance->state = I2CIntercomStateDataTransmitted;
+        i2c_intercom_data_transmit(handle, instance);
+        return;
+    }
+
+    if((size_t)instance->state < COUNT_OF(i2c_intercom_state_handlers)) {
+        instance->state = i2c_intercom_state_handlers[instance->state](handle, instance, event);
     }
 }
 
