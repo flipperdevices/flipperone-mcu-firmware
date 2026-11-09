@@ -1,6 +1,7 @@
 """Flipper One MCU firmware updater over I2C."""
 
 import argparse
+import binascii
 import struct
 import sys
 import time
@@ -61,30 +62,9 @@ class UpdateError(Exception):
     pass
 
 
-def _build_crc16_table(polynomial):
-    table = []
-    for byte in range(256):
-        crc = 0
-        c = byte
-        for _ in range(8):
-            if (crc ^ c) & 0x0001:
-                crc = (crc >> 1) ^ polynomial
-            else:
-                crc >>= 1
-            c >>= 1
-        table.append(crc)
-    return tuple(table)
-
-
-_CRC16_TABLE = _build_crc16_table(0xA001)
-
-
-def crc16_modbus(data):
-    """CRC-16/MODBUS (reflected 0xA001, init 0xFFFF), matching the MCU's updater_crc16."""
-    crc = 0xFFFF
-    for byte in data:
-        crc = (crc >> 8) ^ _CRC16_TABLE[(crc ^ byte) & 0xFF]
-    return crc
+def crc16_xmodem(data):
+    """CRC-16/XMODEM (CCITT 0x1021, init 0x0000), matching the MCU's updater_crc16."""
+    return binascii.crc_hqx(data, 0)
 
 class McuI2C:
     def __init__(self, bus="/dev/i2c-0"):
@@ -135,18 +115,18 @@ def wait_for_state(mcu, target_state, timeout_s) -> tuple[UpdaterState, UpdaterE
 def load_firmware(path: Path) -> tuple[bytes, int, int]:
     data = path.read_bytes()
     data += b"\x00" * (-len(data) % BLOCK_SIZE)
-    return data, len(data) // BLOCK_SIZE, crc16_modbus(data)
+    return data, len(data) // BLOCK_SIZE, crc16_xmodem(data)
 
 
 def iter_blocks(firmware: bytes):
     # <256sHH: 256-byte payload + little-endian block index + block CRC
     for index, offset in enumerate(range(0, len(firmware), BLOCK_SIZE)):
         block = firmware[offset:offset + BLOCK_SIZE]
-        yield struct.pack(f"<{BLOCK_SIZE}sHH", block, index, crc16_modbus(block))
+        yield struct.pack(f"<{BLOCK_SIZE}sHH", block, index, crc16_xmodem(block))
 
 
 def run_update(mcu, firmware: bytes, block_count: int) -> None:
-    mcu.write_register(Reg.FW_CRC, crc16_modbus(firmware))
+    mcu.write_register(Reg.FW_CRC, crc16_xmodem(firmware))
     mcu.write_register(Reg.FW_BLOCKS, block_count)
     send_command(mcu, UpdaterCommand.START)
 

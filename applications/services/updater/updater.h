@@ -67,7 +67,7 @@ typedef struct Updater Updater;
  *
  * @param buf Buffer to hash.
  * @param len Buffer length in bytes.
- * @param crc_init Initial CRC value; 0xFFFF for a fresh calculation, or a
+ * @param crc_init Initial CRC value; 0x0000 for a fresh calculation, or a
  *                 previous result to chain multiple buffers.
  * @return CRC-16 value.
  */

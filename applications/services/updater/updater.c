@@ -236,7 +236,7 @@ static void updater_process_block(Updater* updater, const UpdaterMessage* msg) {
     furi_check(updater);
     furi_check(msg);
 
-    uint16_t crc_check = updater_crc16(msg->block.data, sizeof(msg->block.data), 0xFFFF);
+    uint16_t crc_check = updater_crc16(msg->block.data, sizeof(msg->block.data), 0x0000);
     FURI_LOG_D(TAG, "block %u/%u", msg->block.block_idx, updater->update_params.blocks);
 
     if(crc_check != msg->block.block_crc) {
@@ -265,7 +265,7 @@ static void updater_process_block(Updater* updater, const UpdaterMessage* msg) {
 
     if(updater->current_block == updater->update_params.blocks) {
         const uint8_t* flash_ptr = furi_hal_flash_get_read_ptr(updater->inactive_partition_address);
-        uint16_t crc_final = updater_crc16(updater->first_sector_buf, FLASH_SECTOR_SIZE, 0xFFFF);
+        uint16_t crc_final = updater_crc16(updater->first_sector_buf, FLASH_SECTOR_SIZE, 0x0000);
         crc_final = updater_crc16(
             flash_ptr + FLASH_SECTOR_SIZE,
             updater->update_params.blocks * UPDATER_BLOCK_SIZE - FLASH_SECTOR_SIZE,
