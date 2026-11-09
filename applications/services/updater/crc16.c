@@ -20,7 +20,7 @@ static const uint16_t crc_table[256] = {
     0x8641, 0x8201, 0x42C0, 0x4380, 0x8341, 0x4100, 0x81C1, 0x8081, 0x4040,
 };
 
-uint16_t updater_crc16(uint8_t* buf, size_t len, uint16_t crc_init) {
+uint16_t updater_crc16(const uint8_t* buf, size_t len, uint16_t crc_init) {
     uint8_t xor = 0;
     uint16_t crc = crc_init;
 

@@ -264,6 +264,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
     instance->intercom = furi_record_open(RECORD_I2C_INTERCOM);
     instance->led = furi_record_open(RECORD_LEDS);
     instance->haptic = furi_record_open(RECORD_HAPTIC);
+    // The updater creates its record before anything can fail
     instance->updater = furi_record_open(RECORD_UPDATER);
     instance->cpu_mode = furi_record_open(RECORD_CPU_MODE);
     instance->event_loop = furi_event_loop_alloc();

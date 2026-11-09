@@ -5,6 +5,10 @@
 
 #define TAG "Updater"
 
+// ISR-reported protocol errors, promoted to UpdaterStateError by the event loop
+#define UPDATER_ISR_ERROR_QUEUE_FULL   (1 << 0)
+#define UPDATER_ISR_ERROR_OUT_OF_ORDER (1 << 1)
+
 typedef union {
     struct {
         uint16_t version;
@@ -31,6 +35,10 @@ struct Updater {
     size_t write_partition_address;
     size_t write_partition_size;
     uint8_t first_sector_buf[FLASH_SECTOR_SIZE];
+
+    // Set by the I2C ISR callbacks, read and cleared by the event loop thread
+    volatile uint32_t isr_error;
+    bool update_supported;
 
     UpdaterStateCallback state_callback;
     void* state_callback_context;
@@ -67,36 +75,46 @@ typedef struct {
     };
 } UpdaterMessage;
 
+// Queues a message from interrupt context. On queue overflow, records the
+// failure in isr_error instead of crashing: the event loop promotes it to
+// UpdaterErrorProtocolError and the host aborts and retries.
+static void __isr __not_in_flash_func(updater_message_queue_put_from_isr)(Updater* updater, const UpdaterMessage* msg) {
+    if(furi_message_queue_put(updater->message_queue, msg, 0) != FuriStatusOk) {
+        updater->isr_error |= UPDATER_ISR_ERROR_QUEUE_FULL;
+    }
+}
+
 // I2C write callbacks, called from interrupt context
 void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint16_t address, uint16_t value) {
     Updater* updater = context;
     furi_check(updater);
 
-    UpdaterMessage msg = {
+    const UpdaterMessage msg = {
         .type = UpdaterMessageSetCrc,
         .fw_crc = value,
     };
-    furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
+    updater_message_queue_put_from_isr(updater, &msg);
 }
 
 void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, uint16_t address, uint16_t value) {
     Updater* updater = context;
     furi_check(updater);
 
-    UpdaterMessage msg = {
+    const UpdaterMessage msg = {
         .type = UpdaterMessageSetSize,
         .fw_blocks = value,
     };
-    furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
+    updater_message_queue_put_from_isr(updater, &msg);
 }
 
 void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, uint16_t address, uint16_t value) {
     Updater* updater = context;
     furi_check(updater);
 
-    UpdaterMessage msg;
-    msg.type = (value == UpdaterCommandStart) ? UpdaterMessageStartUpdate : UpdaterMessageAbortUpdate;
-    furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
+    const UpdaterMessage msg = {
+        .type = (value == UpdaterCommandStart) ? UpdaterMessageStartUpdate : UpdaterMessageAbortUpdate,
+    };
+    updater_message_queue_put_from_isr(updater, &msg);
 }
 
 bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_t offset, uint8_t value) {
@@ -108,11 +126,17 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     if(offset == 0) {
         memset(updater->i2c_data.raw, 0, sizeof(updater->i2c_data.raw));
         updater->i2c_data_offset = 0;
-        UpdaterMessage msg = {.type = UpdaterMessageWriteBlockStart};
-        furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
+        const UpdaterMessage msg = {.type = UpdaterMessageWriteBlockStart};
+        updater_message_queue_put_from_isr(updater, &msg);
     }
 
-    if(offset != updater->i2c_data_offset) return false; // Out-of-order write //TODO: how to handle it? Set i2c error flag?
+    if(offset != updater->i2c_data_offset) {
+        // Out-of-order write: record a protocol error and discard the rest of
+        // the block; the next block (offset 0) restarts reception cleanly.
+        updater->isr_error |= UPDATER_ISR_ERROR_OUT_OF_ORDER;
+        updater->i2c_data_offset = 0;
+        return true;
+    }
 
     updater->i2c_data.raw[updater->i2c_data_offset++] = value;
 
@@ -123,8 +147,7 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
             .block.block_crc = updater->i2c_data.crc16,
         };
         memcpy(msg.block.data, updater->i2c_data.data, sizeof(msg.block.data));
-        furi_check(furi_message_queue_put(updater->message_queue, &msg, 0) == FuriStatusOk);
-        // TODO: set i2c error flag on queue full condition?
+        updater_message_queue_put_from_isr(updater, &msg);
     }
 
     return true;
@@ -186,7 +209,7 @@ static void updater_write_first_sector(Updater* updater) {
     FURI_LOG_I(TAG, "Done");
 }
 
-static void updater_process_block(Updater* updater, UpdaterMessage* msg) {
+static void updater_process_block(Updater* updater, const UpdaterMessage* msg) {
     furi_check(updater);
     furi_check(msg);
 
@@ -230,6 +253,90 @@ static void updater_process_block(Updater* updater, UpdaterMessage* msg) {
     }
 }
 
+static uint32_t updater_isr_error_get_and_clear(Updater* updater) {
+    FURI_CRITICAL_ENTER();
+    uint32_t error = updater->isr_error;
+    updater->isr_error = 0;
+    FURI_CRITICAL_EXIT();
+    return error;
+}
+
+static void updater_handle_message(Updater* updater, const UpdaterMessage* msg);
+
+// Erases the inactive partition. Each sector erase stalls XIP and masks
+// interrupts for the duration of the flash operation; the 1ms delay only
+// yields between sectors. Returns false if the host aborted mid-erase.
+static bool updater_erase_inactive_partition(Updater* updater) {
+    FURI_LOG_I(TAG, "Erase start");
+    for(size_t i = 0; i < updater->fw_blocks; i += FLASH_SECTOR_SIZE / 256) {
+        // Process pending messages between sectors so that Abort (or an ISR
+        // protocol error) interrupts the erase instead of waiting for the end.
+        UpdaterMessage msg;
+        while(furi_message_queue_get(updater->message_queue, &msg, 0) == FuriStatusOk) {
+            updater_handle_message(updater, &msg);
+            if(updater->state != UpdaterStateBusy) {
+                FURI_LOG_I(TAG, "Erase interrupted");
+                return false;
+            }
+        }
+        furi_hal_flash_erase_sector(updater->write_partition_address + i * 256);
+        furi_delay_ms(1); // Yield between sectors: GUI and other services stay responsive
+    }
+    FURI_LOG_I(TAG, "Erase done");
+    return true;
+}
+
+static void updater_handle_message(Updater* updater, const UpdaterMessage* msg) {
+    furi_check(updater);
+    furi_check(msg);
+
+    // Promote ISR-recorded protocol errors (queue overflow, out-of-order
+    // writes) before processing anything else; the host aborts and retries.
+    if(updater_isr_error_get_and_clear(updater)) {
+        FURI_LOG_E(TAG, "I2C protocol error");
+        updater->crc_set = false;
+        updater->size_set = false;
+        updater->fw_blocks = 0;
+        updater_state_change(updater, UpdaterStateError, UpdaterErrorProtocolError);
+        return;
+    }
+
+    if((msg->type == UpdaterMessageStartUpdate) && (updater->state == UpdaterStateIdle)) {
+        if(!updater->update_supported) {
+            FURI_LOG_E(TAG, "Update not supported: inactive partition unavailable");
+            updater_state_change(updater, UpdaterStateError, UpdaterErrorNotStarted);
+        } else if(updater->crc_set && updater->size_set) {
+            if((updater->fw_blocks < (FLASH_SECTOR_SIZE * 4 / 256)) ||
+               (updater->fw_blocks * 256 > updater->write_partition_size)) {
+                updater_state_change(updater, UpdaterStateError, UpdaterErrorSizeError);
+            } else {
+                updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
+                updater->current_block = 0;
+                if(updater_erase_inactive_partition(updater) && updater->state == UpdaterStateBusy) {
+                    updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
+                }
+            }
+        }
+    } else if((msg->type == UpdaterMessageAbortUpdate) && (updater->state != UpdaterStateIdle)) {
+        updater->crc_set = false;
+        updater->size_set = false;
+        updater->fw_blocks = 0;
+        updater_state_change(updater, UpdaterStateIdle, UpdaterErrorNone);
+    } else if((msg->type == UpdaterMessageWriteBlockStart) && (updater->state == UpdaterStateRunning)) {
+        updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
+    } else if((msg->type == UpdaterMessageWriteBlockDone) && (updater->state == UpdaterStateBusy)) {
+        // Running before the flash write lets the host pipeline the next block
+        updater_state_change(updater, UpdaterStateRunning, UpdaterErrorNone);
+        updater_process_block(updater, msg);
+    } else if(msg->type == UpdaterMessageSetCrc) {
+        updater->fw_crc = msg->fw_crc;
+        updater->crc_set = true;
+    } else if(msg->type == UpdaterMessageSetSize) {
+        updater->fw_blocks = msg->fw_blocks;
+        updater->size_set = true;
+    }
+}
+
 static void updater_message_callback(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     Updater* instance = context;
@@ -238,39 +345,7 @@ static void updater_message_callback(FuriEventLoopObject* object, void* context)
     UpdaterMessage msg;
     furi_check(furi_message_queue_get(instance->message_queue, &msg, FuriWaitForever) == FuriStatusOk);
 
-    if((msg.type == UpdaterMessageStartUpdate) && (instance->state == UpdaterStateIdle)) {
-        if(instance->crc_set && instance->size_set) {
-            if((instance->fw_blocks < (FLASH_SECTOR_SIZE * 4 / 256)) || (instance->fw_blocks * 256 > instance->write_partition_size)) {
-                updater_state_change(instance, UpdaterStateError, UpdaterErrorSizeError);
-            } else {
-                updater_state_change(instance, UpdaterStateBusy, UpdaterErrorNone);
-                instance->current_block = 0;
-                FURI_LOG_I(TAG, "Erase start");
-                for(size_t i = 0; i < instance->fw_blocks; i += FLASH_SECTOR_SIZE / 256) {
-                    furi_hal_flash_erase_sector(instance->write_partition_address + i * 256);
-                    furi_delay_ms(1); // Force context switch to keep GUI responsive
-                }
-                FURI_LOG_I(TAG, "Erase done");
-                updater_state_change(instance, UpdaterStateRunning, UpdaterErrorNone);
-            }
-        }
-    } else if((msg.type == UpdaterMessageAbortUpdate) && (instance->state != UpdaterStateIdle)) {
-        instance->crc_set = false;
-        instance->size_set = false;
-        instance->fw_blocks = 0;
-        updater_state_change(instance, UpdaterStateIdle, UpdaterErrorNone);
-    } else if((msg.type == UpdaterMessageWriteBlockStart) && (instance->state == UpdaterStateRunning)) {
-        updater_state_change(instance, UpdaterStateBusy, UpdaterErrorNone);
-    } else if((msg.type == UpdaterMessageWriteBlockDone) && (instance->state == UpdaterStateBusy)) {
-        updater_state_change(instance, UpdaterStateRunning, UpdaterErrorNone);
-        updater_process_block(instance, &msg);
-    } else if(msg.type == UpdaterMessageSetCrc) {
-        instance->fw_crc = msg.fw_crc;
-        instance->crc_set = true;
-    } else if(msg.type == UpdaterMessageSetSize) {
-        instance->fw_blocks = msg.fw_blocks;
-        instance->size_set = true;
-    }
+    updater_handle_message(instance, &msg);
 }
 
 int32_t updater_srv(void* p) {
@@ -278,32 +353,50 @@ int32_t updater_srv(void* p) {
 
     Updater* instance = malloc(sizeof(Updater));
     instance->event_loop = furi_event_loop_alloc();
-    instance->message_queue = furi_message_queue_alloc(2, sizeof(UpdaterMessage));
+    instance->message_queue = furi_message_queue_alloc(8, sizeof(UpdaterMessage));
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, updater_message_callback, instance);
 
-    updater_state_change(instance, UpdaterStateIdle, UpdaterErrorNone);
-    instance->active_partition = furi_hal_flash_get_active_fw_partition();
-    furi_check(furi_hal_flash_get_partition_info(
-        instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA,
-        &instance->write_partition_address,
-        &instance->write_partition_size));
-    furi_check(instance->write_partition_address % FLASH_SECTOR_SIZE == 0);
+    instance->state = UpdaterStateIdle;
+    instance->isr_error = 0;
+    instance->i2c_data_offset = 0;
 
-    size_t active_part_base = 0;
-    bool ret = furi_hal_flash_get_partition_info(instance->active_partition, &active_part_base, NULL);
-    furi_check(ret);
-
-    const uint8_t* part_ptr = furi_hal_flash_get_read_ptr(active_part_base);
-
-    furi_check(furi_hal_flash_get_image_version(part_ptr, instance->current_version.raw));
-    FURI_LOG_I(
-        TAG,
-        "Current FW slot: %c, version: %04X, counter: %u",
-        instance->active_partition == FlashPartitionIdFwA ? 'A' : 'B',
-        instance->current_version.version,
-        instance->current_version.counter);
-
+    // Create the record before anything that can fail: i2c_negotiator blocks in
+    // furi_record_open(RECORD_UPDATER) until the record is ready, and a dead
+    // updater would prevent the I2C intercom from starting up at all.
     furi_record_create(RECORD_UPDATER, instance);
+
+    instance->active_partition = furi_hal_flash_get_active_fw_partition();
+
+    // Locate the inactive partition. Degrade gracefully on failure instead of
+    // crashing: the record above already exists, the intercom keeps working.
+    FlashPartitionId inactive_partition =
+        instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
+    instance->update_supported = furi_hal_flash_get_partition_info(
+        inactive_partition, &instance->write_partition_address, &instance->write_partition_size);
+    if(instance->update_supported) {
+        instance->update_supported = instance->write_partition_address % FLASH_SECTOR_SIZE == 0;
+    }
+    if(!instance->update_supported) {
+        FURI_LOG_E(TAG, "Inactive partition unavailable, updates disabled");
+    }
+
+    // Old images have no VERSION item; default to version 0
+    size_t active_part_base = 0;
+    bool active_partition_ok =
+        furi_hal_flash_get_partition_info(instance->active_partition, &active_part_base, NULL);
+    if(active_partition_ok &&
+       furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(active_part_base), instance->current_version.raw)) {
+        FURI_LOG_I(
+            TAG,
+            "Current FW slot: %c, version: %04X, counter: %u",
+            instance->active_partition == FlashPartitionIdFwA ? 'A' : 'B',
+            instance->current_version.version,
+            instance->current_version.counter);
+    } else {
+        FURI_LOG_W(TAG, "Active image has no version information, assuming version 0");
+        instance->current_version.version = 0;
+        instance->current_version.counter = 0;
+    }
 
     furi_event_loop_run(instance->event_loop);
 

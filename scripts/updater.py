@@ -30,6 +30,7 @@ class UpdaterError(Enum):
     BLOCK_INDEX_ERROR = 4
     FW_CRC_ERROR = 5
     FW_VERSION_ERROR = 6
+    PROTOCOL_ERROR = 7
 
 class UpdaterCommand(Enum):
     NONE = 0

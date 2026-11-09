@@ -5,7 +5,6 @@
 typedef struct {
     I2cSlaveCallback callback;
     uint8_t address;
-    bool start_detected;
 } I2cSlave;
 
 static I2cSlave i2c_slaves[2];
@@ -69,6 +68,18 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
                 slave->callback(i2c, I2cSlaveEventStop);
                 *is_started = false;
             }
+        } else {
+            // No transaction is active, yet flags are latched: a stop or abort
+            // from a transaction to another device on the bus, or a restart
+            // after an aborted transfer. Clear everything and drain the Rx
+            // FIFO, otherwise the interrupt would re-fire forever.
+            (void)hw->clr_restart_det;
+            (void)hw->clr_rd_req;
+            (void)hw->clr_stop_det;
+            (void)hw->clr_tx_abrt;
+            while(hw->rxflr) {
+                (void)hw->data_cmd;
+            }
         }
     }
 }
@@ -112,7 +123,7 @@ void i2c_slave_deinit(i2c_inst_t* i2c) {
 
     slave->callback = NULL;
     slave->address = 0;
-    slave->start_detected = false;
+    i2c_started[i2c_index] = false;
 
     uint32_t num = I2C0_IRQ + i2c_index;
     irq_set_enabled(num, false);

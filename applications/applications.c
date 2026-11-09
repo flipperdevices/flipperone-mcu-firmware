@@ -142,7 +142,7 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = updater_srv,
         .name = "UpdaterSrv",
         .appid = "updater_srv",
-        .stack_size = 1024 * 2,
+        .stack_size = 1024 * 4,
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
