@@ -46,16 +46,7 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
 
     // Handle events in different order depending on previous transaction state
     if(*is_started) {
-        // Finish the current transaction and open the next one before serving
-        // data events: under a burst, the next transaction's start can be
-        // latched together with the previous stop, and its address bytes would
-        // otherwise be consumed as data of the current address window.
-        i2c_slave_handle_stop(i2c, slave, is_started, intr_stat);
-        if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
-            (void)hw->clr_start_det;
-            slave->callback(i2c, I2cSlaveEventStart);
-            *is_started = true;
-        }
+        // Data events before stop: the intercom must not receive while idle
         if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
             (void)hw->clr_restart_det;
             slave->callback(i2c, I2cSlaveEventRepeatedStart);
@@ -66,6 +57,12 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
         if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
             (void)hw->clr_rd_req;
             slave->callback(i2c, I2cSlaveEventRequest);
+        }
+        i2c_slave_handle_stop(i2c, slave, is_started, intr_stat);
+        if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
+            (void)hw->clr_start_det;
+            slave->callback(i2c, I2cSlaveEventStart);
+            *is_started = true;
         }
     } else if(intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) {
         (void)hw->clr_start_det;
