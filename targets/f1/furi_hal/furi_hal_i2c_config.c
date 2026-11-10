@@ -169,14 +169,19 @@ static uint8_t furi_hal_i2c_bus_slave_write(const FuriHalI2cBusHandle* handle, u
     return len;
 }
 
-static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
+static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle, uint8_t* data, uint8_t* flags, size_t size) {
     furi_assert(handle);
     furi_assert(data);
     // max size read 16 bytes.
     uint8_t len = 0;
     i2c_inst_t* i2c = handle->bus->data;
     while(i2c_get_read_available(i2c) && len < size) {
-        *data++ = (uint8_t)i2c_get_hw(i2c)->data_cmd;
+        uint32_t cmd = i2c_get_hw(i2c)->data_cmd;
+        *data++ = (uint8_t)cmd;
+        if(flags) {
+            *flags = (cmd >> 10) & 0x3;
+            flags++;
+        }
         len++;
     }
     return len;
