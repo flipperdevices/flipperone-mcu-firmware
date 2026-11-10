@@ -33,7 +33,7 @@ int32_t init_task(void* context) {
 }
 
 int main(void) {
-    
+
     // Initialize FURI layer
     furi_init();
 

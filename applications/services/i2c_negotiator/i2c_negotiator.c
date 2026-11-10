@@ -1,5 +1,6 @@
 #include <furi.h>
 #include <gui/gui.h>
+#include <furi_hal_power.h>
 #include <headphones/headphones.h>
 #include <i2c_intercom/i2c_intercom.h>
 #include <i2c_intercom/i2c_registers.h>
@@ -9,6 +10,7 @@
 #include <updater/updater.h>
 #include <drivers/drv2605l/drv2605l.h>
 #include <cpu_mode/cpu_mode.h>
+#include <power/power.h>
 
 #define TAG "I2CNegotiator"
 
@@ -23,6 +25,7 @@ typedef struct {
     Haptic* haptic;
     Updater* updater;
     CpuMode* cpu_mode;
+    Power* power;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -212,6 +215,30 @@ void i2c_negotiator_haptic_play_effect(I2CNegotiator* instance, uint16_t value) 
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_haptic_play_effect);
 
+// System reset functions
+void i2c_negotiator_system_reset(I2CNegotiator* instance, uint16_t value) {
+    UNUSED(instance);
+    if(value != I2C_SYSTEM_RESET_MAGIC) {
+        FURI_LOG_W(TAG, "Invalid reset magic: 0x%04X", value);
+        return;
+    }
+    FURI_LOG_I(TAG, "Reset command received from host");
+    furi_hal_power_reset();
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_system_reset);
+
+void i2c_negotiator_reset_mode_set(I2CNegotiator* instance, uint16_t value) {
+    if(!power_set_host_reset_response(instance->power, (PowerHostResetResponse)value)) {
+        FURI_LOG_W(TAG, "Invalid host reset response: %u", value);
+    }
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_reset_mode_set);
+
+void i2c_negotiator_reset_delay_set(I2CNegotiator* instance, uint16_t value) {
+    power_set_host_reset_delay(instance->power, value);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_reset_delay_set);
+
 // Internal functions
 static void i2c_negotiator_queue_worker(FuriEventLoopObject* object, void* context) {
     furi_check(context);
@@ -267,6 +294,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
     // The updater creates its record before anything can fail
     instance->updater = furi_record_open(RECORD_UPDATER);
     instance->cpu_mode = furi_record_open(RECORD_CPU_MODE);
+    instance->power = furi_record_open(RECORD_POWER);
     instance->event_loop = furi_event_loop_alloc();
 
     instance->negotiator_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
@@ -320,6 +348,11 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
         // Haptic
         i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
+
+        // System reset
+        i2c_register_add_writable(I2C_SYSTEM_RESET_REG_ADDRESS, 0, i2c_negotiator_system_reset_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, PowerHostResetResponseDisabled, i2c_negotiator_reset_mode_set_message, instance->negotiator_queue);
+        i2c_register_add_writable(I2C_SYSTEM_RESET_DELAY_REG_ADDRESS, 0, i2c_negotiator_reset_delay_set_message, instance->negotiator_queue);
 
         // Updater
         i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);

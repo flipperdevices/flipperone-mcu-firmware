@@ -32,6 +32,29 @@
 #define I2C_INTERCOM_VERSION_REG_ADDRESS (I2C_INTERCOM_VERSION_REG_BASE + 0x00)
 #define I2C_INTERCOM_VERSION             (0x0001)
 
+// System reset registers
+/*
+ * 0x0090+0 System reset command register (write)
+ *          Writing the 16-bit magic value I2C_SYSTEM_RESET_MAGIC resets the MCU.
+ *          Any other value is ignored.
+ * 0x0090+2 System reset mode register (read, write)
+ *          MCU response to the host (Linux) going down:
+ *          0x0000: Disabled, the MCU ignores host shutdown (default)
+ *          0x0001: Reset the MCU when the host shuts down
+ *          0x0002: Reset the MCU and power-cycle the host when the host shuts down
+ *          Other values are ignored.
+ *          The firmware arms 0x0001 itself after a successful update.
+ * 0x0090+4 System reset delay register (read, write)
+ *          Delay in 100 ms units between the triggering host state and the
+ *          reset. 0 resets immediately. If the host comes back online before
+ *          the delay elapses, the pending reset is cancelled.
+*/
+#define I2C_SYSTEM_RESET_REG_BASE          (0x0090)
+#define I2C_SYSTEM_RESET_REG_ADDRESS       (I2C_SYSTEM_RESET_REG_BASE + 0x00)
+#define I2C_SYSTEM_RESET_MODE_REG_ADDRESS  (I2C_SYSTEM_RESET_REG_BASE + 0x02)
+#define I2C_SYSTEM_RESET_DELAY_REG_ADDRESS (I2C_SYSTEM_RESET_REG_BASE + 0x04)
+#define I2C_SYSTEM_RESET_MAGIC             (0x5A52)
+
 // Input interrupt register and mask
 /*
  * 0x0100+0 Input interrupt register    (read, read to clear)
