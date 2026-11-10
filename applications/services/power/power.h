@@ -4,6 +4,7 @@
 #include <drivers/bq2579x/bq2579x_helper.h>
 #include <drivers/bq28z620/bq28z620_reg.h>
 #include <toolbox/furi_callback.h>
+#include <cpu_mode/cpu_mode.h>
 
 #define RECORD_POWER "power"
 
@@ -15,6 +16,14 @@ typedef enum {
     PowerDeviceBq28z620 = (1 << 2),
     PowerDeviceAllInit = (PowerDeviceIna219 | PowerDeviceBq2579x | PowerDeviceBq28z620),
 } PowerDevice;
+
+/** MCU response to the host (Linux) going down */
+typedef enum {
+    PowerHostResetResponseDisabled, /* Ignore host shutdown (default) */
+    PowerHostResetResponseResetMcu, /* Reset the MCU when the host goes down */
+    PowerHostResetResponseResetMcuAndPower, /* Also power-cycle the host */
+    PowerHostResetResponseCount,
+} PowerHostResetResponse;
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,6 +63,24 @@ bool power_bq2579x_get_ico_current_limit_ma(Power* instance, uint16_t* ico_curre
 bool power_bq2579x_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t current_ma);
 bool power_bq2579x_otg_enable(Power* instance, bool enable);
 bool power_bq2579x_usb_is_connected(Power* instance, bool* usb_connected);
+
+/** Arm the MCU reset response to the host going down (I2C-resettable, RAM-only). */
+bool power_set_host_reset_response(Power* instance, PowerHostResetResponse response);
+bool power_get_host_reset_response(Power* instance, PowerHostResetResponse* response);
+
+/** Delay between the triggering host state and the reset, in 100 ms units. */
+bool power_set_host_reset_delay(Power* instance, uint16_t reset_delay_100ms);
+
+/** Flash storage offset of a freshly written firmware partition.
+ *
+ * When set, an armed ResetMcu host-reset response boots that partition with
+ * a try-before-you-buy boot instead of doing a plain reset. Set to 0 to
+ * clear. RAM-only, cleared by any reset.
+ */
+bool power_set_update_base(Power* instance, size_t update_base);
+
+/** Notify the power service of a host CPU state change (drives the armed response). */
+void power_on_host_state_changed(Power* instance, CpuState cpu_state);
 
 /** OTG overcurrent (IINDPM/IOTG) callback. Runs in the BQ2579X IRQ worker thread — keep it short. */
 void power_bq2579x_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context);

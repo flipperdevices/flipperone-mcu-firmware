@@ -1,6 +1,7 @@
 #include "updater.h"
 #include <furi_hal_flash.h>
 #include <hardware/flash.h>
+#include <power/power.h>
 
 #define TAG "Updater"
 
@@ -61,6 +62,8 @@ struct Updater {
 
     UpdaterStateCallback state_callback;
     void* state_callback_context;
+
+    Power* power;
 
     UpdaterI2cRx i2c_rx;
 };
@@ -192,44 +195,44 @@ static void updater_finalize_update(Updater* updater) {
 
     if(new_version.version < updater->current_version.version) {
         do_downgrade = true;
-        new_version.counter = 0;
-    } else if(new_version.version > updater->current_version.version) {
-        new_version.counter = 0;
-    } else if(new_version.version == updater->current_version.version) {
-        if(updater->current_version.counter == 0xFFFF) {
-            new_version.counter = 0;
-            do_downgrade = true;
-        } else {
-            new_version.counter = updater->current_version.counter + 1;
-        }
     }
+
+    // Leave the picobin VERSION item untouched: the bootrom rejects images
+    // modified after the build (a counter bump makes the partition unbootable
+    // on silicon B3). The flash-update boot ignores the version and erases
+    // the other partition, so no counter is needed.
 
     FURI_LOG_I(
         TAG,
-        "ver: %04X->%04X, cnt: %u->%u, downgrade: %s",
+        "ver: %04X->%04X, downgrade: %s",
         updater->current_version.version,
         new_version.version,
-        updater->current_version.counter,
-        new_version.counter,
         do_downgrade ? "YES" : "no");
 
-    furi_check(furi_hal_flash_set_image_version(updater->first_sector_buf, new_version.raw));
-
-    if(!furi_hal_flash_write(updater->inactive_partition_address, updater->first_sector_buf, FLASH_SECTOR_SIZE)) {
-        updater_state_change(updater, UpdaterStateError, UpdaterErrorFwWriteError);
-        return;
-    }
-
-    if(do_downgrade) {
-        if(!furi_hal_flash_fw_partition_invalidate(updater->active_partition)) {
-            FURI_LOG_E(TAG, "Failed to invalidate active partition");
-            updater_state_change(updater, UpdaterStateError, UpdaterErrorFwInvalidateError);
+    // Program page by page to keep IRQ-masked windows short
+    for(size_t offset = 0; offset < FLASH_SECTOR_SIZE; offset += FLASH_PAGE_SIZE) {
+        if(!furi_hal_flash_write(
+               updater->inactive_partition_address + offset,
+               updater->first_sector_buf + offset,
+               FLASH_PAGE_SIZE)) {
+            updater_state_change(updater, UpdaterStateError, UpdaterErrorFwWriteError);
             return;
         }
+        furi_thread_yield();
     }
+
+    // Invalidation happens on the flash-update boot: the bootrom erases the
+    // other partition once this image launches. Erasing anything here would
+    // leave the bootrom nothing to boot.
 
     updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
     FURI_LOG_I(TAG, "Done");
+
+    // Arm the MCU reset on host shutdown: when the host reboots after the
+    // update, the MCU follows it and boots the new image (TBYB).
+    power_set_update_base(updater->power, updater->inactive_partition_address);
+    power_set_host_reset_response(updater->power, PowerHostResetResponseResetMcu);
+    FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
 }
 
 static void updater_process_block(Updater* updater, const UpdaterMessage* msg) {
@@ -328,7 +331,7 @@ static bool updater_erase_inactive_partition(Updater* updater) {
             }
         }
         furi_hal_flash_erase_sector(updater->inactive_partition_address + i * UPDATER_BLOCK_SIZE);
-        furi_delay_ms(1); // Yield between sectors
+        furi_thread_yield();
     }
     FURI_LOG_I(TAG, "Erase done");
     return true;
@@ -465,6 +468,7 @@ int32_t updater_srv(void* p) {
     }
 
     // The negotiator reads current_version right after opening the record
+    instance->power = furi_record_open(RECORD_POWER);
     furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);
