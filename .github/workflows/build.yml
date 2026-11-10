@@ -138,6 +138,16 @@ jobs:
       # Execute the build.  You can specify a specific target with "--target <NAME>"
       run: cmake --build . --config $BUILD_TYPE --parallel $(nproc)
 
+    - name: Fail if the build modified tracked files
+      working-directory: ${{github.workspace}}/firmware
+      shell: bash
+      run: |
+        if ! git diff --quiet; then
+          echo "::error::Build modified tracked files"
+          git diff --stat
+          exit 1
+        fi
+
     # pico-sdk 2.3+ splits the linker script into memmap_default.ld plus a tree of
     # INCLUDE'd .incl fragments (see the tree comment inside memmap_default.ld), and
     # MemBrowse resolves INCLUDE relative to the including file. Flatten the whole
