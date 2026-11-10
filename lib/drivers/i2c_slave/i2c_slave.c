@@ -9,6 +9,7 @@ typedef struct {
 
 static I2cSlave i2c_slaves[2];
 static bool i2c_transaction_active[2] = {false, false};
+static volatile uint32_t i2c_slave_dropped_bytes[2];
 
 static void __isr __not_in_flash_func(i2c_slave_handle_stop)(i2c_inst_t* i2c, I2cSlave* slave, bool* is_started, uint32_t intr_stat) {
     i2c_hw_t* hw = i2c_get_hw(i2c);
@@ -21,15 +22,25 @@ static void __isr __not_in_flash_func(i2c_slave_handle_stop)(i2c_inst_t* i2c, I2
 }
 
 // Clears latched flags when idle, otherwise the interrupt re-fires forever
-static void __isr __not_in_flash_func(i2c_slave_clear_latched)(i2c_inst_t* i2c) {
+static void __isr __not_in_flash_func(i2c_slave_clear_latched)(i2c_inst_t* i2c, uint32_t intr_stat) {
     i2c_hw_t* hw = i2c_get_hw(i2c);
+    if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
+        // The slave holds SCL until a read request is served with data;
+        // clearing it dry would leave the bus stuck low forever.
+        hw->data_cmd = 0xFF;
+    }
     (void)hw->clr_restart_det;
     (void)hw->clr_rd_req;
     (void)hw->clr_stop_det;
     (void)hw->clr_tx_abrt;
     while(hw->rxflr) {
         (void)hw->data_cmd;
+        i2c_slave_dropped_bytes[i2c_hw_index(i2c)]++;
     }
+}
+
+uint32_t i2c_slave_dropped_bytes_get(i2c_inst_t* i2c) {
+    return i2c_slave_dropped_bytes[i2c_hw_index(i2c)];
 }
 
 static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
@@ -81,7 +92,7 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
         }
         i2c_slave_handle_stop(i2c, slave, is_started, intr_stat);
     } else {
-        i2c_slave_clear_latched(i2c);
+        i2c_slave_clear_latched(i2c, intr_stat);
     }
 }
 
