@@ -75,12 +75,7 @@ bool power_get_host_reset_request(Power* instance);
 /** Delay between the triggering host state and the reset, in 100 ms units. */
 bool power_set_host_reset_delay(Power* instance, uint16_t reset_delay_100ms);
 
-/** Flash storage offset of a freshly written firmware partition.
- *
- * When set, an armed ResetMcu host-reset response boots that partition with
- * a try-before-you-buy boot instead of doing a plain reset. Set to 0 to
- * clear. RAM-only, cleared by any reset.
- */
+/** Flash storage offset of a freshly written partition, booted by an armed ResetMcu response (0 clears it). */
 bool power_set_update_base(Power* instance, size_t update_base);
 
 /** Notify the power service of a host CPU state change (drives the armed response). */

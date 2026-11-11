@@ -6,8 +6,6 @@
 #include <flipper.h>
 
 #include <pico/multicore.h>
-#include <pico/bootrom.h>
-#include <boot/bootrom_constants.h>
 
 #define TAG "Main"
 

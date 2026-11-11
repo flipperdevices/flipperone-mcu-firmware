@@ -99,8 +99,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     # TODO: When enabling multi-core, this needs to be disabled and the correct flash access mechanism implemented
     PICO_FLASH_ASSUME_CORE1_SAFE=1
     #PICO_USE_SW_SPIN_LOCKS=0
-    # TBYB: a TBYB image only boots via a flash-update boot and commits once
-    # the image buys; normal boots prefer the bought image (tbyb-research.md).
+    # TBYB: a new image boots only via a flash-update boot and commits by buying.
     PICO_CRT0_IMAGE_TYPE_TBYB=1
 )
 
@@ -128,10 +127,8 @@ target_link_options(${PROJECT_NAME} PRIVATE
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 
-# Firmware version: single source of truth. A git tag on HEAD takes precedence,
-# FW_IMAGE_* is the dev/nightly fallback, and the string carries commit hash +
-# dirty flag. This also attaches lib/corelibs/lib/version/version.c (which lives
-# in a submodule) with the version compile definitions.
+# Version: git tag on HEAD wins, FW_IMAGE_* is the dev fallback; attaches
+# version.c (submodule) with the compile definitions.
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/fw_version.cmake")
 
 # Modify the below lines to enable/disable output over UART/USB

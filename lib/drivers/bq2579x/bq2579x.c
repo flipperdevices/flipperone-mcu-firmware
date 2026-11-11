@@ -257,8 +257,7 @@ Bq2579x* bq2579x_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
             furi_crash("BQ2579X unknown device part number!");
         }
 
-        // The charger is also driven by the host: retry to ride out its
-        // in-flight transfers after an MCU reset.
+        // The host drives this charger too: retry to ride out its transfers.
         Bq2579xStatus cfg = Bq2579xStatusUnknown;
         for(uint8_t attempt = 0; attempt < 3 && cfg != Bq2579xStatusOk; ++attempt) {
             if(attempt) {

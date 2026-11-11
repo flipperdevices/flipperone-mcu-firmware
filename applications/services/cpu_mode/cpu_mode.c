@@ -10,8 +10,8 @@
 
 #define CPU_MODE_MAX_MESSAGES          (8)
 #define CPU_MODE_POWER_OFF_DELAY_MS    (300)
-// Boot probe: catch host announcements lost in an MCU reset. Skipped on
-// flash-update boots: the host boots after us and announces event-driven.
+// Boot probe: catch host announcements lost in an MCU reset (skipped on
+// flash-update boots).
 #define CPU_MODE_BOOT_PROBE_DELAY_MS   (3000)
 #define CPU_MODE_BOOT_PROBE_RETRY_MS   (1000)
 #define CPU_MODE_BOOT_PROBE_TIMEOUT_MS (30000)
@@ -80,8 +80,6 @@ static void cpu_mode_message_queue_callback(FuriEventLoopObject* object, void* c
         // The power service owns the armed reset-on-host-shutdown response
         power_on_host_state_changed(instance->power, cpu_state);
 
-        // Follow host liveness: start the CPU app on live states unless the
-        // user is already in another app.
         if(cpu_mode_state_is_live(cpu_state)) {
             cpu_mode_start_cpu_app(instance);
         }
@@ -135,9 +133,8 @@ static bool cpu_mode_state_is_live(CpuState cpu_state) {
            cpu_state == CpuStateOnline;
 }
 
-/* Start the CPU app unless the user is in another app. Stops self_check (the
- * autorun app) if it still holds the desktop slot and retries via the probe
- * timer until the slot frees up. */
+// Start the CPU app unless the user is in another app; stops self_check and
+// retries via the probe timer until it releases the slot.
 static void cpu_mode_start_cpu_app(CpuMode* instance) {
     const char* appid = desktop_get_running_app_id();
     if(appid && (!strcmp(appid, "cpu_app_start") || !strcmp(appid, "cpu_app_maskrom"))) {
@@ -166,9 +163,8 @@ static void cpu_mode_start_cpu_app(CpuMode* instance) {
     FURI_LOG_D(TAG, "App %s running, leaving it alone", appid);
 }
 
-/* Host already live at MCU boot (our reset glitches the I2C bus, so its state
- * may arrive late): switch to the CPU app. Give up when the window closes;
- * live transitions afterwards are handled event-driven. */
+// Poll the desktop until the host announces or the window closes; live
+// transitions afterwards are event-driven.
 static void cpu_mode_boot_probe_timer_callback(void* context) {
     furi_check(context);
     CpuMode* instance = context;
@@ -185,26 +181,10 @@ static void cpu_mode_boot_probe_timer_callback(void* context) {
     }
 }
 
-static CpuMode* cpu_mode_alloc(void) {
-    CpuMode* instance = (CpuMode*)malloc(sizeof(CpuMode));
-    instance->status.cpu_state = CpuStateUnknown;
-    instance->event_loop = furi_event_loop_alloc();
-    instance->message_queue = furi_message_queue_alloc(CPU_MODE_MAX_MESSAGES, sizeof(CpuModeMessage));
-    instance->shutdown_timer = furi_event_loop_timer_alloc(instance->event_loop, cpu_mode_shutdown_timer_callback, FuriEventLoopTimerTypeOnce, instance);
-    instance->boot_probe_timer = furi_event_loop_timer_alloc(instance->event_loop, cpu_mode_boot_probe_timer_callback, FuriEventLoopTimerTypeOnce, instance);
-    instance->boot_probe_deadline = furi_get_tick() + CPU_MODE_BOOT_PROBE_TIMEOUT_MS;
-
-    // The power service starts before us and hosts the host-reset response flag
-    instance->power = furi_record_open(RECORD_POWER);
-
-    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, cpu_mode_message_queue_callback, instance);
-
-    furi_record_create(RECORD_CPU_MODE, instance);
-
-    instance->host_reset_request = power_get_host_reset_request(instance->power);
-
-    // Host-requested reset: the host is alive but silent, start the CPU app
-    // now. Flash-update boots skip the probe; other normal boots probe.
+// Pick the boot path: host-requested resets start the CPU app right away;
+// flash-update boots rely on event-driven announcements; other normal boots
+// probe for a late one.
+static void cpu_mode_boot_probe_start(CpuMode* instance) {
     if(instance->host_reset_request) {
         FURI_LOG_I(TAG, "Host reset request: starting CPU app");
         cpu_mode_start_cpu_app(instance);
@@ -213,6 +193,24 @@ static CpuMode* cpu_mode_alloc(void) {
     } else {
         FURI_LOG_I(TAG, "Flash-update boot: CPU app will follow host announcements");
     }
+}
+
+static CpuMode* cpu_mode_alloc(void) {
+    CpuMode* instance = (CpuMode*)malloc(sizeof(CpuMode));
+    instance->status.cpu_state = CpuStateUnknown;
+    instance->event_loop = furi_event_loop_alloc();
+    instance->message_queue = furi_message_queue_alloc(CPU_MODE_MAX_MESSAGES, sizeof(CpuModeMessage));
+    instance->shutdown_timer = furi_event_loop_timer_alloc(instance->event_loop, cpu_mode_shutdown_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    instance->boot_probe_timer = furi_event_loop_timer_alloc(instance->event_loop, cpu_mode_boot_probe_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    instance->boot_probe_deadline = furi_get_tick() + CPU_MODE_BOOT_PROBE_TIMEOUT_MS;
+    instance->power = furi_record_open(RECORD_POWER);
+
+    furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, cpu_mode_message_queue_callback, instance);
+
+    furi_record_create(RECORD_CPU_MODE, instance);
+
+    instance->host_reset_request = power_get_host_reset_request(instance->power);
+    cpu_mode_boot_probe_start(instance);
 
     return instance;
 }
