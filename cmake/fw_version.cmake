@@ -32,7 +32,7 @@ if(NOT GIT_BRANCH)
 endif()
 
 execute_process(
-    COMMAND git -C ${CMAKE_SOURCE_DIR} status --porcelain
+    COMMAND git -C ${CMAKE_SOURCE_DIR} status --porcelain --untracked-files=no
     OUTPUT_VARIABLE GIT_DIRTY_CHECK OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 if(GIT_DIRTY_CHECK)
     set(BUILD_DIRTY 1)
