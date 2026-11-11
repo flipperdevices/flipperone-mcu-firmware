@@ -13,15 +13,10 @@ extern "C" {
 
 void furi_hal_power_reset(void);
 
-/** Reboot into a freshly updated flash partition (flash-update boot).
+/** Reboot into a freshly updated partition (flash-update boot).
  *
- * Requests a "flash update" boot: the bootrom boots the partition whose
- * storage offset matches @p partition_storage_offset irrespective of its
- * version, and erases the first sector of the other partition once the
- * image launches. Falls back to a plain reset if the bootrom refuses the
- * request.
- *
- * @param partition_storage_offset flash storage offset of the partition to boot
+ * The bootrom boots the partition at @p partition_storage_offset regardless
+ * of its version; the TBYB-flagged image commits itself by buying.
  */
 void furi_hal_power_reboot_to_partition(uint32_t partition_storage_offset);
 

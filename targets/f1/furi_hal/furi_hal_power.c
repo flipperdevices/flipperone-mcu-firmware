@@ -25,32 +25,25 @@ static volatile FuriHalPower furi_hal_power = {
 static volatile int wakeup_alarm_irq_num;
 
 void furi_hal_power_reset(void) {
-    // Clean system reset via AIRCR: the bootrom runs again and picks the
-    // active partition. watchdog_reboot() would leave a running watchdog
-    // that this firmware never pets, turning the reboot into a boot loop.
+    // AIRCR: watchdog_reboot() would leave the watchdog running -> boot loop.
     *(volatile uint32_t*)(PPB_BASE + M33_AIRCR_OFFSET) = (0x05FAu << M33_AIRCR_VECTKEY_LSB) | M33_AIRCR_SYSRESETREQ_BITS;
     while(1) {
     }
 }
 
-void furi_hal_power_reboot_to_partition(uint32_t partition_storage_offset) {
-    // Flash-update boot: the bootrom boots the partition whose start matches
-    // scratch2 (p0) irrespective of its version. The new image is TBYB-flagged,
-    // so the switch commits only once the image buys (tbyb-research.md).
-    //
-    // p0 is XIP_BASE + storage offset: the bootrom computes the update offset
-    // as p0 - XIP_BASE (see varm_boot_path.c in pico-bootrom-rp2350), so a raw
-    // storage offset silently fails to match any partition and falls through to
-    // a normal boot.
-    //
-    // The scratch registers and the watchdog trigger are written directly
-    // (datasheet 5.2.4): rom_reboot() faults on this silicon because the ROM
-    // call trips the RCP canary check (HardFault with poison pc/psr patterns),
-    // so the bootrom API must not be used here.
-    // Stop the watchdog first so the countdown starts fresh from LOAD below.
+// Slow the watchdog tick so LOAD=0xffffff spans ~18s: at the default 1-clk_ref
+// tick it re-fires (~1.4s) mid-bootrom and the flash-update boot loops.
+static void furi_hal_power_watchdog_slow(void) {
     watchdog_hw->ctrl = 0;
-    // Reset everything except the clocks on watchdog fire, same as the SDK's
-    // watchdog_enable() and the bootrom's rom_reboot() do before arming.
+    ticks_hw->ticks[TICK_WATCHDOG].ctrl = 0;
+    ticks_hw->ticks[TICK_WATCHDOG].cycles = 12;
+    ticks_hw->ticks[TICK_WATCHDOG].ctrl = TICKS_WATCHDOG_CTRL_ENABLE_BITS;
+}
+
+// Reboot2-style flash-update vector in watchdog scratch, written directly:
+// rom_reboot() faults on this silicon (RCP canary). p0 must be XIP_BASE +
+// storage offset, the bootrom computes it as p0 - XIP_BASE.
+static void furi_hal_power_watchdog_flash_update_vector(uint32_t partition_storage_offset) {
     psm_hw->wdsel = PSM_WDSEL_BITS & ~(PSM_WDSEL_ROSC_BITS | PSM_WDSEL_XOSC_BITS);
     watchdog_hw->scratch[2] = XIP_BASE + partition_storage_offset;
     watchdog_hw->scratch[3] = 0;
@@ -58,29 +51,16 @@ void furi_hal_power_reboot_to_partition(uint32_t partition_storage_offset) {
     watchdog_hw->scratch[5] = 0xfffffffe;
     watchdog_hw->scratch[6] = REBOOT2_FLAG_REBOOT_TYPE_FLASH_UPDATE;
     watchdog_hw->scratch[7] = 0xb007c0d3;
-    // The watchdog tick must run from clk_ref with a divisor: the reset
-    // default is one clk_ref cycle (~83ns), which makes LOAD=0xffffff fire
-    // after only ~1.4s. That is shorter than the bootrom boot, so the
-    // watchdog re-fires in a 1.4s loop and the flash-update boot never
-    // completes (observed as a boot loop and eventually an M33 double-fault
-    // lockup). Configure it unconditionally: the tick may already be enabled
-    // with the default divisor, in which case rom_reboot()'s "only if
-    // disabled" guard would leave the fast tick in place. cycles=12 gives
-    // ~1.08us per tick, i.e. ~18.2s for the maximum LOAD.
-    ticks_hw->ticks[TICK_WATCHDOG].ctrl = 0;
-    ticks_hw->ticks[TICK_WATCHDOG].cycles = 12;
-    ticks_hw->ticks[TICK_WATCHDOG].ctrl = TICKS_WATCHDOG_CTRL_ENABLE_BITS;
-    // Arm the watchdog: write the reload value and set ENABLE only.
-    // TRIGGER must NOT be set: on RP2350 it causes an immediate watchdog reset
-    // (the SDK uses it solely for delay=0), so TRIGGER|ENABLE would reset right
-    // away and the still-enabled watchdog would then re-fire in a boot loop.
-    // After the watchdog reset ENABLE stays set, so the long timeout also gives
-    // the bootrom enough time to finish its boot before the next fire.
+}
+
+void furi_hal_power_reboot_to_partition(uint32_t partition_storage_offset) {
+    furi_hal_power_watchdog_slow();
+    furi_hal_power_watchdog_flash_update_vector(partition_storage_offset);
+    // ENABLE only: TRIGGER resets immediately and then re-fires in a loop.
     watchdog_hw->load = WATCHDOG_CTRL_TIME_BITS;
     watchdog_hw->ctrl = WATCHDOG_CTRL_ENABLE_BITS;
-    // Wait for the watchdog reset. Do NOT fall through to a plain reset here:
-    // SYSRESETREQ clears the scratch registers and would turn this into a
-    // normal boot of the active partition.
+    // Wait for the watchdog; a SYSRESETREQ here would clear scratch and
+    // degrade the flash-update boot into a plain normal boot.
     while(1) {
         __wfi();
     }

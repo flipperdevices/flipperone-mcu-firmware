@@ -1,27 +1,12 @@
-# Firmware version - single source of truth.
-#
-# The numeric version packed into the picobin VERSION item (seen by the bootrom
-# and by the host over I2C) and the human-readable version string (CLI, desktop,
-# device info) are both derived here, in this order:
-#
-#   1. HEAD carries an exact tag X.Y.Z (git describe --tags --exact-match HEAD):
-#      the tag wins - both the packed numbers and the string come from it.
-#   2. Otherwise the FW_IMAGE_* fallback below is used (dev/nightly builds).
-#   3. DIST_SUFFIX (CI) overrides the display string only, never the numbers.
-#
-# The string always carries the commit hash and the dirty flag so no two builds
-# are ever indistinguishable. Everything is computed at configure time: the
-# bootrom on silicon B3 rejects images whose picobin was modified after the
-# build, so nothing here may be changed at runtime or at flash time.
+# Version source of truth: exact tag on HEAD wins; otherwise the newest
+# merged semver tag plus commit distance, packed monotonically.
+# The picobin must not be modified after the build (silicon B3 rejects it).
 
-# Dev fallback when HEAD is not tagged. Bump locally to make a dev build
-# "newer" than the installed one for normal-boot partition selection
-# (major 0-15, minor 0-255, patch 0-15 - the picobin packing limits).
+# Bootstrap only if the repo has no semver tags at all (the release process
+# never edits these).
 set(FW_IMAGE_MAJOR 0)
 set(FW_IMAGE_MINOR 3)
 set(FW_IMAGE_PATCH 0)
-
-# --- git facts ---------------------------------------------------------------
 
 execute_process(
     COMMAND git -C ${CMAKE_SOURCE_DIR} rev-parse --short HEAD
@@ -61,8 +46,6 @@ endif()
 
 string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
 
-# --- tag precedence ----------------------------------------------------------
-
 execute_process(
     COMMAND git -C ${CMAKE_SOURCE_DIR} describe --tags --exact-match HEAD
     OUTPUT_VARIABLE FW_GIT_EXACT_TAG OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
@@ -74,6 +57,24 @@ if(FW_GIT_EXACT_TAG)
     set(FW_IMAGE_MAJOR ${CMAKE_MATCH_1})
     set(FW_IMAGE_MINOR ${CMAKE_MATCH_2})
     set(FW_IMAGE_PATCH ${CMAKE_MATCH_3})
+else()
+    # Untagged: newest semver tag merged into HEAD + commit distance.
+    execute_process(
+        COMMAND git -C ${CMAKE_SOURCE_DIR} tag --merged HEAD --sort=-version:refname
+        OUTPUT_VARIABLE FW_GIT_TAGS OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(FW_GIT_TAGS MATCHES "v?([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+        set(FW_GIT_LAST_TAG "${CMAKE_MATCH_0}")
+        execute_process(
+            COMMAND git -C ${CMAKE_SOURCE_DIR} rev-list --count "${FW_GIT_LAST_TAG}..HEAD"
+            OUTPUT_VARIABLE FW_GIT_DISTANCE OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+        if(NOT FW_GIT_DISTANCE)
+            set(FW_GIT_DISTANCE 0)
+        endif()
+        math(EXPR FW_IMAGE_PACKED "(((${CMAKE_MATCH_1} & 0x0F) << 12) | ((${CMAKE_MATCH_2} & 0xFF) << 4) | (${CMAKE_MATCH_3} & 0x0F)) + ${FW_GIT_DISTANCE}")
+        math(EXPR FW_IMAGE_MAJOR "(${FW_IMAGE_PACKED} >> 12) & 0x0F")
+        math(EXPR FW_IMAGE_MINOR "(${FW_IMAGE_PACKED} >> 4) & 0xFF")
+        math(EXPR FW_IMAGE_PATCH "${FW_IMAGE_PACKED} & 0x0F")
+    endif()
 endif()
 
 if(FW_IMAGE_MAJOR GREATER 15 OR FW_IMAGE_MINOR GREATER 255 OR FW_IMAGE_PATCH GREATER 15)
@@ -81,8 +82,6 @@ if(FW_IMAGE_MAJOR GREATER 15 OR FW_IMAGE_MINOR GREATER 255 OR FW_IMAGE_PATCH GRE
         "Firmware version ${FW_IMAGE_MAJOR}.${FW_IMAGE_MINOR}.${FW_IMAGE_PATCH} "
         "does not fit the picobin packing (major 0-15, minor 0-255, patch 0-15)")
 endif()
-
-# --- version string: X.Y.Z-<hash>[-dirty], DIST_SUFFIX overrides -------------
 
 set(FW_VERSION_STRING "${FW_IMAGE_MAJOR}.${FW_IMAGE_MINOR}.${FW_IMAGE_PATCH}-${GIT_COMMIT}")
 if(BUILD_DIRTY)
@@ -92,11 +91,8 @@ if(DEFINED ENV{DIST_SUFFIX} AND NOT "$ENV{DIST_SUFFIX}" STREQUAL "")
     set(FW_VERSION_STRING "$ENV{DIST_SUFFIX}")
 endif()
 
-# --- packed picobin version ---------------------------------------------------
-
 math(EXPR VERSION_PACKED "(${FW_IMAGE_MAJOR} & 0x0F) << 12 | (${FW_IMAGE_MINOR} & 0xFF) << 4 | (${FW_IMAGE_PATCH} & 0x0F)")
-# The picobin MINOR word is the updater's boot counter: it stays 0 forever.
-# Bumping it after the build makes the image unbootable on silicon B3.
+# MINOR is the boot counter: stays 0 (post-build bumps brick on B3).
 pico_set_binary_version(${PROJECT_NAME} MAJOR ${VERSION_PACKED} MINOR 0)
 pico_set_program_version(${PROJECT_NAME} "${FW_IMAGE_MAJOR}.${FW_IMAGE_MINOR}")
 
@@ -115,8 +111,7 @@ set(FW_VERSION_COMPILE_DEFS
     "FIRMWARE_ORIGIN=\"${FIRMWARE_ORIGIN}\""
 )
 
-# version.c lives in the lib/corelibs submodule; attach it directly from here so
-# the version refactor does not require committing changes inside the submodule.
+# Attach version.c directly: no submodule changes needed.
 target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/lib/corelibs/lib/version/version.c)
 set_source_files_properties(${CMAKE_SOURCE_DIR}/lib/corelibs/lib/version/version.c PROPERTIES
     COMPILE_DEFINITIONS "${FW_VERSION_COMPILE_DEFS}")
