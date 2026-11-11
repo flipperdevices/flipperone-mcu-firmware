@@ -6,6 +6,8 @@
 #include <flipper.h>
 
 #include <pico/multicore.h>
+#include <pico/bootrom.h>
+#include <boot/bootrom_constants.h>
 
 #define TAG "Main"
 
@@ -51,7 +53,8 @@ int main(void) {
     // so we need to reset core1 manually
     sleep_ms(5);
     multicore_reset_core1();
-    (void)multicore_fifo_pop_blocking();
+    // Reset already waits for core1's bootrom handshake; a second fifo pop
+    // deadlocks after warm resets (no kernel -> host sees a dead MCU).
 
     // Run Kernel
     furi_run();
