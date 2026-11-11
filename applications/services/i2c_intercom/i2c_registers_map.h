@@ -42,6 +42,7 @@
  *          0x0000: Disabled, the MCU ignores host shutdown (default)
  *          0x0001: Reset the MCU when the host shuts down
  *          0x0002: Reset the MCU and power-cycle the host when the host shuts down
+ *          0x0003: Immediate MCU reset - firmware-internal, rejected here
  *          Other values are ignored.
  *          The firmware arms 0x0001 itself after a successful update.
  * 0x0090+4 System reset delay register (read, write)
@@ -212,6 +213,8 @@
  * 0xF000 + 0x04: Updater command register (write), UpdaterCommand
  * 0xF000 + 0x06: Updater boot status register (read), Low byte: active partition ('A'/'B'), High byte: boot type (0 normal, 1 flash-update)
  * 0xF000 + 0x08: Updater last written version register (read), version of the last accepted update, 0 until the first update
+ * 0xF000 + 0x0A: Updater firmware patch register (read), patch of the current firmware, 0 on silicon B3 (see cmake/fw_version.cmake)
+ * 0xF000 + 0x0C: Updater last written patch register (read), patch of the last accepted update, 0 until the first update, 0 on B3
  * 0xF000 + 0x20: Updater new firmware CRC register (write), 2 bytes, CRC16 of the new firmware
  * 0xF000 + 0x22: Updater new firmware blocks register (write), 2 bytes, number of blocks of the new firmware
  * 0xF000 + 0x40: Updater data register (write), 256 bytes of data, followed by 2 bytes of block index and 2 bytes of CRC16.

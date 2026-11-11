@@ -197,6 +197,7 @@ static void updater_finalize_update(Updater* updater) {
         return;
     }
 
+    // Log-only: invalidation happens in the bootrom's explicit buy.
     bool do_downgrade = fw_version_less(&new_version, &updater->current_version);
 
     // No VERSION bump: the bootrom rejects images modified after the build
