@@ -12,6 +12,7 @@
 #include <drivers/bq28z620/bq28z620.h>
 #include <pd/pd.h>
 #include <pico/bootrom.h>
+#include <hardware/structs/powman.h>
 #include <furi_bsp.h>
 #include <furi_bsp_linux.h>
 
@@ -26,6 +27,8 @@
 #define POWER_UPDATE_REBOOT_DELAY_MS (10000) // host power-cycle delay after a switch
 // Delay before an immediate reset so the host's I2C write completes first.
 #define POWER_IMMEDIATE_RESET_DELAY_MS (100)
+// Host reset-request marker, rides POWMAN scratch across the SYSRESETREQ.
+#define POWER_HOST_RESET_REQUEST_MAGIC (0x48525354u)
 
 typedef enum {
     PowerEventTypeIsr = (1 << 0),
@@ -49,6 +52,7 @@ struct Power {
     PowerHostResetResponse host_reset_response;
     uint16_t host_reset_delay_100ms;
     size_t host_reset_update_base;
+    bool host_reset_request;
 };
 
 static Bq2579xStatus power_bq2579x_reset_and_load_config(Power* instance) {
@@ -471,6 +475,7 @@ static void power_host_reset_timer_callback(void* context) {
 static void power_immediate_reset_timer_callback(void* context) {
     UNUSED(context);
     FURI_LOG_I(TAG, "Immediate MCU reset requested by the host");
+    powman_hw->boot[0] = POWER_HOST_RESET_REQUEST_MAGIC;
     furi_hal_power_reset();
 }
 
@@ -490,6 +495,8 @@ static Power* power_alloc(void) {
     instance->host_reset_response = PowerHostResetResponseDisabled;
     instance->host_reset_delay_100ms = 0;
     instance->host_reset_update_base = 0;
+    instance->host_reset_request = (powman_hw->boot[0] == POWER_HOST_RESET_REQUEST_MAGIC);
+    powman_hw->boot[0] = 0;
     instance->otg_watchdog_timer =
         furi_event_loop_timer_alloc(instance->event_loop, power_bq2579x_otg_watchdog_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
     instance->host_reset_timer =
@@ -1012,6 +1019,11 @@ bool power_get_host_reset_response(Power* instance, PowerHostResetResponse* resp
     bool result;
     POWER_API_CALL_PARAM(0, power_host_reset_response_get_internal, instance, response, result);
     return result;
+}
+
+bool power_get_host_reset_request(Power* instance) {
+    furi_check(instance);
+    return instance->host_reset_request;
 }
 
 bool power_set_host_reset_delay(Power* instance, uint16_t reset_delay_100ms) {

@@ -3,13 +3,15 @@
 #include <api_lock.h>
 #include <desktop/desktop.h>
 #include <power/power.h>
+#include <pico/bootrom.h>
+#include <boot/bootrom_constants.h>
 
 #define TAG "CpuMode"
 
 #define CPU_MODE_MAX_MESSAGES          (8)
 #define CPU_MODE_POWER_OFF_DELAY_MS    (300)
-// Boot probe: show the CPU app if the host turns out live shortly after MCU
-// boot. Retries cover late announcements and self_check holding the slot.
+// Boot probe: catch host announcements lost in an MCU reset. Skipped on
+// flash-update boots: the host boots after us and announces event-driven.
 #define CPU_MODE_BOOT_PROBE_DELAY_MS   (3000)
 #define CPU_MODE_BOOT_PROBE_RETRY_MS   (1000)
 #define CPU_MODE_BOOT_PROBE_TIMEOUT_MS (30000)
@@ -25,6 +27,7 @@ struct CpuMode {
     FuriEventLoopTimer* shutdown_timer;
     FuriEventLoopTimer* boot_probe_timer;
     uint32_t boot_probe_deadline;
+    bool host_reset_request;
     Power* power;
 };
 
@@ -170,7 +173,7 @@ static void cpu_mode_boot_probe_timer_callback(void* context) {
     furi_check(context);
     CpuMode* instance = context;
 
-    if(cpu_mode_state_is_live(instance->status.cpu_state)) {
+    if(instance->host_reset_request || cpu_mode_state_is_live(instance->status.cpu_state)) {
         cpu_mode_start_cpu_app(instance);
         return;
     }
@@ -198,7 +201,18 @@ static CpuMode* cpu_mode_alloc(void) {
 
     furi_record_create(RECORD_CPU_MODE, instance);
 
-    furi_event_loop_timer_start(instance->boot_probe_timer, CPU_MODE_BOOT_PROBE_DELAY_MS);
+    instance->host_reset_request = power_get_host_reset_request(instance->power);
+
+    // Host-requested reset: the host is alive but silent, start the CPU app
+    // now. Flash-update boots skip the probe; other normal boots probe.
+    if(instance->host_reset_request) {
+        FURI_LOG_I(TAG, "Host reset request: starting CPU app");
+        cpu_mode_start_cpu_app(instance);
+    } else if(rom_get_last_boot_type() != BOOT_TYPE_FLASH_UPDATE) {
+        furi_event_loop_timer_start(instance->boot_probe_timer, CPU_MODE_BOOT_PROBE_DELAY_MS);
+    } else {
+        FURI_LOG_I(TAG, "Flash-update boot: CPU app will follow host announcements");
+    }
 
     return instance;
 }
