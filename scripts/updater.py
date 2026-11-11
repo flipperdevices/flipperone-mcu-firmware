@@ -204,43 +204,35 @@ def iter_blocks(firmware: bytes):
 
 
 def run_update(mcu, firmware: bytes, block_count: int) -> None:
-    for attempt in (1, 2):
-        mcu.write_register(Reg.FW_CRC, crc16_xmodem(firmware))
-        mcu.write_register(Reg.FW_BLOCKS, block_count)
-        send_command(mcu, UpdaterCommand.START)
+    mcu.write_register(Reg.FW_CRC, crc16_xmodem(firmware))
+    mcu.write_register(Reg.FW_BLOCKS, block_count)
+    send_command(mcu, UpdaterCommand.START)
 
-        print("Erasing flash area...")
-        state, error = wait_for_state(mcu, UpdaterState.RUNNING, ERASE_TIMEOUT_S)
+    print("Erasing flash area...")
+    state, error = wait_for_state(mcu, UpdaterState.RUNNING, ERASE_TIMEOUT_S)
+    if state != UpdaterState.RUNNING:
+        raise UpdateError(f"Failed to start update: state={state.name}, error={error.name}")
+
+    start_time = time.perf_counter()
+    for block_idx, frame in enumerate(iter_blocks(firmware)):
+        print(f"Sending block {block_idx}/{block_count}")
+        state, error = wait_for_state(mcu, UpdaterState.RUNNING, BLOCK_TIMEOUT_S)
         if state != UpdaterState.RUNNING:
-            raise UpdateError(f"Failed to start update: state={state.name}, error={error.name}")
+            # A partial/garbage frame can park the MCU in BUSY: abort and let
+            # the caller's attempt budget re-run the whole update.
+            print(f"Block {block_idx}: state={state.name}, error={error.name}, aborting")
+            send_command(mcu, UpdaterCommand.ABORT)
+            wait_for_state(mcu, UpdaterState.IDLE, ERASE_TIMEOUT_S)
+            raise UpdateError("Update interrupted")
+        mcu.write_block(Reg.FW_DATA, frame)
+    elapsed_s = time.perf_counter() - start_time
 
-        start_time = time.perf_counter()
-        retry = False
-        for block_idx, frame in enumerate(iter_blocks(firmware)):
-            print(f"Sending block {block_idx}/{block_count}")
-            state, error = wait_for_state(mcu, UpdaterState.RUNNING, BLOCK_TIMEOUT_S)
-            if state != UpdaterState.RUNNING:
-                # A partial/garbage frame can park the MCU in BUSY: abort and
-                # re-run the whole update once.
-                print(f"Block {block_idx}: state={state.name}, error={error.name}, aborting")
-                send_command(mcu, UpdaterCommand.ABORT)
-                wait_for_state(mcu, UpdaterState.IDLE, ERASE_TIMEOUT_S)
-                retry = True
-                break
-            mcu.write_block(Reg.FW_DATA, frame)
-        if retry:
-            if attempt == 2:
-                raise UpdateError("Update failed after retry")
-            continue
-        elapsed_s = time.perf_counter() - start_time
+    state, error = wait_for_state(mcu, UpdaterState.DONE, FINALIZE_TIMEOUT_S)
+    if state != UpdaterState.DONE:
+        raise UpdateError(f"Finalize failed: state={state.name}, error={error.name}")
 
-        state, error = wait_for_state(mcu, UpdaterState.DONE, FINALIZE_TIMEOUT_S)
-        if state != UpdaterState.DONE:
-            raise UpdateError(f"Finalize failed: state={state.name}, error={error.name}")
-
-        print(f"State: {state.name}")
-        print(f"Written in {elapsed_s:.2f}s ({len(firmware) * 8 / elapsed_s / 1024:.2f} Kbit/s)")
-        return
+    print(f"State: {state.name}")
+    print(f"Written in {elapsed_s:.2f}s ({len(firmware) * 8 / elapsed_s / 1024:.2f} Kbit/s)")
 
 
 def main() -> int:
@@ -289,8 +281,13 @@ def main() -> int:
                     raise UpdateError(f"Update failed after {UPDATE_ATTEMPTS} attempts")
 
             if args.reset:
-                mcu.write_register(Reg.SYSTEM_RESET, SYSTEM_RESET_MAGIC)
-                print("Reset command sent to the MCU.")
+                try:
+                    mcu.write_register(Reg.SYSTEM_RESET, SYSTEM_RESET_MAGIC)
+                    print("Reset command sent to the MCU.")
+                except UpdateError:
+                    # The MCU resets as soon as the worker handles the write,
+                    # possibly before the transfer completes: that is success.
+                    print("Reset command sent; the MCU reset mid-transfer.")
             elif args.reset_mode is not None:
                 mcu.write_register(Reg.SYSTEM_RESET_DELAY, args.reset_delay)
                 mcu.write_register(Reg.SYSTEM_RESET_MODE, args.reset_mode)
