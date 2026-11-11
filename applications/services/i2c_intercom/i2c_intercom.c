@@ -29,6 +29,8 @@ struct I2CIntercom {
     volatile uint8_t pre_restart_bytes; ///< Bytes that were in the FIFO when the restart hit
     volatile uint8_t address_hi;
     volatile uint8_t address_index;
+    // Byte-loss accounting: invalid_* = register-map rejects, dropped =
+    // intercom framing, driver-dropped = FIFO drain while idle (logged below).
     volatile uint32_t invalid_read_count;
     volatile uint32_t invalid_write_count;
     volatile uint32_t dropped_byte_count;

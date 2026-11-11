@@ -228,6 +228,11 @@ void i2c_negotiator_system_reset(I2CNegotiator* instance, uint16_t value) {
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_system_reset);
 
 void i2c_negotiator_reset_mode_set(I2CNegotiator* instance, uint16_t value) {
+    // Immediate reset is firmware-internal; the register path only arms 0-2.
+    if(value >= PowerHostResetResponseResetMcuImmediately) {
+        FURI_LOG_W(TAG, "Invalid host reset response: %u", value);
+        return;
+    }
     if(!power_set_host_reset_response(instance->power, (PowerHostResetResponse)value)) {
         FURI_LOG_W(TAG, "Invalid host reset response: %u", value);
     }
