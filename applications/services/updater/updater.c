@@ -1,6 +1,8 @@
 #include "updater.h"
 #include <furi_hal_flash.h>
 #include <hardware/flash.h>
+#include <pico/bootrom.h>
+#include <boot/bootrom_constants.h>
 #include <power/power.h>
 
 #define TAG "Updater"
@@ -433,6 +435,16 @@ static void updater_message_callback(FuriEventLoopObject* object, void* context)
 
 int32_t updater_srv(void* p) {
     UNUSED(p);
+
+    // Commit a TBYB flash-update boot: the bootrom watchdog is ~16.7 s.
+    static uint32_t explicit_buy_scratch[1024];
+    if(rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) {
+        FURI_LOG_I(TAG, "Flash-update boot detected, committing new image");
+        int rc = rom_explicit_buy((uint8_t*)explicit_buy_scratch, sizeof(explicit_buy_scratch));
+        if(rc != 0) {
+            FURI_LOG_E(TAG, "rom_explicit_buy failed: %d", rc);
+        }
+    }
 
     Updater* instance = malloc(sizeof(Updater));
     instance->event_loop = furi_event_loop_alloc();

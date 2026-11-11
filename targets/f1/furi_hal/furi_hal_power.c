@@ -35,8 +35,8 @@ void furi_hal_power_reset(void) {
 
 void furi_hal_power_reboot_to_partition(uint32_t partition_storage_offset) {
     // Flash-update boot: the bootrom boots the partition whose start matches
-    // scratch2 (p0) irrespective of its version, and erases the first sector of
-    // the other partition once the image launches, making the switch permanent.
+    // scratch2 (p0) irrespective of its version. The new image is TBYB-flagged,
+    // so the switch commits only once the image buys (tbyb-research.md).
     //
     // p0 is XIP_BASE + storage offset: the bootrom computes the update offset
     // as p0 - XIP_BASE (see varm_boot_path.c in pico-bootrom-rp2350), so a raw

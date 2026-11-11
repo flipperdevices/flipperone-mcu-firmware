@@ -99,9 +99,9 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     # TODO: When enabling multi-core, this needs to be disabled and the correct flash access mechanism implemented
     PICO_FLASH_ASSUME_CORE1_SAFE=1
     #PICO_USE_SW_SPIN_LOCKS=0
-    # No TBYB marking: this bootrom never boots TBYB images; the flash-update
-    # boot already erases the other partition once the new image launches.
-    PICO_CRT0_IMAGE_TYPE_TBYB=0
+    # TBYB: a TBYB image only boots via a flash-update boot and commits once
+    # the image buys; normal boots prefer the bought image (tbyb-research.md).
+    PICO_CRT0_IMAGE_TYPE_TBYB=1
 )
 
 pico_add_linker_script_override_path(${PROJECT_NAME} "${CMAKE_CURRENT_LIST_DIR}/targets")
