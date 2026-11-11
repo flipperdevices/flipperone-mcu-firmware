@@ -1,6 +1,7 @@
 #include <furi.h>
 #include <furi_hal_i2c.h>
 #include <furi_hal_i2c_config.h>
+#include <drivers/i2c_slave/i2c_slave.h>
 
 #include <furi_hal_gpio.h>
 #include <furi_hal_resources.h>
@@ -23,6 +24,9 @@ struct I2CIntercom {
 
     volatile bool in_transaction;
     volatile size_t mem_address;
+    volatile size_t pointer_address; ///< Register the last pointer write selected
+    volatile bool wrote_data_in_transaction; ///< Data applied in this transaction: reads serve the pointer
+    volatile uint8_t pre_restart_bytes; ///< Bytes that were in the FIFO when the restart hit
     volatile uint8_t address_hi;
     volatile uint8_t address_index;
     volatile uint32_t invalid_read_count;
@@ -55,7 +59,13 @@ static inline void i2c_intercom_receive(const FuriHalI2cBusHandle* handle, I2CIn
     uint8_t data;
     uint8_t flags;
     while(furi_hal_i2c_slave_read_blocking(handle, &data, &flags, 1)) {
-        if(flags & (FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE | FURI_HAL_I2C_SLAVE_RX_FLAG_RESTART)) {
+        // Only FIRST_DATA_BYTE restarts framing: the controller retro-marks
+        // pre-restart FIFO bytes with RESTART.
+        bool pre_restart = instance->pre_restart_bytes > 0;
+        if(pre_restart) {
+            instance->pre_restart_bytes--;
+        }
+        if((flags & FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE) && !pre_restart) {
             instance->address_index = 0;
         }
         if(instance->address_index == 0) {
@@ -67,6 +77,7 @@ static inline void i2c_intercom_receive(const FuriHalI2cBusHandle* handle, I2CIn
             }
         } else if(instance->address_index == 1) {
             instance->mem_address = ((uint16_t)instance->address_hi << 8) | data;
+            instance->pointer_address = instance->mem_address;
             instance->address_index = 2;
         } else {
             bool valid = false;
@@ -75,6 +86,7 @@ static inline void i2c_intercom_receive(const FuriHalI2cBusHandle* handle, I2CIn
                 instance->invalid_write_count++;
             }
             instance->mem_address++;
+            instance->wrote_data_in_transaction = true;
         }
     }
 }
@@ -85,14 +97,43 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
     switch(event) {
     case FuriHalI2cBusSlaveEventStart:
         instance->in_transaction = true;
+        instance->wrote_data_in_transaction = false;
+        instance->pre_restart_bytes = 0;
         break;
-    case FuriHalI2cBusSlaveEventRead:
+    case FuriHalI2cBusSlaveEventRead: {
+        // A read that follows data in this transaction serves the selected
+        // pointer, not the auto-incremented address.
+        if(instance->wrote_data_in_transaction) {
+            instance->mem_address = instance->pointer_address;
+            instance->wrote_data_in_transaction = false;
+        }
+        // SCL is held: any byte still in the RX FIFO belongs to the write
+        // before the read. Apply it, then rewind.
+        size_t drained = 0;
+        uint8_t data;
+        uint8_t flags;
+        while(furi_hal_i2c_slave_read_blocking(handle, &data, &flags, 1)) {
+            bool valid = false;
+            with_i2c_register({ valid = i2c_register_write(instance->mem_address, data); });
+            if(!valid) {
+                instance->invalid_write_count++;
+            }
+            instance->mem_address++;
+            drained++;
+            if(instance->pre_restart_bytes) {
+                instance->pre_restart_bytes--;
+            }
+        }
+        instance->mem_address -= drained;
         i2c_intercom_data_transmit(handle, instance);
         break;
+    }
     case FuriHalI2cBusSlaveEventWrite:
         i2c_intercom_receive(handle, instance);
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
+        // FIFO bytes at the restart belong to the write before it.
+        instance->pre_restart_bytes = i2c_slave_rxflr_get((i2c_inst_t*)handle->bus->data);
         // Missed STOP can end the transaction while idle: reset the address.
         if(!instance->in_transaction) {
             instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
@@ -138,6 +179,8 @@ int32_t i2c_intercom_srv(void* p) {
     furi_hal_i2c_acquire(instance->bus_handle);
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
     instance->in_transaction = false;
+    instance->wrote_data_in_transaction = false;
+    instance->pointer_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
 
     while(1) {
