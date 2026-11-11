@@ -44,22 +44,6 @@ bool furi_hal_flash_fw_partition_is_valid(FlashPartitionId partition_id);
  */
 bool furi_hal_flash_fw_partition_invalidate(FlashPartitionId partition_id);
 
-/** Get version from IMAGE_DEF of firmware image
- *
- * @param[in]  start    pointer to the first firmware sector
- * @param[out] version  pointer to array of two uint16_t to store version and counter
- * @return     true if version was found, false if IMAGE_DEF was not found or invalid
- */
-bool furi_hal_flash_get_image_version(const uint8_t* start, uint16_t* version);
-
-/** Change version in IMAGE_DEF of firmware image
- *
- * @param[in]  start    pointer to the first firmware sector
- * @param[in]  version  pointer to array of two uint16_t containing version and counter
- * @return     true if version was found, false if IMAGE_DEF was not found or invalid
- */
-bool furi_hal_flash_set_image_version(uint8_t* start, const uint16_t* version);
-
 /** Get flash base address
  *
  * @return     pointer to flash base
