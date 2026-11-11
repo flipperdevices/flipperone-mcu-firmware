@@ -44,6 +44,8 @@ struct Updater {
     uint16_t current_block;
 
     FlashPartitionId active_partition;
+    FuriHalFwVersion current_version;
+    FuriHalFwVersion last_written_version;
 
     size_t inactive_partition_address;
     size_t inactive_partition_size;
@@ -180,9 +182,36 @@ static void updater_state_change(Updater* updater, UpdaterState new_state, Updat
     }
 }
 
+static bool fw_version_less(const FuriHalFwVersion* a, const FuriHalFwVersion* b) {
+    if(a->major != b->major) return a->major < b->major;
+    if(a->minor != b->minor) return a->minor < b->minor;
+    return a->patch < b->patch;
+}
+
 static void updater_finalize_update(Updater* updater) {
-    // No version check: the flash-update boot ignores the version, and
-    // silicon B3 rejects images modified after the build.
+    FuriHalFwVersion new_version;
+    bool success = furi_hal_flash_get_image_version(updater->first_sector_buf, &new_version);
+    if(!success) {
+        FURI_LOG_E(TAG, "Update image missing version information");
+        updater_state_change(updater, UpdaterStateError, UpdaterErrorFwVersionError);
+        return;
+    }
+
+    bool do_downgrade = fw_version_less(&new_version, &updater->current_version);
+
+    // No VERSION bump: the bootrom rejects images modified after the build
+    // (silicon B3), and the flash-update boot ignores the version.
+
+    FURI_LOG_I(
+        TAG,
+        "ver: %u.%u.%u -> %u.%u.%u, downgrade: %s",
+        updater->current_version.major,
+        updater->current_version.minor,
+        updater->current_version.patch,
+        new_version.major,
+        new_version.minor,
+        new_version.patch,
+        do_downgrade ? "YES" : "no");
 
     // Program page by page to keep IRQ-masked windows short
     for(size_t offset = 0; offset < FLASH_SECTOR_SIZE; offset += FLASH_PAGE_SIZE) {
@@ -205,6 +234,7 @@ static void updater_finalize_update(Updater* updater) {
     power_set_host_reset_response(updater->power, PowerHostResetResponseResetMcu);
     FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
 
+    updater->last_written_version = new_version;
     updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
     FURI_LOG_I(TAG, "Done");
 }
@@ -437,12 +467,40 @@ int32_t updater_srv(void* p) {
         FURI_LOG_E(TAG, "Inactive partition unavailable, updates disabled");
     }
 
+    // Old images have no VERSION item; default to version 0
+    size_t active_part_base = 0;
+    bool active_partition_ok =
+        furi_hal_flash_get_partition_info(instance->active_partition, &active_part_base, NULL);
+    if(active_partition_ok &&
+       furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(active_part_base), &instance->current_version)) {
+        FURI_LOG_I(
+            TAG,
+            "Current FW slot: %c, version: %u.%u.%u",
+            instance->active_partition == FlashPartitionIdFwA ? 'A' : 'B',
+            instance->current_version.major,
+            instance->current_version.minor,
+            instance->current_version.patch);
+    } else {
+        FURI_LOG_W(TAG, "Active image has no version information, assuming version 0");
+        instance->current_version = (FuriHalFwVersion){0};
+    }
+
     instance->power = furi_record_open(RECORD_POWER);
     furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);
 
     return 0;
+}
+
+FuriHalFwVersion updater_get_current_fw_version(Updater* updater) {
+    furi_check(updater);
+    return updater->current_version;
+}
+
+FuriHalFwVersion updater_get_last_written_fw_version(Updater* updater) {
+    furi_check(updater);
+    return updater->last_written_version;
 }
 
 uint16_t updater_get_boot_status(Updater* updater) {

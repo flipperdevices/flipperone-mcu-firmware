@@ -25,8 +25,12 @@ UPDATE_ATTEMPTS = 3
 
 class Reg(IntEnum):
     STATUS = 0xF000
+    FW_VERSION = 0xF002
     FW_COMMAND = 0xF004
     BOOT_STATUS = 0xF006
+    LAST_WRITTEN_VERSION = 0xF008
+    FW_PATCH = 0xF00A
+    LAST_WRITTEN_PATCH = 0xF00C
     FW_CRC = 0xF020
     FW_BLOCKS = 0xF022
     FW_DATA = 0xF040
@@ -269,7 +273,9 @@ def main() -> int:
     try:
         with McuI2C(args.bus) as mcu:
             state, error = get_state_valid(mcu)
-            print(f"State: {state.name}")
+            fw_version = mcu.read_register(Reg.FW_VERSION)
+            fw_patch = mcu.read_register(Reg.FW_PATCH)
+            print(f"State: {state.name}, Current FW version: {(fw_version >> 8) & 0xFF}.{fw_version & 0xFF}.{fw_patch}")
             ensure_idle(mcu)
 
             for attempt in range(1, UPDATE_ATTEMPTS + 1):
