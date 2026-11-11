@@ -53,7 +53,9 @@ typedef struct {
 /** Get version from IMAGE_DEF of firmware image
  *
  * @param[in]  start    pointer to the first firmware sector
- * @param[out] version  parsed firmware version
+ * @param[out] version  parsed firmware version; patch reads 0 when the image
+ *                      carries none (silicon B3: the picobin minor slot is
+ *                      the bootrom rollback word and must stay zero)
  * @return     true if version was found, false if IMAGE_DEF was not found or invalid
  */
 bool furi_hal_flash_get_image_version(const uint8_t* start, FuriHalFwVersion* version);
