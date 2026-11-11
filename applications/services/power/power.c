@@ -12,6 +12,7 @@
 #include <drivers/bq28z620/bq28z620.h>
 #include <pd/pd.h>
 #include <pico/bootrom.h>
+#include <boot/bootrom_constants.h>
 #include <hardware/structs/powman.h>
 #include <furi_bsp.h>
 #include <furi_bsp_linux.h>
@@ -23,8 +24,8 @@
 #define POWER_MAX_MESSAGES             (8)
 #define BQ2579X_OTG_WATCHDOG_TIME      Bq2579xWatchdogTime0_5s
 #define BQ2579X_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
-#define POWER_BOOT_TYPE_FLASH_UPDATE (4) // boot/bootrom_constants.h
 #define POWER_UPDATE_REBOOT_DELAY_MS (10000) // host power-cycle delay after a switch
+#define POWER_HOST_RESET_ATTEMPTS     (3) // charger power-reset tries before giving up
 // Delay before an immediate reset so the host's I2C write completes first.
 #define POWER_IMMEDIATE_RESET_DELAY_MS (100)
 // Host reset-request marker, rides POWMAN scratch across the SYSRESETREQ.
@@ -420,7 +421,8 @@ static void power_host_reset_timer_callback(void* context) {
     furi_assert(context);
     Power* instance = context;
 
-    switch(instance->host_reset_response) {    case PowerHostResetResponseResetMcu:
+    switch(instance->host_reset_response) {
+    case PowerHostResetResponseResetMcu:
         if(instance->host_reset_update_base != 0) {
             FURI_LOG_I(TAG, "Host is down, booting updated partition at 0x%08lX", (unsigned long)instance->host_reset_update_base);
             furi_hal_power_reboot_to_partition((uint32_t)instance->host_reset_update_base);
@@ -437,11 +439,17 @@ static void power_host_reset_timer_callback(void* context) {
             furi_record_close(RECORD_PD);
         }
         power_bq2579x_reset_and_load_config(instance);
-        Bq2579xStatus res;
-        do {
-            res = bq2579x_set_power_switch(instance->bq2579x_header, Bq2579xPowerReset);
-            furi_delay_ms(1000);
-        } while(res != Bq2579xStatusOk);
+        for(uint32_t attempt = 0; attempt < POWER_HOST_RESET_ATTEMPTS; attempt++) {
+            if(attempt) {
+                furi_delay_ms(1000);
+            }
+            if(bq2579x_set_power_switch(instance->bq2579x_header, Bq2579xPowerReset) == Bq2579xStatusOk) {
+                break;
+            }
+        }
+        // Reset the MCU explicitly as well: the charger cycle only handles
+        // the host, and a failing charger must not leave the MCU half-switched.
+        furi_hal_power_reset();
         break;
     default:
         FURI_LOG_E(TAG, "Host reset timer fired while disabled");
@@ -504,7 +512,7 @@ static Power* power_alloc(void) {
 
     // After a partition switch the host is stranded mid-reboot: power-cycle it.
     boot_info_t boot_info = {};
-    if(rom_get_boot_info(&boot_info) && boot_info.boot_type == POWER_BOOT_TYPE_FLASH_UPDATE) {
+    if(rom_get_boot_info(&boot_info) && boot_info.boot_type == BOOT_TYPE_FLASH_UPDATE) {
         FURI_LOG_I(TAG, "Flash-update boot detected, cycling system power in %lu ms", (unsigned long)POWER_UPDATE_REBOOT_DELAY_MS);
         furi_event_loop_timer_start(instance->update_reboot_timer, POWER_UPDATE_REBOOT_DELAY_MS);
     }
