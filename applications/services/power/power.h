@@ -22,6 +22,7 @@ typedef enum {
     PowerHostResetResponseDisabled, /* Ignore host shutdown (default) */
     PowerHostResetResponseResetMcu, /* Reset the MCU when the host goes down */
     PowerHostResetResponseResetMcuAndPower, /* Also power-cycle the host */
+    PowerHostResetResponseResetMcuImmediately, /* Reset the MCU now (not armed) */
     PowerHostResetResponseCount,
 } PowerHostResetResponse;
 

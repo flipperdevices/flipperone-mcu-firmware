@@ -42,6 +42,7 @@ class ResetMode(IntEnum):
     DISABLED = 0
     RESET_MCU = 1
     RESET_MCU_AND_POWER = 2
+    RESET_MCU_IMMEDIATELY = 3
 
 
 # Keep in sync with UpdaterState/UpdaterError/UpdaterCommand from the MCU firmware
