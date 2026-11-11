@@ -94,9 +94,11 @@ if(DEFINED ENV{DIST_SUFFIX} AND NOT "$ENV{DIST_SUFFIX}" STREQUAL "")
     set(FW_VERSION_STRING "$ENV{DIST_SUFFIX}")
 endif()
 
-# Version word (MAJOR<<8|MINOR) in the major slot, PATCH in the minor slot.
+# Version word (MAJOR<<8|MINOR) in the major slot; the minor slot is the
+# boot counter/rollback word (B3 rejects nonzero), so PATCH stays in the
+# build string.
 math(EXPR FW_IMAGE_VERSION_WORD "((${FW_IMAGE_MAJOR} & 0xFF) << 8) | (${FW_IMAGE_MINOR} & 0xFF)")
-pico_set_binary_version(${PROJECT_NAME} MAJOR ${FW_IMAGE_VERSION_WORD} MINOR ${FW_IMAGE_PATCH})
+pico_set_binary_version(${PROJECT_NAME} MAJOR ${FW_IMAGE_VERSION_WORD} MINOR 0)
 pico_set_program_version(${PROJECT_NAME} "${FW_IMAGE_MAJOR}.${FW_IMAGE_MINOR}.${FW_IMAGE_PATCH}")
 
 math(EXPR VERSION_PACKED "(${FW_IMAGE_MAJOR} << 24) | (${FW_IMAGE_MINOR} << 16) | ${FW_IMAGE_PATCH}")
