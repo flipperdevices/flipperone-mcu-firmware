@@ -69,6 +69,9 @@ bool power_bq2579x_usb_is_connected(Power* instance, bool* usb_connected);
 bool power_set_host_reset_response(Power* instance, PowerHostResetResponse response);
 bool power_get_host_reset_response(Power* instance, PowerHostResetResponse* response);
 
+/** True when the current boot was a host-requested MCU reset. */
+bool power_get_host_reset_request(Power* instance);
+
 /** Delay between the triggering host state and the reset, in 100 ms units. */
 bool power_set_host_reset_delay(Power* instance, uint16_t reset_delay_100ms);
 
