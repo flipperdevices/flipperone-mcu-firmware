@@ -191,6 +191,8 @@ def wait_for_state(mcu, target_state, timeout_s) -> tuple[UpdaterState, UpdaterE
 
 
 def load_firmware(path: Path) -> tuple[bytes, int, int]:
+    if not isinstance(path, Path):
+        path = Path(path)
     data = path.read_bytes()
     data += b"\x00" * (-len(data) % BLOCK_SIZE)
     return data, len(data) // BLOCK_SIZE, crc16_xmodem(data)
@@ -247,9 +249,9 @@ def main() -> int:
     parser.add_argument(
         "--reset-mode",
         type=int,
-        choices=[mode.value for mode in ResetMode],
+        choices=[mode.value for mode in ResetMode if mode != ResetMode.RESET_MCU_IMMEDIATELY],
         default=None,
-        help="MCU response to the host shutting down (default: none, the MCU arms reset-on-host-shutdown itself after a successful update)",
+        help="MCU response to the host shutting down (default: none, the MCU arms reset-on-host-shutdown itself after a successful update); immediate reset is firmware-internal, use --reset",
     )
     parser.add_argument(
         "--reset-delay",
