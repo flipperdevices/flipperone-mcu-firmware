@@ -143,10 +143,10 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     if(offset >= sizeof(updater->i2c_rx.raw)) return false;
 
     if(offset == 0) {
+        // New frame: announce it only once complete, so a truncated frame
+        // cannot wedge the updater in BUSY.
         memset(updater->i2c_rx.raw, 0, sizeof(updater->i2c_rx.raw));
         updater->i2c_rx.offset = 0;
-        const UpdaterMessage msg = {.type = UpdaterMessageWriteBlockStart};
-        updater_message_queue_put_from_isr(updater, &msg);
     }
 
     if(offset != updater->i2c_rx.offset) {
@@ -160,6 +160,11 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     updater->i2c_rx.raw[updater->i2c_rx.offset++] = value;
 
     if(updater->i2c_rx.offset == sizeof(updater->i2c_rx.raw)) {
+        const UpdaterMessage msg_start = {
+            .type = UpdaterMessageWriteBlockStart,
+        };
+        updater_message_queue_put_from_isr(updater, &msg_start);
+
         UpdaterMessage msg = {
             .type = UpdaterMessageWriteBlockDone,
             .block.block_idx = updater->i2c_rx.block_idx,
