@@ -190,30 +190,43 @@ def iter_blocks(firmware: bytes):
 
 
 def run_update(mcu, firmware: bytes, block_count: int) -> None:
-    mcu.write_register(Reg.FW_CRC, crc16_xmodem(firmware))
-    mcu.write_register(Reg.FW_BLOCKS, block_count)
-    send_command(mcu, UpdaterCommand.START)
+    for attempt in (1, 2):
+        mcu.write_register(Reg.FW_CRC, crc16_xmodem(firmware))
+        mcu.write_register(Reg.FW_BLOCKS, block_count)
+        send_command(mcu, UpdaterCommand.START)
 
-    print("Erasing flash area...")
-    state, error = wait_for_state(mcu, UpdaterState.RUNNING, ERASE_TIMEOUT_S)
-    if state != UpdaterState.RUNNING:
-        raise UpdateError(f"Failed to start update: state={state.name}, error={error.name}")
-
-    start_time = time.perf_counter()
-    for block_idx, frame in enumerate(iter_blocks(firmware)):
-        print(f"Sending block {block_idx}/{block_count}")
-        state, error = wait_for_state(mcu, UpdaterState.RUNNING, BLOCK_TIMEOUT_S)
+        print("Erasing flash area...")
+        state, error = wait_for_state(mcu, UpdaterState.RUNNING, ERASE_TIMEOUT_S)
         if state != UpdaterState.RUNNING:
-            raise UpdateError(f"Block {block_idx}: state={state.name}, error={error.name}")
-        mcu.write_block(Reg.FW_DATA, frame)
-    elapsed_s = time.perf_counter() - start_time
+            raise UpdateError(f"Failed to start update: state={state.name}, error={error.name}")
 
-    state, error = wait_for_state(mcu, UpdaterState.DONE, FINALIZE_TIMEOUT_S)
-    if state != UpdaterState.DONE:
-        raise UpdateError(f"Finalize failed: state={state.name}, error={error.name}")
+        start_time = time.perf_counter()
+        retry = False
+        for block_idx, frame in enumerate(iter_blocks(firmware)):
+            print(f"Sending block {block_idx}/{block_count}")
+            state, error = wait_for_state(mcu, UpdaterState.RUNNING, BLOCK_TIMEOUT_S)
+            if state != UpdaterState.RUNNING:
+                # A partial/garbage frame can park the MCU in BUSY: abort and
+                # re-run the whole update once.
+                print(f"Block {block_idx}: state={state.name}, error={error.name}, aborting")
+                send_command(mcu, UpdaterCommand.ABORT)
+                wait_for_state(mcu, UpdaterState.IDLE, ERASE_TIMEOUT_S)
+                retry = True
+                break
+            mcu.write_block(Reg.FW_DATA, frame)
+        if retry:
+            if attempt == 2:
+                raise UpdateError("Update failed after retry")
+            continue
+        elapsed_s = time.perf_counter() - start_time
 
-    print(f"State: {state.name}")
-    print(f"Written in {elapsed_s:.2f}s ({len(firmware) * 8 / elapsed_s / 1024:.2f} Kbit/s)")
+        state, error = wait_for_state(mcu, UpdaterState.DONE, FINALIZE_TIMEOUT_S)
+        if state != UpdaterState.DONE:
+            raise UpdateError(f"Finalize failed: state={state.name}, error={error.name}")
+
+        print(f"State: {state.name}")
+        print(f"Written in {elapsed_s:.2f}s ({len(firmware) * 8 / elapsed_s / 1024:.2f} Kbit/s)")
+        return
 
 
 def main() -> int:
