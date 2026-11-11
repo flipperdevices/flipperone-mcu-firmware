@@ -82,6 +82,23 @@ uint16_t updater_crc16(const uint8_t* buf, size_t len, uint16_t crc_init);
 uint16_t updater_get_current_fw_version(Updater* updater);
 
 /**
+ * @brief Get the boot status of the running image.
+ *
+ * @param updater Updater instance.
+ * @return Low byte: active partition letter ('A'/'B', 0 unknown);
+ *         high byte: boot type (0 normal, 1 flash-update).
+ */
+uint16_t updater_get_boot_status(Updater* updater);
+
+/**
+ * @brief Get the version of the last accepted update.
+ *
+ * @param updater Updater instance.
+ * @return Firmware version, 0 until the first update.
+ */
+uint16_t updater_get_last_written_fw_version(Updater* updater);
+
+/**
  * @brief Set the state change callback.
  *
  * @param updater Updater instance.

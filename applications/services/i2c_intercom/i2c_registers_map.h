@@ -210,6 +210,8 @@
  * 0xF000 + 0x00: Updater status register (read), High byte: UpdaterError, Low byte: UpdaterState
  * 0xF000 + 0x02: Updater firmware version register (read), 2 bytes, current firmware version
  * 0xF000 + 0x04: Updater command register (write), UpdaterCommand
+ * 0xF000 + 0x06: Updater boot status register (read), Low byte: active partition ('A'/'B'), High byte: boot type (0 normal, 1 flash-update)
+ * 0xF000 + 0x08: Updater last written version register (read), version of the last accepted update, 0 until the first update
  * 0xF000 + 0x20: Updater new firmware CRC register (write), 2 bytes, CRC16 of the new firmware
  * 0xF000 + 0x22: Updater new firmware blocks register (write), 2 bytes, number of blocks of the new firmware
  * 0xF000 + 0x40: Updater data register (write), 256 bytes of data, followed by 2 bytes of block index and 2 bytes of CRC16.
@@ -219,6 +221,8 @@
 #define I2C_UPDATER_STATUS_REG_ADDRESS     (I2C_UPDATER_REG_BASE + 0x00)
 #define I2C_UPDATER_FW_VERSION_REG_ADDRESS (I2C_UPDATER_REG_BASE + 0x02)
 #define I2C_UPDATER_CMD_REG_ADDRESS        (I2C_UPDATER_REG_BASE + 0x04)
+#define I2C_UPDATER_BOOT_STATUS_REG_ADDRESS (I2C_UPDATER_REG_BASE + 0x06)
+#define I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS (I2C_UPDATER_REG_BASE + 0x08)
 
 #define I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS    (I2C_UPDATER_REG_BASE + 0x20)
 #define I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS (I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS + 2)

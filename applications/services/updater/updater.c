@@ -53,6 +53,7 @@ struct Updater {
 
     FlashPartitionId active_partition;
     ImageVersion current_version;
+    uint16_t last_written_version;
 
     size_t inactive_partition_address;
     size_t inactive_partition_size;
@@ -232,14 +233,15 @@ static void updater_finalize_update(Updater* updater) {
     // other partition once this image launches. Erasing anything here would
     // leave the bootrom nothing to boot.
 
-    updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
-    FURI_LOG_I(TAG, "Done");
-
-    // Arm the MCU reset on host shutdown: when the host reboots after the
-    // update, the MCU follows it and boots the new image (TBYB).
+    // Arm before announcing DONE: the negotiator mirrors the armed state
+    // into the reset-mode register on the DONE callback.
     power_set_update_base(updater->power, updater->inactive_partition_address);
     power_set_host_reset_response(updater->power, PowerHostResetResponseResetMcu);
     FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
+
+    updater->last_written_version = new_version.version;
+    updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
+    FURI_LOG_I(TAG, "Done");
 }
 
 static void updater_process_block(Updater* updater, const UpdaterMessage* msg) {
@@ -483,6 +485,7 @@ int32_t updater_srv(void* p) {
         instance->current_version.version = 0;
         instance->current_version.counter = 0;
     }
+    instance->last_written_version = 0;
 
     // The negotiator reads current_version right after opening the record
     instance->power = furi_record_open(RECORD_POWER);
@@ -496,6 +499,24 @@ int32_t updater_srv(void* p) {
 uint16_t updater_get_current_fw_version(Updater* updater) {
     furi_check(updater);
     return updater->current_version.version;
+}
+
+uint16_t updater_get_boot_status(Updater* updater) {
+    furi_check(updater);
+    // Low byte: active partition letter; high byte: boot type
+    uint8_t partition = 0;
+    if(updater->active_partition == FlashPartitionIdFwA) {
+        partition = 'A';
+    } else if(updater->active_partition == FlashPartitionIdFwB) {
+        partition = 'B';
+    }
+    uint8_t boot_type = rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE ? 1 : 0;
+    return (uint16_t)((boot_type << 8) | partition);
+}
+
+uint16_t updater_get_last_written_fw_version(Updater* updater) {
+    furi_check(updater);
+    return updater->last_written_version;
 }
 
 void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback, void* context) {
