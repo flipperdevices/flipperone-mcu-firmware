@@ -281,8 +281,16 @@ static void i2c_negotiator_backlight_timeout_callback(const void* item, void* co
 }
 
 static void i2c_updater_state_callback(UpdaterState state, UpdaterError error, void* context) {
-    UNUSED(context);
+    I2CNegotiator* instance = context;
     with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, (error << 8) | state, 0xFFFF); });
+    if(state == UpdaterStateDone) {
+        with_i2c_register({ i2c_register_update(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, updater_get_last_written_fw_version(instance->updater), 0xFFFF); });
+        // The updater arms the host-shutdown reset itself: mirror it so the host can read it
+        PowerHostResetResponse response = PowerHostResetResponseDisabled;
+        if(power_get_host_reset_response(instance->power, &response)) {
+            with_i2c_register({ i2c_register_update(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, response, 0xFF); });
+        }
+    }
 }
 
 I2CNegotiator* i2c_negotiator_alloc() {
@@ -357,6 +365,8 @@ I2CNegotiator* i2c_negotiator_alloc() {
         // Updater
         i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
         i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, updater_get_current_fw_version(instance->updater));
+        i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_get_boot_status(instance->updater));
+        i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
         i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, instance->updater);
         i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, instance->updater);
         i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, instance->updater);
@@ -364,7 +374,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
             I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
             "I2C updater data window must match the updater block layout");
         i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, instance->updater);
-        updater_set_state_callback(instance->updater, i2c_updater_state_callback, NULL);
+        updater_set_state_callback(instance->updater, i2c_updater_state_callback, instance);
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);

@@ -27,6 +27,8 @@ class Reg(IntEnum):
     STATUS = 0xF000
     FW_VERSION = 0xF002
     FW_COMMAND = 0xF004
+    BOOT_STATUS = 0xF006
+    LAST_WRITTEN_VERSION = 0xF008
     FW_CRC = 0xF020
     FW_BLOCKS = 0xF022
     FW_DATA = 0xF040
@@ -146,6 +148,16 @@ def get_state_valid(mcu) -> tuple[UpdaterState, UpdaterError]:
         if time.monotonic() >= deadline:
             raise UpdateError("Invalid status register value")
         time.sleep(POLL_INTERVAL_S)
+
+
+def get_boot_status(mcu):
+    """Read the MCU boot status register: (partition, boot_type), None for invalid reads."""
+    try:
+        raw = mcu.read_register(Reg.BOOT_STATUS)
+    except UpdateError:
+        return None, None
+    partition = raw & 0xFF
+    return (chr(partition) if partition in (ord("A"), ord("B")) else None), raw >> 8
 
 
 def send_command(mcu, command: UpdaterCommand) -> None:

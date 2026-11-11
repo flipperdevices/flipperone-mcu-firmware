@@ -22,6 +22,7 @@ from updater import (
     UpdaterError,
     UpdaterState,
     ensure_idle,
+    get_boot_status,
     get_state_valid,
     iter_blocks,
     load_firmware,
@@ -82,17 +83,26 @@ def reset_mcu(mcu):
     time.sleep(3.0)
 
 
-def wait_for_mcu(mcu, timeout=20):
-    """Wait until the updater answers again after an MCU reset."""
+def wait_for_mcu(mcu, expected_partition=None, timeout=20):
+    """Wait until the updater answers after a reset; verify the booted image."""
     deadline = time.monotonic() + timeout
     while True:
         try:
             get_state_valid(mcu)
-            return True
+            break
         except UpdateError:
             if time.monotonic() >= deadline:
                 return False
             time.sleep(0.5)
+    if expected_partition is not None:
+        # The boot status register is registered late in boot: retry until valid
+        for _ in range(15):
+            partition, boot_type = get_boot_status(mcu)
+            if partition in ("A", "B"):
+                return partition == expected_partition and boot_type == 0
+            time.sleep(0.2)
+        return False
+    return True
 
 
 def send_blocks(mcu, firmware, gap=0, gap_blocks=0, first_gap=0):
@@ -330,6 +340,15 @@ def main():
     firmware, blocks, fw_crc = load_firmware(args.firmware)
 
     with McuI2C() as mcu:
+        if not wait_for_mcu(mcu):
+            print("MCU not responding at suite start")
+            return 1
+        baseline_partition, baseline_boot_type = get_boot_status(mcu)
+        print(f"Baseline boot: partition={baseline_partition} boot_type={baseline_boot_type}")
+        if baseline_partition not in ("A", "B") or baseline_boot_type != 0:
+            print("Unexpected baseline boot status, aborting")
+            return 1
+
         for case_id, fn in CASES:
             if args.case and case_id != args.case:
                 continue
@@ -344,11 +363,12 @@ def main():
             if args.reset_between:
                 try:
                     reset_mcu(mcu)
-                    ok = wait_for_mcu(mcu)
+                    ok = wait_for_mcu(mcu, baseline_partition)
                 except UpdateError as exc:
                     ok = False
                     print(f"reset error: {exc}")
-                report(f"{case_id} reset", ok)
+                partition, boot_type = get_boot_status(mcu)
+                report(f"{case_id} reset", ok, f"partition={partition} boot_type={boot_type}")
 
     print(f"\n{stats['pass']} passed, {stats['fail']} failed")
     return 1 if stats["fail"] else 0
