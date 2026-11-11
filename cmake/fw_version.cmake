@@ -1,5 +1,8 @@
 # Version source of truth: exact tag on HEAD wins; otherwise the newest
-# merged semver tag plus commit distance, packed monotonically.
+# merged semver tag, with the commit distance since it carried in PATCH.
+# MAJOR and MINOR never move between releases.
+# Picoblock packing: MAJOR(8) | MINOR(8) | PATCH(16) across the 32-bit
+# major:minor version item (major slot: MAJOR<<8|MINOR, minor slot: PATCH).
 # The picobin must not be modified after the build (silicon B3 rejects it).
 
 # Bootstrap only if the repo has no semver tags at all (the release process
@@ -64,23 +67,23 @@ else()
         OUTPUT_VARIABLE FW_GIT_TAGS OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
     if(FW_GIT_TAGS MATCHES "v?([0-9]+)\\.([0-9]+)\\.([0-9]+)")
         set(FW_GIT_LAST_TAG "${CMAKE_MATCH_0}")
+        set(FW_IMAGE_MAJOR ${CMAKE_MATCH_1})
+        set(FW_IMAGE_MINOR ${CMAKE_MATCH_2})
         execute_process(
             COMMAND git -C ${CMAKE_SOURCE_DIR} rev-list --count "${FW_GIT_LAST_TAG}..HEAD"
             OUTPUT_VARIABLE FW_GIT_DISTANCE OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
         if(NOT FW_GIT_DISTANCE)
             set(FW_GIT_DISTANCE 0)
         endif()
-        math(EXPR FW_IMAGE_PACKED "(((${CMAKE_MATCH_1} & 0x0F) << 12) | ((${CMAKE_MATCH_2} & 0xFF) << 4) | (${CMAKE_MATCH_3} & 0x0F)) + ${FW_GIT_DISTANCE}")
-        math(EXPR FW_IMAGE_MAJOR "(${FW_IMAGE_PACKED} >> 12) & 0x0F")
-        math(EXPR FW_IMAGE_MINOR "(${FW_IMAGE_PACKED} >> 4) & 0xFF")
-        math(EXPR FW_IMAGE_PATCH "${FW_IMAGE_PACKED} & 0x0F")
+        # Distance rides in PATCH; MAJOR/MINOR stay at the tag values.
+        math(EXPR FW_IMAGE_PATCH "${CMAKE_MATCH_3} + ${FW_GIT_DISTANCE}")
     endif()
 endif()
 
-if(FW_IMAGE_MAJOR GREATER 15 OR FW_IMAGE_MINOR GREATER 255 OR FW_IMAGE_PATCH GREATER 15)
+if(FW_IMAGE_MAJOR GREATER 255 OR FW_IMAGE_MINOR GREATER 255 OR FW_IMAGE_PATCH GREATER 65535)
     message(FATAL_ERROR
         "Firmware version ${FW_IMAGE_MAJOR}.${FW_IMAGE_MINOR}.${FW_IMAGE_PATCH} "
-        "does not fit the picobin packing (major 0-15, minor 0-255, patch 0-15)")
+        "does not fit the picobin packing (major/minor 0-255, patch 0-65535)")
 endif()
 
 set(FW_VERSION_STRING "${FW_IMAGE_MAJOR}.${FW_IMAGE_MINOR}.${FW_IMAGE_PATCH}-${GIT_COMMIT}")
@@ -91,11 +94,12 @@ if(DEFINED ENV{DIST_SUFFIX} AND NOT "$ENV{DIST_SUFFIX}" STREQUAL "")
     set(FW_VERSION_STRING "$ENV{DIST_SUFFIX}")
 endif()
 
-math(EXPR VERSION_PACKED "(${FW_IMAGE_MAJOR} & 0x0F) << 12 | (${FW_IMAGE_MINOR} & 0xFF) << 4 | (${FW_IMAGE_PATCH} & 0x0F)")
-# MINOR is the boot counter: stays 0 (post-build bumps brick on B3).
-pico_set_binary_version(${PROJECT_NAME} MAJOR ${VERSION_PACKED} MINOR 0)
-pico_set_program_version(${PROJECT_NAME} "${FW_IMAGE_MAJOR}.${FW_IMAGE_MINOR}")
+# Version word (MAJOR<<8|MINOR) in the major slot, PATCH in the minor slot.
+math(EXPR FW_IMAGE_VERSION_WORD "((${FW_IMAGE_MAJOR} & 0xFF) << 8) | (${FW_IMAGE_MINOR} & 0xFF)")
+pico_set_binary_version(${PROJECT_NAME} MAJOR ${FW_IMAGE_VERSION_WORD} MINOR ${FW_IMAGE_PATCH})
+pico_set_program_version(${PROJECT_NAME} "${FW_IMAGE_MAJOR}.${FW_IMAGE_MINOR}.${FW_IMAGE_PATCH}")
 
+math(EXPR VERSION_PACKED "(${FW_IMAGE_MAJOR} << 24) | (${FW_IMAGE_MINOR} << 16) | ${FW_IMAGE_PATCH}")
 math(EXPR VERSION_PACKED_HEX "${VERSION_PACKED}" OUTPUT_FORMAT HEXADECIMAL)
 message(STATUS "Firmware version: ${FW_VERSION_STRING} (packed ${VERSION_PACKED_HEX})")
 
