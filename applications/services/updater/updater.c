@@ -16,14 +16,6 @@
 
 #define UPDATER_CUSTOM_EVENT_ERROR (1 << 0)
 
-typedef union {
-    struct {
-        uint16_t version;
-        uint16_t counter;
-    };
-    uint16_t raw[2];
-} ImageVersion;
-
 typedef struct {
     uint16_t crc;
     uint16_t blocks;
@@ -52,8 +44,6 @@ struct Updater {
     uint16_t current_block;
 
     FlashPartitionId active_partition;
-    ImageVersion current_version;
-    uint16_t last_written_version;
 
     size_t inactive_partition_address;
     size_t inactive_partition_size;
@@ -191,29 +181,8 @@ static void updater_state_change(Updater* updater, UpdaterState new_state, Updat
 }
 
 static void updater_finalize_update(Updater* updater) {
-    ImageVersion new_version;
-    bool success = furi_hal_flash_get_image_version(updater->first_sector_buf, new_version.raw);
-    if(!success) {
-        FURI_LOG_E(TAG, "Update image missing version information");
-        updater_state_change(updater, UpdaterStateError, UpdaterErrorFwVersionError);
-        return;
-    }
-
-    bool do_downgrade = false;
-
-    if(new_version.version < updater->current_version.version) {
-        do_downgrade = true;
-    }
-
-    // No VERSION bump: the bootrom rejects images modified after the build
-    // (silicon B3), and the flash-update boot ignores the version.
-
-    FURI_LOG_I(
-        TAG,
-        "ver: %04X->%04X, downgrade: %s",
-        updater->current_version.version,
-        new_version.version,
-        do_downgrade ? "YES" : "no");
+    // No version check: the flash-update boot ignores the version, and
+    // silicon B3 rejects images modified after the build.
 
     // Program page by page to keep IRQ-masked windows short
     for(size_t offset = 0; offset < FLASH_SECTOR_SIZE; offset += FLASH_PAGE_SIZE) {
@@ -236,7 +205,6 @@ static void updater_finalize_update(Updater* updater) {
     power_set_host_reset_response(updater->power, PowerHostResetResponseResetMcu);
     FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
 
-    updater->last_written_version = new_version.version;
     updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
     FURI_LOG_I(TAG, "Done");
 }
@@ -469,37 +437,12 @@ int32_t updater_srv(void* p) {
         FURI_LOG_E(TAG, "Inactive partition unavailable, updates disabled");
     }
 
-    // Old images have no VERSION item; default to version 0
-    size_t active_part_base = 0;
-    bool active_partition_ok =
-        furi_hal_flash_get_partition_info(instance->active_partition, &active_part_base, NULL);
-    if(active_partition_ok &&
-       furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(active_part_base), instance->current_version.raw)) {
-        FURI_LOG_I(
-            TAG,
-            "Current FW slot: %c, version: %04X, counter: %u",
-            instance->active_partition == FlashPartitionIdFwA ? 'A' : 'B',
-            instance->current_version.version,
-            instance->current_version.counter);
-    } else {
-        FURI_LOG_W(TAG, "Active image has no version information, assuming version 0");
-        instance->current_version.version = 0;
-        instance->current_version.counter = 0;
-    }
-    instance->last_written_version = 0;
-
-    // The negotiator reads current_version right after opening the record
     instance->power = furi_record_open(RECORD_POWER);
     furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);
 
     return 0;
-}
-
-uint16_t updater_get_current_fw_version(Updater* updater) {
-    furi_check(updater);
-    return updater->current_version.version;
 }
 
 uint16_t updater_get_boot_status(Updater* updater) {
@@ -513,11 +456,6 @@ uint16_t updater_get_boot_status(Updater* updater) {
     }
     uint8_t boot_type = rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE ? 1 : 0;
     return (uint16_t)((boot_type << 8) | partition);
-}
-
-uint16_t updater_get_last_written_fw_version(Updater* updater) {
-    furi_check(updater);
-    return updater->last_written_version;
 }
 
 void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback, void* context) {

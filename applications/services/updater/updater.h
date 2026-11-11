@@ -73,19 +73,8 @@ typedef struct Updater Updater;
  */
 uint16_t updater_crc16(const uint8_t* buf, size_t len, uint16_t crc_init);
 
-/**
- * @brief Get the currently installed firmware version.
- *
- * @param updater Updater instance.
- * @return Firmware version.
- */
-uint16_t updater_get_current_fw_version(Updater* updater);
-
 /** Boot status of the running image: low byte partition ('A'/'B', 0 unknown), high byte boot type (0 normal, 1 flash-update). */
 uint16_t updater_get_boot_status(Updater* updater);
-
-/** Version of the last accepted update, 0 until the first one. */
-uint16_t updater_get_last_written_fw_version(Updater* updater);
 
 /**
  * @brief Set the state change callback.

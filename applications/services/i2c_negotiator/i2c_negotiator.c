@@ -284,7 +284,6 @@ static void i2c_updater_state_callback(UpdaterState state, UpdaterError error, v
     I2CNegotiator* instance = context;
     with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, (error << 8) | state, 0xFFFF); });
     if(state == UpdaterStateDone) {
-        with_i2c_register({ i2c_register_update(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, updater_get_last_written_fw_version(instance->updater), 0xFFFF); });
         // The updater arms the host-shutdown reset itself: mirror it so the host can read it
         PowerHostResetResponse response = PowerHostResetResponseDisabled;
         if(power_get_host_reset_response(instance->power, &response)) {
@@ -364,9 +363,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
         // Updater
         i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
-        i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, updater_get_current_fw_version(instance->updater));
         i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_get_boot_status(instance->updater));
-        i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
         i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, instance->updater);
         i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, instance->updater);
         i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, instance->updater);
