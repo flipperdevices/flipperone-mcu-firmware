@@ -31,6 +31,33 @@ static uint8_t* find_picobin_block(const uint8_t* start, size_t size) {
     return NULL;
 }
 
+static uint8_t* find_picobin_item(const uint8_t* picobin_ptr, size_t picobin_size, uint8_t wanted_item_type, size_t* out_item_size) {
+    size_t offset = 4;
+    while(offset < picobin_size) {
+        if(*(uint32_t*)&picobin_ptr[offset] == PICOBIN_BLOCK_MARKER_END) break;
+
+        uint8_t item_type = picobin_ptr[offset];
+        size_t item_size = 0;
+        if((item_type & 0x80) == 0) {
+            item_size = picobin_ptr[offset + 1];
+        } else {
+            item_size = *(uint16_t*)&picobin_ptr[offset + 1];
+        }
+
+        if(item_size == 0) break;
+
+        if(item_type == wanted_item_type) {
+            if(out_item_size) *out_item_size = item_size;
+            return (uint8_t*)&picobin_ptr[offset];
+        }
+
+        if(item_type == PICOBIN_BLOCK_ITEM_2BS_LAST) break;
+        offset += item_size * 4;
+    }
+
+    return NULL;
+}
+
 bool furi_hal_flash_get_partition_info(FlashPartitionId partition_id, size_t* base, size_t* size) {
     // See datasheet 5.4.8.16; 5.9.4.2 for more details
     uint32_t buffer[(3 * 4) + 1] = {0}; // maximum of 3 partitions, each with maximum of 4 words returned, plus 1 for header
@@ -109,6 +136,28 @@ bool furi_hal_flash_fw_partition_invalidate(FlashPartitionId partition_id) {
     }
 
     return true;
+}
+
+bool furi_hal_flash_get_image_version(const uint8_t* start, FuriHalFwVersion* version) {
+    furi_check(start);
+    furi_check(version);
+    uint8_t* picobin_ptr = find_picobin_block(start, 4096 - PICOBIN_MAX_BLOCK_SIZE);
+    if(!picobin_ptr) return false;
+
+    size_t version_size = 2;
+    uint8_t* version_item_ptr =
+        find_picobin_item(picobin_ptr, PICOBIN_MAX_BLOCK_SIZE, PICOBIN_BLOCK_ITEM_1BS_VERSION, &version_size);
+
+    if(version_item_ptr && version_size == 2) {
+        // Major slot: MAJOR<<8|MINOR, minor slot: PATCH
+        uint16_t version_word = *(uint16_t*)&version_item_ptr[6];
+        version->major = version_word >> 8;
+        version->minor = version_word & 0xFF;
+        version->patch = *(uint16_t*)&version_item_ptr[4];
+        return true;
+    }
+
+    return false;
 }
 
 
