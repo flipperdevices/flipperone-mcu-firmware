@@ -44,6 +44,20 @@ bool furi_hal_flash_fw_partition_is_valid(FlashPartitionId partition_id);
  */
 bool furi_hal_flash_fw_partition_invalidate(FlashPartitionId partition_id);
 
+typedef struct {
+    uint8_t major;
+    uint8_t minor;
+    uint16_t patch;
+} FuriHalFwVersion;
+
+/** Get version from IMAGE_DEF of firmware image
+ *
+ * @param[in]  start    pointer to the first firmware sector
+ * @param[out] version  parsed firmware version
+ * @return     true if version was found, false if IMAGE_DEF was not found or invalid
+ */
+bool furi_hal_flash_get_image_version(const uint8_t* start, FuriHalFwVersion* version);
+
 /** Get flash base address
  *
  * @return     pointer to flash base
