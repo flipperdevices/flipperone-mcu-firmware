@@ -205,10 +205,8 @@ static void updater_finalize_update(Updater* updater) {
         do_downgrade = true;
     }
 
-    // Leave the picobin VERSION item untouched: the bootrom rejects images
-    // modified after the build (a counter bump makes the partition unbootable
-    // on silicon B3). The flash-update boot ignores the version and erases
-    // the other partition, so no counter is needed.
+    // No VERSION bump: the bootrom rejects images modified after the build
+    // (silicon B3), and the flash-update boot ignores the version.
 
     FURI_LOG_I(
         TAG,
@@ -229,12 +227,11 @@ static void updater_finalize_update(Updater* updater) {
         furi_thread_yield();
     }
 
-    // Invalidation happens on the flash-update boot: the bootrom erases the
-    // other partition once this image launches. Erasing anything here would
-    // leave the bootrom nothing to boot.
+    // The bootrom handles invalidation on the flash-update boot; erasing here
+    // would leave it nothing to boot.
 
-    // Arm before announcing DONE: the negotiator mirrors the armed state
-    // into the reset-mode register on the DONE callback.
+    // Arm before DONE: the negotiator mirrors the armed state into the
+    // reset-mode register on the DONE callback.
     power_set_update_base(updater->power, updater->inactive_partition_address);
     power_set_host_reset_response(updater->power, PowerHostResetResponseResetMcu);
     FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
@@ -435,18 +432,22 @@ static void updater_message_callback(FuriEventLoopObject* object, void* context)
     updater_handle_message(instance, &msg);
 }
 
+// A TBYB flash-update boot must buy before the bootrom's ~16.7s watchdog.
+static void updater_commit_flash_update_boot(void) {
+    static uint32_t explicit_buy_scratch[1024];
+    if(rom_get_last_boot_type() != BOOT_TYPE_FLASH_UPDATE) return;
+
+    FURI_LOG_I(TAG, "Flash-update boot: committing new image");
+    int rc = rom_explicit_buy((uint8_t*)explicit_buy_scratch, sizeof(explicit_buy_scratch));
+    if(rc != 0) {
+        FURI_LOG_E(TAG, "rom_explicit_buy failed: %d", rc);
+    }
+}
+
 int32_t updater_srv(void* p) {
     UNUSED(p);
 
-    // Commit a TBYB flash-update boot: the bootrom watchdog is ~16.7 s.
-    static uint32_t explicit_buy_scratch[1024];
-    if(rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) {
-        FURI_LOG_I(TAG, "Flash-update boot detected, committing new image");
-        int rc = rom_explicit_buy((uint8_t*)explicit_buy_scratch, sizeof(explicit_buy_scratch));
-        if(rc != 0) {
-            FURI_LOG_E(TAG, "rom_explicit_buy failed: %d", rc);
-        }
-    }
+    updater_commit_flash_update_boot();
 
     Updater* instance = malloc(sizeof(Updater));
     instance->event_loop = furi_event_loop_alloc();

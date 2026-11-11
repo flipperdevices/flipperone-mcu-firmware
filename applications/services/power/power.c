@@ -359,8 +359,7 @@ static void power_send_message(Power* instance, const PowerMessage* message) {
     }
 }
 
-// Host reset response: armed flag controlling the MCU's reaction to the host
-// (Linux) going down. Evaluated on every CPU state change pushed by cpu_mode.
+// Armed MCU response to the host going down, driven by cpu_mode states.
 
 static bool power_host_reset_response_set_internal(Power* instance, PowerHostResetResponse response) {
     if(response >= PowerHostResetResponseCount) {
@@ -402,8 +401,7 @@ static bool power_host_reset_state_changed_internal(Power* instance, CpuState cp
     if(instance->host_reset_response == PowerHostResetResponseDisabled) return true;
 
     if(cpu_state == CpuStateShuttingDown || cpu_state == CpuStatePoweredOff) {
-        // Host is going down: (re)start the reset timer; the delay runs from
-        // the last shutdown state seen.
+        // Host going down: (re)start the reset timer.
         uint32_t delay_ms = (uint32_t)instance->host_reset_delay_100ms * 100;
         FURI_LOG_I(TAG, "Host going down (state %d), arming reset timer in %lu ms", cpu_state, (unsigned long)delay_ms);
         furi_event_loop_timer_start(instance->host_reset_timer, delay_ms);
@@ -451,11 +449,9 @@ static void power_host_reset_timer_callback(void* context) {
     }
 }
 
-/* A flash-update boot means the bootrom just switched partitions while the
- * host was mid-reboot: cycle host power with the CPU app's sequence (PD and
- * charger reset, main expander reset, then host rails on) so it comes back.
- * The bootrom record dies with the power cycle, so this runs once. */
- static void power_update_reboot_timer_callback(void* context) {
+/* A flash-update boot strands the host mid-reboot: cycle its rails (PD +
+ * charger + expander) so it comes back; the bootrom record dies with it. */
+static void power_update_reboot_timer_callback(void* context) {
     furi_assert(context);
     Power* instance = context;
 

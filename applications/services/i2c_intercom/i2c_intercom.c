@@ -93,16 +93,14 @@ void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* hand
         i2c_intercom_receive(handle, instance);
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
-        // A missed STOP may have ended the transaction while idle: the next
-        // register access starts at the default address.
+        // Missed STOP can end the transaction while idle: reset the address.
         if(!instance->in_transaction) {
             instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
         }
         break;
     case FuriHalI2cBusSlaveEventStop:
         if(instance->in_transaction) {
-            // Drain the RX FIFO: bytes may have arrived while interrupts
-            // were masked (flash ops collapse the data markers).
+            // Drain late bytes: flash ops mask interrupts and collapse markers.
             i2c_intercom_receive(handle, instance);
             instance->in_transaction = false;
         }
