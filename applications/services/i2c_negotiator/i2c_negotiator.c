@@ -295,6 +295,60 @@ static void i2c_updater_state_callback(UpdaterState state, UpdaterError error, v
     }
 }
 
+static void i2c_negotiator_setup_touchpad(I2CNegotiator* instance) {
+    UNUSED(instance);
+    i2c_register_add_readable(I2C_TOUCHPAD_X_REG_ADDRESS, 0);
+    i2c_register_add_readable(I2C_TOUCHPAD_Y_REG_ADDRESS, 0);
+    i2c_register_add_readable(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0);
+}
+
+static void i2c_negotiator_setup_leds(I2CNegotiator* instance) {
+    i2c_register_add_writable(I2C_LED_LINK1_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link1_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_LED_LINK2_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link2_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_LED_LINK3_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link3_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_LED_LINK4_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link4_message, instance->negotiator_queue);
+
+    i2c_register_add_writable(I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS, 0, i2c_negotiator_link_led_brightness_set_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS, 0, i2c_negotiator_power_led_brightness_set_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS, 0, i2c_negotiator_wattmeter_led_brightness_set_message, instance->negotiator_queue);
+
+    furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupLink), i2c_negotiator_link_led_brightness_callback, NULL);
+    furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupPower), i2c_negotiator_power_led_brightness_callback, NULL);
+    furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupWattmeter), i2c_negotiator_wattmeter_led_brightness_callback, NULL);
+}
+
+static void i2c_negotiator_setup_backlight(I2CNegotiator* instance) {
+    i2c_register_add_writable(I2C_BACKLIGHT_LEVEL, 0, i2c_negotiator_backlight_led_brightness_set_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_BACKLIGHT_TIMEOUT, 0, i2c_negotiator_backlight_time_set_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_BACKLIGHT_CONTROL, 0, i2c_negotiator_backlight_control_set_message, instance->negotiator_queue);
+    furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupDisplayBacklight), i2c_negotiator_backlight_led_brightness_callback, NULL);
+    furi_state_subscribe(led_get_backlight_time_state(instance->led), i2c_negotiator_backlight_timeout_callback, NULL);
+}
+
+static void i2c_negotiator_setup_system_reset(I2CNegotiator* instance) {
+    i2c_register_add_writable(I2C_SYSTEM_RESET_REG_ADDRESS, 0, i2c_negotiator_system_reset_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, PowerHostResetResponseDisabled, i2c_negotiator_reset_mode_set_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_SYSTEM_RESET_DELAY_REG_ADDRESS, 0, i2c_negotiator_reset_delay_set_message, instance->negotiator_queue);
+}
+
+static void i2c_negotiator_setup_updater(I2CNegotiator* instance) {
+    i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
+    FuriHalFwVersion fw_version = updater_get_current_fw_version(instance->updater);
+    i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, ((uint16_t)fw_version.major << 8) | fw_version.minor);
+    i2c_register_add_readable(I2C_UPDATER_FW_PATCH_REG_ADDRESS, fw_version.patch);
+    i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_get_boot_status(instance->updater));
+    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
+    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, 0);
+    i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, instance->updater);
+    i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, instance->updater);
+    i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, instance->updater);
+    static_assert(
+        I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
+        "I2C updater data window must match the updater block layout");
+    i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, instance->updater);
+    updater_set_state_callback(instance->updater, i2c_updater_state_callback, instance);
+}
+
 I2CNegotiator* i2c_negotiator_alloc() {
     I2CNegotiator* instance = malloc(sizeof(I2CNegotiator));
     instance->gui = furi_record_open(RECORD_GUI);
@@ -323,10 +377,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
         // Buttons state
         i2c_register_add_readable(I2C_BUTTONS_STATE_REG_ADDRESS, 0);
 
-        // Touchpad state
-        i2c_register_add_readable(I2C_TOUCHPAD_X_REG_ADDRESS, 0);
-        i2c_register_add_readable(I2C_TOUCHPAD_Y_REG_ADDRESS, 0);
-        i2c_register_add_readable(I2C_TOUCHPAD_PRESS_REG_ADDRESS, 0);
+        i2c_negotiator_setup_touchpad(instance);
 
         // SW buttons state
         i2c_register_add_readable(I2C_SW_BUTTONS_STATE_REG_ADDRESS, 0);
@@ -335,51 +386,16 @@ I2CNegotiator* i2c_negotiator_alloc() {
         i2c_register_add_readable(I2C_HEADPHONES_STATE_REG_ADDRESS, 0);
         furi_pubsub_subscribe(furi_record_open(RECORD_HEADPHONES), i2c_negotiator_headphones_event_glue, NULL);
 
-        // LEDs
-        i2c_register_add_writable(I2C_LED_LINK1_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link1_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_LED_LINK2_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link2_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_LED_LINK3_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link3_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_LED_LINK4_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link4_message, instance->negotiator_queue);
+        i2c_negotiator_setup_leds(instance);
 
-        i2c_register_add_writable(I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS, 0, i2c_negotiator_link_led_brightness_set_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS, 0, i2c_negotiator_power_led_brightness_set_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_LED_BRIGHTNESS_WATTMETER_REG_ADDRESS, 0, i2c_negotiator_wattmeter_led_brightness_set_message, instance->negotiator_queue);
-
-        furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupLink), i2c_negotiator_link_led_brightness_callback, NULL);
-        furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupPower), i2c_negotiator_power_led_brightness_callback, NULL);
-        furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupWattmeter), i2c_negotiator_wattmeter_led_brightness_callback, NULL);
-
-        // Backlight
-        i2c_register_add_writable(I2C_BACKLIGHT_LEVEL, 0, i2c_negotiator_backlight_led_brightness_set_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_BACKLIGHT_TIMEOUT, 0, i2c_negotiator_backlight_time_set_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_BACKLIGHT_CONTROL, 0, i2c_negotiator_backlight_control_set_message, instance->negotiator_queue);
-        furi_state_subscribe(led_get_brightness_state(instance->led, LedGroupDisplayBacklight), i2c_negotiator_backlight_led_brightness_callback, NULL);
-        furi_state_subscribe(led_get_backlight_time_state(instance->led), i2c_negotiator_backlight_timeout_callback, NULL);
+        i2c_negotiator_setup_backlight(instance);
 
         // Haptic
         i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
 
-        // System reset
-        i2c_register_add_writable(I2C_SYSTEM_RESET_REG_ADDRESS, 0, i2c_negotiator_system_reset_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, PowerHostResetResponseDisabled, i2c_negotiator_reset_mode_set_message, instance->negotiator_queue);
-        i2c_register_add_writable(I2C_SYSTEM_RESET_DELAY_REG_ADDRESS, 0, i2c_negotiator_reset_delay_set_message, instance->negotiator_queue);
+        i2c_negotiator_setup_system_reset(instance);
 
-        // Updater
-        i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
-        FuriHalFwVersion fw_version = updater_get_current_fw_version(instance->updater);
-        i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, ((uint16_t)fw_version.major << 8) | fw_version.minor);
-        i2c_register_add_readable(I2C_UPDATER_FW_PATCH_REG_ADDRESS, fw_version.patch);
-        i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_get_boot_status(instance->updater));
-        i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
-        i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, 0);
-        i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, instance->updater);
-        i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, instance->updater);
-        i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, instance->updater);
-        static_assert(
-            I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
-            "I2C updater data window must match the updater block layout");
-        i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, instance->updater);
-        updater_set_state_callback(instance->updater, i2c_updater_state_callback, instance);
+        i2c_negotiator_setup_updater(instance);
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);
