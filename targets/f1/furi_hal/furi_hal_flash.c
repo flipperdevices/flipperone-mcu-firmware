@@ -138,41 +138,28 @@ bool furi_hal_flash_fw_partition_invalidate(FlashPartitionId partition_id) {
     return true;
 }
 
-bool furi_hal_flash_get_image_version(const uint8_t* start, uint16_t* version) {
+bool furi_hal_flash_get_image_version(const uint8_t* start, FuriHalFwVersion* version) {
     furi_check(start);
     furi_check(version);
     uint8_t* picobin_ptr = find_picobin_block(start, 4096 - PICOBIN_MAX_BLOCK_SIZE);
     if(!picobin_ptr) return false;
 
     size_t version_size = 2;
-    uint8_t* version_item_ptr = find_picobin_item(picobin_ptr, PICOBIN_MAX_BLOCK_SIZE, PICOBIN_BLOCK_ITEM_1BS_VERSION, &version_size);
+    uint8_t* version_item_ptr =
+        find_picobin_item(picobin_ptr, PICOBIN_MAX_BLOCK_SIZE, PICOBIN_BLOCK_ITEM_1BS_VERSION, &version_size);
 
     if(version_item_ptr && version_size == 2) {
-        version[1] = *(uint16_t*)&version_item_ptr[4];
-        version[0] = *(uint16_t*)&version_item_ptr[6];
+        // Major slot: MAJOR<<8|MINOR, minor slot: PATCH
+        uint16_t version_word = *(uint16_t*)&version_item_ptr[6];
+        version->major = version_word >> 8;
+        version->minor = version_word & 0xFF;
+        version->patch = *(uint16_t*)&version_item_ptr[4];
         return true;
     }
 
     return false;
 }
 
-bool furi_hal_flash_set_image_version(uint8_t* start, const uint16_t* version) {
-    furi_check(start);
-    furi_check(version);
-    uint8_t* picobin_ptr = find_picobin_block(start, 4096 - PICOBIN_MAX_BLOCK_SIZE);
-    if(!picobin_ptr) return false;
-
-    size_t version_size = 2;
-    uint8_t* version_item_ptr = find_picobin_item(picobin_ptr, PICOBIN_MAX_BLOCK_SIZE, PICOBIN_BLOCK_ITEM_1BS_VERSION, &version_size);
-
-    if(version_item_ptr && version_size == 2) {
-        *(uint16_t*)&version_item_ptr[4] = version[1];
-        *(uint16_t*)&version_item_ptr[6] = version[0];
-        return true;
-    }
-
-    return false;
-}
 
 void furi_hal_flash_erase_sector(size_t address) {
     FURI_CRITICAL_ENTER();

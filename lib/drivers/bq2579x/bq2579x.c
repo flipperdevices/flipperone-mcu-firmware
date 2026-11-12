@@ -257,7 +257,16 @@ Bq2579x* bq2579x_init(const FuriHalI2cBusHandle* i2c_handle, uint8_t address, co
             furi_crash("BQ2579X unknown device part number!");
         }
 
-        if(bq2579x_load_default_config(instance) != Bq2579xStatusOk) {
+        // The host drives this charger too: retry to ride out its transfers.
+        Bq2579xStatus cfg = Bq2579xStatusUnknown;
+        for(uint8_t attempt = 0; attempt < 3 && cfg != Bq2579xStatusOk; ++attempt) {
+            if(attempt) {
+                furi_delay_ms(50);
+            }
+            cfg = bq2579x_load_default_config(instance);
+        }
+
+        if(cfg != Bq2579xStatusOk) {
             furi_crash("BQ2579X failed to load default config");
         }
 

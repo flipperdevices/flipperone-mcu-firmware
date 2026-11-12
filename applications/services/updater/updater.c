@@ -1,6 +1,9 @@
 #include "updater.h"
 #include <furi_hal_flash.h>
 #include <hardware/flash.h>
+#include <pico/bootrom.h>
+#include <boot/bootrom_constants.h>
+#include <power/power.h>
 
 #define TAG "Updater"
 
@@ -12,14 +15,6 @@
 #define UPDATER_ISR_ERROR_OUT_OF_ORDER (1 << 1)
 
 #define UPDATER_CUSTOM_EVENT_ERROR (1 << 0)
-
-typedef union {
-    struct {
-        uint16_t version;
-        uint16_t counter;
-    };
-    uint16_t raw[2];
-} ImageVersion;
 
 typedef struct {
     uint16_t crc;
@@ -49,7 +44,8 @@ struct Updater {
     uint16_t current_block;
 
     FlashPartitionId active_partition;
-    ImageVersion current_version;
+    FuriHalFwVersion current_version;
+    FuriHalFwVersion last_written_version;
 
     size_t inactive_partition_address;
     size_t inactive_partition_size;
@@ -61,6 +57,8 @@ struct Updater {
 
     UpdaterStateCallback state_callback;
     void* state_callback_context;
+
+    Power* power;
 
     UpdaterI2cRx i2c_rx;
 };
@@ -140,10 +138,10 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     if(offset >= sizeof(updater->i2c_rx.raw)) return false;
 
     if(offset == 0) {
+        // New frame: announce it only once complete, so a truncated frame
+        // cannot wedge the updater in BUSY.
         memset(updater->i2c_rx.raw, 0, sizeof(updater->i2c_rx.raw));
         updater->i2c_rx.offset = 0;
-        const UpdaterMessage msg = {.type = UpdaterMessageWriteBlockStart};
-        updater_message_queue_put_from_isr(updater, &msg);
     }
 
     if(offset != updater->i2c_rx.offset) {
@@ -157,6 +155,11 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     updater->i2c_rx.raw[updater->i2c_rx.offset++] = value;
 
     if(updater->i2c_rx.offset == sizeof(updater->i2c_rx.raw)) {
+        const UpdaterMessage msg_start = {
+            .type = UpdaterMessageWriteBlockStart,
+        };
+        updater_message_queue_put_from_isr(updater, &msg_start);
+
         UpdaterMessage msg = {
             .type = UpdaterMessageWriteBlockDone,
             .block.block_idx = updater->i2c_rx.block_idx,
@@ -179,55 +182,60 @@ static void updater_state_change(Updater* updater, UpdaterState new_state, Updat
     }
 }
 
+static bool fw_version_less(const FuriHalFwVersion* a, const FuriHalFwVersion* b) {
+    if(a->major != b->major) return a->major < b->major;
+    if(a->minor != b->minor) return a->minor < b->minor;
+    return a->patch < b->patch;
+}
+
 static void updater_finalize_update(Updater* updater) {
-    ImageVersion new_version;
-    bool success = furi_hal_flash_get_image_version(updater->first_sector_buf, new_version.raw);
+    FuriHalFwVersion new_version;
+    bool success = furi_hal_flash_get_image_version(updater->first_sector_buf, &new_version);
     if(!success) {
         FURI_LOG_E(TAG, "Update image missing version information");
         updater_state_change(updater, UpdaterStateError, UpdaterErrorFwVersionError);
         return;
     }
 
-    bool do_downgrade = false;
+    // Log-only: invalidation happens in the bootrom's explicit buy.
+    bool do_downgrade = fw_version_less(&new_version, &updater->current_version);
 
-    if(new_version.version < updater->current_version.version) {
-        do_downgrade = true;
-        new_version.counter = 0;
-    } else if(new_version.version > updater->current_version.version) {
-        new_version.counter = 0;
-    } else if(new_version.version == updater->current_version.version) {
-        if(updater->current_version.counter == 0xFFFF) {
-            new_version.counter = 0;
-            do_downgrade = true;
-        } else {
-            new_version.counter = updater->current_version.counter + 1;
-        }
-    }
+    // No VERSION bump: the bootrom rejects images modified after the build
+    // (silicon B3), and the flash-update boot ignores the version.
 
     FURI_LOG_I(
         TAG,
-        "ver: %04X->%04X, cnt: %u->%u, downgrade: %s",
-        updater->current_version.version,
-        new_version.version,
-        updater->current_version.counter,
-        new_version.counter,
+        "ver: %u.%u.%u -> %u.%u.%u, downgrade: %s",
+        updater->current_version.major,
+        updater->current_version.minor,
+        updater->current_version.patch,
+        new_version.major,
+        new_version.minor,
+        new_version.patch,
         do_downgrade ? "YES" : "no");
 
-    furi_check(furi_hal_flash_set_image_version(updater->first_sector_buf, new_version.raw));
-
-    if(!furi_hal_flash_write(updater->inactive_partition_address, updater->first_sector_buf, FLASH_SECTOR_SIZE)) {
-        updater_state_change(updater, UpdaterStateError, UpdaterErrorFwWriteError);
-        return;
-    }
-
-    if(do_downgrade) {
-        if(!furi_hal_flash_fw_partition_invalidate(updater->active_partition)) {
-            FURI_LOG_E(TAG, "Failed to invalidate active partition");
-            updater_state_change(updater, UpdaterStateError, UpdaterErrorFwInvalidateError);
+    // Program page by page to keep IRQ-masked windows short
+    for(size_t offset = 0; offset < FLASH_SECTOR_SIZE; offset += FLASH_PAGE_SIZE) {
+        if(!furi_hal_flash_write(
+               updater->inactive_partition_address + offset,
+               updater->first_sector_buf + offset,
+               FLASH_PAGE_SIZE)) {
+            updater_state_change(updater, UpdaterStateError, UpdaterErrorFwWriteError);
             return;
         }
+        furi_thread_yield();
     }
 
+    // The bootrom handles invalidation on the flash-update boot; erasing here
+    // would leave it nothing to boot.
+
+    // Arm before DONE: the negotiator mirrors the armed state into the
+    // reset-mode register on the DONE callback.
+    power_set_update_base(updater->power, updater->inactive_partition_address);
+    power_set_host_reset_response(updater->power, PowerHostResetResponseResetMcu);
+    FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
+
+    updater->last_written_version = new_version;
     updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
     FURI_LOG_I(TAG, "Done");
 }
@@ -328,7 +336,7 @@ static bool updater_erase_inactive_partition(Updater* updater) {
             }
         }
         furi_hal_flash_erase_sector(updater->inactive_partition_address + i * UPDATER_BLOCK_SIZE);
-        furi_delay_ms(1); // Yield between sectors
+        furi_thread_yield();
     }
     FURI_LOG_I(TAG, "Erase done");
     return true;
@@ -423,8 +431,22 @@ static void updater_message_callback(FuriEventLoopObject* object, void* context)
     updater_handle_message(instance, &msg);
 }
 
+// A TBYB flash-update boot must buy before the bootrom's ~16.7s watchdog.
+static void updater_commit_flash_update_boot(void) {
+    static uint32_t explicit_buy_scratch[1024];
+    if(rom_get_last_boot_type() != BOOT_TYPE_FLASH_UPDATE) return;
+
+    FURI_LOG_I(TAG, "Flash-update boot: committing new image");
+    int rc = rom_explicit_buy((uint8_t*)explicit_buy_scratch, sizeof(explicit_buy_scratch));
+    if(rc != 0) {
+        FURI_LOG_E(TAG, "rom_explicit_buy failed: %d", rc);
+    }
+}
+
 int32_t updater_srv(void* p) {
     UNUSED(p);
+
+    updater_commit_flash_update_boot();
 
     Updater* instance = malloc(sizeof(Updater));
     instance->event_loop = furi_event_loop_alloc();
@@ -451,20 +473,20 @@ int32_t updater_srv(void* p) {
     bool active_partition_ok =
         furi_hal_flash_get_partition_info(instance->active_partition, &active_part_base, NULL);
     if(active_partition_ok &&
-       furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(active_part_base), instance->current_version.raw)) {
+       furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(active_part_base), &instance->current_version)) {
         FURI_LOG_I(
             TAG,
-            "Current FW slot: %c, version: %04X, counter: %u",
+            "Current FW slot: %c, version: %u.%u.%u",
             instance->active_partition == FlashPartitionIdFwA ? 'A' : 'B',
-            instance->current_version.version,
-            instance->current_version.counter);
+            instance->current_version.major,
+            instance->current_version.minor,
+            instance->current_version.patch);
     } else {
         FURI_LOG_W(TAG, "Active image has no version information, assuming version 0");
-        instance->current_version.version = 0;
-        instance->current_version.counter = 0;
+        instance->current_version = (FuriHalFwVersion){0};
     }
 
-    // The negotiator reads current_version right after opening the record
+    instance->power = furi_record_open(RECORD_POWER);
     furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);
@@ -472,9 +494,27 @@ int32_t updater_srv(void* p) {
     return 0;
 }
 
-uint16_t updater_get_current_fw_version(Updater* updater) {
+FuriHalFwVersion updater_get_current_fw_version(Updater* updater) {
     furi_check(updater);
-    return updater->current_version.version;
+    return updater->current_version;
+}
+
+FuriHalFwVersion updater_get_last_written_fw_version(Updater* updater) {
+    furi_check(updater);
+    return updater->last_written_version;
+}
+
+uint16_t updater_get_boot_status(Updater* updater) {
+    furi_check(updater);
+    // Low byte: active partition letter; high byte: boot type
+    uint8_t partition = 0;
+    if(updater->active_partition == FlashPartitionIdFwA) {
+        partition = 'A';
+    } else if(updater->active_partition == FlashPartitionIdFwB) {
+        partition = 'B';
+    }
+    uint8_t boot_type = rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE ? 1 : 0;
+    return (uint16_t)((boot_type << 8) | partition);
 }
 
 void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback, void* context) {

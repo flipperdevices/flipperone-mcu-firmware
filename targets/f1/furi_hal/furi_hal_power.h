@@ -13,6 +13,13 @@ extern "C" {
 
 void furi_hal_power_reset(void);
 
+/** Reboot into a freshly updated partition (flash-update boot).
+ *
+ * The bootrom boots the partition at @p partition_storage_offset regardless
+ * of its version; the TBYB-flagged image commits itself by buying.
+ */
+void furi_hal_power_reboot_to_partition(uint32_t partition_storage_offset);
+
 void furi_hal_power_enter_bootsel(void);
 
 /** Get current insomnia level

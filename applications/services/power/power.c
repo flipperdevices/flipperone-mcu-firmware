@@ -6,10 +6,16 @@
 #include <api_lock.h>
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_resources.h>
+#include <furi_hal_power.h>
 #include <drivers/ina219/ina219.h>
 #include <drivers/bq2579x/bq2579x.h>
 #include <drivers/bq28z620/bq28z620.h>
+#include <pd/pd.h>
+#include <pico/bootrom.h>
+#include <boot/bootrom_constants.h>
+#include <hardware/structs/powman.h>
 #include <furi_bsp.h>
+#include <furi_bsp_linux.h>
 
 #define TAG "Power"
 
@@ -18,6 +24,12 @@
 #define POWER_MAX_MESSAGES             (8)
 #define BQ2579X_OTG_WATCHDOG_TIME      Bq2579xWatchdogTime0_5s
 #define BQ2579X_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
+#define POWER_UPDATE_REBOOT_DELAY_MS (10000) // host power-cycle delay after a switch
+#define POWER_HOST_RESET_ATTEMPTS     (3) // charger power-reset tries before giving up
+// Delay before an immediate reset so the host's I2C write completes first.
+#define POWER_IMMEDIATE_RESET_DELAY_MS (100)
+// Host reset-request marker, rides POWMAN scratch across the SYSRESETREQ.
+#define POWER_HOST_RESET_REQUEST_MAGIC (0x48525354u)
 
 typedef enum {
     PowerEventTypeIsr = (1 << 0),
@@ -33,8 +45,15 @@ struct Power {
     FuriMessageQueue* message_queue;
     PowerDevice devices;
     FuriEventLoopTimer* otg_watchdog_timer;
+    FuriEventLoopTimer* host_reset_timer;
+    FuriEventLoopTimer* update_reboot_timer;
+    FuriEventLoopTimer* immediate_reset_timer;
     volatile bool otg_enabled;
     FuriCallbackWithContext otg_overcurrent;
+    PowerHostResetResponse host_reset_response;
+    uint16_t host_reset_delay_100ms;
+    size_t host_reset_update_base;
+    bool host_reset_request;
 };
 
 static Bq2579xStatus power_bq2579x_reset_and_load_config(Power* instance) {
@@ -341,6 +360,135 @@ static void power_send_message(Power* instance, const PowerMessage* message) {
     }
 }
 
+// Armed MCU response to the host going down, driven by cpu_mode states.
+
+static bool power_host_reset_response_set_internal(Power* instance, PowerHostResetResponse response) {
+    if(response >= PowerHostResetResponseCount) {
+        // Ignore garbage from the I2C link instead of arming a bogus response
+        FURI_LOG_E(TAG, "Invalid host reset response from I2C: %u", response);
+        return false;
+    }
+
+    instance->host_reset_response = response;
+    FURI_LOG_I(TAG, "Host reset response: %d", instance->host_reset_response);
+
+    if(response == PowerHostResetResponseResetMcuImmediately) {
+        // Delay past the host's I2C write so it sees the ack, then reset.
+        furi_event_loop_timer_start(instance->immediate_reset_timer, POWER_IMMEDIATE_RESET_DELAY_MS);
+    }
+
+    return true;
+}
+
+static bool power_host_reset_response_get_internal(Power* instance, PowerHostResetResponse* response) {
+    if(!response) return false;
+    *response = instance->host_reset_response;
+    return true;
+}
+
+static bool power_host_reset_delay_set_internal(Power* instance, uint16_t reset_delay_100ms) {
+    instance->host_reset_delay_100ms = reset_delay_100ms;
+    FURI_LOG_I(TAG, "Host reset delay: %u (100ms)", instance->host_reset_delay_100ms);
+    return true;
+}
+
+static bool power_update_base_set_internal(Power* instance, size_t update_base) {
+    instance->host_reset_update_base = update_base;
+    FURI_LOG_I(TAG, "Host reset update base: 0x%08lX", (unsigned long)update_base);
+    return true;
+}
+
+static bool power_host_reset_state_changed_internal(Power* instance, CpuState cpu_state) {
+    if(instance->host_reset_response == PowerHostResetResponseDisabled) return true;
+
+    if(cpu_state == CpuStateShuttingDown || cpu_state == CpuStatePoweredOff) {
+        // Host going down: (re)start the reset timer.
+        uint32_t delay_ms = (uint32_t)instance->host_reset_delay_100ms * 100;
+        FURI_LOG_I(TAG, "Host going down (state %d), arming reset timer in %lu ms", cpu_state, (unsigned long)delay_ms);
+        furi_event_loop_timer_start(instance->host_reset_timer, delay_ms);
+    } else if(
+        furi_event_loop_timer_is_running(instance->host_reset_timer) &&
+        (cpu_state == CpuStateUnknown || cpu_state == CpuStateBootloader ||
+         cpu_state == CpuStateKernelInit || cpu_state == CpuStateOnline)) {
+        // Host came back: cancel the pending reset
+        furi_event_loop_timer_stop(instance->host_reset_timer);
+    }
+
+    return true;
+}
+
+static void power_host_reset_timer_callback(void* context) {
+    furi_assert(context);
+    Power* instance = context;
+
+    switch(instance->host_reset_response) {
+    case PowerHostResetResponseResetMcu:
+        if(instance->host_reset_update_base != 0) {
+            FURI_LOG_I(TAG, "Host is down, booting updated partition at 0x%08lX", (unsigned long)instance->host_reset_update_base);
+            furi_hal_power_reboot_to_partition((uint32_t)instance->host_reset_update_base);
+        } else {
+            FURI_LOG_I(TAG, "Host is down, resetting MCU");
+            furi_hal_power_reset();
+        }
+        break;
+    case PowerHostResetResponseResetMcuAndPower:
+        FURI_LOG_I(TAG, "Host is down, resetting MCU and cycling host power");
+        {
+            Pd* pd = furi_record_open(RECORD_PD);
+            pd_reset_config(pd);
+            furi_record_close(RECORD_PD);
+        }
+        power_bq2579x_reset_and_load_config(instance);
+        for(uint32_t attempt = 0; attempt < POWER_HOST_RESET_ATTEMPTS; attempt++) {
+            if(attempt) {
+                furi_delay_ms(1000);
+            }
+            if(bq2579x_set_power_switch(instance->bq2579x_header, Bq2579xPowerReset) == Bq2579xStatusOk) {
+                break;
+            }
+        }
+        // Reset the MCU explicitly as well: the charger cycle only handles
+        // the host, and a failing charger must not leave the MCU half-switched.
+        furi_hal_power_reset();
+        break;
+    default:
+        FURI_LOG_E(TAG, "Host reset timer fired while disabled");
+        break;
+    }
+}
+
+/* A flash-update boot strands the host mid-reboot: cycle its rails (PD +
+ * charger + expander) so it comes back; the bootrom record dies with it. */
+static void power_update_reboot_timer_callback(void* context) {
+    furi_assert(context);
+    Power* instance = context;
+
+    FURI_LOG_I(TAG, "Flash-update boot: power-cycling the host");
+
+    Pd* pd = furi_record_open(RECORD_PD);
+    pd_reset_config(pd);
+    furi_record_close(RECORD_PD);
+
+    power_bq2579x_reset_and_load_config(instance);
+
+    furi_bsp_linux_reset();
+    furi_bsp_linux_start();
+}
+
+/* Immediate MCU reset requested by the host: the write has been acked by now. */
+static void power_immediate_reset_timer_callback(void* context) {
+    UNUSED(context);
+    FURI_LOG_I(TAG, "Immediate MCU reset requested by the host");
+    powman_hw->boot[0] = POWER_HOST_RESET_REQUEST_MAGIC;
+    furi_hal_power_reset();
+}
+
+API_WRAPPER_PARAM(power_host_reset_response_set_internal, bool, Power*, PowerHostResetResponse);
+API_WRAPPER_PARAM(power_host_reset_response_get_internal, bool, Power*, PowerHostResetResponse*);
+API_WRAPPER_PARAM(power_host_reset_delay_set_internal, bool, Power*, uint16_t);
+API_WRAPPER_PARAM(power_host_reset_state_changed_internal, bool, Power*, CpuState);
+API_WRAPPER_PARAM(power_update_base_set_internal, bool, Power*, size_t);
+
 static Power* power_alloc(void) {
     Power* instance = (Power*)malloc(sizeof(Power));
     instance->event_loop = furi_event_loop_alloc();
@@ -348,8 +496,26 @@ static Power* power_alloc(void) {
     instance->devices = 0;
     instance->otg_enabled = false;
     instance->otg_overcurrent = (FuriCallbackWithContext){0};
+    instance->host_reset_response = PowerHostResetResponseDisabled;
+    instance->host_reset_delay_100ms = 0;
+    instance->host_reset_update_base = 0;
+    instance->host_reset_request = (powman_hw->boot[0] == POWER_HOST_RESET_REQUEST_MAGIC);
+    powman_hw->boot[0] = 0;
     instance->otg_watchdog_timer =
         furi_event_loop_timer_alloc(instance->event_loop, power_bq2579x_otg_watchdog_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
+    instance->host_reset_timer =
+        furi_event_loop_timer_alloc(instance->event_loop, power_host_reset_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    instance->update_reboot_timer =
+        furi_event_loop_timer_alloc(instance->event_loop, power_update_reboot_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    instance->immediate_reset_timer =
+        furi_event_loop_timer_alloc(instance->event_loop, power_immediate_reset_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+
+    // After a partition switch the host is stranded mid-reboot: power-cycle it.
+    boot_info_t boot_info = {};
+    if(rom_get_boot_info(&boot_info) && boot_info.boot_type == BOOT_TYPE_FLASH_UPDATE) {
+        FURI_LOG_I(TAG, "Flash-update boot detected, cycling system power in %lu ms", (unsigned long)POWER_UPDATE_REBOOT_DELAY_MS);
+        furi_event_loop_timer_start(instance->update_reboot_timer, POWER_UPDATE_REBOOT_DELAY_MS);
+    }
 
     // init bq2579x
     instance->bq2579x_header = bq2579x_init(&furi_hal_i2c_handle_main, BQ2579X_ADDRESS, NULL);
@@ -841,4 +1007,45 @@ bool power_bq28z620_get_design_capacity(Power* instance, uint16_t* design_capaci
     Bq28z620Status result;
     POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_design_capacity, instance->bq28z620_header, design_capacity, result);
     return result == Bq28z620StatusOk;
+}
+
+// Host reset response API functions
+
+bool power_set_host_reset_response(Power* instance, PowerHostResetResponse response) {
+    furi_check(instance);
+    bool result;
+    POWER_API_CALL_PARAM(0, power_host_reset_response_set_internal, instance, response, result);
+    return result;
+}
+
+bool power_get_host_reset_response(Power* instance, PowerHostResetResponse* response) {
+    furi_check(instance);
+    bool result;
+    POWER_API_CALL_PARAM(0, power_host_reset_response_get_internal, instance, response, result);
+    return result;
+}
+
+bool power_get_host_reset_request(Power* instance) {
+    furi_check(instance);
+    return instance->host_reset_request;
+}
+
+bool power_set_host_reset_delay(Power* instance, uint16_t reset_delay_100ms) {
+    furi_check(instance);
+    bool result;
+    POWER_API_CALL_PARAM(0, power_host_reset_delay_set_internal, instance, reset_delay_100ms, result);
+    return result;
+}
+
+bool power_set_update_base(Power* instance, size_t update_base) {
+    furi_check(instance);
+    bool result;
+    POWER_API_CALL_PARAM(0, power_update_base_set_internal, instance, update_base, result);
+    return result;
+}
+
+void power_on_host_state_changed(Power* instance, CpuState cpu_state) {
+    furi_check(instance);
+    bool result;
+    POWER_API_CALL_PARAM(0, power_host_reset_state_changed_internal, instance, cpu_state, result);
 }

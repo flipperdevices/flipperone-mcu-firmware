@@ -49,8 +49,15 @@ typedef void (*FuriHalI2cBusSlaveCallback)(const FuriHalI2cBusHandle* handle, Fu
 /** FuriHal i2c bus slave write callback */
 typedef uint8_t (*FuriHalI2cBusSlaveWriteCallback)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
 
-/** FuriHal i2c bus slave read callback */
-typedef uint8_t (*FuriHalI2cBusSlaveReadCallback)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size);
+#define FURI_HAL_I2C_SLAVE_RX_FLAG_RESTART         (1 << 0)
+#define FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE (1 << 1)
+
+/** FuriHal i2c bus slave read callback; flags carry DW first-data-byte/restart markers */
+typedef uint8_t (*FuriHalI2cBusSlaveReadCallback)(
+    const FuriHalI2cBusHandle* handle,
+    uint8_t* data,
+    uint8_t* flags,
+    size_t size);
 
 //** FuriHal reset i2c bus slave callback */
 typedef void (*FuriHalI2cBusSlaveResetCallback)(const FuriHalI2cBusHandle* handle);

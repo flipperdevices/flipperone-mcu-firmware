@@ -99,7 +99,8 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     # TODO: When enabling multi-core, this needs to be disabled and the correct flash access mechanism implemented
     PICO_FLASH_ASSUME_CORE1_SAFE=1
     #PICO_USE_SW_SPIN_LOCKS=0
-    PICO_CRT0_IMAGE_TYPE_TBYB=0
+    # TBYB: a new image boots only via a flash-update boot and commits by buying.
+    PICO_CRT0_IMAGE_TYPE_TBYB=1
 )
 
 pico_add_linker_script_override_path(${PROJECT_NAME} "${CMAKE_CURRENT_LIST_DIR}/targets")
@@ -124,19 +125,11 @@ target_link_options(${PROJECT_NAME} PRIVATE
     "LINKER:--wrap=_realloc_r"
 )
 
-include(lib/corelibs/lib/version/CMakeLists.txt)
-
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
-pico_set_program_version(${PROJECT_NAME} "0.1")
 
-# Bump the version numbers on release. Packed into the picobin MAJOR word;
-# the picobin MINOR word is the updater's boot counter (always 0 at build).
-set(FW_IMAGE_MAJOR 0) # 0-15
-set(FW_IMAGE_MINOR 1) # 0-255
-set(FW_IMAGE_PATCH 0) # 0-15
-
-math(EXPR VERSION_PACKED "(${FW_IMAGE_MAJOR} & 0x0F) << 12 | (${FW_IMAGE_MINOR} & 0xFF) << 4 | (${FW_IMAGE_PATCH} & 0x0F)")
-pico_set_binary_version(${PROJECT_NAME} MAJOR ${VERSION_PACKED} MINOR 0)
+# Version: git tag on HEAD wins, FW_IMAGE_* is the dev fallback; attaches
+# version.c (submodule) with the compile definitions.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/fw_version.cmake")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(${PROJECT_NAME} 0)
