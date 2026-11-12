@@ -47,3 +47,19 @@ When reviewing a pull request:
 - Do not invent issues. If unsure, phrase as a question rather than a finding.
 - Be specific: quote or paraphrase the exact code rather than describing it vaguely.
 - Leave a top-level summary comment stating the overall verdict and any cross-cutting observations.
+
+## Review Environment
+
+- The review runtime has the full source tree with submodules populated. Read surrounding code, headers and sibling modules before commenting.
+- There is no compiler toolchain, no SDK, no build and no device attached. The build workflow compiles every target in its matrix; the on-device test job runs on self-hosted hardware and covers a single board; the memory report covers a single board. Which board each of them covers changes over time, so do not assert coverage from memory.
+- Never state that a change compiles, links, lints cleanly or passes tests. If that matters for the finding, say which CI check to look at instead.
+- Do not try to install toolchains, fetch the SDK or run builds. Report code-level findings only.
+
+## Repository References
+
+- `AGENTS.md` - architecture overview, module layout, build and test commands. Trust it over any path quoted elsewhere.
+- `TARGETS.md` - board descriptor API, inheritance, and the rules for that directory.
+- `CONTRIBUTING.md` - contribution process and the AI-assisted development policy.
+- `.clang-format` - formatting rules; do not restate them in a review.
+- `.github/instructions/*.instructions.md` - path-scoped rules that refine this file for a given area of the tree.
+

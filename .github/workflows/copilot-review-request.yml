@@ -1,0 +1,134 @@
+name: "Request Copilot code review"
+
+on:
+  pull_request_target:
+    types: [ready_for_review, review_requested]
+
+concurrency:
+  group: copilot-review-request-${{ github.event.pull_request.number }}
+  queue: max
+
+env:
+  SERVICE_ACCOUNT_LOGIN: furippa
+  COPILOT_REVIEWER: "copilot-pull-request-reviewer[bot]"
+  REMOVE_SERVICE_ACCOUNT_AFTER_DISPATCH: "true"
+
+jobs:
+  request_copilot_review:
+    runs-on: ubuntu-latest
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    permissions:
+      pull-requests: write
+    steps:
+      - name: "Request Copilot code review"
+        env:
+          GH_TOKEN: ${{ secrets.COPILOT_REVIEW_PAT }}
+          ACTIONS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_ACTION: ${{ github.event.action }}
+          PR_DRAFT: ${{ github.event.pull_request.draft }}
+          REQUESTED_REVIEWER: ${{ github.event.requested_reviewer.login }}
+        run: |
+          set -euo pipefail
+
+          # Unlist the service account (idempotent; also used from EXIT trap).
+          # Uses GITHUB_TOKEN: the service account's own token cannot unrequest itself.
+          cleanup_service_account() {
+            if [ "${REMOVE_SERVICE_ACCOUNT_AFTER_DISPATCH}" != "true" ] || [ "${service_account_requested}" != "true" ] || [ "${cleanup_done}" = "true" ]; then
+              return 0
+            fi
+            payload=$(jq -nc --arg reviewer "${SERVICE_ACCOUNT_LOGIN}" '{reviewers: [$reviewer]}')
+            if ! err=$(printf '%s' "${payload}" | GH_TOKEN="${ACTIONS_TOKEN}" gh api -X DELETE --input - "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/requested_reviewers" 2>&1); then
+              echo "::warning::Could not remove ${SERVICE_ACCOUNT_LOGIN} from requested reviewers"
+              printf '%s\n' "${err}"
+            else
+              echo "${SERVICE_ACCOUNT_LOGIN} removed from requested reviewers"
+              cleanup_done=true
+            fi
+          }
+
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "::warning::Secret COPILOT_REVIEW_PAT is not configured; skipping Copilot review request"
+            exit 0
+          fi
+
+          case "${PR_ACTION}" in
+            review_requested)
+              if [ "${REQUESTED_REVIEWER}" != "${SERVICE_ACCOUNT_LOGIN}" ]; then
+                echo "Review requested from '${REQUESTED_REVIEWER}', not the service account '${SERVICE_ACCOUNT_LOGIN}'; skipping"
+                exit 0
+              fi
+              echo "Review requested from ${SERVICE_ACCOUNT_LOGIN}; dispatching Copilot review (drafts honored for explicit requests)"
+              ;;
+            # Not triggered today; kept so adding 'opened' to the trigger list
+            # immediately behaves correctly (drafts wait for ready_for_review).
+            opened)
+              if [ "${PR_DRAFT}" = "true" ]; then
+                echo "PR opened as draft; skipping (will be reviewed when marked ready for review)"
+                exit 0
+              fi
+              echo "PR opened as ready for review; dispatching Copilot review"
+              ;;
+            ready_for_review)
+              echo "PR marked ready for review; dispatching Copilot review"
+              ;;
+            *)
+              echo "Ignoring pull_request action '${PR_ACTION}'"
+              exit 0
+              ;;
+          esac
+
+          # Guarantee cleanup on all exit paths (incl. failures) via EXIT trap.
+          service_account_requested=false
+          copilot_requested=false
+          cleanup_done=false
+          if [ "${PR_ACTION}" = "review_requested" ]; then
+            service_account_requested=true
+          fi
+          trap cleanup_service_account EXIT
+
+          # gh fails (non-zero) on HTTP errors, so a bad response cannot look like empty data.
+          requested=$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/requested_reviewers" | jq -r '.users[]?.login')
+          if [ -n "${requested}" ]; then
+            if printf '%s\n' "${requested}" | grep -qxF "${COPILOT_REVIEWER}"; then
+              copilot_requested=true
+            fi
+            if printf '%s\n' "${requested}" | grep -qxF "${SERVICE_ACCOUNT_LOGIN}"; then
+              service_account_requested=true
+            fi
+          fi
+
+          # Skip if Copilot is pending or already reviewed this head.
+          if [ "${copilot_requested}" = "true" ]; then
+            echo "Copilot review is already requested; skipping"
+            exit 0
+          fi
+
+          head_sha=$(gh api "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}" | jq -r '.head.sha')
+          # Normalize review pages (gh may merge arrays or emit one per page) to one object per line.
+          last_copilot_review_sha=$(
+            gh api --paginate "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/reviews" |
+              jq -c '.[]?' |
+              jq -s -r --arg login "${COPILOT_REVIEWER}" '[.[] | select(.user.login == $login and .commit_id != null)] | max_by(.submitted_at) | .commit_id // empty'
+          )
+          if [ -n "${last_copilot_review_sha}" ] && [ "${last_copilot_review_sha}" = "${head_sha}" ]; then
+            echo "Copilot already reviewed the current head ${head_sha}; skipping"
+            exit 0
+          fi
+
+          # Remove the service account first: GitHub blocks reviewer removal
+          # while a Copilot review is in flight.
+          cleanup_service_account
+
+          # Request the Copilot code review.
+          payload=$(jq -nc --arg reviewer "${COPILOT_REVIEWER}" '{reviewers: [$reviewer]}')
+          if err=$(printf '%s' "${payload}" | gh api -X POST --input - "/repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/requested_reviewers" 2>&1); then
+            echo "Copilot code review requested for PR #${PR_NUMBER}"
+          else
+            echo "::error::Failed to request Copilot review"
+            printf '%s\n' "${err}"
+            if printf '%s' "${err}" | grep -q "HTTP 403"; then
+              echo "::error::Make sure the COPILOT_REVIEW_PAT secret (owner: ${SERVICE_ACCOUNT_LOGIN}) is a fine-grained PAT with 'Pull requests: Read and write' on this repository, and that ${SERVICE_ACCOUNT_LOGIN} has access to Copilot code review."
+            fi
+            exit 1
+          fi
