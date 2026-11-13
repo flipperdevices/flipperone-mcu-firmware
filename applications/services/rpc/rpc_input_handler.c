@@ -29,6 +29,9 @@ static const InputKey proto_button_to_inputkey[] = {
 static const InputType proto_action_to_inputtype[] = {
     [Flipper_One_Input_ButtonAction_PRESS] = InputTypePress,
     [Flipper_One_Input_ButtonAction_RELEASE] = InputTypeRelease,
+    [Flipper_One_Input_ButtonAction_SHORT] = InputTypeShort,
+    [Flipper_One_Input_ButtonAction_LONG] = InputTypeLong,
+    [Flipper_One_Input_ButtonAction_REPEAT] = InputTypeRepeat,
 };
 
 void rpc_input_handler_callback(const Flipper_One_Rpc_RpcMessage* message, void* context) {

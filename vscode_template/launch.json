@@ -24,7 +24,9 @@
                 "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000"
             ],
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
+                "rp2350.dap.core0 configure -event gdb-detach { resume }",
+                "rp2350.dap.core1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -58,7 +60,9 @@
             ],
             "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
+                "rp2350.dap.core0 configure -event gdb-detach { resume }",
+                "rp2350.dap.core1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -100,7 +104,9 @@
                 "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000"
             ],
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
+                "rp2350.dap.core0 configure -event gdb-detach { resume }",
+                "rp2350.dap.core1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -135,7 +141,9 @@
             "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "rtos": "FreeRTOS",
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
+                "rp2350.dap.core0 configure -event gdb-detach { resume }",
+                "rp2350.dap.core1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
