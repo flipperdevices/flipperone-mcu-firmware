@@ -52,6 +52,10 @@ Both require a leased stand (`FO_LEASE` / `/run/fo/lease.json`), which exists on
 self-hosted `fone-lab` runners. Which board CI covers is defined in the workflows — do not
 assume every target has hardware coverage.
 
+## Agent Tools
+
+To see and control a Flipper One attached to this machine (screen, buttons, consoles, logs, Linux host, flashing over SWD), read [scripts/agent_tools/AGENT_TOOLS.md](scripts/agent_tools/AGENT_TOOLS.md).
+
 ## Rules that are easy to get wrong
 
 - `malloc`/`calloc`/`free`/`strdup` are remapped onto `pvPortMalloc`: allocation never
