@@ -61,6 +61,12 @@ void furi_hal_info_get(PropertyValueCallback out, char sep, void* context) {
         // Hardware UID
         format_bytes_hex(temp_str, furi_hal_version_uid(), furi_hal_version_uid_size());
         property_out_str(&property_context, "hardware", "uid", furi_string_get_cstr(temp_str));
+
+        // Device name, only present once it is programmed in OTP
+        const char* name = furi_hal_version_get_name_ptr();
+        if(name) {
+            property_out_str(&property_context, "hardware", "name", name);
+        }
     }
 
     furi_string_free(temp_str);

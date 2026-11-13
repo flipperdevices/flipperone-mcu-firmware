@@ -27,4 +27,5 @@ void furi_hal_init(void) {
     furi_hal_adc_init();
 
     furi_hal_otp_init();
+    furi_hal_version_init();
 }

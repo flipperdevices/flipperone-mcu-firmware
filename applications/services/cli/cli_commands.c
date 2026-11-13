@@ -26,7 +26,7 @@ static void cli_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "nvm", CliCommandFlagParallelSafe, cli_command_nvm, NULL);
     cli_registry_add_command(registry, "device_info", CliCommandFlagParallelSafe, cli_command_device_info, NULL);
     
-    if(!furi_hal_otp_usb_white_label_valid()) {
+    if(!furi_hal_otp_usb_white_label_valid() || !furi_hal_version_get_name_ptr()) {
         cli_registry_add_command(registry, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
     }
 
