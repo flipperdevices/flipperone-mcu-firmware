@@ -148,6 +148,7 @@ static FURI_ALWAYS_INLINE int iqs7211e_write_data(Iqs7211e* instance, Iqs7211eRe
         IQS7211E_DEBUG(TAG, "Wrote reg 0x%02X: data block", reg);
     }
 
+    free(data_buff);
     return ret;
 }
 
