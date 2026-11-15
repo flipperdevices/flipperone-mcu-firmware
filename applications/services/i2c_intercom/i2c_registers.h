@@ -1,5 +1,9 @@
 #pragma once
 
+#include <stdbool.h>
+#include <stdint.h>
+#include <drivers/i2c_slave/i2c_slave.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -10,6 +14,10 @@ extern "C" {
  * @param context Callback context passed at registration.
  * @param address Register address, always even.
  * @param value Register value after the high byte has been written.
+ *
+ * Called from a software interrupt below configMAX_SYSCALL_INTERRUPT_PRIORITY,
+ * never from the I2C ISR itself: the ISR-safe FreeRTOS API may be used.
+ * While flash is erased or programmed the call waits for the operation to end.
  */
 typedef void (*I2CRegisterCallback)(void* context, uint16_t address, uint16_t value);
 
@@ -52,8 +60,11 @@ void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t
  * @return true if the access was served; false makes the transfer report an
  *         invalid address (reads yield 0x00), same as for an unmapped register.
  *
- * @warning Called from the I2C slave ISR inside a critical section — must be
- *          short, non-blocking and must not allocate.
+ * @warning Called from the I2C slave ISR at I2C_SLAVE_IRQ_PRIORITY, which is
+ *          not masked by FURI_CRITICAL: it may run while flash is erased or
+ *          programmed. Must be __not_in_flash_func, read no flash-resident
+ *          data (const tables, GpioPin, string literals) and call no FreeRTOS
+ *          API. Hand anything else over with i2c_register_defer().
  */
 typedef bool (*I2CRegionReadFn)(void* context, uint16_t offset, uint8_t* value);
 
@@ -95,7 +106,7 @@ void i2c_register_add_region(uint16_t base, uint16_t length, I2CRegionReadFn rea
  * @param mask Bits to update.
  * @return true if the register value changed, false otherwise.
  *
- * @warning Must be called in a critical section, use with_i2c_register macro for convenience.
+ * @warning Must be called from the I2C ISR or with it masked, use with_i2c_register macro for convenience.
  */
 bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
 
@@ -105,7 +116,7 @@ bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
  * @param address Register address.
  * @return Register value.
  *
- * @warning Must be called in a critical section, use with_i2c_register macro for convenience.
+ * @warning Must be called from the I2C ISR or with it masked, use with_i2c_register macro for convenience.
  */
 uint16_t i2c_register_get_value(uint16_t address);
 
@@ -115,16 +126,47 @@ uint16_t i2c_register_get_value(uint16_t address);
  * @param interrupt_address Interrupt register address.
  * @param interrupt_bits Bits to set.
  *
- * @warning Must be called in a critical section, use with_i2c_register macro for convenience.
+ * @warning Must be called from the I2C ISR or with it masked, use with_i2c_register macro for convenience.
  */
 void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_bits);
 
-/** Execute `code` in a critical section when accessing registers. */
-#define with_i2c_register(code) \
-    {                           \
-        FURI_CRITICAL_ENTER();  \
-        {code};                 \
-        FURI_CRITICAL_EXIT();   \
+/**
+ * @brief Run `callback` from the deferred-call software interrupt.
+ *
+ * Only for the I2C ISR path (region callbacks): the ring has a single producer.
+ * Calls run in order, below configMAX_SYSCALL_INTERRUPT_PRIORITY, so they may
+ * use the ISR-safe FreeRTOS API.
+ *
+ * @return false if the ring is full and the call was dropped.
+ */
+bool i2c_register_defer(I2CRegisterCallback callback, void* context, uint16_t address, uint16_t value);
+
+/** Number of deferred calls dropped because the ring was full. */
+uint32_t i2c_registers_deferred_overflow_get(void);
+
+/**
+ * @brief Mask the I2C slave ISR, which FURI_CRITICAL does not mask.
+ *
+ * Raises BASEPRI to I2C_SLAVE_IRQ_PRIORITY. Keep the section short: it also
+ * masks the scheduler and every interrupt below it.
+ */
+static inline __attribute__((always_inline)) uint32_t i2c_registers_lock(void) {
+    uint32_t previous;
+    __asm volatile("mrs %0, basepri" : "=r"(previous));
+    __asm volatile("msr basepri_max, %0\n isb" : : "r"(I2C_SLAVE_IRQ_PRIORITY_RAW) : "memory");
+    return previous;
+}
+
+static inline __attribute__((always_inline)) void i2c_registers_unlock(uint32_t previous) {
+    __asm volatile("msr basepri, %0\n isb" : : "r"(previous) : "memory");
+}
+
+/** Execute `code` with the I2C slave ISR masked, for register access. */
+#define with_i2c_register(code)                              \
+    {                                                        \
+        uint32_t __i2c_register_lock = i2c_registers_lock(); \
+        {code};                                              \
+        i2c_registers_unlock(__i2c_register_lock);           \
     }
 
 #ifdef __cplusplus
