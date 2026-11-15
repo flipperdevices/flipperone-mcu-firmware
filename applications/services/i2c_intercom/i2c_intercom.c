@@ -40,17 +40,19 @@ struct I2CIntercom {
     volatile bool in_transaction;
     volatile size_t mem_address;
     volatile size_t pointer_address; ///< Register the last pointer write selected
-    volatile bool wrote_data_in_transaction; ///< Data applied in this transaction: reads serve the pointer
+    volatile bool wrote_data_in_transaction; ///< Data written in this transaction: reads serve the pointer
+    volatile bool write_open; ///< A write transaction is being appended to the ring
     volatile uint8_t pre_restart_bytes; ///< Bytes that were in the FIFO when the restart hit
     volatile uint8_t address_hi;
     volatile uint8_t address_index;
-    // Byte-loss accounting: invalid_* = register-map rejects, dropped =
+    // Byte-loss accounting: invalid reads = register-map rejects, dropped =
     // intercom framing, driver-dropped = FIFO drain while idle (logged below).
+    // Invalid writes and dropped transactions are counted by i2c_registers.
     volatile uint32_t invalid_read_count;
-    volatile uint32_t invalid_write_count;
     volatile uint32_t dropped_byte_count;
     uint32_t last_driver_dropped;
-    uint32_t last_deferred_overflow;
+    uint32_t last_invalid_writes;
+    uint32_t last_dropped_transactions;
 };
 
 I2C_ISR_FUNC(static inline void, i2c_intercom_data_transmit)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
@@ -71,6 +73,15 @@ I2C_ISR_FUNC(static inline void, i2c_intercom_data_transmit)(const FuriHalI2cBus
     }
 }
 
+// End the write being appended: publish it to the ring for the register
+// software interrupt to apply.
+I2C_ISR_FUNC(static inline void, i2c_intercom_write_end)(I2CIntercom* instance) {
+    if(instance->write_open) {
+        i2c_registers_write_commit();
+        instance->write_open = false;
+    }
+}
+
 // Transaction framing comes from the DW data markers, not from START/STOP
 // flags: the latter collapse while interrupts are masked by flash operations.
 I2C_ISR_FUNC(static inline void, i2c_intercom_receive)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
@@ -84,6 +95,7 @@ I2C_ISR_FUNC(static inline void, i2c_intercom_receive)(const FuriHalI2cBusHandle
             instance->pre_restart_bytes--;
         }
         if((flags & FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE) && !pre_restart) {
+            i2c_intercom_write_end(instance);
             instance->address_index = 0;
         }
         if(instance->address_index == 0) {
@@ -98,11 +110,13 @@ I2C_ISR_FUNC(static inline void, i2c_intercom_receive)(const FuriHalI2cBusHandle
             instance->pointer_address = instance->mem_address;
             instance->address_index = 2;
         } else {
-            bool valid = false;
-            with_i2c_register({ valid = i2c_register_write(instance->mem_address, data); });
-            if(!valid) {
-                instance->invalid_write_count++;
+            // Data byte: to the ring, applied later by the register software
+            // interrupt. An address-only write never opens a record.
+            if(!instance->write_open) {
+                i2c_registers_write_begin(instance->mem_address);
+                instance->write_open = true;
             }
+            i2c_registers_write_byte(data);
             instance->mem_address++;
             instance->wrote_data_in_transaction = true;
         }
@@ -114,38 +128,26 @@ I2C_ISR_FUNC(void, i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI
 
     switch(event) {
     case FuriHalI2cBusSlaveEventStart:
+        // A missed STOP leaves the previous write open
+        i2c_intercom_write_end(instance);
         instance->in_transaction = true;
         instance->wrote_data_in_transaction = false;
         instance->pre_restart_bytes = 0;
         break;
-    case FuriHalI2cBusSlaveEventRead: {
+    case FuriHalI2cBusSlaveEventRead:
+        // SCL is held: bytes still in the RX FIFO belong to the write before
+        // the read. Frame them, then end that write.
+        i2c_intercom_receive(handle, instance);
+        i2c_intercom_write_end(instance);
         // A read that follows data in this transaction serves the selected
-        // pointer, not the auto-incremented address.
+        // pointer, not the auto-incremented address. That data is not applied
+        // yet: the read returns the value from before this write.
         if(instance->wrote_data_in_transaction) {
             instance->mem_address = instance->pointer_address;
             instance->wrote_data_in_transaction = false;
         }
-        // SCL is held: any byte still in the RX FIFO belongs to the write
-        // before the read. Apply it, then rewind.
-        size_t drained = 0;
-        uint8_t data;
-        uint8_t flags;
-        while(furi_hal_i2c_slave_read_blocking(handle, &data, &flags, 1)) {
-            bool valid = false;
-            with_i2c_register({ valid = i2c_register_write(instance->mem_address, data); });
-            if(!valid) {
-                instance->invalid_write_count++;
-            }
-            instance->mem_address++;
-            drained++;
-            if(instance->pre_restart_bytes) {
-                instance->pre_restart_bytes--;
-            }
-        }
-        instance->mem_address -= drained;
         i2c_intercom_data_transmit(handle, instance);
         break;
-    }
     case FuriHalI2cBusSlaveEventWrite:
         i2c_intercom_receive(handle, instance);
         break;
@@ -161,6 +163,7 @@ I2C_ISR_FUNC(void, i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI
         if(instance->in_transaction) {
             // Drain late bytes: flash ops mask interrupts and collapse markers.
             i2c_intercom_receive(handle, instance);
+            i2c_intercom_write_end(instance);
             instance->in_transaction = false;
         }
         break;
@@ -198,18 +201,17 @@ int32_t i2c_intercom_srv(void* p) {
     furi_hal_i2c_slave_set_callback(instance->bus_handle, i2c_intercom_isr, instance);
     instance->in_transaction = false;
     instance->wrote_data_in_transaction = false;
+    instance->write_open = false;
     instance->pointer_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
 
     while(1) {
         furi_delay_ms(I2C_INTERCOM_LOG_PERIOD_MS);
-        uint32_t invalid_reads, invalid_writes, dropped_bytes;
+        uint32_t invalid_reads, dropped_bytes;
         with_i2c_register({
             invalid_reads = instance->invalid_read_count;
-            invalid_writes = instance->invalid_write_count;
             dropped_bytes = instance->dropped_byte_count;
             instance->invalid_read_count = 0;
-            instance->invalid_write_count = 0;
             instance->dropped_byte_count = 0;
         });
 
@@ -217,21 +219,25 @@ int32_t i2c_intercom_srv(void* p) {
         uint32_t driver_dropped_delta = driver_dropped - instance->last_driver_dropped;
         instance->last_driver_dropped = driver_dropped;
 
-        uint32_t deferred_overflow = i2c_registers_deferred_overflow_get();
-        uint32_t deferred_overflow_delta = deferred_overflow - instance->last_deferred_overflow;
-        instance->last_deferred_overflow = deferred_overflow;
+        uint32_t invalid_writes = i2c_registers_invalid_writes_get();
+        uint32_t invalid_writes_delta = invalid_writes - instance->last_invalid_writes;
+        instance->last_invalid_writes = invalid_writes;
 
-        if(invalid_reads || invalid_writes || dropped_bytes || driver_dropped_delta) {
+        uint32_t dropped_transactions = i2c_registers_dropped_transactions_get();
+        uint32_t dropped_transactions_delta = dropped_transactions - instance->last_dropped_transactions;
+        instance->last_dropped_transactions = dropped_transactions;
+
+        if(invalid_reads || invalid_writes_delta || dropped_bytes || driver_dropped_delta) {
             FURI_LOG_W(
                 TAG,
                 "invalid access: %lu reads, %lu writes, %lu dropped bytes, %lu driver-dropped bytes",
                 invalid_reads,
-                invalid_writes,
+                invalid_writes_delta,
                 dropped_bytes,
                 driver_dropped_delta);
         }
-        if(deferred_overflow_delta) {
-            FURI_LOG_E(TAG, "%lu register write callbacks dropped: deferred ring full", deferred_overflow_delta);
+        if(dropped_transactions_delta) {
+            FURI_LOG_E(TAG, "%lu write transactions dropped: transaction ring full or too long", dropped_transactions_delta);
         }
     }
 

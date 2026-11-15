@@ -3,14 +3,33 @@
 #include <furi_hal_interrupt.h>
 #include <hardware/gpio.h>
 #include <hardware/structs/nvic.h>
+#include <hardware/regs/addressmap.h>
 
 #include "i2c_registers.h"
+#include "i2c_registers_i.h"
 #include "i2c_registers_map.h"
 
-// Everything on the I2C ISR path below runs at I2C_SLAVE_IRQ_PRIORITY, which
-// FURI_CRITICAL does not mask: it may run while flash is being erased or
-// programmed. So it lives in RAM, reads only RAM data and calls no FreeRTOS
-// API. Write callbacks are handed to a lower-priority software interrupt.
+/*
+ * Two contexts touch the register file:
+ *
+ * - The I2C slave ISR (I2C_SLAVE_IRQ_PRIORITY, not masked by FURI_CRITICAL, so
+ *   it also runs during flash erase/program). It answers reads at once, from
+ *   the register table and from region read buffers, and appends every write
+ *   transaction to the transaction ring. It applies nothing itself. RAM only,
+ *   no FreeRTOS: see I2C_ISR_FUNC.
+ * - The ring software interrupt (SPARE_IRQ_0, normal priority, masked by
+ *   FURI_CRITICAL). It takes write transactions off the ring in order, applies
+ *   register bytes to the table and calls register write callbacks, and hands
+ *   region writes to the region owner, a whole transaction at once. It may use
+ *   the ISR-safe FreeRTOS API.
+ *
+ * Threads change the table and read buffers under with_i2c_register, which
+ * masks the I2C ISR.
+ *
+ * Consequence: a write is applied only once the software interrupt has run,
+ * i.e. microseconds later, or after the flash operation in progress. A read
+ * of a register just written may return its old value until then.
+ */
 
 typedef enum {
     I2CRegFlagRead = 1 << 0,
@@ -36,36 +55,51 @@ typedef struct {
 typedef struct {
     uint16_t base;
     uint16_t length;
-    I2CRegionReadFn read;
+    const volatile uint8_t* read_buffer;
     I2CRegionWriteFn write;
     void* context;
 } I2CRegion;
 
-// Callback deferred from the I2C ISR to the software interrupt.
+/*
+ * Transaction ring: a byte ring of records [addr_hi, addr_lo, len_lo, len_hi,
+ * data...]. Single producer (the I2C ISR), single consumer (the software
+ * interrupt). The producer builds a record past `head` and publishes it by
+ * moving `head` only once the transaction ended, so the consumer never sees
+ * part of one; a transaction that does not fit is dropped whole.
+ */
+#define I2C_REGISTERS_RING_SIZE   (4096) // power of two
+#define I2C_REGISTERS_RING_HEADER (4)
+static_assert((I2C_REGISTERS_RING_SIZE & (I2C_REGISTERS_RING_SIZE - 1)) == 0, "must be a power of two");
+
+#define I2C_REGISTERS_RING_IRQ    SPARE_IRQ_0
+#define I2C_REGISTERS_RING_IRQ_ID FuriHalInterruptIdSpareIrq0
+
 typedef struct {
-    I2CRegisterCallback callback;
-    void* context;
-    uint16_t address;
-    uint16_t value;
-} I2CDeferredCall;
+    uint8_t buffer[I2C_REGISTERS_RING_SIZE];
+    volatile uint32_t head; ///< Published end, written by the producer
+    volatile uint32_t tail; ///< Consumed end, written by the consumer
 
-#define I2C_REGISTERS_DEFERRED_SIZE (32) // power of two
-static_assert((I2C_REGISTERS_DEFERRED_SIZE & (I2C_REGISTERS_DEFERRED_SIZE - 1)) == 0, "must be a power of two");
+    // Producer only: the record being built
+    uint32_t write; ///< Next byte position
+    uint32_t record; ///< Position of the record header
+    uint16_t length; ///< Data bytes so far
+    bool open;
+    bool overflow;
 
-#define I2C_REGISTERS_DEFER_IRQ    SPARE_IRQ_0
-#define I2C_REGISTERS_DEFER_IRQ_ID FuriHalInterruptIdSpareIrq0
+    volatile uint32_t dropped_transactions; ///< Producer: did not fit
+} I2CRegistersRing;
 
 typedef struct {
-    I2CReg regs[I2C_REGISTERS_MAX_COUNT]; // regs[0] is the status register
+    I2CReg regs[I2C_REGISTERS_MAX_COUNT];
     size_t reg_count;
+    I2CReg* status_register;
     I2CRegion regions[I2C_REGISTERS_MAX_REGIONS]; // checked before the registers
     size_t region_count;
 
-    // Single producer (the I2C ISR), single consumer (the software interrupt)
-    I2CDeferredCall deferred[I2C_REGISTERS_DEFERRED_SIZE];
-    volatile uint32_t deferred_head;
-    volatile uint32_t deferred_tail;
-    volatile uint32_t deferred_overflow;
+    I2CRegistersRing ring;
+    // Consumer only: one transaction copied out of the ring, contiguous
+    uint8_t transaction[I2C_REGISTERS_TRANSACTION_MAX];
+    volatile uint32_t invalid_writes; ///< Consumer: bytes to unmapped or read-only addresses
 
     // Pin numbers copied out of the flash-resident GpioPin constants
     uint32_t cpu_int_pin;
@@ -74,7 +108,15 @@ typedef struct {
 
 static I2CRegisters i2c;
 
-#define I2C_STATUS_REG (&i2c.regs[0])
+static void i2c_registers_ring_isr(void* context);
+
+#define REG16_GET_LO(v)    ((v) & 0xFF)
+#define REG16_GET_HI(v)    (((v) >> 8) & 0xFF)
+#define REG16_SET_LO(v, b) ((v) = ((v) & 0xFF00) | (uint8_t)(b))
+#define REG16_SET_HI(v, b) ((v) = ((v) & 0x00FF) | ((uint16_t)(uint8_t)(b) << 8))
+#define REG16_CLR_LO(v)    ((v) &= 0xFF00)
+#define REG16_CLR_HI(v)    ((v) &= 0x00FF)
+#define RING_AT(pos)   (i2c.ring.buffer[(pos) & (I2C_REGISTERS_RING_SIZE - 1)])
 
 I2C_ISR_FUNC(static inline void, i2c_register_interrupt_line_set)(bool set) {
     // Same as furi_hal_gpio_write_open_drain(&gpio_cpu_int, !set) and
@@ -108,41 +150,20 @@ I2C_ISR_FUNC(static inline I2CRegion*, i2c_region_find)(uint16_t address) {
     return NULL;
 }
 
-static void i2c_registers_deferred_isr(void* context) {
-    UNUSED(context);
-    while(i2c.deferred_tail != i2c.deferred_head) {
-        __atomic_thread_fence(__ATOMIC_ACQUIRE);
-        I2CDeferredCall call = i2c.deferred[i2c.deferred_tail % I2C_REGISTERS_DEFERRED_SIZE];
-        __atomic_thread_fence(__ATOMIC_RELEASE);
-        i2c.deferred_tail = i2c.deferred_tail + 1;
-        call.callback(call.context, call.address, call.value);
-    }
+void i2c_registers_init(void) {
+    i2c_register_interrupt_line_init();
+
+    i2c.reg_count = 0;
+    i2c.region_count = 0;
+    i2c_register_add_readable(I2C_STATUS_REG_ADDRESS, 0);
+    i2c.status_register = i2c_register_get(I2C_STATUS_REG_ADDRESS);
+    furi_check(i2c.status_register);
+
+    // Below the syscall level: register and region callbacks may use the ISR-safe OS API
+    furi_hal_interrupt_set_isr_ex(I2C_REGISTERS_RING_IRQ_ID, FuriHalInterruptPriorityNormal, i2c_registers_ring_isr, NULL);
 }
 
-I2C_ISR_FUNC(bool, i2c_register_defer)(I2CRegisterCallback callback, void* context, uint16_t address, uint16_t value) {
-    uint32_t head = i2c.deferred_head;
-    if(head - i2c.deferred_tail >= I2C_REGISTERS_DEFERRED_SIZE) {
-        i2c.deferred_overflow = i2c.deferred_overflow + 1;
-        return false;
-    }
-    i2c.deferred[head % I2C_REGISTERS_DEFERRED_SIZE] = (I2CDeferredCall){
-        .callback = callback,
-        .context = context,
-        .address = address,
-        .value = value,
-    };
-    __atomic_thread_fence(__ATOMIC_RELEASE);
-    i2c.deferred_head = head + 1;
-    // Pend the software interrupt; it runs once BASEPRI lets it through
-    nvic_hw->ispr[I2C_REGISTERS_DEFER_IRQ / 32] = 1u << (I2C_REGISTERS_DEFER_IRQ % 32);
-    return true;
-}
-
-uint32_t i2c_registers_deferred_overflow_get(void) {
-    return i2c.deferred_overflow;
-}
-
-static void i2c_register_add_internal(uint16_t address, uint16_t default_value, uint8_t flags) {
+static void i2c_register_add_internal(uint16_t address, uint16_t default_value, uint32_t flags) {
     furi_check(address % 2 == 0); // registers are 16-bit, even-aligned
     furi_check(i2c_register_get(address) == NULL);
     // Regions win the lookup, so a register inside one would never be reached
@@ -150,38 +171,21 @@ static void i2c_register_add_internal(uint16_t address, uint16_t default_value, 
     furi_check(i2c_region_find(address + 1) == NULL);
     furi_check(i2c.reg_count < I2C_REGISTERS_MAX_COUNT);
 
-    i2c.regs[i2c.reg_count] = (I2CReg){
-        .address = address,
-        .value = default_value,
-        .flags = flags,
-        .mask_index = I2C_REG_NO_MASK,
-    };
-    i2c.reg_count++;
+    I2CReg reg = {.address = address, .value = default_value, .flags = flags, .mask_index = I2C_REG_NO_MASK};
+    i2c.regs[i2c.reg_count++] = reg;
 }
 
-void i2c_registers_init(void) {
-    i2c_register_interrupt_line_init();
-
-    i2c.reg_count = 0;
-    i2c.region_count = 0;
-    i2c.deferred_head = 0;
-    i2c.deferred_tail = 0;
-    i2c.deferred_overflow = 0;
-
-    with_i2c_register({ i2c_register_add_internal(I2C_STATUS_REG_ADDRESS, 0, I2CRegFlagRead); });
-    furi_check(I2C_STATUS_REG->address == I2C_STATUS_REG_ADDRESS);
-
-    // Below the syscall level: deferred callbacks may use the ISR-safe OS API
-    furi_hal_interrupt_set_isr_ex(I2C_REGISTERS_DEFER_IRQ_ID, FuriHalInterruptPriorityNormal, i2c_registers_deferred_isr, NULL);
-}
-
-void i2c_register_add_region(uint16_t base, uint16_t length, I2CRegionReadFn read, I2CRegionWriteFn write, void* context) {
+void i2c_register_add_region(uint16_t base, uint16_t length, const volatile uint8_t* read_buffer, I2CRegionWriteFn write, void* context) {
     furi_check(length > 0);
     furi_check(base % 2 == 0);
     furi_check((uint32_t)base + length <= 0x10000);
     furi_check(i2c.region_count < I2C_REGISTERS_MAX_REGIONS);
+    // The I2C ISR reads it while flash may be busy: it must not be in flash
+    furi_check(!read_buffer || ((uintptr_t)read_buffer >= SRAM_BASE && (uintptr_t)read_buffer + length <= SRAM_END));
 
-    // Registration is startup-only, before the I2C slave is enabled.
+    // Validation is O(region length), too long to hold interrupts off, and
+    // registration is startup-only, before the I2C slave is enabled.
+    // The critical section below just guards the array append.
 
     // Must not overlap another region...
     for(size_t i = 0; i < i2c.region_count; ++i) {
@@ -189,16 +193,16 @@ void i2c_register_add_region(uint16_t base, uint16_t length, I2CRegionReadFn rea
         const bool disjoint = (uint32_t)base + length <= other->base || base >= (uint32_t)other->base + other->length;
         furi_check(disjoint);
     }
-    // ...nor shadow an already registered register
-    for(size_t i = 0; i < i2c.reg_count; ++i) {
-        const uint16_t address = i2c.regs[i].address;
-        furi_check(address + 2 <= base || address >= (uint32_t)base + length);
+    // ...nor shadow an already registered register (probe via the same
+    // lookup used elsewhere; step 2 hits only valid even addresses).
+    for(uint32_t address = base; address < (uint32_t)base + length; address += 2) {
+        furi_check(i2c_register_get((uint16_t)address) == NULL);
     }
 
     I2CRegion region = {
         .base = base,
         .length = length,
-        .read = read,
+        .read_buffer = read_buffer,
         .write = write,
         .context = context,
     };
@@ -216,20 +220,18 @@ void i2c_register_add_readable(uint16_t address, uint16_t default_value) {
 void i2c_register_add_writable(uint16_t address, uint16_t default_value, I2CRegisterCallback write_callback, void* write_callback_context) {
     with_i2c_register({
         i2c_register_add_internal(address, default_value, I2CRegFlagRead | I2CRegFlagWrite);
-        I2CReg* reg = &i2c.regs[i2c.reg_count - 1];
+        I2CReg* reg = i2c_register_get(address);
         reg->callback = write_callback;
         reg->context = write_callback_context;
     });
 }
 
 void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t status_register_bit) {
-    furi_check(status_register_bit < 16);
     with_i2c_register({
-        i2c_register_add_internal(mask_address, 0x0000, I2CRegFlagRead | I2CRegFlagWrite);
-        uint8_t mask_index = i2c.reg_count - 1;
         i2c_register_add_internal(address, 0x0000, I2CRegFlagRead | I2CRegFlagReadToClear | I2CRegFlagInterrupt);
-        I2CReg* reg = &i2c.regs[i2c.reg_count - 1];
-        reg->mask_index = mask_index;
+        i2c_register_add_internal(mask_address, 0x0000, I2CRegFlagRead | I2CRegFlagWrite);
+        I2CReg* reg = i2c_register_get(address);
+        reg->mask_index = i2c.reg_count - 1;
         reg->status_register_bit = status_register_bit;
     });
 }
@@ -237,54 +239,193 @@ void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t
 I2C_ISR_FUNC(bool, i2c_register_read_start)(uint16_t address, uint8_t* value) {
     const I2CRegion* region = i2c_region_find(address);
     if(region) {
-        return region->read ? region->read(region->context, address - region->base, value) : false;
+        if(!region->read_buffer) return false;
+        *value = region->read_buffer[address - region->base];
+        return true;
     }
 
-    I2CReg* reg = i2c_register_get(address & 0xFFFE);
-    if(!reg || !(reg->flags & I2CRegFlagRead)) return false;
+    bool result = false;
+    bool is_hi_byte = address & 1;
+    uint16_t even_address = address & 0xFFFE;
 
-    *value = (address & 1) ? (uint8_t)(reg->value >> 8) : (uint8_t)reg->value;
-    return true;
+    do {
+        I2CReg* reg = i2c_register_get(even_address);
+        if(reg && (reg->flags & I2CRegFlagRead)) {
+            if(is_hi_byte) {
+                *value = REG16_GET_HI(reg->value);
+            } else {
+                *value = REG16_GET_LO(reg->value);
+            }
+            result = true;
+        }
+    } while(false);
+
+    return result;
 }
 
 I2C_ISR_FUNC(bool, i2c_register_read_commit)(uint16_t address) {
     // Regions have no read-to-clear semantics; keep per-byte cost to one lookup.
     if(i2c_region_find(address)) return false;
 
-    I2CReg* reg = i2c_register_get(address & 0xFFFE);
-    if(!reg || !(reg->flags & I2CRegFlagReadToClear)) return false;
+    bool result = false;
+    bool is_hi_byte = address & 1;
+    uint16_t even_address = address & 0xFFFE;
 
-    reg->value &= (address & 1) ? 0x00FF : 0xFF00;
+    do {
+        I2CReg* reg = i2c_register_get(even_address);
+        if(reg && (reg->flags & I2CRegFlagReadToClear)) {
+            if(is_hi_byte) {
+                REG16_CLR_HI(reg->value);
+            } else {
+                REG16_CLR_LO(reg->value);
+            }
 
-    if((reg->flags & I2CRegFlagInterrupt) && reg->value == 0) {
-        I2C_STATUS_REG->value &= ~(1u << reg->status_register_bit);
-        if(I2C_STATUS_REG->value == 0) {
-            i2c_register_interrupt_line_set(false);
+            if((reg->flags & I2CRegFlagInterrupt) && reg->value == 0) {
+                i2c.status_register->value &= ~(1 << reg->status_register_bit);
+                if(i2c.status_register->value == 0) {
+                    i2c_register_interrupt_line_set(false);
+                }
+            }
+
+            result = true;
         }
-    }
+    } while(false);
 
-    return true;
+    return result;
 }
 
-I2C_ISR_FUNC(bool, i2c_register_write)(uint16_t address, uint8_t value) {
-    const I2CRegion* region = i2c_region_find(address);
-    if(region) {
-        return region->write ? region->write(region->context, address - region->base, value) : false;
+/* --- Producer: the I2C ISR ----------------------------------------------- */
+
+I2C_ISR_FUNC(void, i2c_registers_write_begin)(uint16_t address) {
+    I2CRegistersRing* ring = &i2c.ring;
+    if(ring->open) i2c_registers_write_commit();
+
+    ring->open = true;
+    ring->overflow = false;
+    ring->length = 0;
+    ring->record = ring->head;
+    ring->write = ring->head;
+
+    if(I2C_REGISTERS_RING_SIZE - (ring->write - ring->tail) < I2C_REGISTERS_RING_HEADER) {
+        ring->overflow = true;
+        return;
     }
+    RING_AT(ring->write) = address >> 8;
+    RING_AT(ring->write + 1) = address & 0xFF;
+    ring->write += I2C_REGISTERS_RING_HEADER; // length is filled in on commit
+}
 
-    I2CReg* reg = i2c_register_get(address & 0xFFFE);
-    if(!reg || !(reg->flags & I2CRegFlagWrite)) return false;
+I2C_ISR_FUNC(void, i2c_registers_write_byte)(uint8_t value) {
+    I2CRegistersRing* ring = &i2c.ring;
+    if(!ring->open || ring->overflow) return;
+    if(ring->length >= I2C_REGISTERS_TRANSACTION_MAX || ring->write - ring->tail >= I2C_REGISTERS_RING_SIZE) {
+        ring->overflow = true;
+        return;
+    }
+    RING_AT(ring->write) = value;
+    ring->write++;
+    ring->length++;
+}
 
-    if(address & 1) {
-        reg->value = (reg->value & 0x00FF) | ((uint16_t)value << 8);
-        // hi byte written means the whole register value is ready
-        if(reg->callback) {
-            i2c_register_defer(reg->callback, reg->context, reg->address, reg->value);
+I2C_ISR_FUNC(void, i2c_registers_write_commit)(void) {
+    I2CRegistersRing* ring = &i2c.ring;
+    if(!ring->open) return;
+    ring->open = false;
+
+    if(ring->overflow) {
+        ring->dropped_transactions = ring->dropped_transactions + 1;
+        return;
+    }
+    if(ring->length == 0) return; // address only: nothing to apply
+
+    RING_AT(ring->record + 2) = ring->length & 0xFF;
+    RING_AT(ring->record + 3) = ring->length >> 8;
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+    ring->head = ring->write;
+    // Pend the software interrupt; it runs once BASEPRI lets it through
+    nvic_hw->ispr[I2C_REGISTERS_RING_IRQ / 32] = 1u << (I2C_REGISTERS_RING_IRQ % 32);
+}
+
+/* --- Consumer: the ring software interrupt -------------------------------- */
+
+// Apply one byte to the register table; call the register callback, outside
+// the lock, once its high byte is written. FreeRTOS FromISR calls rewrite
+// BASEPRI, so no callback may run inside with_i2c_register.
+static void i2c_registers_apply_byte(uint16_t address, uint8_t value) {
+    I2CRegisterCallback callback = NULL;
+    void* context = NULL;
+    uint16_t reg_address = address & 0xFFFE;
+    uint16_t reg_value = 0;
+    bool valid = false;
+
+    with_i2c_register({
+        I2CReg* reg = i2c_register_get(reg_address);
+        if(reg && (reg->flags & I2CRegFlagWrite)) {
+            valid = true;
+            if(address & 1) {
+                REG16_SET_HI(reg->value, value);
+                // hi byte written means the whole register value is ready
+                callback = reg->callback;
+                context = reg->context;
+                reg_value = reg->value;
+            } else {
+                REG16_SET_LO(reg->value, value);
+            }
         }
-    } else {
-        reg->value = (reg->value & 0xFF00) | value;
+    });
+
+    if(!valid) {
+        i2c.invalid_writes = i2c.invalid_writes + 1;
+    } else if(callback) {
+        callback(context, reg_address, reg_value);
     }
-    return true;
+}
+
+// Dispatch one write transaction: runs inside a region go to the region owner
+// in one call, other bytes to the register table.
+static void i2c_registers_dispatch(uint16_t address, const uint8_t* data, size_t length) {
+    size_t i = 0;
+    while(i < length) {
+        uint16_t at = address + i;
+        const I2CRegion* region = i2c_region_find(at);
+        if(region) {
+            size_t run = MIN(length - i, (size_t)(region->base + region->length - at));
+            if(!region->write || !region->write(region->context, at - region->base, &data[i], run)) {
+                i2c.invalid_writes = i2c.invalid_writes + run;
+            }
+            i += run;
+        } else {
+            i2c_registers_apply_byte(at, data[i]);
+            i++;
+        }
+    }
+}
+
+static void i2c_registers_ring_isr(void* context) {
+    UNUSED(context);
+    I2CRegistersRing* ring = &i2c.ring;
+    while(ring->tail != ring->head) {
+        __atomic_thread_fence(__ATOMIC_ACQUIRE);
+        uint32_t pos = ring->tail;
+        uint16_t address = ((uint16_t)RING_AT(pos) << 8) | RING_AT(pos + 1);
+        uint16_t length = RING_AT(pos + 2) | ((uint16_t)RING_AT(pos + 3) << 8);
+        pos += I2C_REGISTERS_RING_HEADER;
+        for(uint16_t i = 0; i < length; i++) {
+            i2c.transaction[i] = RING_AT(pos + i);
+        }
+        __atomic_thread_fence(__ATOMIC_RELEASE);
+        ring->tail = pos + length; // free the space before the callbacks run
+
+        i2c_registers_dispatch(address, i2c.transaction, length);
+    }
+}
+
+uint32_t i2c_registers_dropped_transactions_get(void) {
+    return i2c.ring.dropped_transactions;
+}
+
+uint32_t i2c_registers_invalid_writes_get(void) {
+    return i2c.invalid_writes;
 }
 
 bool __isr __not_in_flash_func(i2c_register_update)(uint16_t address, uint16_t value, uint16_t mask) {
@@ -303,7 +444,7 @@ void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_b
     interrupt_reg->value |= (interrupt_bits & ~i2c.regs[interrupt_reg->mask_index].value);
 
     if(interrupt_reg->value) {
-        I2C_STATUS_REG->value |= (1u << interrupt_reg->status_register_bit);
+        i2c.status_register->value |= (1 << interrupt_reg->status_register_bit);
         i2c_register_interrupt_line_set(true);
     }
 }

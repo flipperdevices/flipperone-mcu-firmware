@@ -9,9 +9,8 @@ extern "C" {
 /**
  * \brief NVIC priority of the I2C slave interrupt, as a 0-15 level (0 = highest).
  *
- * Above configMAX_SYSCALL_INTERRUPT_PRIORITY, so FURI_CRITICAL sections (flash
- * erase/program among them) do not mask it. The whole ISR path must therefore
- * run from RAM, touch no flash-resident data and call no FreeRTOS API.
+ * Above configMAX_SYSCALL_INTERRUPT_PRIORITY, so FURI_CRITICAL does not mask
+ * it: see I2C_ISR_FUNC for why and what that requires.
  */
 #define I2C_SLAVE_IRQ_PRIORITY (4)
 
@@ -43,7 +42,7 @@ extern "C" {
  * Use it on every function of the I2C ISR path, callbacks reached through
  * pointers in particular:
  *
- *     I2C_ISR_FUNC(static bool, my_region_write)(void* context, uint16_t offset, uint8_t value) {
+ *     I2C_ISR_FUNC(static uint8_t, my_isr_helper)(i2c_inst_t* i2c) {
  *         ...
  *     }
  *

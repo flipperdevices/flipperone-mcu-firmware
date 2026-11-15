@@ -30,7 +30,7 @@ system halts there anyway.
 
 When it fails:
   - "not marked": define the function with I2C_ISR_FUNC, or keep it off the ISR
-    path (hand the work to i2c_register_defer()).
+    path: writes are applied later, by the register software interrupt.
   - "in FLASH": library code (memcpy, FreeRTOS) cannot run on the path at all.
   - "flash data": copy the value to RAM at init (see the interrupt line pins in
     i2c_registers.c) or place the object in RAM with __not_in_flash("name").
@@ -70,7 +70,6 @@ REQUIRED = {
     "i2c_intercom_isr": "FuriHalI2cBus.api.slave.callback (i2c_intercom.c)",
     "furi_hal_i2c_bus_slave_read": "FuriHalI2cBus.api.slave.read_blocking (furi_hal_i2c_config.c)",
     "furi_hal_i2c_bus_slave_write": "FuriHalI2cBus.api.slave.write_blocking (furi_hal_i2c_config.c)",
-    "updater_on_i2c_data_write": "I2CRegion.write of the updater data region (updater.c)",
 }
 
 # Functions allowed to call through a pointer on the path. Their targets are
@@ -81,8 +80,6 @@ DISPATCHERS = {
     "furi_hal_i2c_bus_cpu_slave_callback",  # api.slave.callback
     "furi_hal_i2c_slave_read_blocking",  # api.slave.read_blocking
     "furi_hal_i2c_slave_write_blocking",  # api.slave.write_blocking
-    "i2c_register_read_start",  # I2CRegion.read
-    "i2c_register_write",  # I2CRegion.write
 }
 
 # Reached only when a check fails; the system halts there.
