@@ -105,9 +105,9 @@ void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback,
  * @param value Byte written by the host.
  * @return true if the byte was accepted, false otherwise.
  *
- * @warning I2C intercom callback, registered by i2c_negotiator and called
- *          from the I2C slave ISR; the definition carries
- *          __isr/__not_in_flash_func.
+ * @warning I2C intercom region callback, registered by i2c_negotiator and
+ *          called from the I2C slave ISR, also while flash is erased or
+ *          programmed: RAM code and data only, no OS API (see I2CRegionWriteFn).
  */
 bool updater_on_i2c_data_write(void* context, uint16_t offset, uint8_t value);
 
@@ -118,7 +118,8 @@ bool updater_on_i2c_data_write(void* context, uint16_t offset, uint8_t value);
  * @param address Register address, always even.
  * @param value Full 16-bit register value.
  *
- * @warning Same ISR context as updater_on_i2c_data_write.
+ * @note Register write callback: runs in the deferred register-callback
+ *       interrupt, not in the I2C ISR (see I2CRegisterCallback).
  */
 void updater_on_i2c_crc_reg_write(void* context, uint16_t address, uint16_t value);
 
@@ -129,7 +130,8 @@ void updater_on_i2c_crc_reg_write(void* context, uint16_t address, uint16_t valu
  * @param address Register address, always even.
  * @param value Full 16-bit register value.
  *
- * @warning Same ISR context as updater_on_i2c_data_write.
+ * @note Register write callback: runs in the deferred register-callback
+ *       interrupt, not in the I2C ISR (see I2CRegisterCallback).
  */
 void updater_on_i2c_blocks_reg_write(void* context, uint16_t address, uint16_t value);
 
@@ -140,6 +142,7 @@ void updater_on_i2c_blocks_reg_write(void* context, uint16_t address, uint16_t v
  * @param address Register address, always even.
  * @param value Full 16-bit register value.
  *
- * @warning Same ISR context as updater_on_i2c_data_write.
+ * @note Register write callback: runs in the deferred register-callback
+ *       interrupt, not in the I2C ISR (see I2CRegisterCallback).
  */
 void updater_on_i2c_command_reg_write(void* context, uint16_t address, uint16_t value);

@@ -224,6 +224,15 @@ target_link_libraries(${PROJECT_NAME}
 
 pico_add_extra_outputs(${PROJECT_NAME})
 
+# The I2C slave ISR runs above FURI_CRITICAL, also during flash erase/program:
+# its whole path must be in RAM. Checked on every link, see the script header.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_LIST_DIR}/scripts/isr_ram_check.py --quiet
+            --nm ${CMAKE_NM} --objdump ${CMAKE_OBJDUMP} $<TARGET_FILE:${PROJECT_NAME}>
+    COMMENT "Checking that the I2C ISR path is RAM-only"
+    VERBATIM)
+
 # Build partition table .bin and .u2f
 pico_init_picotool()
 if(picotool_FOUND)

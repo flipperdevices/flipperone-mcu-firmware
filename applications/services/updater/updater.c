@@ -4,6 +4,7 @@
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
 #include <power/power.h>
+#include <i2c_intercom/i2c_registers.h>
 
 #define TAG "Updater"
 
@@ -15,6 +16,10 @@
 #define UPDATER_ISR_ERROR_OUT_OF_ORDER (1 << 1)
 
 #define UPDATER_CUSTOM_EVENT_ERROR (1 << 0)
+
+// Complete frames the I2C ISR can park while the deferred handler is held off
+// by a flash operation
+#define UPDATER_RX_SLOTS (2)
 
 typedef struct {
     uint16_t crc;
@@ -60,7 +65,11 @@ struct Updater {
 
     Power* power;
 
+    // Frame being received, written only by the I2C ISR
     UpdaterI2cRx i2c_rx;
+    // Complete frames waiting for the deferred handler (bit n = slot n taken)
+    UpdaterI2cRx i2c_rx_slots[UPDATER_RX_SLOTS];
+    volatile uint32_t i2c_rx_slots_busy;
 };
 static_assert(sizeof(((struct Updater*)0)->i2c_rx.raw) == (sizeof(((struct Updater*)0)->i2c_rx.data) + 4));
 
@@ -84,16 +93,17 @@ typedef struct {
     };
 } UpdaterMessage;
 
-// ISR queue put: overflow records an error instead of crashing
-static void __isr __not_in_flash_func(updater_message_queue_put_from_isr)(Updater* updater, const UpdaterMessage* msg) {
+// Called from the deferred register-callback interrupt, which may use the
+// ISR-safe OS API. Overflow records an error instead of crashing.
+static void updater_message_queue_put_from_isr(Updater* updater, const UpdaterMessage* msg) {
     if(furi_message_queue_put(updater->message_queue, msg, 0) == FuriStatusOk) return;
 
-    updater->isr_error |= UPDATER_ISR_ERROR_QUEUE_FULL;
+    __atomic_fetch_or(&updater->isr_error, UPDATER_ISR_ERROR_QUEUE_FULL, __ATOMIC_RELAXED);
     furi_event_loop_set_custom_event(updater->event_loop, UPDATER_CUSTOM_EVENT_ERROR);
 }
 
-// I2C write callbacks, called from interrupt context
-void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint16_t address, uint16_t value) {
+// I2C register write callbacks, called from the deferred register-callback interrupt
+void updater_on_i2c_crc_reg_write(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -105,7 +115,7 @@ void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint
     updater_message_queue_put_from_isr(updater, &msg);
 }
 
-void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, uint16_t address, uint16_t value) {
+void updater_on_i2c_blocks_reg_write(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -117,7 +127,7 @@ void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, u
     updater_message_queue_put_from_isr(updater, &msg);
 }
 
-void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, uint16_t address, uint16_t value) {
+void updater_on_i2c_command_reg_write(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -131,23 +141,59 @@ void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, 
     updater_message_queue_put_from_isr(updater, &msg);
 }
 
-bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_t offset, uint8_t value) {
+// Deferred: hand a complete frame parked by the I2C ISR to the event loop
+static void updater_block_ready_deferred(void* context, uint16_t slot, uint16_t unused) {
+    UNUSED(unused);
     Updater* updater = context;
-    furi_check(updater);
+    const UpdaterI2cRx* frame = &updater->i2c_rx_slots[slot];
+
+    const UpdaterMessage msg_start = {
+        .type = UpdaterMessageWriteBlockStart,
+    };
+    updater_message_queue_put_from_isr(updater, &msg_start);
+
+    UpdaterMessage msg = {
+        .type = UpdaterMessageWriteBlockDone,
+        .block.block_idx = frame->block_idx,
+        .block.block_crc = frame->block_crc,
+    };
+    memcpy(msg.block.data, frame->data, sizeof(msg.block.data));
+    updater_message_queue_put_from_isr(updater, &msg);
+
+    __atomic_fetch_and(&updater->i2c_rx_slots_busy, ~(1u << slot), __ATOMIC_RELEASE);
+}
+
+// Deferred: wake the event loop to promote an error the I2C ISR recorded
+static void updater_isr_error_deferred(void* context, uint16_t unused1, uint16_t unused2) {
+    UNUSED(unused1);
+    UNUSED(unused2);
+    Updater* updater = context;
+    furi_event_loop_set_custom_event(updater->event_loop, UPDATER_CUSTOM_EVENT_ERROR);
+}
+
+I2C_ISR_FUNC(static void, updater_isr_error_set)(Updater* updater, uint32_t error) {
+    // Notify once per error until the event loop clears it, not once per byte
+    if(!(__atomic_fetch_or(&updater->isr_error, error, __ATOMIC_RELAXED) & error)) {
+        i2c_register_defer(updater_isr_error_deferred, updater, 0, 0);
+    }
+}
+
+// I2C region write: runs in the I2C ISR, also during flash operations. RAM
+// code and data only, no OS API: see I2CRegionWriteFn.
+I2C_ISR_FUNC(bool, updater_on_i2c_data_write)(void* context, uint16_t offset, uint8_t value) {
+    Updater* updater = context;
 
     if(offset >= sizeof(updater->i2c_rx.raw)) return false;
 
     if(offset == 0) {
         // New frame: announce it only once complete, so a truncated frame
         // cannot wedge the updater in BUSY.
-        memset(updater->i2c_rx.raw, 0, sizeof(updater->i2c_rx.raw));
         updater->i2c_rx.offset = 0;
     }
 
     if(offset != updater->i2c_rx.offset) {
         // Out-of-order: record the error and drop the rest of the block
-        updater->isr_error |= UPDATER_ISR_ERROR_OUT_OF_ORDER;
-        furi_event_loop_set_custom_event(updater->event_loop, UPDATER_CUSTOM_EVENT_ERROR);
+        updater_isr_error_set(updater, UPDATER_ISR_ERROR_OUT_OF_ORDER);
         updater->i2c_rx.offset = 0;
         return true;
     }
@@ -155,18 +201,27 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     updater->i2c_rx.raw[updater->i2c_rx.offset++] = value;
 
     if(updater->i2c_rx.offset == sizeof(updater->i2c_rx.raw)) {
-        const UpdaterMessage msg_start = {
-            .type = UpdaterMessageWriteBlockStart,
-        };
-        updater_message_queue_put_from_isr(updater, &msg_start);
+        uint32_t busy = updater->i2c_rx_slots_busy;
+        uint32_t slot = 0;
+        while(slot < UPDATER_RX_SLOTS && (busy & (1u << slot))) {
+            slot++;
+        }
+        if(slot == UPDATER_RX_SLOTS) {
+            updater_isr_error_set(updater, UPDATER_ISR_ERROR_QUEUE_FULL);
+            return true;
+        }
 
-        UpdaterMessage msg = {
-            .type = UpdaterMessageWriteBlockDone,
-            .block.block_idx = updater->i2c_rx.block_idx,
-            .block.block_crc = updater->i2c_rx.block_crc,
-        };
-        memcpy(msg.block.data, updater->i2c_rx.data, sizeof(msg.block.data));
-        updater_message_queue_put_from_isr(updater, &msg);
+        // Volatile byte copy: a plain loop may be turned into a flash-resident memcpy call
+        volatile uint8_t* dst = updater->i2c_rx_slots[slot].raw;
+        for(size_t i = 0; i < sizeof(updater->i2c_rx.raw); i++) {
+            dst[i] = updater->i2c_rx.raw[i];
+        }
+        __atomic_fetch_or(&updater->i2c_rx_slots_busy, 1u << slot, __ATOMIC_RELEASE);
+
+        if(!i2c_register_defer(updater_block_ready_deferred, updater, slot, 0)) {
+            __atomic_fetch_and(&updater->i2c_rx_slots_busy, ~(1u << slot), __ATOMIC_RELAXED);
+            updater_isr_error_set(updater, UPDATER_ISR_ERROR_QUEUE_FULL);
+        }
     }
 
     return true;
@@ -291,11 +346,8 @@ static void updater_process_block(Updater* updater, const UpdaterMessage* msg) {
 }
 
 static uint32_t updater_isr_error_get_and_clear(Updater* updater) {
-    FURI_CRITICAL_ENTER();
-    uint32_t error = updater->isr_error;
-    updater->isr_error = 0;
-    FURI_CRITICAL_EXIT();
-    return error;
+    // isr_error is also set by the I2C ISR, which FURI_CRITICAL does not mask
+    return __atomic_exchange_n(&updater->isr_error, 0, __ATOMIC_RELAXED);
 }
 
 static bool updater_promote_isr_error(Updater* updater) {

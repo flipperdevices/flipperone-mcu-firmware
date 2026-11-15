@@ -11,6 +11,21 @@
 
 #define TAG "I2CIntercom"
 
+/*
+ * Wire protocol, as seen by the host:
+ *
+ * - A write transaction always starts with the 16-bit register address, high
+ *   byte first. The data bytes after it go to consecutive addresses
+ *   (auto-increment). A write cannot continue from an earlier transaction:
+ *   its first byte is always taken as the address high byte.
+ * - A read serves bytes from the current address and auto-increments it. Set
+ *   the address with a write of just the two address bytes, then read, either
+ *   after a repeated START in the same transaction or in a later one.
+ * - A read transaction without an address write continues from where the
+ *   previous access left the address: START is not a reset point. The Linux
+ *   regmap driver does not rely on this, it sends the address every time.
+ */
+
 #define I2C_INTERCOM_THREAD_SETUP_END_FLAG (1 << 0)
 
 #define I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER 0x00
@@ -35,9 +50,10 @@ struct I2CIntercom {
     volatile uint32_t invalid_write_count;
     volatile uint32_t dropped_byte_count;
     uint32_t last_driver_dropped;
+    uint32_t last_deferred_overflow;
 };
 
-static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
+I2C_ISR_FUNC(static inline void, i2c_intercom_data_transmit)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
     uint8_t data;
     bool valid = false;
     with_i2c_register({ valid = i2c_register_read_start(instance->mem_address, &data); });
@@ -57,7 +73,7 @@ static inline void i2c_intercom_data_transmit(const FuriHalI2cBusHandle* handle,
 
 // Transaction framing comes from the DW data markers, not from START/STOP
 // flags: the latter collapse while interrupts are masked by flash operations.
-static inline void i2c_intercom_receive(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
+I2C_ISR_FUNC(static inline void, i2c_intercom_receive)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
     uint8_t data;
     uint8_t flags;
     while(furi_hal_i2c_slave_read_blocking(handle, &data, &flags, 1)) {
@@ -93,7 +109,7 @@ static inline void i2c_intercom_receive(const FuriHalI2cBusHandle* handle, I2CIn
     }
 }
 
-void __isr __not_in_flash_func(i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveEvent event, void* context) {
+I2C_ISR_FUNC(void, i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI2cBusSlaveEvent event, void* context) {
     I2CIntercom* instance = context;
 
     switch(event) {
@@ -187,18 +203,23 @@ int32_t i2c_intercom_srv(void* p) {
 
     while(1) {
         furi_delay_ms(I2C_INTERCOM_LOG_PERIOD_MS);
-        FURI_CRITICAL_ENTER();
-        uint32_t invalid_reads = instance->invalid_read_count;
-        uint32_t invalid_writes = instance->invalid_write_count;
-        uint32_t dropped_bytes = instance->dropped_byte_count;
-        instance->invalid_read_count = 0;
-        instance->invalid_write_count = 0;
-        instance->dropped_byte_count = 0;
-        FURI_CRITICAL_EXIT();
+        uint32_t invalid_reads, invalid_writes, dropped_bytes;
+        with_i2c_register({
+            invalid_reads = instance->invalid_read_count;
+            invalid_writes = instance->invalid_write_count;
+            dropped_bytes = instance->dropped_byte_count;
+            instance->invalid_read_count = 0;
+            instance->invalid_write_count = 0;
+            instance->dropped_byte_count = 0;
+        });
 
         uint32_t driver_dropped = furi_hal_i2c_slave_dropped_bytes_get(instance->bus_handle);
         uint32_t driver_dropped_delta = driver_dropped - instance->last_driver_dropped;
         instance->last_driver_dropped = driver_dropped;
+
+        uint32_t deferred_overflow = i2c_registers_deferred_overflow_get();
+        uint32_t deferred_overflow_delta = deferred_overflow - instance->last_deferred_overflow;
+        instance->last_deferred_overflow = deferred_overflow;
 
         if(invalid_reads || invalid_writes || dropped_bytes || driver_dropped_delta) {
             FURI_LOG_W(
@@ -208,6 +229,9 @@ int32_t i2c_intercom_srv(void* p) {
                 invalid_writes,
                 dropped_bytes,
                 driver_dropped_delta);
+        }
+        if(deferred_overflow_delta) {
+            FURI_LOG_E(TAG, "%lu register write callbacks dropped: deferred ring full", deferred_overflow_delta);
         }
     }
 
