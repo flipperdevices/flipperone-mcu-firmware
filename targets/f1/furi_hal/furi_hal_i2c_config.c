@@ -156,7 +156,6 @@ void furi_hal_i2c_deinit_cpu(void) {
     furi_hal_i2c_bus_cpu.api.event(&furi_hal_i2c_bus_cpu, FuriHalI2cBusEventDeinit);
 }
 
-// Slave read/write run in the I2C ISR, which may preempt flash operations: RAM only
 I2C_ISR_FUNC(static uint8_t, furi_hal_i2c_bus_slave_write)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
     furi_assert(handle);
     furi_assert(data);
