@@ -49,7 +49,7 @@ See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and 
 <details>
 <summary>Manual build (Linux / macOS)</summary>
 
-Prerequisites: [ARM GCC toolchain](https://github.com/xpack-dev-tools/arm-none-eabi-gcc-xpack/releases) (tested with 14.2.1), CMake 3.13+, [Pico SDK 2.3.1](https://github.com/raspberrypi/pico-sdk).
+Prerequisites: [Arm GNU Toolchain](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads), CMake 3.13+, [Pico SDK](https://github.com/raspberrypi/pico-sdk). The versions the project is built and tested with are the `toolchainVersion` and `sdkVersion` lines at the top of `CMakeLists.txt`; CI installs exactly those.
 
 On macOS, the ARM toolchain can be installed via Homebrew:
 
