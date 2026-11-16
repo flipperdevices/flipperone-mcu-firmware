@@ -17,6 +17,14 @@ extern "C" {
 FuriBspLed* furi_bsp_led_alloc(void);
 void furi_bsp_led_free(FuriBspLed* instance);
 void furi_bsp_led_set(FuriBspLed* instance, FuriBspLedType type, uint8_t r, uint8_t g, uint8_t b);
+
+// Physical address of the first LED a type drives, matching the order of the
+// WS2812 buffer pushed by DMA (LED_TOTAL_LEDS_COUNT entries).
+uint8_t furi_bsp_led_get_physical_index(FuriBspLedType type);
+
+// Number of LEDs a type drives: the battery outline is a pair of adjacent LEDs,
+// every other addressable type drives one.
+uint8_t furi_bsp_led_get_leds_count(FuriBspLedType type);
 void furi_bsp_led_all_off(FuriBspLed* instance);
 void furi_bsp_led_update(FuriBspLed* instance);
 

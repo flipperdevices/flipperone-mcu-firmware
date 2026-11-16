@@ -1,12 +1,7 @@
 #include "power_cli.h"
 
 #include <cli/args.h>
-#include <toolbox/strint.h>
-#include <cli/cli_ansi.h>
-#include <cli/cli_command.h>
-#include <furi_hal.h>
 #include <furi_hal_power.h>
-#include <furi_bsp_linux.h>
 #include <toolbox/property.h>
 
 #include <power/power.h>
@@ -123,15 +118,6 @@ static bool power_cli_boot(PipeSide* pipe, FuriString* args) {
     return true;
 }
 
-static bool power_cli_maskrom(PipeSide* pipe, FuriString* args) {
-    UNUSED(pipe);
-    UNUSED(args);
-    power_cli_reset_pd_and_charger();
-    furi_bsp_linux_reset();
-    furi_bsp_linux_maskrom();
-    return true;
-}
-
 static void power_cli_print_property(const char* key, const char* value, bool last, void* context) {
     UNUSED(last);
     UNUSED(context);
@@ -225,8 +211,7 @@ static const PowerCmd power_cmds[] = {
     {"off", "", "Power off the device, WARNING: Powers on only when connected via USB.", power_cli_off},
     {"ship", "", "Enter ship mode", power_cli_ship_mode},
     {"reboot", "", "Reboot the device", power_cli_reboot},
-    {"boot", "", "Boot MCU to bootloader", power_cli_boot},
-    {"maskrom", "", "Boot CPU to maskrom", power_cli_maskrom},
+    {"boot", "", "Boot MCU to bootloader", power_cli_boot}
 };
 
 static void power_cli_print_usage(void) {

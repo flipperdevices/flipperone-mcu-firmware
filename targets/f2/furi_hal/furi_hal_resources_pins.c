@@ -9,7 +9,7 @@ const GpioPin gpio_cpu_i3c0_sda = {.pin = 2};
 const GpioPin gpio_cpu_i3c0_scl = {.pin = 3};
 
 // interconnect
-const GpioPin gpio_cpu_adc_in0_boot = {.pin = 4};
+const GpioPin gpio_cpu_adc_in1_boot = {.pin = 4};
 
 // display
 const GpioPin gpio_display_te = {.pin = 5};

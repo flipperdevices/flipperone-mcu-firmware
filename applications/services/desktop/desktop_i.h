@@ -27,6 +27,7 @@ typedef enum {
     DesktopSceneEventTypeStartKeypadApp,
     DesktopSceneEventTypeStartTouchpadApp,
     DesktopSceneEventTypeStartHapticApp,
+    DesktopSceneEventTypeStartDisplayTestApp,
 
     DesktopSceneEventTypeStartAppById,
 

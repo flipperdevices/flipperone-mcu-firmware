@@ -11,6 +11,8 @@ typedef enum {
    HapticDeviceDrv2605l = (1 << 0),
 } HapticDevice;
 
+#define HAPTIC_MIN_PLAYBACK_DURATION_MS 2
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -53,9 +55,13 @@ bool haptic_stop(Haptic* instance);
 
 /**
  * @brief Forces the haptic device to perform auto-calibration.
- * 
+ *
+ * Blocks until the calibration completes. Stops any effect that is currently
+ * playing. The resulting coefficients are stored in non-volatile memory.
+ *
  * @param instance The Haptic instance.
- * @return true if the auto-calibration was successfully started, false otherwise.
+ * @return true if the calibration succeeded, false otherwise (device not
+ *         initialized, or the calibration itself failed).
  */
 bool haptic_force_auto_calibrate(Haptic* instance);
 

@@ -21,5 +21,9 @@ typedef enum {
     FuriBspLedTypeBatteryCenter,
 
     // special types
-    FuriBspLedTypeAllOff,
+    FuriBspLedTypeAllOff, // special type to turn all LEDs off
+
+    FuriBspLedTypeBatteryOutline1, // additional battery outline LEDs 1
+    FuriBspLedTypeBatteryOutline2, // additional battery outline LEDs 2
+
 } FuriBspLedType;

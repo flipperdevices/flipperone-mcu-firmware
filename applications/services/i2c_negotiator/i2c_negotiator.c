@@ -6,7 +6,9 @@
 #include <i2c_intercom/i2c_registers_map.h>
 #include <led/led.h>
 #include <haptic/haptic.h>
+#include <updater/updater.h>
 #include <drivers/drv2605l/drv2605l.h>
+#include <cpu_mode/cpu_mode.h>
 
 #define TAG "I2CNegotiator"
 
@@ -19,6 +21,8 @@ typedef struct {
     I2CIntercom* intercom;
     Led* led;
     Haptic* haptic;
+    Updater* updater;
+    CpuMode* cpu_mode;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -120,7 +124,7 @@ bool i2c_negotiator_input_sw_button_event(SwInputKey key, bool pressed, void* co
 
 //Cpu state register
 void i2c_negotiator_cpu_state(I2CNegotiator* instance, uint16_t value) {
-    FURI_LOG_I(TAG, "CPU state register write: 0x%04X", value);
+    cpu_mode_set_cpu_state(instance->cpu_mode, (CpuState)value);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_cpu_state);
 
@@ -249,12 +253,20 @@ static void i2c_negotiator_backlight_timeout_callback(const void* item, void* co
     with_i2c_register({ i2c_register_update(I2C_BACKLIGHT_TIMEOUT, *timeout / 100, 0xFFFF); });
 }
 
+static void i2c_updater_state_callback(UpdaterState state, UpdaterError error, void* context) {
+    UNUSED(context);
+    with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, (error << 8) | state, 0xFFFF); });
+}
+
 I2CNegotiator* i2c_negotiator_alloc() {
     I2CNegotiator* instance = malloc(sizeof(I2CNegotiator));
     instance->gui = furi_record_open(RECORD_GUI);
     instance->intercom = furi_record_open(RECORD_I2C_INTERCOM);
     instance->led = furi_record_open(RECORD_LEDS);
     instance->haptic = furi_record_open(RECORD_HAPTIC);
+    // The updater creates its record before anything can fail
+    instance->updater = furi_record_open(RECORD_UPDATER);
+    instance->cpu_mode = furi_record_open(RECORD_CPU_MODE);
     instance->event_loop = furi_event_loop_alloc();
 
     instance->negotiator_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
@@ -308,6 +320,18 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
         // Haptic
         i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
+
+        // Updater
+        i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
+        i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, updater_get_current_fw_version(instance->updater));
+        i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, instance->updater);
+        i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, instance->updater);
+        i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, instance->updater);
+        static_assert(
+            I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
+            "I2C updater data window must match the updater block layout");
+        i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, instance->updater);
+        updater_set_state_callback(instance->updater, i2c_updater_state_callback, NULL);
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);

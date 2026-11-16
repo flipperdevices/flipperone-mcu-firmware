@@ -629,7 +629,7 @@ Fusb302Status fusb302_pd_message_receive(Fusb302* instance, Fusb302PdMsg* msg) {
     Fusb302Status res = Fusb302StatusUnknown;
     Fusb302Status1RegBits status1_bits = {0};
     do {
-        res = fusb302_read_reg(instance, Fusb302RegControl0, (uint8_t*)&status1_bits);
+        res = fusb302_read_reg(instance, Fusb302RegStatus1, (uint8_t*)&status1_bits);
         if(res != Fusb302StatusOk) {
             break;
         }
