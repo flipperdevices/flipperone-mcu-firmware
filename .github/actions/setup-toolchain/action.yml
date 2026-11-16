@@ -77,7 +77,9 @@ runs:
           ${{ inputs.install_dir }}/arm-none-eabi-gcc
           ${{ inputs.install_dir }}/picotool
           ${{ github.workspace }}/pico-sdk
-        key: toolchain-${{ steps.versions.outputs.toolchain }}-sdk-${{ steps.versions.outputs.sdk }}-picotool-${{ steps.versions.outputs.picotool }}-${{ inputs.pico_sdk_tools_build }}
+        # install_dir is part of the key: the archive holds absolute paths, so a
+        # cache saved by a job installing elsewhere must not be restored here
+        key: toolchain-${{ steps.versions.outputs.toolchain }}-sdk-${{ steps.versions.outputs.sdk }}-picotool-${{ steps.versions.outputs.picotool }}-${{ inputs.pico_sdk_tools_build }}-${{ inputs.install_dir }}
 
     # libusb-1.0-0 is a runtime dependency of the prebuilt picotool
     - name: Install cmake and libusb

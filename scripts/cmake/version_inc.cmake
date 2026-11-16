@@ -69,7 +69,10 @@ else()
 endif()
 
 _git(_origin remote get-url origin)
-_pick(GIT_ORIGIN _UNUSED_ "${_origin}" "unknown")
+set(GIT_ORIGIN "${_origin}")
+if(NOT GIT_ORIGIN)
+    set(GIT_ORIGIN "unknown")
+endif()
 
 string(TIMESTAMP BUILD_DATE "%Y-%m-%d")
 

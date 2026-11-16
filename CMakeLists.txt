@@ -27,6 +27,25 @@ if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
                 "git submodule update --init --recursive failed (${_fw_git_status}). "
                 "Run it by hand in ${CMAKE_CURRENT_SOURCE_DIR} and re-run cmake.")
         endif()
+    else()
+        # '+' is a submodule checked out at another commit than this tree records
+        # (e.g. after a pull that moved it), 'U' one with merge conflicts. Only
+        # warn: it may just as well be work in progress inside the submodule, and
+        # configure must not throw that away.
+        string(REPLACE "\n" ";" _fw_lines "${_fw_submodules}")
+        set(_fw_stale "")
+        foreach(_fw_line IN LISTS _fw_lines)
+            if(_fw_line MATCHES "^[+U][0-9a-f]+ ([^ ]+)")
+                list(APPEND _fw_stale "${CMAKE_MATCH_1}")
+            endif()
+        endforeach()
+        if(_fw_stale)
+            list(JOIN _fw_stale ", " _fw_stale)
+            message(WARNING
+                "Submodules not at the commit this tree records: ${_fw_stale}. "
+                "Unless that is intentional, run "
+                "'git submodule update --init --recursive'.")
+        endif()
     endif()
 endif()
 

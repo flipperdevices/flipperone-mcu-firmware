@@ -29,8 +29,17 @@ cp "$BUILD"/generated/pico_standard_link/*/*.incl "$OUT/" 2>/dev/null || true
 # Region files the SDK writes into the build tree. The SDK's memory_flash.incl
 # INCLUDEs pico_flash_region.ld; commits before targets/memory_flash.incl existed
 # restricted FLASH by overwriting that file at configure, so it must come along.
-cp "$BUILD"/pico-sdk/src/rp2_common/pico_standard_link/pico_psram_region.ld "$OUT/"
-cp "$BUILD"/pico-sdk/src/rp2_common/pico_standard_link/pico_flash_region.ld "$OUT/"
+# pico_flash_region.ld is required: without it MemBrowse would silently work
+# with a wrong FLASH size, so a missing file fails the step instead.
+REGIONS=$BUILD/pico-sdk/src/rp2_common/pico_standard_link
+if [ -f "$REGIONS/pico_psram_region.ld" ]; then
+    cp "$REGIONS/pico_psram_region.ld" "$OUT/"
+fi
+if [ ! -f "$REGIONS/pico_flash_region.ld" ]; then
+    echo "membrowse_ldscripts.sh: $REGIONS/pico_flash_region.ld not found" >&2
+    exit 1
+fi
+cp "$REGIONS/pico_flash_region.ld" "$OUT/"
 
 # Our restricted FLASH region. The build picks it up over the SDK's copy through
 # pico_add_linker_script_override_path(); here it simply replaces the SDK file.

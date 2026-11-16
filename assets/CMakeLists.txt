@@ -23,16 +23,22 @@ else()
 endif()
 set(ASSETS_COMMAND "${VENV_PYTHON}")
 
-# Prepare the venv in a single prerequisite step
+# Prepare the venv in a single prerequisite step. It is rebuilt from scratch
+# when requirements.txt changes or another interpreter is configured (the marker
+# below is only rewritten when its content changes). The stamp lives inside the
+# venv, so deleting the venv by hand also triggers a rebuild.
 set(VENV_REQUIREMENTS "${PYTHON_DIR}/requirements.txt")
-set(VENV_STAMP "${CMAKE_CURRENT_BINARY_DIR}/venv.stamp")
+set(VENV_STAMP "${VENV_DIR}/venv.stamp")
+set(VENV_INTERPRETER "${CMAKE_CURRENT_BINARY_DIR}/venv_interpreter.txt")
+file(GENERATE OUTPUT ${VENV_INTERPRETER} CONTENT "${Python3_EXECUTABLE}\n")
 add_custom_command(
     OUTPUT  ${VENV_STAMP}
+    # --clear: a venv left over from another interpreter is not reusable;
     # --copies: a symlinked venv breaks on macOS once the interpreter is updated
-    COMMAND ${Python3_EXECUTABLE} -m venv --copies ${VENV_DIR}
+    COMMAND ${Python3_EXECUTABLE} -m venv --clear --copies ${VENV_DIR}
     COMMAND ${VENV_PYTHON} -m pip install --disable-pip-version-check -r ${VENV_REQUIREMENTS}
     COMMAND ${CMAKE_COMMAND} -E touch ${VENV_STAMP}
-    DEPENDS ${VENV_REQUIREMENTS}
+    DEPENDS ${VENV_REQUIREMENTS} ${VENV_INTERPRETER}
     COMMENT "Preparing Python virtual environment in ${VENV_DIR}"
     VERBATIM
 )
