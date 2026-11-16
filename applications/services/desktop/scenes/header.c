@@ -126,7 +126,12 @@ static void header_on_alloc(Scene* scene, void* context) {
             const Version* version = version_get();
 
             model->version_text = furi_string_alloc();
-            furi_string_printf(model->version_text, "[%c] ", furi_hal_flash_get_active_fw_partition() == FlashPartitionIdFwA ? 'A' : 'B');
+            FlashPartitionId active_partition;
+            if(furi_hal_flash_get_active_fw_partition(&active_partition)) {
+                furi_string_printf(model->version_text, "[%c] ", active_partition == FlashPartitionIdFwA ? 'A' : 'B');
+            } else {
+                furi_string_printf(model->version_text, "[?] ");
+            }
             furi_string_cat_printf(model->version_text, "%s %s", version_get_gitbranch(version), version_get_githash(version));
 
             model->charge_text = furi_string_alloc();
