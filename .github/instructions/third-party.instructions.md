@@ -1,5 +1,5 @@
 ---
-applyTo: "lib/corelibs/**,lib/freertos/**,lib/nanopb/**,lib/pico-kvstore/**,lib/rtt/**,lib/sdk/**,assets/proto/**,applications/services/gui/clay.c,applications/services/gui/clay.h,applications/debug/unit_test_app/minunit.h"
+applyTo: "lib/corelibs/**,lib/freertos/FreeRTOS-Kernel/**,lib/nanopb/**,lib/pico-kvstore/**,lib/rtt/segger_rtt/**,lib/sdk/**,assets/proto/**,applications/services/gui/clay.c,applications/services/gui/clay.h,applications/debug/unit_test_app/minunit.h"
 ---
 
 # Third-party, submodule and generated-code review rules

@@ -49,7 +49,8 @@ python3 scripts/testops.py unit-tests
 ```
 
 Both require a leased stand (`FO_LEASE` / `/run/fo/lease.json`), which exists only on the
-self-hosted `fone-lab` runners. CI does this for `f2` only; `f1` has no hardware coverage.
+self-hosted `fone-lab` runners. Which board CI covers is defined in the workflows — do not
+assume every target has hardware coverage.
 
 ## Rules that are easy to get wrong
 

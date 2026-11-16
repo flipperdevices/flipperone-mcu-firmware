@@ -1,5 +1,5 @@
 ---
-applyTo: "applications/**/*.c,applications/**/*.h,lib/toolbox/**/*.c,lib/toolbox/**/*.h,lib/cli/**/*.c,lib/cli/**/*.h,lib/containers/**/*.c,lib/containers/**/*.h,lib/drivers/**/*.c,lib/drivers/**/*.h,lib/uart_pio/**/*.c,lib/uart_pio/**/*.h,lib/tusb/**/*.c,lib/tusb/**/*.h"
+applyTo: "applications/**/*.c,applications/**/*.h,lib/toolbox/**/*.c,lib/toolbox/**/*.h,lib/cli/**/*.c,lib/cli/**/*.h,lib/containers/**/*.c,lib/containers/**/*.h,lib/drivers/**/*.c,lib/drivers/**/*.h,lib/uart_pio/**/*.c,lib/uart_pio/**/*.h,lib/tusb/**/*.c,lib/tusb/**/*.h,lib/freertos/*.c,lib/freertos/*.h,targets/**/*.c,targets/**/*.h"
 ---
 
 # C/C++ firmware review checks
