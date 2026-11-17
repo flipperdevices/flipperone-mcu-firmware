@@ -217,13 +217,12 @@ I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_haptic_play_effect);
 
 // System reset functions
 void i2c_negotiator_system_reset(I2CNegotiator* instance, uint16_t value) {
-    UNUSED(instance);
     if(value != I2C_SYSTEM_RESET_MAGIC) {
         FURI_LOG_W(TAG, "Invalid reset magic: 0x%04X", value);
         return;
     }
     FURI_LOG_I(TAG, "Reset command received from host");
-    furi_hal_power_reset();
+    power_host_reset_request(instance->power);
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_system_reset);
 
@@ -231,6 +230,11 @@ void i2c_negotiator_reset_mode_set(I2CNegotiator* instance, uint16_t value) {
     // Immediate reset is firmware-internal; the register path only arms 0-2.
     if(value >= PowerHostResetResponseResetMcuImmediately) {
         FURI_LOG_W(TAG, "Invalid host reset response: %u", value);
+        // The register already holds the rejected value: put the armed one back.
+        PowerHostResetResponse current = PowerHostResetResponseDisabled;
+        if(power_get_host_reset_response(instance->power, &current)) {
+            with_i2c_register({ i2c_register_update(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, current, 0xFF); });
+        }
         return;
     }
     if(!power_set_host_reset_response(instance->power, (PowerHostResetResponse)value)) {
@@ -288,15 +292,15 @@ static void i2c_negotiator_backlight_timeout_callback(const void* item, void* co
 static void i2c_updater_state_callback(UpdaterState state, UpdaterError error, void* context) {
     I2CNegotiator* instance = context;
     with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, (error << 8) | state, 0xFFFF); });
+    // Mirror the armed response: DONE arms it, Abort/Error disarm it.
+    PowerHostResetResponse response = PowerHostResetResponseDisabled;
+    if(power_get_host_reset_response(instance->power, &response)) {
+        with_i2c_register({ i2c_register_update(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, response, 0xFF); });
+    }
     if(state == UpdaterStateDone) {
         FuriHalFwVersion version = updater_get_last_written_fw_version(instance->updater);
         with_i2c_register({ i2c_register_update(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, ((uint16_t)version.major << 8) | version.minor, 0xFFFF); });
         with_i2c_register({ i2c_register_update(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, version.patch, 0xFFFF); });
-        // The updater arms the host-shutdown reset itself: mirror it so the host can read it
-        PowerHostResetResponse response = PowerHostResetResponseDisabled;
-        if(power_get_host_reset_response(instance->power, &response)) {
-            with_i2c_register({ i2c_register_update(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, response, 0xFF); });
-        }
     }
 }
 

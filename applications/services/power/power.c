@@ -7,6 +7,7 @@
 #include <furi_hal_i2c_config.h>
 #include <furi_hal_resources.h>
 #include <furi_hal_power.h>
+#include <furi_hal_flash.h>
 #include <drivers/ina219/ina219.h>
 #include <drivers/bq2579x/bq2579x.h>
 #include <drivers/bq28z620/bq28z620.h>
@@ -417,13 +418,21 @@ static bool power_host_reset_state_changed_internal(Power* instance, CpuState cp
     return true;
 }
 
+// A flash-update boot needs a valid image header in the target slot.
+static bool power_update_base_is_bootable(Power* instance) {
+    if(instance->host_reset_update_base == 0) return false;
+    FuriHalFwVersion version;
+    return furi_hal_flash_get_image_version(
+        furi_hal_flash_get_read_ptr(instance->host_reset_update_base), &version);
+}
+
 static void power_host_reset_timer_callback(void* context) {
     furi_assert(context);
     Power* instance = context;
 
     switch(instance->host_reset_response) {
     case PowerHostResetResponseResetMcu:
-        if(instance->host_reset_update_base != 0) {
+        if(power_update_base_is_bootable(instance)) {
             FURI_LOG_I(TAG, "Host is down, booting updated partition at 0x%08lX", (unsigned long)instance->host_reset_update_base);
             furi_hal_power_reboot_to_partition((uint32_t)instance->host_reset_update_base);
         } else {
@@ -483,11 +492,25 @@ static void power_immediate_reset_timer_callback(void* context) {
     furi_hal_power_reset();
 }
 
+// SYSTEM_RESET from the host: activate an armed image, else a marked reset.
+static bool power_host_reset_request_internal(Power* instance) {
+    if(power_update_base_is_bootable(instance)) {
+        FURI_LOG_I(TAG, "Host reset request: booting updated partition at 0x%08lX", (unsigned long)instance->host_reset_update_base);
+        furi_hal_power_reboot_to_partition((uint32_t)instance->host_reset_update_base);
+    } else {
+        FURI_LOG_I(TAG, "Host reset request: resetting MCU");
+        powman_hw->boot[0] = POWER_HOST_RESET_REQUEST_MAGIC;
+        furi_hal_power_reset();
+    }
+    return true;
+}
+
 API_WRAPPER_PARAM(power_host_reset_response_set_internal, bool, Power*, PowerHostResetResponse);
 API_WRAPPER_PARAM(power_host_reset_response_get_internal, bool, Power*, PowerHostResetResponse*);
 API_WRAPPER_PARAM(power_host_reset_delay_set_internal, bool, Power*, uint16_t);
 API_WRAPPER_PARAM(power_host_reset_state_changed_internal, bool, Power*, CpuState);
 API_WRAPPER_PARAM(power_update_base_set_internal, bool, Power*, size_t);
+API_WRAPPER(power_host_reset_request_internal, bool, Power*);
 
 static Power* power_alloc(void) {
     Power* instance = (Power*)malloc(sizeof(Power));
@@ -1042,6 +1065,12 @@ bool power_set_update_base(Power* instance, size_t update_base) {
     bool result;
     POWER_API_CALL_PARAM(0, power_update_base_set_internal, instance, update_base, result);
     return result;
+}
+
+void power_host_reset_request(Power* instance) {
+    furi_check(instance);
+    bool result;
+    POWER_API_CALL(0, power_host_reset_request_internal, instance, result);
 }
 
 void power_on_host_state_changed(Power* instance, CpuState cpu_state) {

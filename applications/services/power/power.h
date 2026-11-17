@@ -78,6 +78,9 @@ bool power_set_host_reset_delay(Power* instance, uint16_t reset_delay_100ms);
 /** Flash storage offset of a freshly written partition, booted by an armed ResetMcu response (0 clears it). */
 bool power_set_update_base(Power* instance, size_t update_base);
 
+/** Activate a staged image if armed, else reset with the host-reset-request marker. Never returns. */
+void power_host_reset_request(Power* instance);
+
 /** Notify the power service of a host CPU state change (drives the armed response). */
 void power_on_host_state_changed(Power* instance, CpuState cpu_state);
 

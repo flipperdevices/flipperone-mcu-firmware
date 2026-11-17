@@ -172,10 +172,20 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     return true;
 }
 
+// A stale armed reset would flash-update-boot a half-written slot on host down.
+static void updater_disarm_host_reset(Updater* updater) {
+    if(!updater->power) return;
+    power_set_update_base(updater->power, 0);
+    power_set_host_reset_response(updater->power, PowerHostResetResponseDisabled);
+}
+
 static void updater_state_change(Updater* updater, UpdaterState new_state, UpdaterError error) {
     furi_check(updater);
     if(updater->state != new_state) {
         updater->state = new_state;
+        if(new_state == UpdaterStateError) {
+            updater_disarm_host_reset(updater);
+        }
         if(updater->state_callback) {
             updater->state_callback(new_state, new_state == UpdaterStateError ? error : UpdaterErrorNone, updater->state_callback_context);
         }
@@ -359,6 +369,9 @@ static void updater_start_update(Updater* updater) {
         return;
     }
 
+    // A new update voids whatever the previous session armed.
+    updater_disarm_host_reset(updater);
+
     updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
     updater->current_block = 0;
     if(updater_erase_inactive_partition(updater) && updater->state == UpdaterStateBusy) {
@@ -367,6 +380,7 @@ static void updater_start_update(Updater* updater) {
 }
 
 static void updater_abort_update(Updater* updater) {
+    updater_disarm_host_reset(updater);
     updater->update_params.crc_set = false;
     updater->update_params.size_set = false;
     updater->update_params.blocks = 0;
@@ -437,9 +451,16 @@ static void updater_commit_flash_update_boot(void) {
     if(rom_get_last_boot_type() != BOOT_TYPE_FLASH_UPDATE) return;
 
     FURI_LOG_I(TAG, "Flash-update boot: committing new image");
+    // The buy rewrites flash: keep the core off the XIP window.
+    FURI_CRITICAL_ENTER();
     int rc = rom_explicit_buy((uint8_t*)explicit_buy_scratch, sizeof(explicit_buy_scratch));
     if(rc != 0) {
-        FURI_LOG_E(TAG, "rom_explicit_buy failed: %d", rc);
+        // A failed buy means the bootrom reverts this boot anyway.
+        rc = rom_explicit_buy((uint8_t*)explicit_buy_scratch, sizeof(explicit_buy_scratch));
+    }
+    FURI_CRITICAL_EXIT();
+    if(rc != 0) {
+        FURI_LOG_E(TAG, "rom_explicit_buy failed: %d, update will be reverted", rc);
     }
 }
 
