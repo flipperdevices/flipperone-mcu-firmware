@@ -12,6 +12,9 @@ extern "C" {
 /**
  * @brief Callback for writable registers.
  *
+ * Runs in the register software interrupt, which applies host writes one after
+ * another: keep it short and do not log, every write queued behind it waits.
+ *
  * @param context Callback context passed at registration.
  * @param address Register address, always even.
  * @param value Register value after the high byte has been written.

@@ -17,6 +17,11 @@ bool i2c_register_read_start(uint16_t address, uint8_t* value);
 // @warning Called from the I2C ISR only.
 bool i2c_register_read_commit(uint16_t address);
 
+// Forget the high byte latched by the last low-byte read: call when a new
+// transaction or address starts.
+// @warning Called from the I2C ISR only.
+void i2c_register_read_reset(void);
+
 // Write transaction to the ring: begin at the address of the first data byte,
 // append data bytes, commit once the transaction ended (STOP, repeated START,
 // a new transaction). Nothing is applied before the commit; a transaction
