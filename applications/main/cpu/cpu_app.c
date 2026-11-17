@@ -200,6 +200,7 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             cpu_app_model_apply(instance, cpu_app_model_init, NULL);
             break;
         case CpuAppMessageTypeShutdown:
+            FURI_LOG_I(TAG, "CPU app shutdown requested");
             // The actual hardware cleanup happens in cpu_app_do_shutdown()
             // after the event loop exits, so it covers every exit path.
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);

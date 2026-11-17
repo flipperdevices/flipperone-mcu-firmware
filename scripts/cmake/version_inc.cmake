@@ -61,7 +61,9 @@ if(NOT _version)
 endif()
 _pick(VERSION DIST_SUFFIX "${_version}" "unknown")
 
-_git(_status status --porcelain)
+# Untracked scratch dirs (local artifact folders, .copilot) must not make a
+# build report dirty: only tracked changes do.
+_git(_status status --porcelain --untracked-files=no)
 if(_status)
     set(BUILD_DIRTY 1)
 else()

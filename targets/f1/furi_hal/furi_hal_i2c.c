@@ -4,6 +4,7 @@
 #include <furi_hal_power.h>
 #include <hardware/i2c.h>
 #include <drivers/i2c_master_pio/pio_i2c.h>
+#include <drivers/i2c_slave/i2c_slave.h>
 
 #define TAG "FuriHalI2c"
 
@@ -118,12 +119,21 @@ uint8_t __isr __not_in_flash_func(furi_hal_i2c_slave_write_blocking)(const FuriH
     return handle->bus->api.slave.write_blocking(handle, data, size);
 }
 
-uint8_t __isr __not_in_flash_func(furi_hal_i2c_slave_read_blocking)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
+uint8_t __isr __not_in_flash_func(furi_hal_i2c_slave_read_blocking)(
+    const FuriHalI2cBusHandle* handle,
+    uint8_t* data,
+    uint8_t* flags,
+    size_t size) {
     furi_hal_i2c_check_handle_is_acquired_slave(handle);
-    return handle->bus->api.slave.read_blocking(handle, data, size);
+    return handle->bus->api.slave.read_blocking(handle, data, flags, size);
 }
 
 void furi_hal_i2c_slave_bus_reset(const FuriHalI2cBusHandle* handle) {
     furi_hal_i2c_check_handle_is_acquired_slave(handle);
     handle->bus->api.slave.bus_reset(handle);
+}
+
+uint32_t furi_hal_i2c_slave_dropped_bytes_get(const FuriHalI2cBusHandle* handle) {
+    furi_hal_i2c_check_handle_is_acquired_slave(handle);
+    return i2c_slave_dropped_bytes_get((i2c_inst_t*)handle->bus->data);
 }
