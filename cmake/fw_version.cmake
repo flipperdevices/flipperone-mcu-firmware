@@ -109,15 +109,3 @@ message(STATUS "Firmware version: ${FW_VERSION_STRING} (packed ${VERSION_PACKED_
 set(FW_VERSION_COMPILE_DEFS
     "GIT_COMMIT=\"${GIT_COMMIT}\""
     "GIT_BRANCH=\"${GIT_BRANCH}\""
-    "VERSION=\"${FW_VERSION_STRING}\""
-    "BUILD_DIRTY=${BUILD_DIRTY}"
-    "GIT_ORIGIN=\"${GIT_ORIGIN}\""
-    "BUILD_DATE=\"${BUILD_DATE}\""
-    "TARGET=${FIRMWARE_TARGET}"
-    "FIRMWARE_ORIGIN=\"${FIRMWARE_ORIGIN}\""
-)
-
-# Attach version.c directly: no submodule changes needed.
-target_sources(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/lib/corelibs/lib/version/version.c)
-set_source_files_properties(${CMAKE_SOURCE_DIR}/lib/corelibs/lib/version/version.c PROPERTIES
-    COMPILE_DEFINITIONS "${FW_VERSION_COMPILE_DEFS}")
