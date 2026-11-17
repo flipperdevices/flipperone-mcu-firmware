@@ -65,10 +65,12 @@ else()
     execute_process(
         COMMAND git -C ${CMAKE_SOURCE_DIR} tag --merged HEAD --sort=-version:refname
         OUTPUT_VARIABLE FW_GIT_TAGS OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-    if(FW_GIT_TAGS MATCHES "v?([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+    # Match whole tag lines: "v1.2.3-rc1" must not match as "v1.2.3".
+    if(FW_GIT_TAGS MATCHES "(^|\n)v?([0-9]+)\\.([0-9]+)\\.([0-9]+)(\n|$)")
         set(FW_GIT_LAST_TAG "${CMAKE_MATCH_0}")
-        set(FW_IMAGE_MAJOR ${CMAKE_MATCH_1})
-        set(FW_IMAGE_MINOR ${CMAKE_MATCH_2})
+        string(STRIP "${FW_GIT_LAST_TAG}" FW_GIT_LAST_TAG)
+        set(FW_IMAGE_MAJOR ${CMAKE_MATCH_2})
+        set(FW_IMAGE_MINOR ${CMAKE_MATCH_3})
         execute_process(
             COMMAND git -C ${CMAKE_SOURCE_DIR} rev-list --count "${FW_GIT_LAST_TAG}..HEAD"
             OUTPUT_VARIABLE FW_GIT_DISTANCE OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
@@ -76,7 +78,9 @@ else()
             set(FW_GIT_DISTANCE 0)
         endif()
         # Distance rides in PATCH; MAJOR/MINOR stay at the tag values.
-        math(EXPR FW_IMAGE_PATCH "${CMAKE_MATCH_3} + ${FW_GIT_DISTANCE}")
+        math(EXPR FW_IMAGE_PATCH "${CMAKE_MATCH_4} + ${FW_GIT_DISTANCE}")
+    elseif(DEFINED ENV{CI} AND NOT "$ENV{CI}" STREQUAL "")
+        message(FATAL_ERROR "No semver tag merged into HEAD: fix the checkout (fetch-depth: 0, fetch-tags: true)")
     endif()
 endif()
 

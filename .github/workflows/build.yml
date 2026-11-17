@@ -79,7 +79,8 @@ jobs:
       with:
         path: firmware
         submodules: recursive
-        fetch-depth: 2
+        fetch-depth: 0
+        fetch-tags: true
 
     - name: 'Get commit details'
       id: names
