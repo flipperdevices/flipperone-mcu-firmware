@@ -169,17 +169,17 @@ jobs:
     - name: 'Move upload files'
       if: ${{ !github.event.pull_request.head.repo.fork }}
       run: |
+        mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.bin artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.bin
         mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.uf2
+        mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.elf
         mv ${{github.workspace}}/firmware/build/partition_table.uf2 artifacts/flipper-one-mcu-partition-table-${SUFFIX}.uf2
 
-    # Hand the .uf2 over to the jobs below, which need every target at once —
-    # neither the update server nor the release can be fed from inside the matrix.
     - name: 'Stash artifacts for the jobs below'
       if: ${{ !github.event.pull_request.head.repo.fork }}
       uses: actions/upload-artifact@v4
       with:
         name: firmware-${{ matrix.target }}
-        path: artifacts/*.uf2
+        path: artifacts/*
         if-no-files-found: error
 
   unit-tests:
@@ -276,7 +276,9 @@ jobs:
     - name: 'Create GitHub Release'
       uses: softprops/action-gh-release@v3
       with:
-        files: artifacts/*.uf2
+        files: |
+          artifacts/*.uf2
+          artifacts/*.elf
         generate_release_notes: true
         fail_on_unmatched_files: true
 
