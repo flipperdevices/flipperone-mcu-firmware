@@ -1,4 +1,5 @@
 #include <furi_hal_i2c_config.h>
+#include <furi_hal_usb.h>
 #include <drivers/pcal6416/pcal6416.h>
 #include <stdio.h>
 
@@ -166,8 +167,10 @@ static void furi_bsp_expander_main_init(void) {
 
 void furi_bsp_main_reset(void) {
     furi_check(expander_main != NULL);
+    bool cpu_released = false;
     furi_check(furi_mutex_acquire(expander_main->handle_mutex, FuriWaitForever) == FuriStatusOk);
     if(expander_main->handle) {
+        cpu_released = expander_main->control_state != FuriBspControlExpanderMainMcu;
         // Reset main expander
         furi_hal_gpio_write_open_drain(&gpio_main_board_reset, false);
         furi_delay_ms(50);
@@ -189,6 +192,11 @@ void furi_bsp_main_reset(void) {
         furi_bsp_show_error_message_main_expander();
     }
     furi_check(furi_mutex_release(expander_main->handle_mutex) == FuriStatusOk);
+
+    if(cpu_released) {
+        furi_hal_usb_reconnect();
+        FURI_LOG_I(TAG, "USB reconnected after main reset");
+    }
 }
 
 void furi_bsp_expander_init(void) {
