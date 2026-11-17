@@ -43,10 +43,6 @@ uint32_t i2c_slave_dropped_bytes_get(i2c_inst_t* i2c) {
     return i2c_slave_dropped_bytes[i2c_hw_index(i2c)];
 }
 
-I2C_ISR_FUNC(uint8_t, i2c_slave_rxflr_get)(i2c_inst_t* i2c) {
-    return (uint8_t)i2c_get_hw(i2c)->rxflr;
-}
-
 I2C_ISR_FUNC(static void, i2c_slave_irq_callback)(void) {
     uint i2c_index = __get_current_exception() - VTABLE_FIRST_IRQ - I2C0_IRQ;
     I2cSlave* slave = &i2c_slaves[i2c_index];
@@ -57,6 +53,19 @@ I2C_ISR_FUNC(static void, i2c_slave_irq_callback)(void) {
     uint32_t intr_stat = hw->intr_stat;
     if(intr_stat == 0) {
         return;
+    }
+
+    // A pending read request holds SCL, so the transfer being read cannot
+    // have stopped: a STOP latched with it ended an earlier transfer (several
+    // queue up while the IRQ is masked). Deliver it first; delivered after
+    // the read started, it would end the transfer being read.
+    if((intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) && (intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS)) {
+        (void)hw->clr_stop_det;
+        intr_stat &= ~I2C_IC_INTR_STAT_R_STOP_DET_BITS;
+        if(*is_started) {
+            slave->callback(i2c, I2cSlaveEventStop);
+            *is_started = false;
+        }
     }
 
     // A transfer can start without a START_DET of its own: its START arrived

@@ -42,9 +42,11 @@ struct I2CIntercom {
     volatile size_t pointer_address; ///< Register the last pointer write selected
     volatile bool wrote_data_in_transaction; ///< Data written in this transaction: reads serve the pointer
     volatile bool write_open; ///< A write transaction is being appended to the ring
-    volatile uint8_t pre_restart_bytes; ///< Bytes that were in the FIFO when the restart hit
     volatile uint8_t address_hi;
     volatile uint8_t address_index;
+    volatile bool held_valid; ///< A byte taken from the FIFO but left for the next transaction
+    volatile uint8_t held_data;
+    volatile uint8_t held_flags;
     // Byte-loss accounting: invalid reads = register-map rejects, dropped =
     // intercom framing, driver-dropped = FIFO drain while idle (logged below).
     // Invalid writes and dropped transactions are counted by i2c_registers.
@@ -82,19 +84,42 @@ I2C_ISR_FUNC(static inline void, i2c_intercom_write_end)(I2CIntercom* instance) 
     }
 }
 
+// Next received byte: the held one first, then the RX FIFO
+I2C_ISR_FUNC(static inline bool, i2c_intercom_rx_byte)(
+    const FuriHalI2cBusHandle* handle,
+    I2CIntercom* instance,
+    uint8_t* data,
+    uint8_t* flags,
+    bool* was_held) {
+    *was_held = instance->held_valid;
+    if(instance->held_valid) {
+        *data = instance->held_data;
+        *flags = instance->held_flags;
+        instance->held_valid = false;
+        return true;
+    }
+    return furi_hal_i2c_slave_read_blocking(handle, data, flags, 1);
+}
+
 // Transaction framing comes from the DW data markers, not from START/STOP
 // flags: the latter collapse while interrupts are masked by flash operations.
-I2C_ISR_FUNC(static inline void, i2c_intercom_receive)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance) {
+// With `to_stop`, stop before the first byte of the next transaction: the
+// bytes after a STOP belong to a transfer whose Start is not delivered yet.
+I2C_ISR_FUNC(static inline void, i2c_intercom_receive)(const FuriHalI2cBusHandle* handle, I2CIntercom* instance, bool to_stop) {
     uint8_t data;
     uint8_t flags;
-    while(furi_hal_i2c_slave_read_blocking(handle, &data, &flags, 1)) {
-        // Only FIRST_DATA_BYTE restarts framing: the controller retro-marks
-        // pre-restart FIFO bytes with RESTART.
-        bool pre_restart = instance->pre_restart_bytes > 0;
-        if(pre_restart) {
-            instance->pre_restart_bytes--;
+    bool was_held;
+    while(i2c_intercom_rx_byte(handle, instance, &data, &flags, &was_held)) {
+        // A held byte reaching a STOP means that STOP ends its own transfer
+        if(to_stop && !was_held && (flags & FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE)) {
+            instance->held_data = data;
+            instance->held_flags = flags;
+            instance->held_valid = true;
+            break;
         }
-        if((flags & FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE) && !pre_restart) {
+        // FIRST_DATA_BYTE marks the first byte of every transaction, also when
+        // several of them queued up in the FIFO while the IRQ was masked.
+        if(flags & FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE) {
             i2c_intercom_write_end(instance);
             instance->address_index = 0;
         }
@@ -109,6 +134,7 @@ I2C_ISR_FUNC(static inline void, i2c_intercom_receive)(const FuriHalI2cBusHandle
             instance->mem_address = ((uint16_t)instance->address_hi << 8) | data;
             instance->pointer_address = instance->mem_address;
             instance->address_index = 2;
+            i2c_register_read_reset();
         } else {
             // Data byte: to the ring, applied later by the register software
             // interrupt. An address-only write never opens a record.
@@ -132,12 +158,12 @@ I2C_ISR_FUNC(void, i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI
         i2c_intercom_write_end(instance);
         instance->in_transaction = true;
         instance->wrote_data_in_transaction = false;
-        instance->pre_restart_bytes = 0;
+        i2c_register_read_reset();
         break;
     case FuriHalI2cBusSlaveEventRead:
         // SCL is held: bytes still in the RX FIFO belong to the write before
         // the read. Frame them, then end that write.
-        i2c_intercom_receive(handle, instance);
+        i2c_intercom_receive(handle, instance, false);
         i2c_intercom_write_end(instance);
         // A read that follows data in this transaction serves the selected
         // pointer, not the auto-incremented address. That data is not applied
@@ -149,11 +175,9 @@ I2C_ISR_FUNC(void, i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI
         i2c_intercom_data_transmit(handle, instance);
         break;
     case FuriHalI2cBusSlaveEventWrite:
-        i2c_intercom_receive(handle, instance);
+        i2c_intercom_receive(handle, instance, false);
         break;
     case FuriHalI2cBusSlaveEventRepeatedStart:
-        // FIFO bytes at the restart belong to the write before it.
-        instance->pre_restart_bytes = i2c_slave_rxflr_get((i2c_inst_t*)handle->bus->data);
         // Missed STOP can end the transaction while idle: reset the address.
         if(!instance->in_transaction) {
             instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
@@ -162,7 +186,7 @@ I2C_ISR_FUNC(void, i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI
     case FuriHalI2cBusSlaveEventStop:
         if(instance->in_transaction) {
             // Drain late bytes: flash ops mask interrupts and collapse markers.
-            i2c_intercom_receive(handle, instance);
+            i2c_intercom_receive(handle, instance, true);
             i2c_intercom_write_end(instance);
             instance->in_transaction = false;
         }
@@ -202,6 +226,7 @@ int32_t i2c_intercom_srv(void* p) {
     instance->in_transaction = false;
     instance->wrote_data_in_transaction = false;
     instance->write_open = false;
+    instance->held_valid = false;
     instance->pointer_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
 

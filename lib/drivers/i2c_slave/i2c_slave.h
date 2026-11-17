@@ -111,8 +111,6 @@ void i2c_slave_reset(i2c_inst_t* i2c);
  */
 uint32_t i2c_slave_dropped_bytes_get(i2c_inst_t* i2c);
 
-uint8_t i2c_slave_rxflr_get(i2c_inst_t* i2c);
-
 #ifdef __cplusplus
 }
 #endif

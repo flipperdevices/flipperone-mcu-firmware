@@ -26,6 +26,7 @@ typedef struct {
     Updater* updater;
     CpuMode* cpu_mode;
     Power* power;
+    uint32_t dropped_messages_logged;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -35,14 +36,20 @@ typedef struct {
     uint16_t value;
 } I2CNegotiatorI2CMessage;
 
-#define I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(func)                                           \
-    void func##_message(void* context, uint16_t address, uint16_t value) {                       \
-        furi_check(context);                                                                     \
-        FuriMessageQueue* queue = context;                                                       \
-        I2CNegotiatorI2CMessage message = {.fn = func, .value = value};                          \
-        FuriStatus stat = furi_message_queue_put(queue, &message, 0);                            \
-        furi_check(stat != FuriStatusErrorParameter);                                            \
-        if(stat != FuriStatusOk) FURI_LOG_E(TAG, "Failed to receive 0x%04X: %d", address, stat); \
+// Register writes the queue had no room for. Counted here and logged by the
+// queue worker: the callbacks run in the register software interrupt, and a
+// log line there would hold up every write queued after it.
+static volatile uint32_t i2c_negotiator_dropped_messages;
+
+#define I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(func)                                      \
+    void func##_message(void* context, uint16_t address, uint16_t value) {                  \
+        UNUSED(address);                                                                    \
+        furi_check(context);                                                                \
+        FuriMessageQueue* queue = context;                                                  \
+        I2CNegotiatorI2CMessage message = {.fn = func, .value = value};                     \
+        FuriStatus stat = furi_message_queue_put(queue, &message, 0);                       \
+        furi_check(stat != FuriStatusErrorParameter);                                       \
+        if(stat != FuriStatusOk) i2c_negotiator_dropped_messages = i2c_negotiator_dropped_messages + 1; \
     }
 
 // Input event
@@ -256,6 +263,12 @@ static void i2c_negotiator_queue_worker(FuriEventLoopObject* object, void* conte
     while(furi_message_queue_get(object, &message, 0) == FuriStatusOk) {
         furi_check(message.fn);
         message.fn(instance, message.value);
+    }
+
+    uint32_t dropped = i2c_negotiator_dropped_messages;
+    if(dropped != instance->dropped_messages_logged) {
+        FURI_LOG_E(TAG, "%lu register writes dropped: queue full", dropped - instance->dropped_messages_logged);
+        instance->dropped_messages_logged = dropped;
     }
 }
 

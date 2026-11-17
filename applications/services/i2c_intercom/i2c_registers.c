@@ -101,6 +101,12 @@ typedef struct {
     uint8_t transaction[I2C_REGISTERS_TRANSACTION_MAX];
     volatile uint32_t invalid_writes; ///< Consumer: bytes to unmapped or read-only addresses
 
+    // I2C ISR only: high byte latched by a low-byte read, served to the
+    // high-byte read that follows it (see i2c_register_read_start)
+    uint16_t read_latch_address;
+    uint8_t read_latch_value;
+    bool read_latch_valid;
+
     // Pin numbers copied out of the flash-resident GpioPin constants
     uint32_t cpu_int_pin;
     uint32_t m40_pin;
@@ -251,16 +257,31 @@ I2C_ISR_FUNC(bool, i2c_register_read_start)(uint16_t address, uint8_t* value) {
     do {
         I2CReg* reg = i2c_register_get(even_address);
         if(reg && (reg->flags & I2CRegFlagRead)) {
+            // A write can be applied between the two RD_REQs of a 16-bit
+            // read. The low-byte read latches the high byte, so the host gets
+            // both bytes of one value. Read-to-clear registers are independent
+            // flag bits and clear what is read: they are not latched.
             if(is_hi_byte) {
-                *value = REG16_GET_HI(reg->value);
+                if(i2c.read_latch_valid && i2c.read_latch_address == address) {
+                    *value = i2c.read_latch_value;
+                } else {
+                    *value = REG16_GET_HI(reg->value);
+                }
             } else {
                 *value = REG16_GET_LO(reg->value);
+                i2c.read_latch_valid = !(reg->flags & I2CRegFlagReadToClear);
+                i2c.read_latch_address = address + 1;
+                i2c.read_latch_value = REG16_GET_HI(reg->value);
             }
             result = true;
         }
     } while(false);
 
     return result;
+}
+
+I2C_ISR_FUNC(void, i2c_register_read_reset)(void) {
+    i2c.read_latch_valid = false;
 }
 
 I2C_ISR_FUNC(bool, i2c_register_read_commit)(uint16_t address) {
@@ -348,10 +369,12 @@ I2C_ISR_FUNC(void, i2c_registers_write_commit)(void) {
 
 /* --- Consumer: the ring software interrupt -------------------------------- */
 
-// Apply one byte to the register table; call the register callback, outside
-// the lock, once its high byte is written. FreeRTOS FromISR calls rewrite
-// BASEPRI, so no callback may run inside with_i2c_register.
-static void i2c_registers_apply_byte(uint16_t address, uint8_t value) {
+// Apply the bytes of one register (one or both, from `address`) to the
+// register table under one lock, so the I2C ISR never reads it half written.
+// Call the register callback, outside the lock, once its high byte is
+// written. FreeRTOS FromISR calls rewrite BASEPRI, so no callback may run
+// inside with_i2c_register.
+static void i2c_registers_apply(uint16_t address, const uint8_t* data, size_t length) {
     I2CRegisterCallback callback = NULL;
     void* context = NULL;
     uint16_t reg_address = address & 0xFFFE;
@@ -362,20 +385,22 @@ static void i2c_registers_apply_byte(uint16_t address, uint8_t value) {
         I2CReg* reg = i2c_register_get(reg_address);
         if(reg && (reg->flags & I2CRegFlagWrite)) {
             valid = true;
-            if(address & 1) {
-                REG16_SET_HI(reg->value, value);
-                // hi byte written means the whole register value is ready
-                callback = reg->callback;
-                context = reg->context;
-                reg_value = reg->value;
-            } else {
-                REG16_SET_LO(reg->value, value);
+            for(size_t i = 0; i < length; i++) {
+                if((address + i) & 1) {
+                    REG16_SET_HI(reg->value, data[i]);
+                    // hi byte written means the whole register value is ready
+                    callback = reg->callback;
+                    context = reg->context;
+                    reg_value = reg->value;
+                } else {
+                    REG16_SET_LO(reg->value, data[i]);
+                }
             }
         }
     });
 
     if(!valid) {
-        i2c.invalid_writes = i2c.invalid_writes + 1;
+        i2c.invalid_writes = i2c.invalid_writes + length;
     } else if(callback) {
         callback(context, reg_address, reg_value);
     }
@@ -395,8 +420,10 @@ static void i2c_registers_dispatch(uint16_t address, const uint8_t* data, size_t
             }
             i += run;
         } else {
-            i2c_registers_apply_byte(at, data[i]);
-            i++;
+            // A register at a time: its low byte and the high byte after it
+            size_t run = ((at & 1) || i + 1 == length) ? 1 : 2;
+            i2c_registers_apply(at, &data[i], run);
+            i += run;
         }
     }
 }
