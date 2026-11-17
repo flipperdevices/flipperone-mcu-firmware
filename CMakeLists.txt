@@ -162,9 +162,13 @@ target_link_options(${PROJECT_NAME} PRIVATE
 
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
 
-# Version: git tag on HEAD wins, FW_IMAGE_* is the dev fallback; attaches
-# version.c (submodule) with the compile definitions.
+# Version: git tag on HEAD wins, FW_IMAGE_* is the dev fallback; packs the
+# picobin version word (see cmake/fw_version.cmake).
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/fw_version.cmake")
+
+# Build metadata for version.c (commit, branch, dirty flag...) as a
+# build-time generated version.inc.h, not the configure-time corelibs
+include("${CMAKE_CURRENT_LIST_DIR}/scripts/cmake/version.cmake")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(${PROJECT_NAME} 0)
