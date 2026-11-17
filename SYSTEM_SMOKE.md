@@ -30,10 +30,11 @@ Configure these repository settings before enabling the caller:
 
 - Secret `FONE_SYSTEM_TESTS_TOKEN`: Actions write on system-testing, sufficient
   to dispatch, poll runs/download results, and cancel its own remote run.
-- Variable `FONE_MCU_LINUX_BUILD`: required compatible, successful **update-bundle**
-  build number, not the rootfs build ID. Select and hardware-qualify this pin.
-- Variable `FONE_MCU_LINUX_CHANNEL`: defaults to `release-candidate`. A `nightly`
-  pin also has the resolver's 48-hour freshness limit.
+- Variable `FONE_MCU_LINUX_BUILD`: optional exact **update-bundle** build number,
+  not the rootfs build ID. Empty selects the latest successful nightly once;
+  its exact number, manifests, hashes and identities are pinned for the run.
+- Variable `FONE_MCU_LINUX_CHANNEL`: defaults to `nightly` with a 48-hour
+  freshness limit. `release-candidate` requires an explicit build number.
 - Variable `FONE_SYSTEM_TESTS_REF`: defaults to `main` in system-testing.
 - Variable `FONE_SYSTEM_TESTS_WORKFLOW`: defaults to `pr-mcu-smoke.yml`.
 
@@ -46,10 +47,10 @@ after the PR receiver becomes available on the default branch.
 In system-testing, configure `FONE_MCU_ARTIFACTS_TOKEN` with Actions read and
 Pull requests read on this repository, plus its existing S3 publisher secrets.
 Use scoped fine-grained PATs; an App-based setup needs token minting/refresh
-because installation tokens expire after one hour. The receiver
-workflow must exist on system-testing's default branch before dispatch works.
-Do not enable this caller until the receiver is available and the Linux pin and
-tokens are configured; missing configuration fails the check explicitly.
+because installation tokens expire after one hour. The selected receiver
+workflow must exist on system-testing's default branch before dispatch works;
+the registered nightly workflow supports the draft-ref path above.
+Configure both tokens before dispatch; an explicit Linux pin is optional for nightly.
 
 Full protocol and setup:
 [system-testing MCU automation](https://github.com/flipperdevices/flipperone-system-testing/blob/main/docs/automation/mcu.md#external-mcu-pr-builds).
@@ -68,5 +69,5 @@ actionlint -shellcheck= .github/workflows/build.yml .github/workflows/mcu-system
 ```
 
 These checks validate orchestration, not physical firmware compatibility or a
-successful end-to-end dispatch. Configure the receiver, tokens and Linux pin
+successful end-to-end dispatch. Configure the receiver and tokens
 before enabling end-to-end execution.

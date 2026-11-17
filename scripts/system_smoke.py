@@ -30,7 +30,10 @@ def workflow_file():
 
 
 def check_configuration():
-    missing = [name for name in ('FONE_SYSTEM_TESTS_TOKEN', 'FONE_MCU_LINUX_BUILD') if not os.environ.get(name)]
+    required = ['FONE_SYSTEM_TESTS_TOKEN']
+    if (os.environ.get('FONE_MCU_LINUX_CHANNEL') or 'nightly') != 'nightly':
+        required.append('FONE_MCU_LINUX_BUILD')
+    missing = [name for name in required if not os.environ.get(name)]
     require(not missing, 'Missing repository settings: ' + ', '.join(missing))
     workflow_file()
 
@@ -91,13 +94,14 @@ def make_request(directory, artifact_id):
     table = list(directory.glob('flipper-one-mcu-partition-table-*.uf2'))
     require(len(uf2) == len(table) == 1, 'Expected exactly one f2 UF2 and partition table')
     build = os.environ.get('FONE_MCU_LINUX_BUILD', '')
-    require(bool(re.fullmatch(r'[1-9][0-9]*', build)), 'Set FONE_MCU_LINUX_BUILD to a compatible pinned bundle build')
-    channel = os.environ.get('FONE_MCU_LINUX_CHANNEL') or 'release-candidate'
+    channel = os.environ.get('FONE_MCU_LINUX_CHANNEL') or 'nightly'
     require(channel in ('nightly', 'release-candidate'), 'Invalid Linux bundle channel')
+    require(bool(re.fullmatch(r'[1-9][0-9]*', build)) if build else channel == 'nightly',
+            'Set FONE_MCU_LINUX_BUILD to a compatible pinned bundle build for a non-nightly channel')
     result = {'schema': 1, 'request_id': f"mcu-{os.environ['GITHUB_RUN_ID']}-{os.environ['GITHUB_RUN_ATTEMPT']}",
         'run_id': int(os.environ['GITHUB_RUN_ID']), 'run_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
         'artifact_id': int(artifact_id), 'pr_number': pr['number'], 'firmware_commit': pr['head']['sha'],
-        'source_sha': os.environ['GITHUB_SHA'], 'linux_build_number': int(build), 'linux_channel': channel}
+        'source_sha': os.environ['GITHUB_SHA'], 'linux_build_number': int(build) if build else None, 'linux_channel': channel}
     for path, field in ((uf2[0], 'uf2'), (table[0], 'table')):
         require(not path.is_symlink() and 0 < path.stat().st_size <= 32 * 1024**2, 'Invalid MCU image')
         result[field + '_name'] = path.name

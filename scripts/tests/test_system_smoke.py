@@ -87,7 +87,7 @@ class SystemSmoke(unittest.TestCase):
         self.assertTrue(any('/workflows/nightly-mcu.yml/runs?' in path for path, _ in client.calls))
 
     def test_preflight_lists_all_missing_settings_without_exposing_values(self):
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {'FONE_MCU_LINUX_CHANNEL': 'release-candidate'}, clear=True):
             with self.assertRaisesRegex(ValueError, 'FONE_SYSTEM_TESTS_TOKEN, FONE_MCU_LINUX_BUILD'):
                 smoke.check_configuration()
             os.environ['FONE_SYSTEM_TESTS_TOKEN'] = 'never-print-this-secret'
@@ -95,6 +95,9 @@ class SystemSmoke(unittest.TestCase):
                 smoke.check_configuration()
             self.assertNotIn('never-print-this-secret', str(caught.exception))
             os.environ['FONE_MCU_LINUX_BUILD'] = '137'
+            smoke.check_configuration()
+            os.environ['FONE_MCU_LINUX_CHANNEL'] = 'nightly'
+            del os.environ['FONE_MCU_LINUX_BUILD']
             smoke.check_configuration()
             os.environ['FONE_SYSTEM_TESTS_WORKFLOW'] = '../../some-other-workflow.yml'
             with self.assertRaisesRegex(ValueError, 'Unsupported'):
@@ -165,6 +168,10 @@ class SystemSmoke(unittest.TestCase):
                 self.assertEqual(value['firmware_commit'], 'a'*40)
                 self.assertEqual(value['uf2_sha256'], smoke.hashlib.sha256(b'uf2').hexdigest())
                 os.environ['FONE_MCU_LINUX_BUILD'] = ''
+                value = smoke.make_request(root, '456')
+                self.assertIsNone(value['linux_build_number'])
+                self.assertEqual(value['linux_channel'], 'nightly')
+                os.environ['FONE_MCU_LINUX_CHANNEL'] = 'release-candidate'
                 with self.assertRaisesRegex(ValueError, 'FONE_MCU_LINUX_BUILD'):
                     smoke.make_request(root, '456')
 

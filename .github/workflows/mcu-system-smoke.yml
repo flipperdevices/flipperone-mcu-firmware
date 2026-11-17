@@ -39,5 +39,5 @@ jobs:
           FONE_SYSTEM_TESTS_REF: ${{ vars.FONE_SYSTEM_TESTS_REF || 'main' }}
           FONE_SYSTEM_TESTS_WORKFLOW: ${{ vars.FONE_SYSTEM_TESTS_WORKFLOW || 'pr-mcu-smoke.yml' }}
           FONE_MCU_LINUX_BUILD: ${{ vars.FONE_MCU_LINUX_BUILD }}
-          FONE_MCU_LINUX_CHANNEL: ${{ vars.FONE_MCU_LINUX_CHANNEL || 'release-candidate' }}
+          FONE_MCU_LINUX_CHANNEL: ${{ vars.FONE_MCU_LINUX_CHANNEL || 'nightly' }}
         run: python3 scripts/system_smoke.py
