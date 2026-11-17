@@ -105,7 +105,6 @@ math(EXPR VERSION_PACKED "(${FW_IMAGE_MAJOR} << 24) | (${FW_IMAGE_MINOR} << 16) 
 math(EXPR VERSION_PACKED_HEX "${VERSION_PACKED}" OUTPUT_FORMAT HEXADECIMAL)
 message(STATUS "Firmware version: ${FW_VERSION_STRING} (packed ${VERSION_PACKED_HEX})")
 
-# Compile definitions consumed by lib/corelibs/lib/version/version.c
-set(FW_VERSION_COMPILE_DEFS
-    "GIT_COMMIT=\"${GIT_COMMIT}\""
-    "GIT_BRANCH=\"${GIT_BRANCH}\""
+# Build metadata (commit, branch, dirty flag, origin) now comes from the
+# build-time generated version.inc.h — see scripts/cmake/version.cmake.
+# version.c is picked up by the target glob in targets/f1/target.cmake.
