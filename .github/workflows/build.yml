@@ -195,7 +195,7 @@ jobs:
 
   unit-tests:
     needs: firmware
-    if: ${{ !github.event.pull_request.head.repo.fork }}
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/unit-test.yml
     with:
       commit_sha: ${{ github.sha }}

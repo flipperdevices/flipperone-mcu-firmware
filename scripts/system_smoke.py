@@ -113,7 +113,8 @@ def verify_receipt(receipt, request, run):
         'source_run_id': request['run_id'], 'source_run_attempt': request['run_attempt'],
         'run_id': str(run['id'])}
     require(all(receipt.get(k) == v for k, v in expected.items()), 'System result belongs to a different build')
-    require(run['conclusion'] == 'success' and receipt.get('test_outcome') == 'success',
+    require(run['conclusion'] == 'success' and receipt.get('test_outcome') == 'success'
+            and receipt.get('units_outcome') == 'success' and receipt.get('system_outcome') == 'success',
             'MCU system qualification did not pass')
 
 

@@ -9,8 +9,22 @@ which runs the complete Nightly MCU profile with the PR UF2 and one pinned Linux
 bundle. The source PR check waits for that specific run, verifies its result
 receipt and links its system run, diagnostics and Allure report. It fails on
 setup/test failure, cancellation, skipped/missing tests or timeout. The existing
-aggregate `build` check also includes this outcome. The current embedded unit
-workflow remains independently visible.
+aggregate `build` check also includes this outcome. PRs no longer run the
+separate hardware `unit-tests` job in this repository.
+
+System-testing holds one hardware job, one runner allocation and one lease.
+Its system step installs the exact Linux/MCU pair and runs 25 selected checks;
+its separate units step executes the Linux-online `unit_tests` command on that
+same prepared device, without another flash. Standalone embedded units remain
+in the standalone system checks. Together the steps cover the full 26-case
+Nightly MCU profile, with distinct step outcomes in one report/PR check.
+Both outcomes must be successful; units still run after a system testcase
+failure if the same prepared pair can be verified.
+
+The shared system workflow exposes `mcu_stage: all | system | units` for future
+separate-runner scheduling. Current PR dispatches always use `all`. A future
+standalone units job prepares its own lease instead of reusing another lease's
+receipt. Direct MCU unit jobs continue for non-PR builds.
 
 Configure these repository settings before enabling the caller:
 
@@ -47,4 +61,5 @@ actionlint -shellcheck= .github/workflows/build.yml .github/workflows/mcu-system
 ```
 
 These checks validate orchestration, not physical firmware compatibility or a
-successful end-to-end dispatch. The changes are a local draft until published.
+successful end-to-end dispatch. Configure the receiver, tokens and Linux pin
+before enabling end-to-end execution.

@@ -28,7 +28,8 @@ class FakeGitHub:
                        'status': 'completed', 'conclusion': conclusion}
         self.result = {'schema': 1, 'request_id': 'mcu-123-2', 'source_run_id': 123,
             'source_run_attempt': 2, 'firmware_commit': 'a'*40, 'uf2_sha256': 'c'*64,
-            'run_id': '456', 'test_outcome': outcome, 'report_url': 'https://reports.example/test'}
+            'run_id': '456', 'test_outcome': outcome, 'units_outcome': 'success',
+            'system_outcome': 'success', 'report_url': 'https://reports.example/test'}
         self.missing = False
     def request(self, path, data=None):
         self.calls.append((path, data))
@@ -85,6 +86,14 @@ class SystemSmoke(unittest.TestCase):
             with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'different build'):
                 self.run_smoke(client)
             client.result[field] = original
+
+    def test_either_test_step_failing_or_skipping_fails_the_single_pr_check(self):
+        for field in ('units_outcome', 'system_outcome'):
+            for outcome in ('failure', 'skipped', 'cancelled', ''):
+                client = FakeGitHub()
+                client.result[field] = outcome
+                with self.subTest(field=field, outcome=outcome), self.assertRaisesRegex(ValueError, 'did not pass'):
+                    self.run_smoke(client)
 
     def test_timeout_cancels_only_the_dispatched_run(self):
         client = FakeGitHub()
