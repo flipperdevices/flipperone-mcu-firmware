@@ -35,6 +35,13 @@ Configure these repository settings before enabling the caller:
 - Variable `FONE_MCU_LINUX_CHANNEL`: defaults to `release-candidate`. A `nightly`
   pin also has the resolver's 48-hour freshness limit.
 - Variable `FONE_SYSTEM_TESTS_REF`: defaults to `main` in system-testing.
+- Variable `FONE_SYSTEM_TESTS_WORKFLOW`: defaults to `pr-mcu-smoke.yml`.
+
+To test the receiver before merging either draft PR, set the workflow override
+to `nightly-mcu.yml` and the ref override to `ssecsd/issue-10-mcu-system-smoke`.
+The existing registered nightly workflow dispatches the draft branch's new
+request handler with the same full profile and receipt. Remove both overrides
+after the PR receiver becomes available on the default branch.
 
 In system-testing, configure `FONE_MCU_ARTIFACTS_TOKEN` with Actions read and
 Pull requests read on this repository, plus its existing S3 publisher secrets.

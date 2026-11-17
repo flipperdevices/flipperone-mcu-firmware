@@ -23,6 +23,18 @@ def require(ok, message):
         raise ValueError(message)
 
 
+def workflow_file():
+    value = os.environ.get('FONE_SYSTEM_TESTS_WORKFLOW') or WORKFLOW
+    require(value in (WORKFLOW, 'nightly-mcu.yml'), 'Unsupported FONE_SYSTEM_TESTS_WORKFLOW')
+    return value
+
+
+def check_configuration():
+    missing = [name for name in ('FONE_SYSTEM_TESTS_TOKEN', 'FONE_MCU_LINUX_BUILD') if not os.environ.get(name)]
+    require(not missing, 'Missing repository settings: ' + ', '.join(missing))
+    workflow_file()
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, *args):
         return None
@@ -93,11 +105,11 @@ def make_request(directory, artifact_id):
     return result
 
 
-def find_run(client, request_id):
+def find_run(client, request_id, workflow=WORKFLOW):
     expected = 'PR MCU smoke · ' + request_id
     # Paginate; never adopt the latest run or another concurrent PR's run.
     for page in range(1, 6):
-        runs = client.request(f'/actions/workflows/{WORKFLOW}/runs?event=workflow_dispatch&per_page=100&page={page}')['workflow_runs']
+        runs = client.request(f'/actions/workflows/{workflow}/runs?event=workflow_dispatch&per_page=100&page={page}')['workflow_runs']
         matches = [run for run in runs if run['display_title'] == expected]
         require(len(matches) <= 1, 'Ambiguous system smoke run')
         if matches:
@@ -120,15 +132,24 @@ def verify_receipt(receipt, request, run):
 
 def run(client, request, *, now=time.monotonic, sleep=time.sleep, timeout=3 * 60 * 60):
     ref = os.environ.get('FONE_SYSTEM_TESTS_REF') or 'main'
+    workflow = workflow_file()
     title = request['request_id']
     began = now()
     remote = None
     completed = False
     summary(f"MCU system qualification requested for PR #{request['pr_number']}, `{request['firmware_commit']}`")
     try:
-        client.request(f'/actions/workflows/{WORKFLOW}/dispatches', {'ref': ref, 'inputs': {'request': json.dumps(request)}})
+        field = 'mcu_request' if workflow == 'nightly-mcu.yml' else 'request'
+        try:
+            client.request(f'/actions/workflows/{workflow}/dispatches', {'ref': ref, 'inputs': {field: json.dumps(request)}})
+        except HTTPError as error:
+            if error.code == 404:
+                raise ValueError('Receiver workflow is unavailable. Before the receiver is merged, set '
+                    'FONE_SYSTEM_TESTS_WORKFLOW=nightly-mcu.yml and FONE_SYSTEM_TESTS_REF to its draft branch; '
+                    'also verify token access.') from None
+            raise
         while now() - began < min(timeout, 300):
-            remote = find_run(client, title)
+            remote = find_run(client, title, workflow)
             if remote:
                 break
             sleep(10)
@@ -165,6 +186,7 @@ def main():
         raise SystemExit(128 + signum)
     signal.signal(signal.SIGTERM, interrupted)
     try:
+        check_configuration()
         client = GitHub(os.environ.get('FONE_SYSTEM_TESTS_TOKEN', ''))
         request = make_request(Path('firmware'), os.environ['MCU_ARTIFACT_ID'])
         return run(client, request)

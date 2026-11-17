@@ -29,6 +29,18 @@ env:
   # them from the header of CMakeLists.txt.
 
 jobs:
+  workflow-tests:
+    name: Workflow orchestration tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Test system qualification orchestration without hardware
+        run: python3 -m unittest discover -s scripts/tests -p test_system_smoke.py -v
+
   # The list of hardware targets: every directory under targets/ with a
   # target.cmake. Everything below fans out over this list, so adding a target is
   # adding a directory — nothing in this file has to change.
@@ -308,7 +320,7 @@ jobs:
   # is added — so the required check is this fixed-name job instead.
   build:
     runs-on: ubuntu-latest
-    needs: [firmware, publish, unit-tests, mcu-system-smoke]
+    needs: [firmware, publish, unit-tests, mcu-system-smoke, workflow-tests]
     if: always()
 
     steps:
@@ -320,6 +332,8 @@ jobs:
         echo "publish:  ${{ needs.publish.result }}"
         echo "unit-tests: ${{ needs.unit-tests.result }}"
         echo "mcu-system-smoke: ${{ needs.mcu-system-smoke.result }}"
+        echo "workflow-tests: ${{ needs.workflow-tests.result }}"
+        [ "${{ needs.workflow-tests.result }}" = success ] || exit 1
         [ "${{ needs.firmware.result }}" = "success" ] || exit 1
         case "${{ needs.publish.result }}" in success|skipped) ;; *) exit 1 ;; esac
         case "${{ needs.unit-tests.result }}" in success|skipped) ;; *) exit 1 ;; esac

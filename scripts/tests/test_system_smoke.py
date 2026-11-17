@@ -74,6 +74,41 @@ class SystemSmoke(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'did not pass'):
                     self.run_smoke(FakeGitHub(conclusion, outcome))
 
+    def test_draft_receiver_uses_the_registered_nightly_workflow_on_the_requested_branch(self):
+        client = FakeGitHub()
+        with patch.dict(os.environ, {'FONE_SYSTEM_TESTS_WORKFLOW': 'nightly-mcu.yml',
+                                     'FONE_SYSTEM_TESTS_REF': 'ssecsd/receiver-draft'}):
+            code, _ = self.run_smoke(client)
+        self.assertEqual(code, 0)
+        path, body = client.calls[0]
+        self.assertEqual(path, '/actions/workflows/nightly-mcu.yml/dispatches')
+        self.assertEqual(body['ref'], 'ssecsd/receiver-draft')
+        self.assertEqual(json.loads(body['inputs']['mcu_request']), self.request)
+        self.assertTrue(any('/workflows/nightly-mcu.yml/runs?' in path for path, _ in client.calls))
+
+    def test_preflight_lists_all_missing_settings_without_exposing_values(self):
+        with patch.dict(os.environ, {}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'FONE_SYSTEM_TESTS_TOKEN, FONE_MCU_LINUX_BUILD'):
+                smoke.check_configuration()
+            os.environ['FONE_SYSTEM_TESTS_TOKEN'] = 'never-print-this-secret'
+            with self.assertRaises(ValueError) as caught:
+                smoke.check_configuration()
+            self.assertNotIn('never-print-this-secret', str(caught.exception))
+            os.environ['FONE_MCU_LINUX_BUILD'] = '137'
+            smoke.check_configuration()
+            os.environ['FONE_SYSTEM_TESTS_WORKFLOW'] = '../../some-other-workflow.yml'
+            with self.assertRaisesRegex(ValueError, 'Unsupported'):
+                smoke.check_configuration()
+
+    def test_unavailable_receiver_reports_how_to_test_without_a_merge(self):
+        from urllib.error import HTTPError
+        client = FakeGitHub()
+        def unavailable(*args):
+            raise HTTPError('https://api.github.com', 404, 'Not Found', {}, None)
+        client.request = unavailable
+        with self.assertRaisesRegex(ValueError, 'Before the receiver is merged'):
+            self.run_smoke(client)
+
     def test_missing_or_wrong_build_receipt_cannot_pass(self):
         client = FakeGitHub()
         client.missing = True
