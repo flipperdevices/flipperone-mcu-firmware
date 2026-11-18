@@ -30,16 +30,25 @@ env:
 
 jobs:
   workflow-tests:
-    name: Workflow orchestration tests
+    name: Validate workflow syntax
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Test system qualification orchestration without hardware
-        run: python3 -m unittest discover -s scripts/tests -p test_system_smoke.py -v
+      - name: Install and verify pinned actionlint
+        env:
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/actionlint.tar.gz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+      - name: Validate the Build workflow
+        run: '"$RUNNER_TEMP/actionlint" -shellcheck= .github/workflows/build.yml'
 
   # The list of hardware targets: every directory under targets/ with a
   # target.cmake. Everything below fans out over this list, so adding a target is
@@ -222,9 +231,12 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: ./.github/workflows/mcu-system-smoke.yml
-    secrets:
-      FONE_SYSTEM_TESTS_TOKEN: ${{ secrets.FONE_SYSTEM_TESTS_TOKEN }}
+    uses: flipperdevices/flipperone-system-testing/.github/workflows/pr-mcu-smoke.yml@519b680da9bc66fe541f023e967189eac06edb38
+    with:
+      firmware_commit: ${{ github.event.pull_request.head.sha }}
+      artifact_suffix: ${{ needs.firmware.outputs.suffix }}
+      bundle_channel: ${{ vars.FONE_MCU_LINUX_CHANNEL || 'nightly' }}
+      build_number: ${{ vars.FONE_MCU_LINUX_BUILD }}
 
   publish:
     runs-on: ubuntu-latest
@@ -327,6 +339,9 @@ jobs:
     # A job skipped because something it needed failed still counts as success
     # for a required check, so the results are inspected explicitly.
     - name: 'Check the jobs above'
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INTERNAL_PR: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
       run: |
         echo "firmware: ${{ needs.firmware.result }}"
         echo "publish:  ${{ needs.publish.result }}"
@@ -337,4 +352,8 @@ jobs:
         [ "${{ needs.firmware.result }}" = "success" ] || exit 1
         case "${{ needs.publish.result }}" in success|skipped) ;; *) exit 1 ;; esac
         case "${{ needs.unit-tests.result }}" in success|skipped) ;; *) exit 1 ;; esac
-        case "${{ needs.mcu-system-smoke.result }}" in success|skipped) ;; *) exit 1 ;; esac
+        if [ "$EVENT_NAME" = pull_request ] && [ "$INTERNAL_PR" = true ]; then
+          [ "${{ needs.mcu-system-smoke.result }}" = success ] || exit 1
+        else
+          case "${{ needs.mcu-system-smoke.result }}" in success|skipped) ;; *) exit 1 ;; esac
+        fi
