@@ -17,6 +17,9 @@ STAGE_TIMEOUT = 120.0
 # The image definition sits behind the boot block, at byte 312 in current builds,
 # so the buy check reads a whole sector the way status() does.
 HEADER_WORDS = constants.SECTOR // 4
+# picotool puts an RP2350 boot-info block here, which the ROM ignores; it is the
+# only section of a UF2 that may lie outside the slot being written.
+BOOT_INFO_ADDRESS = 0x10FFFF00
 
 
 def preflight(slot, path):
@@ -30,6 +33,14 @@ def preflight(slot, path):
     if path.endswith(".uf2"):
         sections = uf2.parse_sections(data)
         inside = [section for section in sections if any(address <= block[0] < address + size for block in section["blocks"].values())]
+        for section in sections:
+            if section in inside:
+                continue
+            blocks = list(section["blocks"].values())
+            if len(blocks) == 1 and blocks[0][0] == BOOT_INFO_ADDRESS:
+                continue
+            start = min(block[0] for block in blocks)
+            raise ValueError(f"UF2 section at 0x{start:08x} is outside slot {slot} (0x{address:08x}..0x{address + size:08x}); only the boot-info block at 0x{BOOT_INFO_ADDRESS:08x} may sit outside a slot")
         if not inside:
             found = [block for section in sections for block in section["blocks"].values()]
             low = min(start for start, _ in found)
@@ -80,18 +91,15 @@ def wait_for_buy(plan, timeout=STAGE_TIMEOUT):
 def write(plan, activate=False):
     """Write a preflight plan, verify it by readback and reset; optionally stage a TBYB buy boot."""
     tbyb = bool(plan["image"].get("tbyb_pending"))
-    commands = ["halt"]
     temp = None
     try:
-        if plan["kind"] == "uf2":
-            temp = tempfile.NamedTemporaryFile("wb", suffix=".bin", delete=False)
-            temp.write(plan["payload"])
-            temp.close()
-            quoted = "{" + temp.name + "}"
-            commands += [f"flash write_image erase {quoted} {plan['payload_address']:#x} bin", f"verify_image {quoted} {plan['payload_address']:#x} bin"]
-        else:
-            quoted = "{" + plan["file"] + "}"
-            commands += [f"flash write_image erase {quoted} {plan['address']:#x} bin", f"verify_image {quoted} {plan['address']:#x} bin"]
+        # Always the bytes preflight() measured, never the file it read: a rebuild
+        # between the two must not slip an unchecked image past the slot check.
+        temp = tempfile.NamedTemporaryFile("wb", suffix=".bin", delete=False)
+        temp.write(plan["payload"])
+        temp.close()
+        quoted = "{" + temp.name + "}"
+        commands = ["halt", f"flash write_image erase {quoted} {plan['payload_address']:#x} bin", f"verify_image {quoted} {plan['payload_address']:#x} bin"]
         staged = activate and tbyb
         if staged:
             # f1_stage_tbyb leaves the vector and reboot type in the watchdog scratch,
@@ -120,8 +128,10 @@ def flash(slot, path, activate=False):
 def freeze_host():
     """Hold the host CPU in reset through the probe while the write runs."""
     with DeviceSession("probe") as probe:
-        probe.command("gpio cpu_reset 0", 3.0)
         try:
+            # The release goes in the finally: the probe may apply the reset and
+            # still fail to acknowledge it, and a held host stays held.
+            probe.command("gpio cpu_reset 0", 3.0)
             yield
         finally:
             probe.command("gpio cpu_reset 1", 3.0)

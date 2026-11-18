@@ -242,3 +242,64 @@ def test_uf2_payload_sections_must_be_complete(tmp_path):
     bootinfo.write_bytes(uf2_block(0, 2, 0x10FFFF00, b"\x00" * 16) + uf2_block(0, 1, slot, image_def_bytes(tbyb=True) + b"\x00" * 128))
     plan = flash.preflight("a", str(bootinfo))
     assert plan["kind"] == "uf2" and plan["payload_address"] == slot
+
+
+def test_uf2_sections_outside_the_slot_are_refused(tmp_path):
+    from agent_tools import constants
+    from agent_tools.logic import flash, swd
+    from test_packets import image_def_bytes, uf2_block
+
+    slot_a = constants.XIP_BASE + swd.partition_bounds("A")[0]
+    slot_b = constants.XIP_BASE + swd.partition_bounds("B")[0]
+    payload = image_def_bytes(tbyb=True) + b"\x00" * 128
+    split = tmp_path / "split.uf2"
+    split.write_bytes(uf2_block(0, 1, slot_a, payload) + uf2_block(0, 1, slot_b, payload))
+    with pytest.raises(ValueError, match="outside slot"):
+        flash.preflight("a", str(split))
+
+
+def test_flash_writes_the_bytes_preflight_checked(tmp_path, monkeypatch):
+    from agent_tools.logic import flash, swd
+    from test_packets import image_def_bytes
+
+    source = tmp_path / "fw.bin"
+    image = image_def_bytes(tbyb=False) + b"\x00" * 64
+    source.write_bytes(image)
+    written = {}
+
+    def fake_run(lines, timeout=None):
+        quoted = next(line for line in lines if line.startswith("flash write_image"))
+        path = quoted.split(" erase ", 1)[1].split(" ", 1)[0].strip("{}")
+        written["payload"] = open(path, "rb").read()
+        written["is_source"] = path == str(source)
+
+    monkeypatch.setattr(swd, "run", fake_run)
+    plan = flash.preflight("a", str(source))
+    source.write_bytes(b"another build landed here")  # a rebuild during the flash
+    flash.write(plan)
+    assert written["payload"] == image
+    assert written["is_source"] is False
+
+
+def test_freeze_host_releases_when_arming_fails(monkeypatch):
+    from agent_tools.logic import flash
+
+    calls = []
+
+    class Probe:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exception):
+            return False
+
+        def command(self, line, timeout=None):
+            calls.append(line)
+            if line == "gpio cpu_reset 0":
+                raise TimeoutError(f"no reply to {line}")
+
+    monkeypatch.setattr(flash, "DeviceSession", lambda role: Probe())
+    with pytest.raises(TimeoutError):
+        with flash.freeze_host():
+            pytest.fail("the body must not run when the host was not held")
+    assert calls == ["gpio cpu_reset 0", "gpio cpu_reset 1"]
