@@ -171,19 +171,20 @@ def ensure_idle(mcu) -> None:
     if state != UpdaterState.IDLE:
         print("Aborting previous update")
         send_command(mcu, UpdaterCommand.ABORT)
-        state, error = wait_for_state(mcu, UpdaterState.IDLE, ERASE_TIMEOUT_S)
+        # Until the MCU handles the ABORT, STATUS still shows the state before it, ERROR included
+        state, error = wait_for_state(mcu, UpdaterState.IDLE, ERASE_TIMEOUT_S, stop_on_error=False)
         if state != UpdaterState.IDLE:
             raise UpdateError(f"Failed to abort previous update: state={state.name}, error={error.name}")
 
 
-def wait_for_state(mcu, target_state, timeout_s) -> tuple[UpdaterState, UpdaterError]:
-    """Poll until target_state or ERROR; raise UpdateError on timeout."""
+def wait_for_state(mcu, target_state, timeout_s, stop_on_error=True) -> tuple[UpdaterState, UpdaterError]:
+    """Poll until target_state or, with stop_on_error, ERROR; raise UpdateError on timeout."""
     deadline = time.monotonic() + timeout_s
     while True:
         result = get_state(mcu)
         if result is not None:
             state, error = result
-            if state in (target_state, UpdaterState.ERROR):
+            if state == target_state or (stop_on_error and state == UpdaterState.ERROR):
                 return state, error
         if time.monotonic() >= deadline:
             raise UpdateError(f"Timeout waiting for state {target_state.name}")
@@ -224,7 +225,7 @@ def run_update(mcu, firmware: bytes, block_count: int) -> None:
             # the caller's attempt budget re-run the whole update.
             print(f"Block {block_idx}: state={state.name}, error={error.name}, aborting")
             send_command(mcu, UpdaterCommand.ABORT)
-            wait_for_state(mcu, UpdaterState.IDLE, ERASE_TIMEOUT_S)
+            wait_for_state(mcu, UpdaterState.IDLE, ERASE_TIMEOUT_S, stop_on_error=False)
             raise UpdateError("Update interrupted")
         mcu.write_block(Reg.FW_DATA, frame)
     elapsed_s = time.perf_counter() - start_time
