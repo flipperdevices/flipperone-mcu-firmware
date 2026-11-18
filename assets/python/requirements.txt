@@ -6,3 +6,5 @@ pillow==12.2.0
 protobuf==7.35.1
 # bundles protoc for the nanopb generator, so no system protoc is needed
 grpcio-tools==1.83.0
+# test runner for scripts/agent_tools, see .github/workflows/agent-tools-tests.yml
+pytest==9.2.0

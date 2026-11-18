@@ -1,0 +1,41 @@
+name: Agent tools tests
+
+# Unit tests for scripts/agent_tools and the get_port.py shim. No hardware and
+# no firmware build are involved: the logic tests drive the console, RPC and
+# Linux console layers through fake ports.
+#
+# The environment is the repository's pinned requirements file, the same one
+# assets/CMakeLists.txt builds build/assets/.venv from, so CI installs exactly
+# what a developer installs and no version is resolved at run time.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/agent-tools-tests.yml'
+      - 'assets/python/requirements.txt'
+      - 'scripts/agent_tools/**'
+      - 'scripts/get_port.py'
+  push:
+    branches: [dev]
+    paths:
+      - '.github/workflows/agent-tools-tests.yml'
+      - 'assets/python/requirements.txt'
+      - 'scripts/agent_tools/**'
+      - 'scripts/get_port.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install the pinned Python environment
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --disable-pip-version-check -r assets/python/requirements.txt
+
+      - name: Run the tests
+        run: .venv/bin/python -m pytest scripts/agent_tools/tests -q

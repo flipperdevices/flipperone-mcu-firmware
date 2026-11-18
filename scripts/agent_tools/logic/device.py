@@ -15,8 +15,9 @@ class DeviceSession:
     session instead of reconnecting and recovering for every call.
     """
 
-    def __init__(self, role=None):
+    def __init__(self, role=None, open_port=None):
         self._role = role or ports.mcu_console_role()
+        self._open_port = open_port or (lambda role: SerialPort(ports.require(role), ports.baud(role)))
         self._port = None
         self._console = None
         self.port_lost = False
@@ -35,7 +36,7 @@ class DeviceSession:
 
     def port(self):
         if self._port is None:
-            self._port = SerialPort(ports.require(self._role), ports.baud(self._role))
+            self._port = self._open_port(self._role)
         return self._port
 
     def console(self):

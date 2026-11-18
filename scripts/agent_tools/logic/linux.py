@@ -10,7 +10,8 @@ from ..transport.serialport import SerialPort
 class LinuxHost:
     """One Linux console port per command, opened on first use."""
 
-    def __init__(self):
+    def __init__(self, open_port=None):
+        self._open_port = open_port or (lambda: SerialPort(ports.require("linux"), ports.baud("linux")))
         self._port = None
 
     def __enter__(self):
@@ -26,7 +27,7 @@ class LinuxHost:
 
     def port(self):
         if self._port is None:
-            self._port = SerialPort(ports.require("linux"), ports.baud("linux"))
+            self._port = self._open_port()
         return self._port
 
     def ready(self):
