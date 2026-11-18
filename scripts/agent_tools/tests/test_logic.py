@@ -141,12 +141,47 @@ def test_flash_preflight_uf2(tmp_path):
     assert plan["image"]["tbyb_pending"] is True
 
 
-def test_board_config_inherits_the_sdk_target_and_defines_the_staging_proc():
+def test_board_config_owns_the_core_and_reading_helpers():
     from agent_tools.logic import swd
 
     text = open(swd.CONFIG).read()
     assert "source [find target/rp2350.cfg]" in text
-    assert "proc f1_stage_tbyb {base}" in text
+    assert "rp2350.cm0" in text
+    for proc in ("f1_core", "f1_halted", "f1_halt_cores", "f1_resume", "f1_where", "f1_read", "f1_stage_tbyb"):
+        assert f"proc {proc}" in text
+
+
+def test_swd_where_and_resume_go_through_the_board_config(monkeypatch):
+    from agent_tools.logic import swd
+    from agent_tools.packets import openocd_output
+
+    calls = []
+
+    def fake_run(lines, timeout=None):
+        calls.append(lines)
+        return ["0 0x10001000 0x10001fff", "1 0x0000019e 0x00000203"]
+
+    monkeypatch.setattr(swd, "run", fake_run)
+    assert swd.where() == {0: (0x10001000, 0x10001FFF), 1: (0x19E, 0x203)}
+    assert calls == [[f"f1_where {openocd_output.MARK}"]]
+    calls.clear()
+    swd.resume()
+    assert calls == [["f1_resume"]]
+
+
+def test_swd_read_words_goes_through_the_board_config(monkeypatch):
+    from agent_tools.logic import swd
+    from agent_tools.packets import openocd_output
+
+    calls = []
+
+    def fake_run(lines, timeout=None):
+        calls.append(lines)
+        return ["04000002", "deadbeef 0"]
+
+    monkeypatch.setattr(swd, "run", fake_run)
+    assert swd.read_words([(0x400D0034, 1), (0x10000000, 2)]) == [[0x04000002], [0xDEADBEEF, 0]]
+    assert calls == [[f"f1_read 0x400d0034 1 {openocd_output.MARK}", f"f1_read 0x10000000 2 {openocd_output.MARK}"]]
 
 
 def test_flash_stages_a_tbyb_image_through_the_board_config(tmp_path, monkeypatch):

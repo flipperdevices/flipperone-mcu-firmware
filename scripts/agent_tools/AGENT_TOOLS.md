@@ -234,7 +234,17 @@ If the MCU console was left in a bad state (a command still running, or a crashe
 
 ## Firmware slots and SWD
 
-SWD goes through OpenOCD from the Pico SDK (`~/.pico-sdk/openocd/<version>/openocd`, or the binary named in `F1_OPENOCD`), which this repository needs anyway; a stock OpenOCD without RP2350 support will not do. To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f scripts/agent_tools/openocd/flipperone-mcu.cfg`. That board config sources `target/rp2350.cfg`, sets the adapter speed and defines the helpers below. `swd symbol` uses `arm-none-eabi-addr2line` from the Pico SDK toolchain.
+SWD goes through OpenOCD from the Pico SDK (`~/.pico-sdk/openocd/<version>/openocd`, or the binary named in `F1_OPENOCD`), which this repository needs anyway; a stock OpenOCD without RP2350 support will not do. To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f scripts/agent_tools/openocd/flipperone-mcu.cfg`. That board config sources `target/rp2350.cfg`, sets the adapter speed and holds all the board knowledge, so a debug session can reuse it too:
+
+| Proc | Use |
+|---|---|
+| `f1_where F1>` | PC and LR of both cores after a momentary halt, `F1> <core> <pc> <lr>` per core |
+| `f1_resume` | Halt both cores and run them again; the way out of cores a debugger left halted |
+| `f1_read ADDR COUNT F1>` | `COUNT` 32-bit words, `F1> <word> ...`, without halting the core |
+| `f1_halted` | 1 when the selected core is halted, 0 when it runs |
+| `f1_stage_tbyb BASE` | Boot the try-before-you-buy image at `BASE` once, so the bootrom stages and commits it |
+
+`swd symbol` uses `arm-none-eabi-addr2line` from the Pico SDK toolchain.
 
 - There are two firmware slots, A and B. The bootrom boots the valid image with the higher version; with equal versions it boots A.
 - `build/flipperone-mcu-firmware.bin` runs from either slot. `swd flash` takes the `.bin` and writes it at the slot's own address.
@@ -264,7 +274,7 @@ python3 scripts/agent_tools/f1.py press back          # close the self-check, if
 Current builds are written with `PICO_CRT0_IMAGE_TYPE_TBYB`, which makes the bootrom treat them as an unbought purchase:
 
 - A normal reset skips such an image, so a slot that holds one stays inactive and `status` keeps reporting the other slot. This is also what the MCU finds when it boots on its own after `swd flash`.
-- `swd flash ... --activate` writes the slot, then reboots into the bootrom's FLASH_UPDATE path, which stages the image, boots it once and commits it. It is a normal image afterwards. The reboot vector is the OpenOCD proc `f1_stage_tbyb <slot base>` in `scripts/agent_tools/openocd/flipperone-mcu.cfg`, so it can be used by hand in a debug session too.
+- `swd flash ... --activate` writes the slot, then reboots into the bootrom's FLASH_UPDATE path, which stages the image, boots it once and commits it. It is a normal image afterwards. The reboot vector is `f1_stage_tbyb` in the board config, so it can be run by hand in a debug session too.
 - The bootrom invalidates the other slot's header when it commits the staged image, so after an `--activate` the previous slot reads `no image header` in `status`. That is expected; flash it again to get a second bootable slot back.
 - Without `--activate`, `swd flash` warns about a TBYB image: it wrote and verified it, but nothing boots it until it is staged.
 
@@ -314,7 +324,7 @@ The firmware does not reboot after a crash at this stage of development: it prin
 | `logic/` | Device services: console, RPC session, Linux host, SWD, slot flashing |
 | `transport/` | Byte and line movers: serial port, OpenOCD process, port discovery |
 | `packets/` | Pure codecs: UF2, picobin, RPC protobuf subset, console text, U-Boot text, OpenOCD output |
-| `openocd/flipperone-mcu.cfg` | Board config: the SDK RP2350 target plus board helpers such as `f1_stage_tbyb` |
+| `openocd/flipperone-mcu.cfg` | Board config: the SDK RP2350 target plus the core and flashing helpers listed under [Firmware slots and SWD](#firmware-slots-and-swd) |
 | `tests/` | Unit tests with fake ports |
 
 Dependencies run one way, `cli` → `logic` → `transport` → `packets`; `tests/test_layers.py` fails the build on any import that points back up.

@@ -1,9 +1,10 @@
 """SWD access through OpenOCD: memory reads without halting, reset, flashing.
 
 Every call loads scripts/agent_tools/openocd/flipperone-mcu.cfg, a board config
-that sources the SDK RP2350 target and defines the board-specific helpers. Each
-call runs one short OpenOCD process: the probe accepts a single client, so this
-fails while a debugger (for example a VS Code session) is attached.
+that sources the SDK RP2350 target and defines the board helpers this module
+calls: f1_read, f1_resume, f1_where, f1_stage_tbyb. Each call runs one short
+OpenOCD process: the probe accepts a single client, so this fails while a
+debugger (for example a VS Code session) is attached.
 """
 
 import glob
@@ -67,7 +68,7 @@ def run(commands, timeout=120):
 
 def read_words(requests):
     """requests: list of (address, count). Returns a list of word lists, read without halting."""
-    commands = [f'echo "{openocd_output.MARK} [read_memory {address:#x} 32 {count}]"' for address, count in requests]
+    commands = [f"f1_read {address:#x} {count} {openocd_output.MARK}" for address, count in requests]
     return [[int(word, 16) for word in line.split()] for line in run(commands)]
 
 
@@ -118,14 +119,9 @@ def reset():
     run(["reset run"])
 
 
-# OpenOCD target names of the two cores, as listed by `openocd -f target/rp2350.cfg`
-CORES = {0: "rp2350.cm0", 1: "rp2350.cm1"}
-
-
 def resume():
-    # OpenOCD resumes only targets it has seen halt, and resuming core0 resumes both
-    halts = "; ".join(f"targets {CORES[core]}; halt; wait_halt 500" for core in CORES)
-    run(["catch {" + halts + "}", f"targets {CORES[0]}", "resume"])
+    """Run both cores from wherever they are; f1_resume halts them first, as OpenOCD needs."""
+    run(["f1_resume"])
 
 
 def where():
@@ -133,26 +129,12 @@ def where():
 
     If the MCU was already halted (a crash, a breakpoint), it is left halted.
     """
-    was_halted = status_halted()
-    # Each core is halted through its own target: OpenOCD reads registers only
-    # from a target it has seen halt. Resuming core0 resumes both.
-    reads = []
-    for core, target in CORES.items():
-        reads += [f"targets {target}", "halt", "wait_halt 500", f'echo "{openocd_output.MARK} {core} [reg pc] [reg lr]"']
-    commands = ["catch {" + "; ".join(reads) + "} f1_error", f"targets {CORES[0]}"]
-    if not was_halted:
-        commands += ["resume"]
-    commands += ['if {$f1_error ne ""} { echo "Error: $f1_error" }']
     result = {}
-    for line in run(commands):
+    for line in run([f"f1_where {openocd_output.MARK}"]):
         core, *rest = line.split()
         values = [int(word, 16) for word in rest if word.startswith("0x")]
         result[int(core)] = tuple(values[:2])
     return result
-
-
-def status_halted():
-    return bool(read_words([(DHCSR, 1)])[0][0] & (1 << 17))
 
 
 def symbolize(addresses):
