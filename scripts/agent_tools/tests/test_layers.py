@@ -80,11 +80,13 @@ def test_package_imports():
     import agent_tools.cli.main  # noqa: F401
     import agent_tools.logic.console  # noqa: F401
     import agent_tools.logic.device  # noqa: F401
+    import agent_tools.logic.flash  # noqa: F401
     import agent_tools.logic.linux  # noqa: F401
     import agent_tools.logic.rpc  # noqa: F401
     import agent_tools.logic.swd  # noqa: F401
     import agent_tools.packets.picobin  # noqa: F401
     import agent_tools.packets.rpc  # noqa: F401
+    import agent_tools.packets.uf2  # noqa: F401
     import agent_tools.transport.ports  # noqa: F401
 
 

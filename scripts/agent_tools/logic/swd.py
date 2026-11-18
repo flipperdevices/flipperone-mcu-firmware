@@ -68,18 +68,29 @@ def read_words(requests):
     return [[int(word, 16) for word in line.split()] for line in run(commands)]
 
 
-def partitions():
-    """Firmware slot offsets from targets/partition_table.json: {'A': offset, 'B': offset}."""
+def _fw_partitions():
+    """{slot: (offset, size)} from targets/partition_table.json."""
     with open(constants.PARTITION_TABLE) as file:
         table = json.load(file)
-    offsets, offset = {}, FIRST_PARTITION_OFFSET
+    found, offset = {}, FIRST_PARTITION_OFFSET
     for partition in table["partitions"]:
+        size = partition["size"]
+        size_bytes = int(size[:-1]) * 1024 if size.endswith("K") else int(size, 0)
         name = partition["name"]
         if name.startswith("FW "):
-            offsets[name[3:]] = offset
-        size = partition["size"]
-        offset += int(size[:-1]) * 1024 if size.endswith("K") else int(size, 0)
-    return offsets
+            found[name[3:]] = (offset, size_bytes)
+        offset += size_bytes
+    return found
+
+
+def partitions():
+    """Firmware slot offsets from targets/partition_table.json: {'A': offset, 'B': offset}."""
+    return {name: offset for name, (offset, _) in _fw_partitions().items()}
+
+
+def partition_bounds(slot):
+    """(offset, size) of a firmware slot, in flash storage coordinates."""
+    return _fw_partitions()[slot.upper()]
 
 
 def status():

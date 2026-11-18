@@ -6,6 +6,7 @@ non-zero with a one-line reason on failure. See AGENT_TOOLS.md next to this file
 """
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -14,7 +15,7 @@ import sys
 import time
 
 from .. import constants
-from ..logic import swd
+from ..logic import flash, swd
 from ..logic.device import DeviceSession
 from ..logic.linux import LinuxHost
 from ..logic.rpc import write_png
@@ -465,8 +466,18 @@ def cmd_swd(args):
     elif args.action == "flash":
         if not args.yes:
             raise RuntimeError("Flashing overwrites the slot and halts the MCU while writing; pass --yes once the user agreed")
-        swd.flash_slot(args.slot, args.file)
-        print(f"wrote {args.file} to slot {args.slot.upper()}, verified, MCU reset")
+        with contextlib.ExitStack() as stack:
+            if args.quiesce:
+                stack.enter_context(flash.freeze_host())
+            plan = flash.flash(args.slot, args.file, activate=args.activate)
+        print(f"sha256 {plan['sha256']}")
+        if plan["image"]["state"] != "valid":
+            print("note: no valid picobin image header in the image; the bootrom will not boot it")
+        elif plan["tbyb"] and plan["staged"]:
+            print("try-before-you-buy image staged: the MCU boots the new slot now and commits it")
+        elif plan["tbyb"]:
+            print("note: try-before-you-buy image, it will not boot on a normal reset; re-run with --activate")
+        print(f"wrote {args.file} to slot {plan['slot']}, verified, MCU reset")
     elif args.action == "erase-header":
         if not args.yes:
             raise RuntimeError("This makes the slot unbootable; pass --yes once the user agreed")
@@ -574,10 +585,12 @@ def build_parser():
     q.add_argument("address")
     q.add_argument("count", type=int, nargs="?", default=1)
     q.add_argument("--json", action="store_true", help="print a JSON envelope instead of text")
-    q = swd_sub.add_parser("flash", help="write a .bin to a firmware slot, verify, reset")
+    q = swd_sub.add_parser("flash", help="write a .bin or slot-relocated .uf2 to a firmware slot, verify, reset")
     q.add_argument("slot", choices=["a", "b", "A", "B"])
     q.add_argument("file")
     q.add_argument("--yes", action="store_true")
+    q.add_argument("--activate", action="store_true", help="try-before-you-buy image: boot it once so the bootrom stages and commits it")
+    q.add_argument("--quiesce", action="store_true", help="hold the host CPU in reset through the probe while writing")
     q = swd_sub.add_parser("erase-header", help="invalidate a slot by erasing its first sector")
     q.add_argument("slot", choices=["a", "b", "A", "B"])
     q.add_argument("--yes", action="store_true")
