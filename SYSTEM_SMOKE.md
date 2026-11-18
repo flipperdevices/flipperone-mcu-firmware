@@ -5,12 +5,18 @@ pinned to a full commit SHA. It runs inside the MCU Build run and propagates the
 hardware job outcome directly into the PR and the aggregate `build` check.
 There is no cross-repository PAT, dispatch, polling or separate result receipt.
 
-System-testing must allow Actions access from other private repositories in
-`flipperdevices` (Settings → Actions → General → Access). GitHub downloads its
-pinned shared source action with an automatically supplied scoped token.
-The shared action materializes the test package; a cross-repository checkout
-with the MCU repository's token is unnecessary. Both workflow and source-action
-pins must be updated when adopting new test code.
+GitHub requires compatible visibility: a public caller can use only public
+reusable workflows/actions. MCU is currently public and system-testing private,
+so organization sharing alone cannot enable this call. The repository owners
+must resolve this mismatch before hardware CI can run. These PRs do not change
+visibility. See [GitHub access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#access-to-reusable-workflows).
+
+For private callers, system-testing must allow Actions access from other private
+repositories in `flipperdevices` (Settings → Actions → General → Access).
+GitHub downloads its private shared source action with an automatically supplied
+scoped token; public shared actions need no PAT either. The action materializes
+the test package without a cross-repository checkout.
+Both workflow and source-action pins must be updated when adopting new test code.
 
 After the ordinary firmware build, one hardware job and one lease cover two
 separate steps. The system step installs the exact `firmware-f2` artifact from

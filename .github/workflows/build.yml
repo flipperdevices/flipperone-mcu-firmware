@@ -231,7 +231,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: flipperdevices/flipperone-system-testing/.github/workflows/pr-mcu-smoke.yml@519b680da9bc66fe541f023e967189eac06edb38
+    uses: flipperdevices/flipperone-system-testing/.github/workflows/pr-mcu-smoke.yml@1d064d7de2b50583ead17bb1a7857b1949641403
     with:
       firmware_commit: ${{ github.event.pull_request.head.sha }}
       artifact_suffix: ${{ needs.firmware.outputs.suffix }}
