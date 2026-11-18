@@ -58,7 +58,8 @@ python3 scripts/agent_tools/f1.py status
 | `swd status` / `reset` / `resume` / `read ADDR [N]` | SWD through OpenOCD, without halting unless stated. `read` prints `N` 32-bit words |
 | `swd where` | Halt for a moment and print where both cores are (function, file, line), then run on |
 | `swd symbol ADDR...` | Function, file and line for addresses from a crash log; uses `build/*.elf`, no probe needed |
-| `swd flash a\|b FILE.bin --yes` | Write a firmware image to a slot, verify, reset |
+| `swd flash a\|b FILE.bin --yes` | Write a firmware image to a slot, verify it, reset |
+| `swd flash a\|b FILE.uf2 --activate --yes` | Same for a try-before-you-buy image, and boot it once so that the bootrom stages and commits it |
 | `swd erase-header a\|b --yes` | Make a slot unbootable, so that the other one boots, and reset. Only flashing the slot again brings it back |
 
 Buttons: `ok back up down left right key1 key2 key4 key5 power sw ptt`. `power` is the key that would be `key3`. What a button does depends on the app on screen; `sw`, for one, opens the app switcher in Linux.
@@ -68,6 +69,16 @@ Timeouts: `cli` and `probe` wait 5 seconds per command, `host` 30, `linux start`
 Exit codes: 0 on success, 1 on a tool error. `host` exits with the exit code of the command it ran and prints `[exit code N]` on stdout when that is not 0; a failure of the tool itself prints a line starting with `error:` on stderr instead, which is how to tell a tool error from a command that returned 1.
 
 Commands that need `--yes` refuse without it and change nothing. Write addresses with `0x`.
+
+### Machine-readable output
+
+`ports`, `status`, `swd status`, `swd read` and `linux state` take `--json` and print one JSON object instead of text:
+
+```json
+{"tool": "f1.py", "command": "linux state", "ok": true, "data": {"state": "up", "app": "cpu_app_start"}}
+```
+
+`ok` is false on failure, the object then has `error` instead of `data` and goes to stderr; the exit code is still 1. The other commands print text only and reject `--json`.
 
 ## Rules
 
@@ -169,7 +180,7 @@ The MCU log shows `Bq2579x` errors (`Failed to write reg 0x01`, `Failed to set c
 - Tools that need the MCU console use `mcu`. `--console mcu-usb` (accepted by `cli`, `screenshot`, `press` and `touch`) selects the USB one, but it vanishes mid-command when Linux powers up.
 - The probe runs its UART bridges at a fixed 1500000 baud whatever rate this machine asks for, unless custom baud rates are enabled on the probe (`f1.py probe "settings set_custom_baudrate 1"`).
 - A present `mcu-usb` port means the host is off. An absent one means nothing: there may simply be no cable. Use `linux state`.
-- Port lookup lives in `scripts/get_port.py`, which also works on its own: `python3 scripts/get_port.py mcu` prints the device path, without arguments it lists all roles.
+- Port lookup lives in `scripts/agent_tools/transport/ports.py`; `scripts/get_port.py` is a thin wrapper that also works on its own: `python3 scripts/get_port.py mcu` prints the device path, without arguments it lists all roles.
 - Ports are found by USB identity and CDC interface: probe `37c1:f131` serial `f1_debug_xxxx_`, control interface 1 for `linux`, 3 for `mcu`, 5 for `mcu-log`, 7 for `probe`; MCU `37c1:f101` serial `flip_one_mcu`, interface 0. macOS names a port after the data interface, which is the next number: `..._2` is `linux`, `..._4` is `mcu`, `..._6` is `mcu-log`, `..._8` is `probe`. Override a port with `F1_PORT_<ROLE>`, for example `F1_PORT_MCU_LOG=/dev/ttyACM2`.
 - Which command holds which port: `cli`, `screenshot`, `press`, `touch` use `mcu`; `log` uses `mcu-log`; `host` uses `linux`; `linux` uses `mcu` and `linux`; `probe` uses `probe`; `status` uses `probe` and SWD; `swd` uses SWD only. So a background `log` gets in the way of nothing but another `log`.
 - The UART consoles (`mcu`, `linux`) have no notion of a client connecting, so they print nothing when a port is opened; a prompt appears only after you send something. The tools send Ctrl+C and Enter first.
@@ -226,8 +237,10 @@ If the MCU console was left in a bad state (a command still running, or a crashe
 SWD goes through OpenOCD from the Pico SDK (`~/.pico-sdk/openocd/<version>/openocd`, or the binary named in `F1_OPENOCD`), which this repository needs anyway; a stock OpenOCD without RP2350 support will not do. To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f target/rp2350.cfg -c "adapter speed 5000"`. `swd symbol` uses `arm-none-eabi-addr2line` from the Pico SDK toolchain.
 
 - There are two firmware slots, A and B. The bootrom boots the valid image with the higher version; with equal versions it boots A.
-- `build/flipperone-mcu-firmware.bin` runs from either slot. `swd flash` wants the `.bin`.
-- Flash your builds to slot A. Local builds all carry the same version, and with equal versions A wins, so a build written to B does not start while A holds a valid image of the same or a higher version. If B holds a higher version than your build, write the build to both slots, or make B unbootable with `swd erase-header b`.
+- `build/flipperone-mcu-firmware.bin` runs from either slot. `swd flash` takes the `.bin` and writes it at the slot's own address.
+- `swd flash` also takes a `.uf2`, but only one whose payload lies inside the slot being written, so a slot-relocated `.uf2` from the release flow rather than a plain picotool `.uf2` linked for slot A. Anything outside the slot is refused before the flash is touched.
+- With Linux running, add `--quiesce`: the tool then holds the host CPU in reset through the probe while it writes. That is a reset, not a freeze: a host that runs loses its state, but the slot write cannot race the host reading flash.
+- Flash your builds to slot A, with `--activate`: local builds all carry the same version, and with equal versions A wins, so a build written to B does not start while A holds a valid image of the same or a higher version. If B holds a higher version than your build, write the build to both slots, or make B unbootable with `swd erase-header b`.
 - `status` reports per slot: `erased`, `no image header`, or `valid` with its version words. The first word packs `FW_IMAGE_MAJOR` (bits 15..12), `FW_IMAGE_MINOR` (11..4) and `FW_IMAGE_PATCH` (3..0) from `CMakeLists.txt`, so 0.1.0 is `0x0010`. The second word is reserved for a boot counter and is 0 in every build today. `DIST_SUFFIX` changes only the version string that `device_info` prints, not these words.
 - After flashing, confirm with `status` that the slot you wrote is the active one, and with `cli device_info` that the running build is yours. An image with a lower version than the other slot will not be chosen.
 - `active none` means the core sits in the bootrom: either no slot holds a bootable image (flash slot A over SWD to recover), or the MCU was sent to its USB bootloader with `power boot` (reset it).
@@ -245,6 +258,15 @@ python3 scripts/agent_tools/f1.py press back          # close the self-check, if
 
 - `swd flash` takes about 8 seconds. The MCU console answers within a second after `swd flash`, `swd reset` and a reset through the probe; no waiting is needed before the next command.
 - With Linux running, flashing resets only the MCU; run `linux start` afterwards to attach to it again, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
+
+### Try-before-you-buy images
+
+Current builds are written with `PICO_CRT0_IMAGE_TYPE_TBYB`, which makes the bootrom treat them as an unbought purchase:
+
+- A normal reset skips such an image, so a slot that holds one stays inactive and `status` keeps reporting the other slot. This is also what the MCU finds when it boots on its own after `swd flash`.
+- `swd flash ... --activate` writes the slot, then reboots into the bootrom's FLASH_UPDATE path, which stages the image, boots it once and commits it. It is a normal image afterwards.
+- The bootrom invalidates the other slot's header when it commits the staged image, so after an `--activate` the previous slot reads `no image header` in `status`. That is expected; flash it again to get a second bootable slot back.
+- Without `--activate`, `swd flash` warns about a TBYB image: it wrote and verified it, but nothing boots it until it is staged.
 
 ### When the user says the device froze after debugging
 
@@ -282,6 +304,25 @@ The firmware does not reboot after a crash at this stage of development: it prin
 - **Attaching over SWD leaves debug enabled in the core**, also across `swd reset`; a reset through the probe pin clears it. While it is enabled, a breakpoint instruction in the firmware halts the core instead of faulting, which is how a crashed firmware ends up `HALTED`.
 - **A halted MCU stops everything it manages**: the screen, the buttons, reactions to the host. `swd flash` halts it for the 8 seconds of the write; a running Linux carries on through that.
 - **Two tools cannot share a port.** A command that finds its port taken fails at once with `is in use by another process`. Different ports are fine in parallel; see [Ports](#ports) for which command uses which.
+
+## Source layout and tests
+
+| Path | What |
+|---|---|
+| `f1.py` | Entry point: builds the parser and calls one command |
+| `cli/main.py` | The commands and their text output; nothing else |
+| `logic/` | Device services: console, RPC session, Linux host, SWD, slot flashing |
+| `transport/` | Byte and line movers: serial port, OpenOCD process, port discovery |
+| `packets/` | Pure codecs: UF2, picobin, RPC protobuf subset, console text, U-Boot text, OpenOCD output |
+| `tests/` | Unit tests with fake ports |
+
+Dependencies run one way, `cli` → `logic` → `transport` → `packets`; `tests/test_layers.py` fails the build on any import that points back up.
+
+```shell
+python3 -m pytest scripts/agent_tools/tests -q
+```
+
+The tests need the pinned packages of `assets/python/requirements.txt` and nothing else: no firmware build, no device, no probe. The logic tests pass in fake ports, so commands and timeouts run without hardware. `.github/workflows/agent-tools-tests.yml` runs the same command in CI.
 
 ## What still needs the user
 
