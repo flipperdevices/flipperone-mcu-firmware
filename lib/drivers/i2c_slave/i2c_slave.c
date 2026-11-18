@@ -78,6 +78,18 @@ I2C_ISR_FUNC(static void, i2c_slave_irq_callback)(void) {
 
     // Handle events in different order depending on previous transaction state
     if(*is_started) {
+        // This transfer's START was handled, so a START latched with a STOP
+        // came after it: STOP, START, then the next transfer's bytes. Deliver
+        // them in that order: Stop takes this transfer's bytes up to the next
+        // one's first byte, and the rest goes to the next transfer.
+        if((intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) && (intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) &&
+           !(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS)) {
+            i2c_slave_handle_stop(i2c, slave, is_started, intr_stat);
+            (void)hw->clr_start_det;
+            slave->callback(i2c, I2cSlaveEventStart);
+            *is_started = true;
+            intr_stat &= ~(I2C_IC_INTR_STAT_R_STOP_DET_BITS | I2C_IC_INTR_STAT_R_TX_ABRT_BITS | I2C_IC_INTR_STAT_R_START_DET_BITS);
+        }
         // Data events before stop: the intercom must not receive while idle
         if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
             (void)hw->clr_restart_det;
