@@ -139,3 +139,31 @@ def test_flash_preflight_uf2(tmp_path):
     plan = flash.preflight("A", str(inside))
     assert plan["kind"] == "uf2" and plan["payload_address"] == slot
     assert plan["image"]["tbyb_pending"] is True
+
+
+def test_board_config_inherits_the_sdk_target_and_defines_the_staging_proc():
+    from agent_tools.logic import swd
+
+    text = open(swd.CONFIG).read()
+    assert "source [find target/rp2350.cfg]" in text
+    assert "proc f1_stage_tbyb {base}" in text
+
+
+def test_flash_stages_a_tbyb_image_through_the_board_config(tmp_path, monkeypatch):
+    from agent_tools.logic import flash, swd
+    from test_packets import image_def_bytes
+
+    commands = []
+    monkeypatch.setattr(swd, "run", lambda lines, timeout=None: commands.append(lines))
+    tbyb = tmp_path / "tbyb.bin"
+    tbyb.write_bytes(image_def_bytes(tbyb=True) + b"\x00" * 64)
+    plan = flash.flash("a", str(tbyb), activate=True)
+    assert plan["staged"] is True and plan["tbyb"] is True
+    assert [line for line in commands[0] if line.startswith("f1_stage_tbyb")] == [f"f1_stage_tbyb {plan['address']:#x}"]
+    assert not any(line.startswith(("mww", "targets")) for line in commands[0])
+
+    plain = tmp_path / "plain.bin"
+    plain.write_bytes(image_def_bytes(tbyb=False) + b"\x00" * 64)
+    commands.clear()
+    assert flash.flash("a", str(plain), activate=True)["staged"] is False
+    assert not any(line.startswith("f1_stage_tbyb") for line in commands[0])

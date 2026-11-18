@@ -1,7 +1,9 @@
 """SWD access through OpenOCD: memory reads without halting, reset, flashing.
 
-Each call runs one short OpenOCD process. The probe accepts a single client,
-so this fails while a debugger (for example a VS Code session) is attached.
+Every call loads scripts/agent_tools/openocd/flipperone-mcu.cfg, a board config
+that sources the SDK RP2350 target and defines the board-specific helpers. Each
+call runs one short OpenOCD process: the probe accepts a single client, so this
+fails while a debugger (for example a VS Code session) is attached.
 """
 
 import glob
@@ -22,6 +24,8 @@ SECTOR = constants.SECTOR
 FIRST_PARTITION_OFFSET = constants.FIRST_PARTITION_OFFSET
 
 REPO = str(constants.REPO_ROOT)
+# Board config: the SDK RP2350 target plus the board-specific helpers, see the file
+CONFIG = str(constants.REPO_ROOT / "scripts" / "agent_tools" / "openocd" / "flipperone-mcu.cfg")
 
 
 def find_openocd():
@@ -50,8 +54,8 @@ def run(commands, timeout=120):
         # Each probe has its own USB serial number, which is what OpenOCD's
         # CMSIS-DAP driver selects by
         select = ["-c", f"adapter serial {ports.selected_probe()['serial']}"]
-    script = "; ".join(["adapter speed 5000", "init", body, "shutdown"])
-    args = [binary] + (["-s", scripts] if scripts else []) + ["-f", "interface/cmsis-dap.cfg", *select, "-f", "target/rp2350.cfg", "-c", script]
+    script = "; ".join(["init", body, "shutdown"])
+    args = [binary] + (["-s", scripts] if scripts else []) + ["-f", "interface/cmsis-dap.cfg", *select, "-f", CONFIG, "-c", script]
     result = process.run(args, timeout=timeout)
     output = result.stdout + result.stderr
     errors = openocd_output.error_lines(output)

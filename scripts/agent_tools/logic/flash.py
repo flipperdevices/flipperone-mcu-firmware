@@ -9,25 +9,6 @@ from .. import constants
 from ..packets import picobin, uf2
 from . import swd
 from .device import DeviceSession
-# REBOOT2 FLASH_UPDATE vector in the watchdog scratch registers, proven on
-# silicon B3 (scripts/i2c_race_issue_notes.md): the bootrom then stages and
-# buys a try-before-you-buy image instead of skipping it on a normal boot.
-STAGING_VECTOR = [
-    "targets rp2350.cm0",
-    "mww 0x400d8000 0",  # watchdog control: stop it
-    "mww 0x40018008 0x1ffff3",  # POWMAN boot word: clear
-    "mww 0x400d8014 {param0}",  # scratch2: update base (XIP address)
-    "mww 0x400d8018 0",  # scratch3: unused
-    "mww 0x400d801c 0xb007c0d3",  # scratch4: magic
-    "mww 0x400d8020 0xfffffffe",  # scratch5: flags
-    "mww 0x400d8024 4",  # scratch6: BOOT_TYPE_FLASH_UPDATE
-    "mww 0x400d8028 0xb007c0d3",  # scratch7: magic
-    "mww 0x40108030 0",  # TIMER watchdog: stop
-    "mww 0x40108034 12",  # slow tick, so LOAD spans ~18s inside the bootrom
-    "mww 0x40108030 1",
-    "mww 0x400d8004 0xffffff",  # watchdog load
-    "mww 0x400d8000 0x40000000",  # watchdog trigger: reset into the bootrom
-]
 
 
 def preflight(slot, path):
@@ -71,7 +52,8 @@ def flash(slot, path, activate=False):
             commands += [f"flash write_image erase {quoted} {plan['address']:#x} bin", f"verify_image {quoted} {plan['address']:#x} bin"]
         staged = activate and tbyb
         if staged:
-            commands += [line.format(param0=f"{plan['address']:#x}") for line in STAGING_VECTOR]
+            # Defined in scripts/agent_tools/openocd/flipperone-mcu.cfg
+            commands.append(f"f1_stage_tbyb {plan['address']:#x}")
         commands.append("reset run")
         swd.run(commands, timeout=300)
     finally:
