@@ -5,17 +5,12 @@ pinned to a full commit SHA. It runs inside the MCU Build run and propagates the
 hardware job outcome directly into the PR and the aggregate `build` check.
 There is no cross-repository PAT, dispatch, polling or separate result receipt.
 
-GitHub requires compatible visibility: a public caller can use only public
-reusable workflows/actions. MCU is currently public and system-testing private,
-so organization sharing alone cannot enable this call. The repository owners
-must resolve this mismatch before hardware CI can run. These PRs do not change
-visibility. See [GitHub access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#access-to-reusable-workflows).
-
-For private callers, system-testing must allow Actions access from other private
-repositories in `flipperdevices` (Settings → Actions → General → Access).
-GitHub downloads its private shared source action with an automatically supplied
-scoped token; public shared actions need no PAT either. The action materializes
-the test package without a cross-repository checkout.
+MCU and system-testing are public, so GitHub downloads the reusable workflow
+and shared source action directly. No PAT, GitHub App or cross-repository
+secret is required. The shared action materializes its pinned test package
+without a cross-repository checkout. Public callers require public reusable
+workflows/actions; organization sharing alone cannot enable public → private.
+See [GitHub access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#access-to-reusable-workflows).
 Both workflow and source-action pins must be updated when adopting new test code.
 
 After the ordinary firmware build, one hardware job and one lease cover two
