@@ -46,7 +46,6 @@ class ResetMode(IntEnum):
     DISABLED = 0
     RESET_MCU = 1
     RESET_MCU_AND_POWER = 2
-    RESET_MCU_IMMEDIATELY = 3
 
 
 # Keep in sync with UpdaterState/UpdaterError/UpdaterCommand from the MCU firmware
@@ -250,9 +249,9 @@ def main() -> int:
     parser.add_argument(
         "--reset-mode",
         type=int,
-        choices=[mode.value for mode in ResetMode if mode != ResetMode.RESET_MCU_IMMEDIATELY],
+        choices=[mode.value for mode in ResetMode],
         default=None,
-        help="MCU response to the host shutting down (default: none, the MCU arms reset-on-host-shutdown itself after a successful update); immediate reset is firmware-internal, use --reset",
+        help="MCU response to the host shutting down (default: none, the MCU arms reset-on-host-shutdown itself after a successful update); to reset now, use --reset",
     )
     parser.add_argument(
         "--reset-delay",

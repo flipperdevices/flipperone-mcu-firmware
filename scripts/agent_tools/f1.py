@@ -529,8 +529,10 @@ def cmd_swd(args):
     elif args.action == "flash":
         if not args.yes:
             raise RuntimeError("Flashing overwrites the slot and halts the MCU while writing; pass --yes once the user agreed")
-        swd.flash_slot(args.slot, args.file)
-        print(f"wrote {args.file} to slot {args.slot.upper()}, verified, MCU reset")
+        if swd.flash_slot(args.slot, args.file):
+            print(f"wrote {args.file} to slot {args.slot.upper()}, verified, booted it as a flash-update boot (try-before-you-buy image)")
+        else:
+            print(f"wrote {args.file} to slot {args.slot.upper()}, verified, MCU reset")
     elif args.action == "erase-header":
         if not args.yes:
             raise RuntimeError("This makes the slot unbootable; pass --yes once the user agreed")

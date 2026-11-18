@@ -24,7 +24,18 @@
             // Also works fine for flash binaries
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000"
+                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000",
+                // The image is try-before-you-buy: a plain reset ignores it until it is bought.
+                // Leave a flash-update reboot vector for slot A in watchdog scratch (PSM WDSEL,
+                // scratch2..7, see furi_hal_power_reboot_to_partition); the reset below keeps it.
+                "monitor mww 0x40018008 0x01fffff3",
+                "monitor mww 0x400d8014 0x10002000",
+                "monitor mww 0x400d8018 0",
+                "monitor mww 0x400d801c 0xb007c0d3",
+                "monitor mww 0x400d8020 0xfffffffe",
+                "monitor mww 0x400d8024 4",
+                "monitor mww 0x400d8028 0xb007c0d3",
+                "monitor reset halt"
             ],
             "openOCDLaunchCommands": [
                 "adapter speed 5000",
@@ -104,7 +115,18 @@
             // Also works fine for flash binaries
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000"
+                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000",
+                // The image is try-before-you-buy: a plain reset ignores it until it is bought.
+                // Leave a flash-update reboot vector for slot A in watchdog scratch (PSM WDSEL,
+                // scratch2..7, see furi_hal_power_reboot_to_partition); the reset below keeps it.
+                "monitor mww 0x40018008 0x01fffff3",
+                "monitor mww 0x400d8014 0x10002000",
+                "monitor mww 0x400d8018 0",
+                "monitor mww 0x400d801c 0xb007c0d3",
+                "monitor mww 0x400d8020 0xfffffffe",
+                "monitor mww 0x400d8024 4",
+                "monitor mww 0x400d8028 0xb007c0d3",
+                "monitor reset halt"
             ],
             "openOCDLaunchCommands": [
                 "adapter speed 5000",

@@ -21,6 +21,13 @@ DHCSR = 0xE000EDF0
 SECTOR = 0x1000
 PICOBIN_BLOCK_MARKER = 0xFFFFDED3
 FIRST_PARTITION_OFFSET = 0x2000
+PSM_WDSEL = 0x40018008
+PSM_WDSEL_ALL_BUT_OSC = 0x01FFFFF3  # everything but ROSC and XOSC, as the firmware sets it
+WATCHDOG_CTRL = 0x400D8000
+WATCHDOG_CTRL_TRIGGER = 0x80000000
+WATCHDOG_SCRATCH2 = 0x400D8014
+REBOOT_MAGIC = 0xB007C0D3
+REBOOT_TYPE_FLASH_UPDATE = 4
 
 MARK = "F1>"
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -42,8 +49,11 @@ def find_openocd():
     raise RuntimeError("OpenOCD not found. Install the Pico SDK tooling or set F1_OPENOCD to the binary.")
 
 
-def run(commands, timeout=120):
-    """Run OpenOCD commands after `init`; return the lines printed with `echo "F1> ..."`."""
+def run(commands, timeout=120, allowed_errors=()):
+    """Run OpenOCD commands after `init`; return the lines printed with `echo "F1> ..."`.
+
+    allowed_errors: substrings of OpenOCD error lines that are expected.
+    """
     binary, scripts = find_openocd()
     body = "; ".join(commands)
     attached = ports.probes()
@@ -56,7 +66,7 @@ def run(commands, timeout=120):
     args = [binary] + (["-s", scripts] if scripts else []) + ["-f", "interface/cmsis-dap.cfg", *select, "-f", "target/rp2350.cfg", "-c", script]
     result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
     output = result.stdout + result.stderr
-    errors = list(dict.fromkeys(line for line in output.splitlines() if line.startswith("Error")))
+    errors = list(dict.fromkeys(line for line in output.splitlines() if line.startswith("Error") and not any(allowed in line for allowed in allowed_errors)))
     if "shutdown command invoked" not in output or errors:
         hint = ""
         if "unable to find a matching CMSIS-DAP device" in output or "no device found" in output.lower():
@@ -185,17 +195,54 @@ def _symbolize(addresses):
     return [(address, f"{output[2 * i]} at {os.path.relpath(output[2 * i + 1], REPO) if output[2 * i + 1].startswith('/') else output[2 * i + 1]}") for i, address in enumerate(addresses)]
 
 
+def image_is_tbyb(path):
+    """True when the image is try-before-you-buy: a normal boot ignores it until it is bought."""
+    with open(path, "rb") as file:
+        words = struct.unpack(f"<{SECTOR // 4}I", file.read(SECTOR).ljust(SECTOR, b"\xff"))
+    return parse_slot_header(words).get("tbyb_pending", False)
+
+
+def flash_update_vector(address):
+    """OpenOCD commands that reboot into the image at `address` as a flash-update boot.
+
+    The same reboot2 vector the firmware leaves in watchdog scratch to activate
+    an update (furi_hal_power_reboot_to_partition); the watchdog trigger then
+    resets the chip without clearing scratch.
+    """
+    vector = [address, 0, REBOOT_MAGIC, 0xFFFFFFFE, REBOOT_TYPE_FLASH_UPDATE, REBOOT_MAGIC]
+    commands = [f"mww {PSM_WDSEL:#x} {PSM_WDSEL_ALL_BUT_OSC:#x}"]
+    commands += [f"mww {WATCHDOG_SCRATCH2 + 4 * i:#x} {word:#x}" for i, word in enumerate(vector)]
+    # The trigger resets the chip under OpenOCD, so the write itself fails:
+    # catch keeps the script going, and the error line is allowed below
+    commands += [f"catch {{mww {WATCHDOG_CTRL:#x} {WATCHDOG_CTRL_TRIGGER:#x}}}", "sleep 500"]
+    return commands
+
+
+FLASH_UPDATE_BOOT_ERRORS = ("Failed to write memory at 0x00000000",)
+
+
 def flash_slot(slot, path):
-    """Write a .bin to a firmware slot, verify it and reset. The MCU is halted meanwhile."""
+    """Write a .bin to a firmware slot, verify it and boot it. The MCU is halted meanwhile.
+
+    A try-before-you-buy image boots only as a flash-update boot, as after an
+    update; a normal reset would ignore it. Returns True for that case.
+    """
     address = XIP_BASE + partitions()[slot.upper()]
     path = os.path.abspath(path)
     if not path.endswith(".bin"):
         raise ValueError("Give the .bin file: it is linked for 0x10000000 and runs from either slot")
+    tbyb = image_is_tbyb(path)
     quoted = "{" + path + "}"
-    run(["halt", f"flash write_image erase {quoted} {address:#x} bin", f"verify_image {quoted} {address:#x} bin", "reset run"], timeout=300)
+    boot = flash_update_vector(address) if tbyb else ["reset run"]
+    run(
+        ["reset halt", f"flash write_image erase {quoted} {address:#x} bin", f"verify_image {quoted} {address:#x} bin", *boot],
+        timeout=300,
+        allowed_errors=FLASH_UPDATE_BOOT_ERRORS if tbyb else (),
+    )
+    return tbyb
 
 
 def erase_slot_header(slot):
     """Erase the first sector of a slot, which makes its image unbootable."""
     address = XIP_BASE + partitions()[slot.upper()]
-    run(["halt", f"flash erase_address {address:#x} {SECTOR:#x}", "reset run"])
+    run(["reset halt", f"flash erase_address {address:#x} {SECTOR:#x}", "reset run"])

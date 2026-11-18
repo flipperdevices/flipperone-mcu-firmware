@@ -58,7 +58,7 @@ python3 scripts/agent_tools/f1.py status
 | `swd status` / `reset` / `resume` / `read ADDR [N]` | SWD through OpenOCD, without halting unless stated. `read` prints `N` 32-bit words |
 | `swd where` | Halt for a moment and print where both cores are (function, file, line), then run on |
 | `swd symbol ADDR...` | Function, file and line for addresses from a crash log; uses `build/*.elf`, no probe needed |
-| `swd flash a\|b FILE.bin --yes` | Write a firmware image to a slot, verify, reset |
+| `swd flash a\|b FILE.bin --yes` | Write a firmware image to a slot, verify, boot it (a try-before-you-buy image as a flash-update boot) |
 | `swd erase-header a\|b --yes` | Make a slot unbootable, so that the other one boots, and reset. Only flashing the slot again brings it back |
 
 Buttons: `ok back up down left right key1 key2 key4 key5 power sw ptt`. `power` is the key that would be `key3`. What a button does depends on the app on screen; `sw`, for one, opens the app switcher in Linux.
@@ -228,7 +228,8 @@ SWD goes through OpenOCD from the Pico SDK (`~/.pico-sdk/openocd/<version>/openo
 - There are two firmware slots, A and B. The bootrom boots the valid image with the higher version; with equal versions it boots A.
 - `build/flipperone-mcu-firmware.bin` runs from either slot. `swd flash` wants the `.bin`.
 - Flash your builds to slot A. Local builds all carry the same version, and with equal versions A wins, so a build written to B does not start while A holds a valid image of the same or a higher version. If B holds a higher version than your build, write the build to both slots, or make B unbootable with `swd erase-header b`.
-- `status` reports per slot: `erased`, `no image header`, or `valid` with its version words. The first word packs `FW_IMAGE_MAJOR` (bits 15..12), `FW_IMAGE_MINOR` (11..4) and `FW_IMAGE_PATCH` (3..0) from `CMakeLists.txt`, so 0.1.0 is `0x0010`. The second word is reserved for a boot counter and is 0 in every build today. `DIST_SUFFIX` changes only the version string that `device_info` prints, not these words.
+- Firmware images are try-before-you-buy (`PICO_CRT0_IMAGE_TYPE_TBYB`): a normal boot ignores such an image until it is bought, and only a flash-update boot, the one an update over I2C ends with, starts it. The firmware buys it right after start. `swd flash` sees the flag in the image and boots it that way itself; `swd reset` after any other write leaves `active none`. The firmware then power-cycles the Linux host about 10 seconds after a flash-update boot, so with Linux running expect it to restart.
+- `status` reports per slot: `erased`, `no image header`, or `valid` with its version words, and `try-before-you-buy not bought` for an image that has not booted yet. The first word packs `FW_IMAGE_MAJOR` (bits 15..12), `FW_IMAGE_MINOR` (11..4) and `FW_IMAGE_PATCH` (3..0) from `CMakeLists.txt`, so 0.1.0 is `0x0010`. The second word is reserved for a boot counter and is 0 in every build today. `DIST_SUFFIX` changes only the version string that `device_info` prints, not these words.
 - After flashing, confirm with `status` that the slot you wrote is the active one, and with `cli device_info` that the running build is yours. An image with a lower version than the other slot will not be chosen.
 - `active none` means the core sits in the bootrom: either no slot holds a bootable image (flash slot A over SWD to recover), or the MCU was sent to its USB bootloader with `power boot` (reset it).
 - `swd read` addresses worth knowing: `0x400d0034` active slot (low 12 bits = the slot's offset divided by `0x1000`: `0x002` for A, `0x782` for B, 0 when nothing booted), `0x400b0028` microseconds since MCU boot, `0xE000EDF0` debug status (bit 17 = halted), `0x1c000000 + offset` raw flash.

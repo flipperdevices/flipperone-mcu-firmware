@@ -9,6 +9,8 @@
 #include <hardware/pll.h>
 #include <pico/platform/cpu_regs.h>
 #include <pico/bootrom.h>
+#include <pico/runtime.h>
+#include <pico/runtime_init.h>
 #include <boot/picoboot_constants.h>
 #include <furi_hal_clock.h>
 
@@ -23,6 +25,16 @@ static volatile FuriHalPower furi_hal_power = {
 };
 
 static volatile int wakeup_alarm_irq_num;
+
+// A try-before-you-buy image boots with the bootrom's ~16.7s watchdog running
+// and the PAUSE bits cleared, so a debugger stopping before the buy (at main,
+// say) gets the image reset and reverted. Pause it in debug halts, as
+// watchdog_enable(.., pause_on_debug=true) does. Before main, so a break there
+// is covered; without a debugger the bits change nothing.
+static void furi_hal_power_watchdog_pause_on_debug(void) {
+    hw_set_bits(&watchdog_hw->ctrl, WATCHDOG_CTRL_PAUSE_DBG0_BITS | WATCHDOG_CTRL_PAUSE_DBG1_BITS | WATCHDOG_CTRL_PAUSE_JTAG_BITS);
+}
+PICO_RUNTIME_INIT_FUNC_RUNTIME(furi_hal_power_watchdog_pause_on_debug, PICO_RUNTIME_INIT_EARLIEST);
 
 void furi_hal_power_reset(void) {
     // AIRCR: watchdog_reboot() would leave the watchdog running -> boot loop.
