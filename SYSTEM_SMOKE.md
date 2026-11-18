@@ -1,62 +1,56 @@
 # MCU PR system qualification
 
-Build calls system-testing's `pr-mcu-smoke.yml` using native `workflow_call`,
-pinned to a full commit SHA. It runs inside the MCU Build run and propagates the
-hardware job outcome directly into the PR and the aggregate `build` check.
-There is no cross-repository PAT, dispatch, polling or separate result receipt.
+Build's `mcu-system-smoke` job calls the local reusable MCU workflow after
+firmware builds. A hosted caller downloads this run's immutable `firmware-f2`
+artifact and dispatches `pr-mcu-smoke.yml` in system-testing. The hardware run
+there reuses Nightly MCU's full selection and returns an exact result receipt.
+The source check links that run, diagnostics and Allure HTML, and propagates
+its status into the aggregate `build` check.
 
-MCU and system-testing are public, so GitHub downloads the reusable workflow
-and shared source action directly. No PAT, GitHub App or cross-repository
-secret is required. The shared action materializes its pinned test package
-without a cross-repository checkout. Public callers require public reusable
-workflows/actions; organization sharing alone cannot enable public → private.
-See [GitHub access rules](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations#access-to-reusable-workflows).
-Both workflow and source-action pins must be updated when adopting new test code.
+One hardware job and one lease cover separate system and unit steps: 25 checks
+for installation, standalone embedded units, MCU/Linux identities, I2C exchange
+and LED control, followed by the Linux-online embedded unit command. The unit
+step uses the same prepared pair without another flash. A failed candidate
+installation or readback verification stops further hardware cases and blocks
+units. A failed product case after valid preparation still permits units.
+Both selected step outcomes must pass; missing/skipped outcomes fail the gate.
+PRs do not schedule the older separate hardware unit job; non-PR builds retain it.
 
-After the ordinary firmware build, one hardware job and one lease cover two
-separate steps. The system step installs the exact `firmware-f2` artifact from
-this Build run and one pinned Linux bundle, then runs 25 checks including
-standalone MCU embedded units and Linux/MCU I2C/device control. The unit step
-runs the Linux-online `unit_tests` command on the same verified pair, without
-another flash. Together these steps cover the complete 26-case Nightly MCU
-profile, using the same test bodies. There is no additional hardware unit job
-for PRs. Non-PR unit builds keep their existing job.
+The caller sends source run/attempt, PR head, artifact ID and exact UF2/table
+hashes. The receiver verifies the internal source PR/build and artifact
+ownership before conversion and flashing. One successful nightly Linux bundle
+is selected and pinned by build, manifests, runtime identities and hashes.
+The result receipt binds both stage outcomes to the same source build and UF2.
+Cancellation/timeout requests cancellation of the particular remote run.
+Fork PRs are excluded from the secret/hardware path.
 
-A candidate installation or write/readback verification failure stops the
-system run after collecting its diagnostics. The unit step is gated on a
-verified preparation receipt from the same lease. Both selected steps must pass. Missing, skipped, failed or cancelled steps fail
-the qualification check. Unit tests still run after a system testcase failure
-when preparation can be revalidated against the current lease and live firmware.
-The common workflow exposes `mcu_stage: all | system | units` for later splitting
-across runners; this PR entry always selects `all`.
-
-The native artifact download uses only the current run's `firmware-f2` artifact.
-The preparer checks the internal PR event, full commit, exact artifact filenames,
-file bounds, partition-table policy and embedded UF2 revision. It records the
-source run/attempt and input hashes before using the nightly A/B converter.
-Both live Linux and MCU identities are checked before product tests.
+Configure the same fine-grained PAT as Actions secret `MCU_PR_TEST_TOKEN` in both
+repositories. Owner: `flipperdevices`; selected repositories: MCU firmware and
+system-testing; `Actions: write` (includes read). A single token applies these
+permissions to both selected repositories. It dispatches/polls/cancels in
+system-testing and downloads the MCU artifact. No token is forwarded to signed
+artifact storage URLs or embedded in request JSON.
 
 Optional MCU repository variables:
 
-- `FONE_MCU_LINUX_BUILD`: an exact **update-bundle** build number, not rootfs ID.
-  Empty selects the latest successful nightly once and pins its number,
-  manifests, hashes and runtime identities for this run.
-- `FONE_MCU_LINUX_CHANNEL`: defaults to `nightly`, with a 48-hour freshness policy.
-  `release-candidate` requires an explicit build number.
+- `FONE_MCU_LINUX_BUILD`: exact update-bundle number; empty selects latest successful nightly once.
+- `FONE_MCU_LINUX_CHANNEL`: defaults to `nightly`; RC requires an explicit build.
+- `FONE_SYSTEM_TESTS_REF`: receiver ref, normally `main`.
+- `FONE_SYSTEM_TESTS_WORKFLOW`: normally `pr-mcu-smoke.yml`.
 
-No cross-repository secrets or dispatch-ref/workflow variables are required.
-Allure HTML and sanitized diagnostics are uploaded to this MCU Build run and
-linked from the hardware job summary. PR runs do not publish to S3 or TestOps;
-those system-testing repository secrets are not inherited by native callers.
-System-testing Nightly keeps its existing publication behavior.
+Until the receiver is merged, use `FONE_SYSTEM_TESTS_REF=ssecsd/issue-10-mcu-system-smoke`
+and `FONE_SYSTEM_TESTS_WORKFLOW=nightly-mcu.yml`. That registered workflow accepts
+`mcu_request` on the draft ref and gives its run the `PR MCU smoke` request name.
+After merge remove those two overrides. Both routes select `mcu_stage=all`.
+GitHub requires a dispatched workflow to exist on the default branch.
 
-The existing Build trigger covers new/internal PRs, new commits and reopened PRs.
-Fork PRs do not enter the hardware path. Build concurrency cancels superseded
-native jobs; fo-lab owns cleanup and baseline restoration. The hardware job has
-a 110-minute timeout including preparation, testing and reports.
+The hardware job and Allure report appear in system-testing Actions. Its existing
+S3 credentials publish HTML; PR reports do not restore nightly history or upload
+to TestOps. The MCU check links the particular system run and result. The shared
+workflow retains `mcu_stage: all | system | units` for future separate-runner use.
 
-Hosted workflow validation runs pinned, checksum-verified actionlint.
-Artifact preparation and qualification regression tests live in system-testing.
-Hosted checks alone do not prove physical firmware compatibility.
+Hosted validation runs pinned/checksum-verified actionlint and offline tests of
+request correlation, stale/missing/failed receipts, cancellation and nightly
+selection. Hardware validation is separate.
 
-[Shared MCU automation](https://github.com/flipperdevices/flipperone-system-testing/blob/ssecsd/issue-10-mcu-system-smoke/docs/automation/mcu.md#external-mcu-pr-builds).
+[MCU automation](https://github.com/flipperdevices/flipperone-system-testing/blob/ssecsd/issue-10-mcu-system-smoke/docs/automation/mcu.md#external-mcu-pr-builds).

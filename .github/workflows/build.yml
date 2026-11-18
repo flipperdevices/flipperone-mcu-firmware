@@ -30,7 +30,7 @@ env:
 
 jobs:
   workflow-tests:
-    name: Validate workflow syntax
+    name: Validate MCU workflow and dispatch protocol
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -48,7 +48,9 @@ jobs:
           echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
           tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
       - name: Validate the Build workflow
-        run: '"$RUNNER_TEMP/actionlint" -shellcheck= .github/workflows/build.yml'
+        run: '"$RUNNER_TEMP/actionlint" -shellcheck= .github/workflows/build.yml .github/workflows/mcu-system-smoke.yml'
+      - name: Verify dispatch correlation and fail-closed result handling
+        run: python3 -m unittest discover -s scripts/tests -p test_system_smoke.py -v
 
   # The list of hardware targets: every directory under targets/ with a
   # target.cmake. Everything below fans out over this list, so adding a target is
@@ -231,12 +233,9 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: flipperdevices/flipperone-system-testing/.github/workflows/pr-mcu-smoke.yml@2743fd6f63a634099713f162ce3473494812a63f
-    with:
-      firmware_commit: ${{ github.event.pull_request.head.sha }}
-      artifact_suffix: ${{ needs.firmware.outputs.suffix }}
-      bundle_channel: ${{ vars.FONE_MCU_LINUX_CHANNEL || 'nightly' }}
-      build_number: ${{ vars.FONE_MCU_LINUX_BUILD }}
+    uses: ./.github/workflows/mcu-system-smoke.yml
+    secrets:
+      MCU_PR_TEST_TOKEN: ${{ secrets.MCU_PR_TEST_TOKEN }}
 
   publish:
     runs-on: ubuntu-latest
