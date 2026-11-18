@@ -42,7 +42,6 @@
  *          0x0000: Disabled, the MCU ignores host shutdown (default)
  *          0x0001: Reset the MCU when the host shuts down
  *          0x0002: Reset the MCU and power-cycle the host when the host shuts down
- *          0x0003: Immediate MCU reset - firmware-internal, rejected here
  *          Other values are ignored.
  *          The firmware arms 0x0001 itself after a successful update.
  * 0x0090+4 System reset delay register (read, write)

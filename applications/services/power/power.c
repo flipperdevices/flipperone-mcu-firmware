@@ -27,8 +27,6 @@
 #define BQ2579X_OTG_WATCHDOG_PERIOD_MS 350 // pet watchdog faster than 500 ms timeout
 #define POWER_UPDATE_REBOOT_DELAY_MS (10000) // host power-cycle delay after a switch
 #define POWER_HOST_RESET_ATTEMPTS     (3) // charger power-reset tries before giving up
-// Delay before an immediate reset so the host's I2C write completes first.
-#define POWER_IMMEDIATE_RESET_DELAY_MS (100)
 // Host reset-request marker, rides POWMAN scratch across the SYSRESETREQ.
 #define POWER_HOST_RESET_REQUEST_MAGIC (0x48525354u)
 
@@ -48,7 +46,6 @@ struct Power {
     FuriEventLoopTimer* otg_watchdog_timer;
     FuriEventLoopTimer* host_reset_timer;
     FuriEventLoopTimer* update_reboot_timer;
-    FuriEventLoopTimer* immediate_reset_timer;
     volatile bool otg_enabled;
     FuriCallbackWithContext otg_overcurrent;
     PowerHostResetResponse host_reset_response;
@@ -373,11 +370,6 @@ static bool power_host_reset_response_set_internal(Power* instance, PowerHostRes
     instance->host_reset_response = response;
     FURI_LOG_I(TAG, "Host reset response: %d", instance->host_reset_response);
 
-    if(response == PowerHostResetResponseResetMcuImmediately) {
-        // Delay past the host's I2C write so it sees the ack, then reset.
-        furi_event_loop_timer_start(instance->immediate_reset_timer, POWER_IMMEDIATE_RESET_DELAY_MS);
-    }
-
     return true;
 }
 
@@ -484,14 +476,6 @@ static void power_update_reboot_timer_callback(void* context) {
     furi_bsp_linux_start();
 }
 
-/* Immediate MCU reset requested by the host: the write has been acked by now. */
-static void power_immediate_reset_timer_callback(void* context) {
-    UNUSED(context);
-    FURI_LOG_I(TAG, "Immediate MCU reset requested by the host");
-    powman_hw->boot[0] = POWER_HOST_RESET_REQUEST_MAGIC;
-    furi_hal_power_reset();
-}
-
 // SYSTEM_RESET from the host: activate an armed image, else a marked reset.
 static bool power_host_reset_request_internal(Power* instance) {
     if(power_update_base_is_bootable(instance)) {
@@ -530,8 +514,6 @@ static Power* power_alloc(void) {
         furi_event_loop_timer_alloc(instance->event_loop, power_host_reset_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->update_reboot_timer =
         furi_event_loop_timer_alloc(instance->event_loop, power_update_reboot_timer_callback, FuriEventLoopTimerTypeOnce, instance);
-    instance->immediate_reset_timer =
-        furi_event_loop_timer_alloc(instance->event_loop, power_immediate_reset_timer_callback, FuriEventLoopTimerTypeOnce, instance);
 
     // After a partition switch the host is stranded mid-reboot: power-cycle it.
     boot_info_t boot_info = {};
