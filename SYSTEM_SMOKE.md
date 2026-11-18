@@ -22,7 +22,9 @@ another flash. Together these steps cover the complete 26-case Nightly MCU
 profile, using the same test bodies. There is no additional hardware unit job
 for PRs. Non-PR unit builds keep their existing job.
 
-Both selected steps must pass. Missing, skipped, failed or cancelled steps fail
+A candidate installation or write/readback verification failure stops the
+system run after collecting its diagnostics. The unit step is gated on a
+verified preparation receipt from the same lease. Both selected steps must pass. Missing, skipped, failed or cancelled steps fail
 the qualification check. Unit tests still run after a system testcase failure
 when preparation can be revalidated against the current lease and live firmware.
 The common workflow exposes `mcu_stage: all | system | units` for later splitting
