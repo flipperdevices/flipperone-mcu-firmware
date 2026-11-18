@@ -7,17 +7,17 @@ import pytest
 from agent_tools.packets import host_shell, mcu_console, openocd_output, picobin, rpc, uboot, uf2
 
 
+def uf2_block(number, total, address, payload):
+    block = bytearray(512)
+    struct.pack_into("<8I", block, 0, uf2.MAGIC_START0, uf2.MAGIC_START1, 0, address, len(payload), number, total, 0)
+    block[32 : 32 + len(payload)] = payload
+    struct.pack_into("<I", block, 508, uf2.MAGIC_END)
+    return bytes(block)
+
+
 def make_uf2(sections):
     """UF2 bytes for a list of sections, each a list of (address, payload)."""
-    out = bytearray()
-    for chunks in sections:
-        for number, (address, payload) in enumerate(chunks):
-            block = bytearray(512)
-            struct.pack_into("<8I", block, 0, uf2.MAGIC_START0, uf2.MAGIC_START1, 0, address, len(payload), number, len(chunks), 0)
-            block[32 : 32 + len(payload)] = payload
-            struct.pack_into("<I", block, 508, uf2.MAGIC_END)
-            out += block
-    return bytes(out)
+    return b"".join(uf2_block(number, len(chunks), address, payload) for chunks in sections for number, (address, payload) in enumerate(chunks))
 
 
 def test_uf2_parses_concatenated_sections():

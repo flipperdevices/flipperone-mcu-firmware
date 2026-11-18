@@ -3,12 +3,20 @@
 import hashlib
 import os
 import tempfile
+import time
 from contextlib import contextmanager
 
 from .. import constants
 from ..packets import picobin, uf2
 from . import swd
 from .device import DeviceSession
+
+# After the staging vector arms the watchdog the bootrom resets by itself, loads
+# the image and the image buys itself; this bounds that wait, in seconds.
+STAGE_TIMEOUT = 120.0
+# The image definition sits behind the boot block, at byte 312 in current builds,
+# so the buy check reads a whole sector the way status() does.
+HEADER_WORDS = constants.SECTOR // 4
 
 
 def preflight(slot, path):
@@ -20,8 +28,19 @@ def preflight(slot, path):
         data = source.read()
     plan = {"slot": slot, "offset": offset, "address": address, "size": size, "sha256": hashlib.sha256(data).hexdigest(), "file": os.path.abspath(path)}
     if path.endswith(".uf2"):
-        chunks = uf2.parse_blocks(data)
-        image_address, payload = uf2.contiguous(chunks)
+        sections = uf2.parse_sections(data)
+        inside = [section for section in sections if any(address <= block[0] < address + size for block in section["blocks"].values())]
+        if not inside:
+            found = [block for section in sections for block in section["blocks"].values()]
+            low = min(start for start, _ in found)
+            high = max(start + len(payload) for start, payload in found)
+            raise ValueError(f"UF2 data at 0x{low:08x}..0x{high:08x} is outside slot {slot} (0x{address:08x}..0x{address + size:08x})")
+        for section in inside:
+            # A truncated payload section would be written and verified as if whole.
+            if len(section["blocks"]) != section["total"]:
+                first = min(start for start, _ in section["blocks"].values())
+                raise ValueError(f"UF2 section at 0x{first:08x} is truncated: {len(section['blocks'])} of {section['total']} blocks, the image would be written incomplete")
+        image_address, payload = uf2.contiguous(sorted(block for section in inside for block in section["blocks"].values()))
         if not (address <= image_address and image_address + len(payload) <= address + size):
             raise ValueError(f"UF2 data at 0x{image_address:08x}..0x{image_address + len(payload):08x} is outside slot {slot} (0x{address:08x}..0x{address + size:08x})")
         plan.update(kind="uf2", payload=payload, payload_address=image_address, image=picobin.parse_image_def(payload[: constants.SECTOR]))
@@ -34,9 +53,32 @@ def preflight(slot, path):
     return plan
 
 
-def flash(slot, path, activate=False):
-    """Write the image, verify it by readback and reset; optionally stage a TBYB buy boot."""
-    plan = preflight(slot, path)
+def slot_image(plan):
+    """The picobin image definition now in the slot, read over SWD."""
+    words = swd.read_words([(constants.RAW_FLASH_BASE + plan["offset"], HEADER_WORDS)])[0]
+    return picobin.parse_image_def(b"".join(word.to_bytes(4, "little") for word in words))
+
+
+def wait_for_buy(plan, timeout=STAGE_TIMEOUT):
+    """Wait for the bootrom to buy the staged image; returns its new image definition."""
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            image = slot_image(plan)
+            if image.get("state") == "valid" and not image.get("tbyb_pending"):
+                return image
+        except (RuntimeError, TimeoutError, OSError):
+            pass  # the bootrom rewrites the sector, so a read may fail or come back erased
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Slot {plan['slot']} still holds an unbought image after {timeout:.0f}s: the staged boot did not run. "
+                "Reset the MCU ('f1.py swd reset') and try again, and check 'f1.py log' for the bootrom's verdict"
+            )
+        time.sleep(2.0)
+
+
+def write(plan, activate=False):
+    """Write a preflight plan, verify it by readback and reset; optionally stage a TBYB buy boot."""
     tbyb = bool(plan["image"].get("tbyb_pending"))
     commands = ["halt"]
     temp = None
@@ -52,15 +94,26 @@ def flash(slot, path, activate=False):
             commands += [f"flash write_image erase {quoted} {plan['address']:#x} bin", f"verify_image {quoted} {plan['address']:#x} bin"]
         staged = activate and tbyb
         if staged:
-            # Defined in scripts/agent_tools/openocd/flipperone-mcu.cfg
-            commands.append(f"f1_stage_tbyb {plan['address']:#x}")
-        commands.append("reset run")
+            # f1_stage_tbyb leaves the vector and reboot type in the watchdog scratch,
+            # the reset then enters the bootrom's flash-update boot, which runs the
+            # image so that the firmware's updater service buys it. Measured on B3:
+            # the scratch survives this reset and the slot header comes back bought.
+            commands += [f"f1_stage_tbyb {plan['address']:#x}", "reset run"]
+        else:
+            commands.append("reset run")
         swd.run(commands, timeout=300)
+        if staged:
+            wait_for_buy(plan)
     finally:
         if temp is not None:
             os.unlink(temp.name)
     plan.update(staged=staged, tbyb=tbyb)
     return plan
+
+
+def flash(slot, path, activate=False):
+    """preflight() and write() in one step, for callers that do not need the plan first."""
+    return write(preflight(slot, path), activate=activate)
 
 
 @contextmanager

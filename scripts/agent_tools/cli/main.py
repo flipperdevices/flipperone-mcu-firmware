@@ -466,15 +466,17 @@ def cmd_swd(args):
     elif args.action == "flash":
         if not args.yes:
             raise RuntimeError("Flashing overwrites the slot and halts the MCU while writing; pass --yes once the user agreed")
+        # Before freeze_host(): a rejected image must not reset a running host
+        plan = flash.preflight(args.slot, args.file)
         with contextlib.ExitStack() as stack:
             if args.quiesce:
                 stack.enter_context(flash.freeze_host())
-            plan = flash.flash(args.slot, args.file, activate=args.activate)
+            plan = flash.write(plan, activate=args.activate)
         print(f"sha256 {plan['sha256']}")
         if plan["image"]["state"] != "valid":
             print("note: no valid picobin image header in the image; the bootrom will not boot it")
         elif plan["tbyb"] and plan["staged"]:
-            print("try-before-you-buy image staged: the MCU boots the new slot now and commits it")
+            print("try-before-you-buy image staged and bought: the MCU runs the new slot now")
         elif plan["tbyb"]:
             print("note: try-before-you-buy image, it will not boot on a normal reset; re-run with --activate")
         print(f"wrote {args.file} to slot {plan['slot']}, verified, MCU reset")

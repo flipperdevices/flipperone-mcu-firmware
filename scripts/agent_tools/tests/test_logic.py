@@ -1,6 +1,8 @@
 """Logic layer against fake ports: console, RPC, Linux host, device session, flashing."""
 
 import struct
+import time
+import types
 
 import pytest
 
@@ -190,15 +192,53 @@ def test_flash_stages_a_tbyb_image_through_the_board_config(tmp_path, monkeypatc
 
     commands = []
     monkeypatch.setattr(swd, "run", lambda lines, timeout=None: commands.append(lines))
+    monkeypatch.setattr(flash, "wait_for_buy", lambda plan: {"state": "valid"})
     tbyb = tmp_path / "tbyb.bin"
     tbyb.write_bytes(image_def_bytes(tbyb=True) + b"\x00" * 64)
     plan = flash.flash("a", str(tbyb), activate=True)
     assert plan["staged"] is True and plan["tbyb"] is True
-    assert [line for line in commands[0] if line.startswith("f1_stage_tbyb")] == [f"f1_stage_tbyb {plan['address']:#x}"]
+    # The vector goes into the scratch, then the reset enters the flash-update boot
+    assert commands[0][-2:] == [f"f1_stage_tbyb {plan['address']:#x}", "reset run"]
     assert not any(line.startswith(("mww", "targets")) for line in commands[0])
 
     plain = tmp_path / "plain.bin"
     plain.write_bytes(image_def_bytes(tbyb=False) + b"\x00" * 64)
     commands.clear()
     assert flash.flash("a", str(plain), activate=True)["staged"] is False
+    assert "reset run" in commands[0]
     assert not any(line.startswith("f1_stage_tbyb") for line in commands[0])
+
+
+def test_wait_for_buy_polls_until_the_bootrom_buys(monkeypatch):
+    from agent_tools import constants
+    from agent_tools.logic import flash
+
+    # The image definition is at byte 312 of current builds, not at the start
+    assert flash.HEADER_WORDS * 4 == constants.SECTOR
+    plan = {"slot": "A", "offset": 0x2000}
+    images = [{"state": "erased"}, {"state": "valid", "tbyb_pending": True}, {"state": "valid", "tbyb_pending": False}]
+    monkeypatch.setattr(flash, "slot_image", lambda plan: images.pop(0))
+    monkeypatch.setattr(flash, "time", types.SimpleNamespace(monotonic=time.monotonic, sleep=lambda seconds: None))
+    assert flash.wait_for_buy(plan)["tbyb_pending"] is False
+
+    monkeypatch.setattr(flash, "slot_image", lambda plan: {"state": "valid", "tbyb_pending": True})
+    with pytest.raises(RuntimeError, match="unbought"):
+        flash.wait_for_buy(plan, timeout=0)
+
+
+def test_uf2_payload_sections_must_be_complete(tmp_path):
+    from agent_tools import constants
+    from agent_tools.logic import flash, swd
+    from test_packets import image_def_bytes, uf2_block
+
+    slot = constants.XIP_BASE + swd.partition_bounds("A")[0]
+    truncated = tmp_path / "truncated.uf2"
+    truncated.write_bytes(uf2_block(0, 2, slot, image_def_bytes(tbyb=True) + b"\x00" * 128))
+    with pytest.raises(ValueError, match="truncated"):
+        flash.preflight("a", str(truncated))
+
+    # An incomplete section outside the slot is the boot-info block picotool writes: not payload
+    bootinfo = tmp_path / "bootinfo.uf2"
+    bootinfo.write_bytes(uf2_block(0, 2, 0x10FFFF00, b"\x00" * 16) + uf2_block(0, 1, slot, image_def_bytes(tbyb=True) + b"\x00" * 128))
+    plan = flash.preflight("a", str(bootinfo))
+    assert plan["kind"] == "uf2" and plan["payload_address"] == slot

@@ -274,9 +274,9 @@ python3 scripts/agent_tools/f1.py press back          # close the self-check, if
 Current builds are written with `PICO_CRT0_IMAGE_TYPE_TBYB`, which makes the bootrom treat them as an unbought purchase:
 
 - A normal reset skips such an image, so a slot that holds one stays inactive and `status` keeps reporting the other slot. This is also what the MCU finds when it boots on its own after `swd flash`.
-- `swd flash ... --activate` writes the slot, then reboots into the bootrom's FLASH_UPDATE path, which stages the image, boots it once and commits it. It is a normal image afterwards. The reboot vector is `f1_stage_tbyb` in the board config, so it can be run by hand in a debug session too.
+- `swd flash ... --activate` writes the slot, then resets into the bootrom's FLASH_UPDATE path, which runs the image so that the firmware's updater service buys it. The command then waits up to two minutes for the slot header to come back bought and fails if it does not, so a reported success means the slot really is bootable. Costs a few seconds more than a plain flash. The reboot vector is `f1_stage_tbyb` in the board config, so it can be run by hand in a debug session too.
 - The bootrom invalidates the other slot's header when it commits the staged image, so after an `--activate` the previous slot reads `no image header` in `status`. That is expected; flash it again to get a second bootable slot back.
-- Without `--activate`, `swd flash` warns about a TBYB image: it wrote and verified it, but nothing boots it until it is staged.
+- Without `--activate`, `swd flash` warns about a TBYB image: it wrote and verified it, but nothing boots it until a flash-update boot stages it.
 
 ### When the user says the device froze after debugging
 
