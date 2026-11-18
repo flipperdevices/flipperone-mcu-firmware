@@ -8,7 +8,6 @@ import glob
 import json
 import os
 import shutil
-import struct
 
 from .. import constants
 from ..packets import openocd_output, picobin
@@ -115,10 +114,14 @@ def reset():
     run(["reset run"])
 
 
+# OpenOCD target names of the two cores, as listed by `openocd -f target/rp2350.cfg`
+CORES = {0: "rp2350.cm0", 1: "rp2350.cm1"}
+
+
 def resume():
     # OpenOCD resumes only targets it has seen halt, and resuming core0 resumes both
-    halts = "; ".join(f"targets rp2350.dap.core{core}; halt; wait_halt 500" for core in (0, 1))
-    run(["catch {" + halts + "}", "targets rp2350.dap.core0", "resume"])
+    halts = "; ".join(f"targets {CORES[core]}; halt; wait_halt 500" for core in CORES)
+    run(["catch {" + halts + "}", f"targets {CORES[0]}", "resume"])
 
 
 def where():
@@ -130,9 +133,9 @@ def where():
     # Each core is halted through its own target: OpenOCD reads registers only
     # from a target it has seen halt. Resuming core0 resumes both.
     reads = []
-    for core in (0, 1):
-        reads += [f"targets rp2350.dap.core{core}", "halt", "wait_halt 500", f'echo "{openocd_output.MARK} {core} [reg pc] [reg lr]"']
-    commands = ["catch {" + "; ".join(reads) + "} f1_error", "targets rp2350.dap.core0"]
+    for core, target in CORES.items():
+        reads += [f"targets {target}", "halt", "wait_halt 500", f'echo "{openocd_output.MARK} {core} [reg pc] [reg lr]"']
+    commands = ["catch {" + "; ".join(reads) + "} f1_error", f"targets {CORES[0]}"]
     if not was_halted:
         commands += ["resume"]
     commands += ['if {$f1_error ne ""} { echo "Error: $f1_error" }']
@@ -163,16 +166,6 @@ def _symbolize(addresses):
         return [(address, "?") for address in addresses]
     output = process.run([tool[0], "-f", "-C", "-e", elf[0], *(f"{address:#x}" for address in addresses)], timeout=120).stdout.splitlines()
     return [(address, f"{output[2 * i]} at {os.path.relpath(output[2 * i + 1], REPO) if output[2 * i + 1].startswith('/') else output[2 * i + 1]}") for i, address in enumerate(addresses)]
-
-
-def flash_slot(slot, path):
-    """Write a .bin to a firmware slot, verify it and reset. The MCU is halted meanwhile."""
-    address = XIP_BASE + partitions()[slot.upper()]
-    path = os.path.abspath(path)
-    if not path.endswith(".bin"):
-        raise ValueError("Give the .bin file: it is linked for 0x10000000 and runs from either slot")
-    quoted = "{" + path + "}"
-    run(["halt", f"flash write_image erase {quoted} {address:#x} bin", f"verify_image {quoted} {address:#x} bin", "reset run"], timeout=300)
 
 
 def erase_slot_header(slot):
