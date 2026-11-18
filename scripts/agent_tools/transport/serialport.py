@@ -7,11 +7,9 @@ import os
 import sys
 import time
 
+from ..errors import PortBusyError
+
 _IOSSIOSPEED = 0x80045402  # macOS: set an arbitrary baud rate
-
-
-class PortBusyError(RuntimeError):
-    pass
 
 
 class _PosixPort:

@@ -9,21 +9,20 @@ import json
 import os
 import shutil
 import struct
-import subprocess
 
-import get_port as ports  # scripts/get_port.py; f1.py puts scripts/ on the path
+from .. import constants
+from ..packets import openocd_output, picobin
+from ..transport import ports, process
 
-XIP_BASE = 0x10000000
-RAW_FLASH_BASE = 0x1C000000  # flash without address translation
-QMI_ATRANS0 = 0x400D0034
-TIMER0_TIMERAWL = 0x400B0028
-DHCSR = 0xE000EDF0
-SECTOR = 0x1000
-PICOBIN_BLOCK_MARKER = 0xFFFFDED3
-FIRST_PARTITION_OFFSET = 0x2000
+XIP_BASE = constants.XIP_BASE
+RAW_FLASH_BASE = constants.RAW_FLASH_BASE
+QMI_ATRANS0 = constants.QMI_ATRANS0
+TIMER0_TIMERAWL = constants.TIMER0_TIMERAWL
+DHCSR = constants.DHCSR
+SECTOR = constants.SECTOR
+FIRST_PARTITION_OFFSET = constants.FIRST_PARTITION_OFFSET
 
-MARK = "F1>"
-REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+REPO = str(constants.REPO_ROOT)
 
 
 def find_openocd():
@@ -54,29 +53,24 @@ def run(commands, timeout=120):
         select = ["-c", f"adapter serial {ports.selected_probe()['serial']}"]
     script = "; ".join(["adapter speed 5000", "init", body, "shutdown"])
     args = [binary] + (["-s", scripts] if scripts else []) + ["-f", "interface/cmsis-dap.cfg", *select, "-f", "target/rp2350.cfg", "-c", script]
-    result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    result = process.run(args, timeout=timeout)
     output = result.stdout + result.stderr
-    errors = list(dict.fromkeys(line for line in output.splitlines() if line.startswith("Error")))
+    errors = openocd_output.error_lines(output)
     if "shutdown command invoked" not in output or errors:
-        hint = ""
-        if "unable to find a matching CMSIS-DAP device" in output or "no device found" in output.lower():
-            hint = " The probe is not connected."
-        elif "CMD_INFO failed" in output or "LIBUSB_ERROR_ACCESS" in output or "could not claim" in output.lower() or "busy" in output.lower():
-            hint = " The probe is probably held by another debugger."
+        hint = openocd_output.failure_hint(output)
         raise RuntimeError("OpenOCD failed." + hint + "\n" + "\n".join(errors or output.splitlines()[-8:]))
-    lines = [line[len(MARK) :].strip() for line in output.splitlines() if line.startswith(MARK)]
-    return lines
+    return openocd_output.extract_marks(output)
 
 
 def read_words(requests):
     """requests: list of (address, count). Returns a list of word lists, read without halting."""
-    commands = [f'echo "{MARK} [read_memory {address:#x} 32 {count}]"' for address, count in requests]
+    commands = [f'echo "{openocd_output.MARK} [read_memory {address:#x} 32 {count}]"' for address, count in requests]
     return [[int(word, 16) for word in line.split()] for line in run(commands)]
 
 
 def partitions():
     """Firmware slot offsets from targets/partition_table.json: {'A': offset, 'B': offset}."""
-    with open(os.path.join(REPO, "targets", "partition_table.json")) as file:
+    with open(constants.PARTITION_TABLE) as file:
         table = json.load(file)
     offsets, offset = {}, FIRST_PARTITION_OFFSET
     for partition in table["partitions"]:
@@ -86,31 +80,6 @@ def partitions():
         size = partition["size"]
         offset += int(size[:-1]) * 1024 if size.endswith("K") else int(size, 0)
     return offsets
-
-
-def parse_slot_header(words):
-    """Describe the first sector of a slot: erased, or the picobin image definition found there."""
-    data = struct.pack(f"<{len(words)}I", *words)
-    if all(byte == 0xFF for byte in data):
-        return {"state": "erased"}
-    start = data.find(struct.pack("<I", PICOBIN_BLOCK_MARKER))
-    if start < 0:
-        return {"state": "no image header"}
-    info = {"state": "valid"}
-    pos = start + 4
-    while pos + 4 <= len(data):
-        item_type = data[pos] & 0x7F
-        size = (data[pos + 1] | (data[pos + 2] << 8)) if data[pos] & 0x80 else data[pos + 1]
-        if item_type == 0x42:
-            flags = data[pos + 2] | (data[pos + 3] << 8)
-            info["tbyb_pending"] = bool(flags & 0x8000)
-        elif item_type == 0x48:
-            minor, major = struct.unpack_from("<HH", data, pos + 4)
-            info["version_major_word"], info["version_minor_word"] = major, minor
-        elif item_type == 0x7F or size == 0:
-            break
-        pos += size * 4
-    return info
 
 
 def status():
@@ -127,7 +96,7 @@ def status():
         "uptime_s": uptime[0] / 1e6,  # low 32 bits, wraps after ~71 minutes
         "halted": bool(dhcsr[0] & (1 << 17)),
         "sleeping": bool(dhcsr[0] & (1 << 18)),
-        "slots": {name: dict(parse_slot_header(header), offset=slots[name]) for name, header in zip(names, headers)},
+        "slots": {name: dict(picobin.parse_slot_header(header), offset=slots[name]) for name, header in zip(names, headers)},
     }
 
 
@@ -151,7 +120,7 @@ def where():
     # from a target it has seen halt. Resuming core0 resumes both.
     reads = []
     for core in (0, 1):
-        reads += [f"targets rp2350.dap.core{core}", "halt", "wait_halt 500", f'echo "{MARK} {core} [reg pc] [reg lr]"']
+        reads += [f"targets rp2350.dap.core{core}", "halt", "wait_halt 500", f'echo "{openocd_output.MARK} {core} [reg pc] [reg lr]"']
     commands = ["catch {" + "; ".join(reads) + "} f1_error", "targets rp2350.dap.core0"]
     if not was_halted:
         commands += ["resume"]
@@ -181,7 +150,7 @@ def _symbolize(addresses):
     elf = glob.glob(os.path.join(REPO, "build", "*.elf"))
     if not tool or not elf:
         return [(address, "?") for address in addresses]
-    output = subprocess.run([tool[0], "-f", "-C", "-e", elf[0], *(f"{address:#x}" for address in addresses)], capture_output=True, text=True).stdout.splitlines()
+    output = process.run([tool[0], "-f", "-C", "-e", elf[0], *(f"{address:#x}" for address in addresses)], timeout=120).stdout.splitlines()
     return [(address, f"{output[2 * i]} at {os.path.relpath(output[2 * i + 1], REPO) if output[2 * i + 1].startswith('/') else output[2 * i + 1]}") for i, address in enumerate(addresses)]
 
 

@@ -1,0 +1,74 @@
+"""RpcMessage wire format (assets/proto/rpc.proto), encoded by hand.
+
+After the `rpc` CLI command the MCU answers with one 0xFD byte, then both
+sides exchange length-delimited RpcMessage protobufs. The messages are simple
+enough to encode by hand, so nothing here needs the protobuf package or
+generated code.
+"""
+
+RPC_READY = 0xFD
+
+# RpcMessage oneof field numbers
+FIELD_FRAME = 1
+FIELD_BUTTON_EVENT = 2
+FIELD_TOUCH_EVENT = 3
+FIELD_START_VIRTUAL_DISPLAY = 4
+FIELD_STOP_VIRTUAL_DISPLAY = 5
+FIELD_SESSION_CLOSE = 6
+
+BUTTONS = {
+    "ok": 0, "back": 1, "key1": 2, "key2": 3, "power": 4, "key4": 5, "key5": 6,
+    "sw": 7, "down": 8, "right": 9, "left": 10, "up": 11, "ptt": 12,
+}  # fmt: skip
+ACTIONS = {"press": 0, "release": 1, "short": 2, "long": 3, "repeat": 4}
+TOUCH_TYPES = {"start": 0, "move": 1, "end": 2}
+# Touchpad coordinate range, from applications/services/input_touch/input_touch.h
+TOUCH_MAX_X, TOUCH_MAX_Y, TOUCH_MAX_PRESSURE = 1023, 767, 1024 * 16 - 1
+
+
+def varint(value):
+    out = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        out.append(byte | (0x80 if value else 0))
+        if not value:
+            return bytes(out)
+
+
+def field_varint(number, value):
+    # proto3 omits zero values; the decoder fills them in
+    return varint(number << 3) + varint(value) if value else b""
+
+
+def field_bytes(number, payload):
+    return varint((number << 3) | 2) + varint(len(payload)) + payload
+
+
+def parse_message(payload):
+    """Decode one message level into {field number: int or bytes}."""
+    fields, pos = {}, 0
+
+    def next_varint():
+        nonlocal pos
+        value = shift = 0
+        while True:
+            byte = payload[pos]
+            pos += 1
+            value |= (byte & 0x7F) << shift
+            shift += 7
+            if not byte & 0x80:
+                return value
+
+    while pos < len(payload):
+        key = next_varint()
+        number, wire_type = key >> 3, key & 7
+        if wire_type == 0:
+            fields[number] = next_varint()
+        elif wire_type == 2:
+            size = next_varint()
+            fields[number] = payload[pos : pos + size]
+            pos += size
+        else:
+            raise ValueError(f"Unexpected protobuf wire type {wire_type}")
+    return fields
