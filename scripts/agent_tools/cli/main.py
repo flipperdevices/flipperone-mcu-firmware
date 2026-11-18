@@ -8,6 +8,7 @@ non-zero with a one-line reason on failure. See AGENT_TOOLS.md next to this file
 import argparse
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -139,7 +140,8 @@ def probe_flash(args, path):
         with open(os.path.join(drive, os.path.basename(path)), "wb") as target:
             target.write(image)
     except OSError:
-        pass  # the drive disappears as soon as the last block is written
+        if bootloader_drive():  # still mounted: the copy failed before the drive went away
+            raise
     wait_for(lambda: any(p["id"] == probe["id"] and p["ports"] for p in ports.probes()), 20.0, f"probe {probe['id']} did not come back")
     time.sleep(1.0)
     with open_role("probe") as port:
@@ -208,6 +210,8 @@ def cmd_touch(args):
     for x, y in ((x0, y0), (x1, y1)):
         if not (0 <= x <= rpc.TOUCH_MAX_X and 0 <= y <= rpc.TOUCH_MAX_Y):
             raise ValueError(f"Touch point {x},{y} is outside 0..{rpc.TOUCH_MAX_X} x 0..{rpc.TOUCH_MAX_Y}")
+    if not (0 <= args.pressure <= rpc.TOUCH_MAX_PRESSURE):
+        raise ValueError(f"Pressure {args.pressure} is outside 0..{rpc.TOUCH_MAX_PRESSURE}")
     with open_mcu_console(args) as port, RpcSession(port) as session:
         session.touch("start", x0, y0, args.pressure)
         steps = args.steps if args.to else 0
@@ -620,7 +624,7 @@ def main():
     args = build_parser().parse_args()
     try:
         return args.func(args) or 0
-    except (RuntimeError, TimeoutError, ValueError, OSError) as error:
+    except (RuntimeError, TimeoutError, ValueError, OSError, subprocess.TimeoutExpired) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
