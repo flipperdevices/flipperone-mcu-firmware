@@ -6,6 +6,7 @@ non-zero with a one-line reason on failure. See AGENT_TOOLS.md next to this file
 """
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -14,8 +15,9 @@ import time
 
 from .. import constants
 from ..logic import swd
-from ..logic.console import McuConsole
-from ..logic.rpc import RpcSession, write_png
+from ..logic.device import DeviceSession
+from ..logic.linux import LinuxHost
+from ..logic.rpc import write_png
 from ..packets import host_shell, mcu_console, rpc, uboot
 from ..transport import ports
 from ..transport.serialport import SerialPort
@@ -25,56 +27,97 @@ def open_role(role):
     return SerialPort(ports.require(role), ports.baud(role))
 
 
-def open_mcu_console(args=None):
-    role = getattr(args, "console", None) or ports.mcu_console_role()
-    return open_role(role)
+# --- JSON output ------------------------------------------------------------
 
 
-def report_port_lost(rpc):
-    if rpc.port_lost:
-        print("note: the MCU USB console disappeared during the command (expected when Linux powers up); use the default UART console")
+def command_name(args):
+    action = getattr(args, "action", None)
+    return f"{args.cmd} {action}" if action else args.cmd
+
+
+def envelope(args, data=None, error=None):
+    body = {"tool": "f1.py", "command": command_name(args), "ok": error is None}
+    if error is None:
+        body["data"] = data
+    else:
+        body["error"] = error
+    return body
+
+
+def emit(args, data, render):
+    if getattr(args, "json", False):
+        print(json.dumps(envelope(args, data=data)))
+    else:
+        render(data)
 
 
 # --- commands ---------------------------------------------------------------
 
 
-def cmd_ports(args):
+def probe_info():
+    """Structured one-liner about the selected probe's firmware, from its own console."""
+    probe = ports.selected_probe()
+    if not probe:
+        return {"connected": False, "text": "not connected"}
+    try:
+        with DeviceSession("probe") as session:
+            info = session.command("device_info")
+    except (OSError, TimeoutError, RuntimeError) as error:
+        return {"connected": True, "id": probe["id"], "text": f"{probe['id']}, console did not answer ({error})"}
+    fields = dict(re.findall(r"firmware_(version|commit|commit_dirty)\s*:\s*(\S+)", info))
+    firmware = {"version": fields.get("version", "?"), "commit": fields.get("commit", "?"), "dirty": fields.get("commit_dirty") == "true"}
+    text = f"{probe['id']}, firmware {firmware['version']} commit {firmware['commit']}" + (" dirty" if firmware["dirty"] else "")
+    return {"connected": True, "id": probe["id"], "firmware": firmware, "text": text}
+
+
+def ports_data():
     attached = ports.probes()
-    for probe in attached:
+    several = len(attached) > 1 and not os.environ.get("F1_PROBE")
+    data = {"probes": attached, "several": several, "roles": {}, "mcu_usb_present": bool(ports.find("mcu-usb"))}
+    if not several:
+        for role in ports.ROLES:
+            data["roles"][role] = {"path": ports.find(role), "baud": ports.baud(role), "description": ports.ROLES[role][3]}
+    return data
+
+
+def render_ports(data):
+    for probe in data["probes"]:
         print(f"probe {probe['id']}  serial {probe['serial']}")
-    if len(attached) > 1 and not os.environ.get("F1_PROBE"):
+    if data["several"]:
         print("several probes attached: set F1_PROBE=<ID or its beginning> to choose one")
         return
-    for role, (_, _, baud, description) in ports.ROLES.items():
-        print(f"{role:8} {ports.find(role) or '-':44} {baud:>8}  {description}")
-    if ports.find("mcu-usb"):
+    for role, info in data["roles"].items():
+        print(f"{role:8} {info['path'] or '-':44} {info['baud']:>8}  {info['description']}")
+    if data["mcu_usb_present"]:
         print("mcu-usb is present: Linux is not running")
 
 
-def probe_firmware():
-    """One line about the selected probe's firmware, from its own console."""
-    probe = ports.selected_probe()
-    if not probe:
-        return "not connected"
-    try:
-        with open_role("probe") as port:
-            console = McuConsole(port)
-            console.sync()
-            info = console.command("device_info")
-    except (OSError, TimeoutError, RuntimeError) as error:
-        return f"{probe['id']}, console did not answer ({error})"
-    fields = dict(re.findall(r"firmware_(version|commit|commit_dirty)\s*:\s*(\S+)", info))
-    return f"{probe['id']}, firmware {fields.get('version', '?')} commit {fields.get('commit', '?')}" + (" dirty" if fields.get("commit_dirty") == "true" else "")
+def cmd_ports(args):
+    emit(args, ports_data(), render_ports)
 
 
-def cmd_status(args):
-    print("probe    " + probe_firmware())
-    for role in ports.ROLES:
-        print(f"port {role:8} {ports.find(role) or 'not connected'}")
-    print("linux    " + ("not running (mcu-usb port is present)" if ports.find("mcu-usb") else "may be running (no mcu-usb port)"))
-    if args.no_swd:
+def status_data(args):
+    data = {
+        "probe": probe_info(),
+        "ports": {role: ports.find(role) for role in ports.ROLES},
+        "linux": "not_running" if ports.find("mcu-usb") else "may_be_running",
+    }
+    if not args.no_swd:
+        data["swd"] = swd.status()
+    return data
+
+
+def render_status(data):
+    print("probe    " + data["probe"]["text"])
+    for role, path in data["ports"].items():
+        print(f"port {role:8} {path or 'not connected'}")
+    if data["linux"] == "not_running":
+        print("linux    not running (mcu-usb port is present)")
+    else:
+        print("linux    may be running (no mcu-usb port)")
+    state = data.get("swd")
+    if state is None:
         return
-    state = swd.status()
     print("mcu      " + ("HALTED: by a debugger, or by the firmware after a crash (see the log)" if state["halted"] else "running") + f", uptime {state['uptime_s']:.1f}s")
     print("active   " + (f"slot {state['active_slot']}" if state["active_slot"] else "none: nothing booted, core is in the bootrom"))
     for name, slot in state["slots"].items():
@@ -86,14 +129,16 @@ def cmd_status(args):
         print(line)
 
 
+def cmd_status(args):
+    emit(args, status_data(args), render_status)
+
+
 def cmd_cli(args):
-    with open_mcu_console(args) as port:
-        console = McuConsole(port)
-        console.sync()
+    with DeviceSession(args.console) as session:
         for line in args.command:
             if len(args.command) > 1:
                 print(f"> {line}")
-            print(console.command(line, args.timeout))
+            print(session.command(line, args.timeout))
 
 
 def bootloader_drive():
@@ -126,13 +171,11 @@ def probe_flash(args, path):
     probe = ports.selected_probe()
     if not probe:
         raise RuntimeError("no debug probe is attached")
-    with open_role("probe") as port:
-        console = McuConsole(port)
-        console.sync()
+    with DeviceSession("probe") as session:
         try:
-            reply = console.command("power boot", 3.0)
+            session.command("power boot", 3.0)
         except (OSError, TimeoutError):
-            reply = ""
+            pass
     drive = wait_for(bootloader_drive, 15.0, "the probe's bootloader drive did not appear")
     with open(path, "rb") as source:
         image = source.read()
@@ -144,10 +187,8 @@ def probe_flash(args, path):
             raise
     wait_for(lambda: any(p["id"] == probe["id"] and p["ports"] for p in ports.probes()), 20.0, f"probe {probe['id']} did not come back")
     time.sleep(1.0)
-    with open_role("probe") as port:
-        console = McuConsole(port)
-        console.sync()
-        info = console.command("device_info")
+    with DeviceSession("probe") as session:
+        info = session.command("device_info")
     version = re.search(r"firmware_version\s*:\s*(\S+)", info)
     commit = re.search(r"firmware_commit\s*:\s*(\S+)", info)
     print(f"probe {probe['id']} flashed and back" + (f": version {version.group(1)}, commit {commit.group(1) if commit else '?'}" if version else ""))
@@ -159,15 +200,13 @@ def cmd_probe(args):
         if len(args.command) != 2:
             raise RuntimeError("usage: f1.py probe flash FILE.uf2 --yes")
         return probe_flash(args, args.command[1])
-    with open_role("probe") as port:
-        console = McuConsole(port)
-        console.sync()
+    with DeviceSession("probe") as session:
         for line in args.command:
             if len(args.command) > 1:
                 print(f"> {line}")
             leaving = line.split() in (["power", "boot"], ["power", "reboot"])
             try:
-                reply = console.command(line, args.timeout)
+                reply = session.command(line, args.timeout)
             except (OSError, TimeoutError):
                 if not leaving:
                     raise
@@ -180,23 +219,28 @@ def cmd_probe(args):
 
 
 def cmd_screenshot(args):
-    with open_mcu_console(args) as port, RpcSession(port) as session:
-        width, height, pixels = session.screenshot()
+    with DeviceSession(args.console) as session, session.rpc() as rpc_session:
+        width, height, pixels = rpc_session.screenshot()
     write_png(args.out, width, height, pixels, args.scale)
     print(f"{args.out}: {width}x{height} screen, saved at {args.scale}x")
 
 
+def report_port_lost(session):
+    if session.port_lost:
+        print("note: the MCU USB console disappeared during the command (expected when Linux powers up); use the default UART console")
+
+
 def cmd_press(args):
-    with open_mcu_console(args) as port, RpcSession(port) as session:
+    with DeviceSession(args.console) as session, session.rpc() as rpc_session:
         for button in args.button:
             if args.action:
-                session.button(button, args.action)
+                rpc_session.button(button, args.action)
             else:
-                session.click(button, hold=args.hold, repeats=args.repeats)
+                rpc_session.click(button, hold=args.hold, repeats=args.repeats)
             time.sleep(args.delay)
         if args.shot:
             time.sleep(args.settle)
-            width, height, pixels = session.screenshot()
+            width, height, pixels = rpc_session.screenshot()
     print("sent: " + " ".join(args.button))
     report_port_lost(session)
     if args.shot:
@@ -212,17 +256,17 @@ def cmd_touch(args):
             raise ValueError(f"Touch point {x},{y} is outside 0..{rpc.TOUCH_MAX_X} x 0..{rpc.TOUCH_MAX_Y}")
     if not (0 <= args.pressure <= rpc.TOUCH_MAX_PRESSURE):
         raise ValueError(f"Pressure {args.pressure} is outside 0..{rpc.TOUCH_MAX_PRESSURE}")
-    with open_mcu_console(args) as port, RpcSession(port) as session:
-        session.touch("start", x0, y0, args.pressure)
+    with DeviceSession(args.console) as session, session.rpc() as rpc_session:
+        rpc_session.touch("start", x0, y0, args.pressure)
         steps = args.steps if args.to else 0
         for step in range(1, steps + 1):
             time.sleep(0.02)
-            session.touch("move", x0 + (x1 - x0) * step // steps, y0 + (y1 - y0) * step // steps, args.pressure)
+            rpc_session.touch("move", x0 + (x1 - x0) * step // steps, y0 + (y1 - y0) * step // steps, args.pressure)
         time.sleep(0.05)
-        session.touch("end", x1, y1, 0)
+        rpc_session.touch("end", x1, y1, 0)
         if args.shot:
             time.sleep(args.settle)
-            width, height, pixels = session.screenshot()
+            width, height, pixels = rpc_session.screenshot()
     print(f"touch {x0},{y0}" + (f" -> {x1},{y1}" if args.to else ""))
     if args.shot:
         write_png(args.shot, width, height, pixels, args.scale)
@@ -253,180 +297,95 @@ def cmd_log(args):
             out.close()
 
 
-def host_shell_ready(port):
-    """(shell prompt seen, any output seen) on the Linux console."""
-    any_output = False
-    for _ in range(3):  # the first Enter can land in the middle of other output
-        port.read_until_quiet(0.3, quiet=0.2, wait_for_data=False)
-        port.write(b"\x03\r")
-        banner = mcu_console.ANSI.sub(b"", port.read_until_quiet(2.0, quiet=0.4))
-        banner = host_shell.strip_probe_banner(banner)
-        any_output = any_output or bool(banner)
-        if host_shell.SHELL_PROMPT.search(banner):
-            return True, True
-        if not banner:
-            break  # a silent console stays silent; do not spend more time on it
-    return False, any_output
-
-
-def host_exec(command, timeout=30.0, wait=0.0):
-    """Run a shell command on the Linux host over its serial console. Returns (output, exit code)."""
-    with open_role("linux") as port:
-        deadline = time.monotonic() + wait
-        while True:
-            ready, any_output = host_shell_ready(port)
-            if ready:
-                break
-            if time.monotonic() >= deadline:
-                state = "shows no shell prompt: the host is still booting or at a login prompt" if any_output else "is silent: the host is off or waiting in the boot menu"
-                raise RuntimeError(f"Linux console {state}. Check 'f1.py linux state' and 'f1.py screenshot', or retry with --wait SECONDS")
-            time.sleep(2)
-        port.write(f"stty -echo cols 250; {command}; echo {host_shell.DONE_PREFIX}$?; stty echo\r".encode())
-        try:
-            reply = port.read_until(lambda d: host_shell.DONE_PATTERN.search(d) is not None, timeout)
-        except TimeoutError as error:
-            raise TimeoutError(f"Command did not finish in {timeout:.0f}s. Output so far:\n{mcu_console.clean(error.data)}") from None
-        port.read_until_quiet(0.5, quiet=0.2, wait_for_data=False)
-    body_bytes, code = host_shell.split_done(reply)
-    body = mcu_console.clean(body_bytes)
-    first, _, rest = body.partition("\n")
-    if "stty -echo" in first:  # the echo of the command line itself
-        body = rest
-    return body.strip("\n"), code
-
-
 def cmd_host(args):
-    output, code = host_exec(args.command, args.timeout, args.wait)
+    with LinuxHost() as host:
+        output, code = host.exec(args.command, args.timeout, args.wait)
     print(output)
     if code:
         print(f"[exit code {code}]")
     return code
 
 
-def running_mcu_app(console):
-    """App id running on the MCU desktop, or None."""
-    reply = console.command("desktop get_run_app")
-    return reply.split(":", 1)[1].strip() if "running app:" in reply else None
-
-
-def mcu_app(args):
-    with open_mcu_console(args) as port:
-        console = McuConsole(port)
-        console.sync()
-        return running_mcu_app(console)
-
-
-def mcu_cli(args, line):
-    with open_mcu_console(args) as port:
-        console = McuConsole(port)
-        console.sync()
-        return console.command(line)
-
-
-def host_shell_state():
-    """(shell answers, console shows any output)"""
-    with open_role("linux") as port:
-        return host_shell_ready(port)
-
-
-def clean_poweroff(timeout):
-    """Ask Linux to power off and wait for the kernel to say it did.
-
-    Nothing is typed into the console while waiting: a Ctrl+C there would
-    interrupt the very command that is shutting the system down.
-    """
-    with open_role("linux") as port:
-        if not host_shell_ready(port)[0]:
-            raise RuntimeError("Linux console shows no shell prompt, a clean shutdown is not possible; use 'f1.py linux stop --hard'")
-        deadline = time.monotonic() + timeout
-        under_way = False
-        while True:
-            if not under_way:
-                port.write(b"sync; sudo -n poweroff\r")
-            try:
-                port.read_until(lambda d: b"Power down" in d, min(30.0, max(deadline - time.monotonic(), 1.0)))
-                return
-            except TimeoutError as error:
-                if time.monotonic() >= deadline:
-                    raise RuntimeError(f"Linux did not power down in {timeout:.0f}s; use 'f1.py linux stop --hard'. Last console output:\n{mcu_console.clean(error.data)[-300:]}") from None
-                # systemd ignores a poweroff issued while the system is still
-                # starting up, so it is sent again unless a shutdown has begun
-                under_way = under_way or b"power off now" in error.data
-
-
 def cmd_linux(args):
     # The host rails are held by an I/O expander that keeps its outputs across an
     # MCU soft reset. So the host can be up while the MCU's host app is not
     # running: the MCU was reset under a running Linux and shows its own desktop.
-    if args.action == "state":
-        app = mcu_app(args)
-        ready, any_output = host_shell_state()
-        if app == "cpu_app_maskrom":
-            print("powered in maskrom mode: the host SoC waits for a loader over its own USB port and prints nothing. "
-                  "'f1.py cli \"desktop stop_app\"' powers it off")
-        elif app == constants.CPU_APP:
-            print("up: shell answers" if ready else "powered, no shell prompt: booting, waiting in the boot menu, or at a login prompt")
-        elif ready:
-            print("up: shell answers, but the MCU host app is not running (the MCU was reset while Linux ran). "
-                  "The device screen and buttons belong to the MCU, not to Linux. 'f1.py linux start' attaches to the running Linux")
-        elif any_output:
-            print("powered, no shell prompt, and the MCU host app is not running (the MCU was reset while the host was booting, in its boot menu or at a login prompt)")
-        else:
-            print("off" + (f" (MCU is running app '{app}')" if app else ""))
+    with DeviceSession(getattr(args, "console", None)) as mcu, LinuxHost() as host:
+        if args.action == "state":
+            app = mcu.app()
+            ready, any_output = host.state()
+            if app == "cpu_app_maskrom":
+                key = "maskrom"
+                text = ("powered in maskrom mode: the host SoC waits for a loader over its own USB port and prints nothing. "
+                        "'f1.py cli \"desktop stop_app\"' powers it off")
+            elif app == constants.CPU_APP:
+                key = "up" if ready else "powered_no_shell"
+                text = "up: shell answers" if ready else "powered, no shell prompt: booting, waiting in the boot menu, or at a login prompt"
+            elif ready:
+                key = "up_no_host_app"
+                text = ("up: shell answers, but the MCU host app is not running (the MCU was reset while Linux ran). "
+                        "The device screen and buttons belong to the MCU, not to Linux. 'f1.py linux start' attaches to the running Linux")
+            elif any_output:
+                key = "powered_no_shell_no_host_app"
+                text = "powered, no shell prompt, and the MCU host app is not running (the MCU was reset while the host was booting, in its boot menu or at a login prompt)"
+            else:
+                key = "off"
+                text = "off" + (f" (MCU is running app '{app}')" if app else "")
+            emit(args, {"state": key, "app": app}, lambda data: print(text))
 
-    elif args.action == "start":
-        app = mcu_app(args)
-        if app == constants.CPU_APP:
-            print("host is already powered; see 'f1.py linux state'")
-            return
-        if app:
-            raise RuntimeError(f"MCU is running app '{app}'; close it first (press back, or 'f1.py cli \"desktop stop_app\"')")
-        if host_shell_state()[0]:
-            # The MCU was reset while Linux ran. The host rails are held by the
-            # I/O expander, and the host app leaves a host alone that the expander
-            # shows as powered. Now and then the MCU fails to initialise the
-            # expander when it boots, on the bus shared with the host; it then has
-            # no control over host power until it is reset again.
-            if "Main Expander" in mcu_cli(args, "dmesg"):
-                raise RuntimeError(
-                    "Linux is up, but this MCU boot failed to initialise the main expander, so the MCU cannot control host power. "
-                    "Reset the MCU again ('f1.py swd reset') and retry"
-                )
-            before = host_shell.parse_uptime(host_exec("sync; cut -d' ' -f1 /proc/uptime", timeout=20)[0])
-            reply = mcu_cli(args, f"desktop start_app {constants.CPU_APP}")
-            if "started" not in reply:
-                raise RuntimeError(f"MCU refused to start the host app: {reply}")
-            time.sleep(3.0)
-            try:
-                after = host_shell.parse_uptime(host_exec("cut -d' ' -f1 /proc/uptime", timeout=10)[0])
-            except (RuntimeError, ValueError):
-                after = 0.0
-            if after <= before:
-                raise RuntimeError("The MCU power-cycled the host instead of attaching to it (a sync was done first). The host is restarting; run 'f1.py linux stop --hard' and 'f1.py linux start'")
-            print(f"attached to the running Linux, no restart (host uptime {after:.0f}s)")
-            return
-        with open_role("linux") as host:
-            reply = mcu_cli(args, f"desktop start_app {constants.CPU_APP}")
+        elif args.action == "start":
+            app = mcu.app()
+            if app == constants.CPU_APP:
+                print("host is already powered; see 'f1.py linux state'")
+                return
+            if app:
+                raise RuntimeError(f"MCU is running app '{app}'; close it first (press back, or 'f1.py cli \"desktop stop_app\"')")
+            if host.state()[0]:
+                # The MCU was reset while Linux ran. The host rails are held by the
+                # I/O expander, and the host app leaves a host alone that the expander
+                # shows as powered. Now and then the MCU fails to initialise the
+                # expander when it boots, on the bus shared with the host; it then has
+                # no control over host power until it is reset again.
+                if "Main Expander" in mcu.command("dmesg"):
+                    raise RuntimeError(
+                        "Linux is up, but this MCU boot failed to initialise the main expander, so the MCU cannot control host power. "
+                        "Reset the MCU again ('f1.py swd reset') and retry"
+                    )
+                before = host_shell.parse_uptime(host.exec("sync; cut -d' ' -f1 /proc/uptime", timeout=20)[0])
+                reply = mcu.command(f"desktop start_app {constants.CPU_APP}")
+                if "started" not in reply:
+                    raise RuntimeError(f"MCU refused to start the host app: {reply}")
+                time.sleep(3.0)
+                try:
+                    after = host_shell.parse_uptime(host.exec("cut -d' ' -f1 /proc/uptime", timeout=10)[0])
+                except (RuntimeError, ValueError):
+                    after = 0.0
+                if after <= before:
+                    raise RuntimeError("The MCU power-cycled the host instead of attaching to it (a sync was done first). The host is restarting; run 'f1.py linux stop --hard' and 'f1.py linux start'")
+                print(f"attached to the running Linux, no restart (host uptime {after:.0f}s)")
+                return
+            port = host.port()
+            reply = mcu.command(f"desktop start_app {constants.CPU_APP}")
             if "started" not in reply:
                 raise RuntimeError(f"MCU refused to start the host: {reply}")
-            host.read_until_quiet(1.0, quiet=0.5, wait_for_data=False)  # the probe's own banner
+            port.read_until_quiet(1.0, quiet=0.5, wait_for_data=False)  # the probe's own banner
             lost_control = "The MCU may have lost control of host power: that happens when it was reset while Linux ran. Reset the MCU with the host off ('f1.py swd reset', then close the self-check with 'f1.py press ok') and start again."
-            if not host.read_until_quiet(8.0, quiet=0.2):
+            if not port.read_until_quiet(8.0, quiet=0.2):
                 # The host app only powers the host if it finds the rails off. If
                 # Linux powered itself down while the app was not running, the
                 # rails still read as on and nothing happens: cut and start again.
-                mcu_cli(args, "desktop stop_app")
+                mcu.command("desktop stop_app")
                 time.sleep(1.5)
-                reply = mcu_cli(args, f"desktop start_app {constants.CPU_APP}")
+                reply = mcu.command(f"desktop start_app {constants.CPU_APP}")
                 if "started" not in reply:
                     raise RuntimeError(f"MCU refused to start the host: {reply}")
             # U-Boot lists what it found, then draws a menu and waits for a key
             try:
-                scan = mcu_console.clean(host.read_until(lambda d: b"bootflows," in d, 40.0))
+                scan = mcu_console.clean(port.read_until(lambda d: b"bootflows," in d, 40.0))
             except TimeoutError as error:
                 seen = mcu_console.clean(error.data).strip()
                 if not seen:
-                    mcu_cli(args, "desktop stop_app")
+                    mcu.command("desktop stop_app")
                     raise RuntimeError("The host shows no sign of life after power-on. " + lost_control) from None
                 raise RuntimeError(f"No U-Boot boot list on the Linux console in 40s. Last output:\n{seen[-400:]}") from None
             # The menu shows the boot loader entries in the order U-Boot lists them
@@ -436,49 +395,49 @@ def cmd_linux(args):
             try:
                 position = uboot.entry_position(args.entry, entries)
             except RuntimeError:
-                mcu_cli(args, "desktop stop_app")
+                mcu.command("desktop stop_app")
                 raise
             time.sleep(1.0)
-            host.write(b"\x1b[B" * (position - 1) + b"\r")
-            booting = mcu_console.clean(host.read_until_quiet(8.0, quiet=1.5))
-        chosen = next((line.lstrip(":").strip() for line in booting.split("\n") if line.startswith(":")), None)
-        if "Boot failed" in booting:
-            raise RuntimeError(
-                f"U-Boot could not boot entry {position}" + (f" ({chosen})" if chosen else "") + "; the host sits at the U-Boot prompt. "
-                "Run 'f1.py linux stop --hard' and start another entry. U-Boot said:\n" + booting.strip()[-300:]
-            )
-        print(f"boot menu entry {position}" + (f" ({chosen})" if chosen else "") + " selected")
-        if args.no_wait:
-            return
-        output, _ = host_exec("uname -r", wait=args.timeout)
-        print(f"host is up, kernel {output}")
+            port.write(b"\x1b[B" * (position - 1) + b"\r")
+            booting = mcu_console.clean(port.read_until_quiet(8.0, quiet=1.5))
+            chosen = next((line.lstrip(":").strip() for line in booting.split("\n") if line.startswith(":")), None)
+            if "Boot failed" in booting:
+                raise RuntimeError(
+                    f"U-Boot could not boot entry {position}" + (f" ({chosen})" if chosen else "") + "; the host sits at the U-Boot prompt. "
+                    "Run 'f1.py linux stop --hard' and start another entry. U-Boot said:\n" + booting.strip()[-300:]
+                )
+            print(f"boot menu entry {position}" + (f" ({chosen})" if chosen else "") + " selected")
+            if args.no_wait:
+                return
+            output, _ = host.exec("uname -r", wait=args.timeout)
+            print(f"host is up, kernel {output}")
 
-    elif args.action == "stop":
-        app = mcu_app(args)
-        ready, _ = host_shell_state()
-        if app != constants.CPU_APP and not ready:
-            print("host is already off")
-            return
-        if args.hard:
-            if ready:
-                host_exec("sync", timeout=20)
+        elif args.action == "stop":
+            app = mcu.app()
+            ready, _ = host.state()
+            if app != constants.CPU_APP and not ready:
+                print("host is already off")
+                return
+            if args.hard:
+                if ready:
+                    host.exec("sync", timeout=20)
+                else:
+                    print("note: host shell did not answer, power is cut without a sync")
+                if app != constants.CPU_APP:
+                    # Power is cut by the host app on its way out, so it has to be running
+                    reply = mcu.command(f"desktop start_app {constants.CPU_APP}")
+                    if "started" not in reply:
+                        raise RuntimeError(f"Cannot attach the MCU host app to stop the host: {reply}")
+                    time.sleep(1.0)
+                mcu.command("desktop stop_app")
             else:
-                print("note: host shell did not answer, power is cut without a sync")
-            if app != constants.CPU_APP:
-                # Power is cut by the host app on its way out, so it has to be running
-                reply = mcu_cli(args, f"desktop start_app {constants.CPU_APP}")
-                if "started" not in reply:
-                    raise RuntimeError(f"Cannot attach the MCU host app to stop the host: {reply}")
+                host.poweroff(args.timeout)
+            deadline = time.monotonic() + 20.0
+            while mcu.app() == constants.CPU_APP:
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Host power is down but the MCU host app is still running; check 'f1.py screenshot'")
                 time.sleep(1.0)
-            mcu_cli(args, "desktop stop_app")
-        else:
-            clean_poweroff(args.timeout)
-        deadline = time.monotonic() + 20.0
-        while mcu_app(args) == constants.CPU_APP:
-            if time.monotonic() >= deadline:
-                raise RuntimeError("Host power is down but the MCU host app is still running; check 'f1.py screenshot'")
-            time.sleep(1.0)
-        print("host is off (power cut by the MCU)" if args.hard else "host is off (clean shutdown)")
+            print("host is off (power cut by the MCU)" if args.hard else "host is off (clean shutdown)")
 
 
 def cmd_swd(args):
@@ -501,7 +460,8 @@ def cmd_swd(args):
             print(f"{address:#010x} {name}")
     elif args.action == "read":
         words = swd.read_words([(int(args.address, 0), args.count)])[0]
-        print(" ".join(f"{word:08x}" for word in words))
+        data = {"address": int(args.address, 0), "count": args.count, "words": [f"{word:08x}" for word in words]}
+        emit(args, data, lambda d: print(" ".join(d["words"])))
     elif args.action == "flash":
         if not args.yes:
             raise RuntimeError("Flashing overwrites the slot and halts the MCU while writing; pass --yes once the user agreed")
@@ -521,13 +481,16 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("ports", help="list serial ports by role").set_defaults(func=cmd_ports)
+    p = sub.add_parser("ports", help="list serial ports by role")
+    p.add_argument("--json", action="store_true", help="print a JSON envelope instead of text")
+    p.set_defaults(func=cmd_ports)
 
     def add_console_option(p):
         p.add_argument("--console", choices=["mcu", "mcu-usb"], default="mcu", help="MCU console to use (default: mcu, the UART one)")
 
     p = sub.add_parser("status", help="ports, whether Linux runs, MCU state and firmware slots")
     p.add_argument("--no-swd", action="store_true", help="skip the SWD part (the probe may be busy)")
+    p.add_argument("--json", action="store_true", help="print a JSON envelope instead of text")
     p.set_defaults(func=cmd_status)
 
     p = sub.add_parser("cli", help="run MCU console commands")
@@ -588,6 +551,7 @@ def build_parser():
     p = sub.add_parser("linux", help="start, stop or query the Linux host")
     linux_sub = p.add_subparsers(dest="action", required=True)
     q = linux_sub.add_parser("state", help="off, powered without a shell, or up")
+    q.add_argument("--json", action="store_true", help="print a JSON envelope instead of text")
     q = linux_sub.add_parser("start", help="power the host, pick a boot menu entry, wait for the shell")
     q.add_argument("--entry", default="1", help="boot menu entry: its number from 1, or text that one entry name contains, e.g. Minimal-7 (default 1)")
     q.add_argument("--no-wait", action="store_true", help="return once the entry is selected")
@@ -599,7 +563,8 @@ def build_parser():
 
     p = sub.add_parser("swd", help="SWD through OpenOCD")
     swd_sub = p.add_subparsers(dest="action", required=True)
-    swd_sub.add_parser("status", help="same as 'status'")
+    q = swd_sub.add_parser("status", help="same as 'status'")
+    q.add_argument("--json", action="store_true", help="print a JSON envelope instead of text")
     swd_sub.add_parser("reset", help="plain MCU reset; the host keeps running")
     swd_sub.add_parser("resume", help="resume cores left halted by a debugger")
     swd_sub.add_parser("where", help="halt for a moment, print pc and lr of both cores with function names, run on")
@@ -608,6 +573,7 @@ def build_parser():
     q = swd_sub.add_parser("read", help="read 32-bit words without halting")
     q.add_argument("address")
     q.add_argument("count", type=int, nargs="?", default=1)
+    q.add_argument("--json", action="store_true", help="print a JSON envelope instead of text")
     q = swd_sub.add_parser("flash", help="write a .bin to a firmware slot, verify, reset")
     q.add_argument("slot", choices=["a", "b", "A", "B"])
     q.add_argument("file")
@@ -625,7 +591,10 @@ def main():
     try:
         return args.func(args) or 0
     except (RuntimeError, TimeoutError, ValueError, OSError, subprocess.TimeoutExpired) as error:
-        print(f"error: {error}", file=sys.stderr)
+        if getattr(args, "json", False):
+            print(json.dumps(envelope(args, error=str(error))), file=sys.stderr)
+        else:
+            print(f"error: {error}", file=sys.stderr)
         return 1
 
 
