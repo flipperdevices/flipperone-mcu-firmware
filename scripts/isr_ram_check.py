@@ -15,13 +15,13 @@ This tool checks the linked ELF:
      through function pointers, which the disassembly cannot follow: if one
      lost its I2C_ISR_FUNC in a rewrite, nothing would start the check from it.
   2. Starting from every marked function, it follows direct calls (`bl`,
-     `b.w`, tail-call `b`) and RAM veneers (`ldr.w pc, [pc]` + `.word TARGET`).
+     tail calls `b`, also conditional and `.n`/`.w`) and RAM veneers (`ldr.w pc, [pc]` + `.word TARGET`).
      Every function reached must be marked with I2C_ISR_FUNC and be in RAM.
   3. Literal pools of those functions: a `.word` that points into flash data is
      an address the ISR may load from (a const table, a GpioPin, a string).
      Function addresses are skipped: the ISR may pass them on (to the
      deferred-call ring) without calling them.
-  4. Indirect calls (`blx reg`) are allowed only in DISPATCHERS. A new one
+  4. Indirect calls (`blx reg`, tail call `bx reg`) are allowed only in DISPATCHERS. A new one
      means a new function pointer on the path: its targets must be marked and
      added to REQUIRED, and the caller to DISPATCHERS.
 
@@ -181,16 +181,16 @@ def main():
             continue
         if current is None:
             continue
-        m = re.search(r"\t(?:bl|b\.w|b)\s+[0-9a-f]+ <([^>+]+)>", line)
+        m = re.search(r"\t(?:bl|b(?:eq|ne|cs|hs|cc|lo|mi|pl|vs|vc|hi|ls|ge|lt|gt|le)?(?:\.[nw])?)\s+[0-9a-f]+ <([^>+]+)>", line)
         if m:
             callee = label(m.group(1))
             if callee != current:
                 callgraph[current].add(callee)
             continue
-        m = re.search(r"\tblx?\s+(r\d+|ip|lr)\b", line)
+        m = re.search(r"\t(?:blx\s+(r\d+|ip|lr)|bx\s+(r\d+|ip))\b", line)
         if m:
             a = re.match(r"^\s*([0-9a-f]+):", line)
-            indirect[current].append((int(a.group(1), 16) if a else 0, m.group(1)))
+            indirect[current].append((int(a.group(1), 16) if a else 0, m.group(1) or m.group(2)))
             continue
         if re.search(r"ldr\.w\s+pc,\s*\[pc\]", line):
             pending_veneer = current
@@ -255,7 +255,7 @@ def main():
             continue
         for site, reg in indirect.get(f, []):
             problems.append(
-                f"{f} @ 0x{site:08x}: indirect call (blx {reg}) outside DISPATCHERS: "
+                f"{f} @ 0x{site:08x}: indirect call through {reg} outside DISPATCHERS: "
                 "mark its targets with I2C_ISR_FUNC and add them to REQUIRED, the caller to DISPATCHERS"
             )
 
