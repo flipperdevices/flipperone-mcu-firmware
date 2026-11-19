@@ -1,11 +1,5 @@
-"""Architecture test: the package keeps its layer direction.
-
-    packets   -> stdlib, constants, errors only
-    transport -> stdlib, constants, errors, transport.*
-    logic     -> packets, transport, constants, errors, logic.*
-    cli       -> anything
-
-Run with pytest, or directly: python3 scripts/agent_tools/tests/test_layers.py
+"""Architecture test: packets -> stdlib only, transport may use packets, logic may
+use both, cli anything. Run with pytest.
 """
 
 import ast

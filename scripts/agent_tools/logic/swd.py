@@ -1,10 +1,7 @@
-"""SWD access through OpenOCD: memory reads without halting, reset, flashing.
+"""SWD through OpenOCD: reads without halting, reset, flashing.
 
-Every call loads scripts/agent_tools/openocd/flipperone-mcu.cfg, a board config
-that sources the SDK RP2350 target and defines the board helpers this module
-calls: f1_read, f1_resume, f1_where, f1_stage_tbyb. Each call runs one short
-OpenOCD process: the probe accepts a single client, so this fails while a
-debugger (for example a VS Code session) is attached.
+Every call loads openocd/flipperone-mcu.cfg (SDK target plus board helpers) in
+one short OpenOCD process, so it fails while a debugger holds the probe.
 """
 
 import glob
@@ -25,7 +22,7 @@ SECTOR = constants.SECTOR
 FIRST_PARTITION_OFFSET = constants.FIRST_PARTITION_OFFSET
 
 REPO = str(constants.REPO_ROOT)
-# Board config: the SDK RP2350 target plus the board-specific helpers, see the file
+# The SDK RP2350 target plus the board helpers; see the file.
 CONFIG = str(constants.REPO_ROOT / "scripts" / "agent_tools" / "openocd" / "flipperone-mcu.cfg")
 
 
@@ -52,8 +49,7 @@ def run(commands, timeout=120):
     attached = ports.probes()
     select = []
     if len(attached) > 1:
-        # Each probe has its own USB serial number, which is what OpenOCD's
-        # CMSIS-DAP driver selects by
+        # OpenOCD's CMSIS-DAP driver selects the probe by this serial number
         select = ["-c", f"adapter serial {ports.selected_probe()['serial']}"]
     script = "; ".join(["init", body, "shutdown"])
     args = [binary] + (["-s", scripts] if scripts else []) + ["-f", "interface/cmsis-dap.cfg", *select, "-f", CONFIG, "-c", script]
@@ -125,10 +121,7 @@ def resume():
 
 
 def where():
-    """Halt for a moment and return {core: (pc, lr)}; the cores run again afterwards.
-
-    If the MCU was already halted (a crash, a breakpoint), it is left halted.
-    """
+    """{core: (pc, lr)} after a momentary halt; a halted MCU stays halted."""
     result = {}
     for line in run([f"f1_where {openocd_output.MARK}"]):
         core, *rest = line.split()

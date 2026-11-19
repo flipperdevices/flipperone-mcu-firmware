@@ -4,11 +4,7 @@ import time
 
 
 class FakePort:
-    """Duck-typed stand-in for transport.serialport.SerialPort.
-
-    `responder(port, data)` is called on every write and may `feed()` bytes
-    that the next read returns.
-    """
+    """Duck-typed SerialPort: `responder(port, data)` runs on every write."""
 
     def __init__(self, responder=None):
         self.responder = responder

@@ -140,8 +140,7 @@ def cmd_status(args):
     if getattr(args, "json", False):
         emit(args, status_data(args), render_status)
         return
-    # Text mode prints the serial part before touching SWD, so a probe held by a
-    # debugger still shows which ports are there before the command fails.
+    # Text mode prints the serial part first, so a busy probe still shows the ports.
     data = {
         "probe": probe_info(),
         "ports": {role: ports.find(role) for role in ports.ROLES},
@@ -231,7 +230,7 @@ def cmd_probe(args):
                     raise
                 reply = ""
             if leaving:
-                # the probe leaves USB, and its ports with it; whether the reply arrives first varies
+                # the probe drops off USB before or after it replies
                 print("the probe is restarting" if "reboot" in line else "the probe is in its USB bootloader: copy a .uf2 onto the RP2350 drive")
                 return
             print(reply)
@@ -326,9 +325,8 @@ def cmd_host(args):
 
 
 def cmd_linux(args):
-    # The host rails are held by an I/O expander that keeps its outputs across an
-    # MCU soft reset. So the host can be up while the MCU's host app is not
-    # running: the MCU was reset under a running Linux and shows its own desktop.
+    # The host rails survive an MCU reset (I/O expander), so a host can run with no
+    # MCU host app: the MCU was reset under a running Linux.
     with DeviceSession(getattr(args, "console", None)) as mcu, LinuxHost() as host:
         if args.action == "state":
             app = mcu.app()
@@ -360,11 +358,9 @@ def cmd_linux(args):
             if app:
                 raise RuntimeError(f"MCU is running app '{app}'; close it first (press back, or 'f1.py cli \"desktop stop_app\"')")
             if host.state()[0]:
-                # The MCU was reset while Linux ran. The host rails are held by the
-                # I/O expander, and the host app leaves a host alone that the expander
-                # shows as powered. Now and then the MCU fails to initialise the
-                # expander when it boots, on the bus shared with the host; it then has
-                # no control over host power until it is reset again.
+                # The MCU was reset while Linux ran. The host app normally attaches to
+                # the running host; rarely the MCU failed to initialise the expander on
+                # boot and then cannot control host power until the next reset.
                 if "Main Expander" in mcu.command("dmesg"):
                     raise RuntimeError(
                         "Linux is up, but this MCU boot failed to initialise the main expander, so the MCU cannot control host power. "
@@ -390,15 +386,14 @@ def cmd_linux(args):
             port.read_until_quiet(1.0, quiet=0.5, wait_for_data=False)  # the probe's own banner
             lost_control = "The MCU may have lost control of host power: that happens when it was reset while Linux ran. Reset the MCU with the host off ('f1.py swd reset', then close the self-check with 'f1.py press ok') and start again."
             if not port.read_until_quiet(8.0, quiet=0.2):
-                # The host app only powers the host if it finds the rails off. If
-                # Linux powered itself down while the app was not running, the
-                # rails still read as on and nothing happens: cut and start again.
+                # The host app only powers a host whose rails read off; if Linux
+                # powered itself down meanwhile, cut and start again.
                 mcu.command("desktop stop_app")
                 time.sleep(1.5)
                 reply = mcu.command(f"desktop start_app {constants.CPU_APP}")
                 if "started" not in reply:
                     raise RuntimeError(f"MCU refused to start the host: {reply}")
-            # U-Boot lists what it found, then draws a menu and waits for a key
+            # U-Boot scans, prints its list, then waits in a menu for a key
             try:
                 scan = mcu_console.clean(port.read_until(lambda d: b"bootflows," in d, 40.0))
             except TimeoutError as error:
@@ -407,7 +402,7 @@ def cmd_linux(args):
                     mcu.command("desktop stop_app")
                     raise RuntimeError("The host shows no sign of life after power-on. " + lost_control) from None
                 raise RuntimeError(f"No U-Boot boot list on the Linux console in 40s. Last output:\n{seen[-400:]}") from None
-            # The menu shows the boot loader entries in the order U-Boot lists them
+            # Entry numbers follow the order U-Boot listed them in
             entries = uboot.parse_boot_entries(scan)
             for number, name in enumerate(entries, 1):
                 print(f"boot entry {number}: {name}")

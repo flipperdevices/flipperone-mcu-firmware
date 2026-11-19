@@ -9,11 +9,8 @@ from .rpc import RpcSession
 
 
 class DeviceSession:
-    """Lazily opens one console port and keeps it for the command's lifetime.
+    """One console port for the command's lifetime, synced on first use."""
 
-    The first console use syncs the shell; later commands reuse the synced
-    session instead of reconnecting and recovering for every call.
-    """
 
     def __init__(self, role=None, open_port=None):
         self._role = role or ports.mcu_console_role()

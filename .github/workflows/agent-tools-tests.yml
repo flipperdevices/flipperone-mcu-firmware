@@ -1,12 +1,8 @@
 name: Agent tools tests
 
-# Unit tests for scripts/agent_tools and the get_port.py shim. No hardware and
-# no firmware build are involved: the logic tests drive the console, RPC and
-# Linux console layers through fake ports.
-#
-# The environment is the repository's pinned requirements file, the same one
-# assets/CMakeLists.txt builds build/assets/.venv from, so CI installs exactly
-# what a developer installs and no version is resolved at run time.
+# Unit tests for scripts/agent_tools and the get_port.py shim: no hardware, no
+# firmware build, fake ports. Installs the pinned requirements file, the same one
+# assets/CMakeLists.txt builds build/assets/.venv from.
 on:
   pull_request:
     paths:

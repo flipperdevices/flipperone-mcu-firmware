@@ -131,11 +131,10 @@ class SerialPort:
         return data[:count]
 
     def read_until_quiet(self, timeout, quiet=0.4, wait_for_data=True):
-        """Read until the line stays silent for `quiet` seconds or `timeout` expires.
+        """Read until `quiet` seconds pass without a byte, or `timeout` expires.
 
-        With wait_for_data the silence is counted from the first byte, so a
-        slow reply is not missed; without it, from the call, so draining an
-        idle line returns after `quiet`.
+        With wait_for_data the silence counts from the first byte; without it,
+        from the call.
         """
         deadline = time.monotonic() + timeout
         data = b""

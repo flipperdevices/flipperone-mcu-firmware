@@ -1,9 +1,7 @@
 """RpcMessage wire format (assets/proto/rpc.proto), encoded by hand.
 
-After the `rpc` CLI command the MCU answers with one 0xFD byte, then both
-sides exchange length-delimited RpcMessage protobufs. The messages are simple
-enough to encode by hand, so nothing here needs the protobuf package or
-generated code.
+After the `rpc` command the MCU sends 0xFD, then both sides exchange
+length-delimited messages; they are simple enough for no protobuf runtime.
 """
 
 RPC_READY = 0xFD

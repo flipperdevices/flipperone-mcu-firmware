@@ -34,8 +34,7 @@ class LinuxHost:
         """(shell prompt seen, any output seen) on the Linux console."""
         port = self.port()
         any_output = False
-        for _ in range(3):  # the first Enter can land in the middle of other output
-            port.read_until_quiet(0.3, quiet=0.2, wait_for_data=False)
+        for _ in range(3):  # the first Enter can land in the middle of other output            port.read_until_quiet(0.3, quiet=0.2, wait_for_data=False)
             port.write(b"\x03\r")
             banner = mcu_console.ANSI.sub(b"", port.read_until_quiet(2.0, quiet=0.4))
             banner = host_shell.strip_probe_banner(banner)
@@ -76,10 +75,9 @@ class LinuxHost:
         return body.strip("\n"), code
 
     def poweroff(self, timeout):
-        """Ask Linux to power off and wait for the kernel to say it did.
+        """Ask Linux to power off and wait for the kernel to confirm it.
 
-        Nothing is typed into the console while waiting: a Ctrl+C there would
-        interrupt the very command that is shutting the system down.
+        Nothing is typed meanwhile: a Ctrl+C would interrupt the poweroff.
         """
         port = self.port()
         if not self.ready()[0]:
@@ -96,5 +94,5 @@ class LinuxHost:
                 if time.monotonic() >= deadline:
                     raise RuntimeError(f"Linux did not power down in {timeout:.0f}s; use 'f1.py linux stop --hard'. Last console output:\n{mcu_console.clean(error.data)[-300:]}") from None
                 # systemd ignores a poweroff issued while the system is still
-                # starting up, so it is sent again unless a shutdown has begun
+                # starting; it is sent again until a shutdown has begun
                 under_way = under_way or b"power off now" in error.data

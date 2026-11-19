@@ -12,10 +12,8 @@ MAX_PAYLOAD = 476
 def parse_sections(data):
     """[{total, blocks: {number: (address, payload)}}] in file order.
 
-    picotool concatenates independent UF2 sections (a boot-info part, then the
-    image), each numbered from zero; every section is validated on its own, and
-    one that ships fewer blocks than it declares is returned as it is so that
-    the caller can tell truncated files from block sets it does not care about.
+    picotool concatenates sections (boot-info, then image), each numbered from
+    zero; an incomplete one is returned as it is, so the caller can decide.
     """
     if not data or len(data) % BLOCK_SIZE:
         raise ValueError(f"UF2 size {len(data)} is not a positive multiple of {BLOCK_SIZE}")

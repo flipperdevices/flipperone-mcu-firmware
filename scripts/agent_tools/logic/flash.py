@@ -11,14 +11,11 @@ from ..packets import openocd_output, picobin, uf2
 from . import swd
 from .device import DeviceSession
 
-# After the staging vector arms the watchdog the bootrom resets by itself, loads
-# the image and the image buys itself; this bounds that wait, in seconds.
+# The image buys itself after the vector is armed; this bounds the wait, in seconds.
 STAGE_TIMEOUT = 120.0
-# The image definition sits behind the boot block, at byte 312 in current builds,
-# so the buy check reads a whole sector the way status() does.
+# The image definition sits at byte 312 of current builds, so read a whole sector.
 HEADER_WORDS = constants.SECTOR // 4
-# picotool puts an RP2350 boot-info block here, which the ROM ignores; it is the
-# only section of a UF2 that may lie outside the slot being written.
+# picotool's boot-info block, the only section a UF2 may have outside the slot.
 BOOT_INFO_ADDRESS = 0x10FFFF00
 
 
@@ -47,7 +44,6 @@ def preflight(slot, path):
             high = max(start + len(payload) for start, payload in found)
             raise ValueError(f"UF2 data at 0x{low:08x}..0x{high:08x} is outside slot {slot} (0x{address:08x}..0x{address + size:08x})")
         for section in inside:
-            # A truncated payload section would be written and verified as if whole.
             if len(section["blocks"]) != section["total"]:
                 first = min(start for start, _ in section["blocks"].values())
                 raise ValueError(f"UF2 section at 0x{first:08x} is truncated: {len(section['blocks'])} of {section['total']} blocks, the image would be written incomplete")
@@ -79,10 +75,9 @@ def wait_for_buy(plan, timeout=STAGE_TIMEOUT):
             if image.get("state") == "valid" and not image.get("tbyb_pending"):
                 return image
         except (TimeoutError, OSError):
-            pass  # the bootrom rewrites the sector, so a read may come back erased
+            pass  # the bootrom rewrites the sector mid-boot
         except RuntimeError as error:
-            # A read that hit the bootrom mid-write is expected; a missing OpenOCD or
-            # a probe held by a debugger is not, and waiting would only hide it.
+            # Probe and OpenOCD failures are not transient.
             if openocd_output.failure_hint(str(error)) or "OpenOCD not found" in str(error):
                 raise
         if time.monotonic() >= deadline:
@@ -98,8 +93,7 @@ def write(plan, activate=False):
     tbyb = bool(plan["image"].get("tbyb_pending"))
     temp = None
     try:
-        # Always the bytes preflight() measured, never the file it read: a rebuild
-        # between the two must not slip an unchecked image past the slot check.
+        # Write the bytes preflight() measured, not the file it read.
         temp = tempfile.NamedTemporaryFile("wb", suffix=".bin", delete=False)
         temp.write(plan["payload"])
         temp.close()
@@ -107,10 +101,8 @@ def write(plan, activate=False):
         commands = ["halt", f"flash write_image erase {quoted} {plan['payload_address']:#x} bin", f"verify_image {quoted} {plan['payload_address']:#x} bin"]
         staged = activate and tbyb
         if staged:
-            # f1_stage_tbyb leaves the vector and reboot type in the watchdog scratch,
-            # the reset then enters the bootrom's flash-update boot, which runs the
-            # image so that the firmware's updater service buys it. Measured on B3:
-            # the scratch survives this reset and the slot header comes back bought.
+            # The armed vector turns the reset into a flash-update boot; the running
+            # image buys itself through the updater. The scratch survives on B3.
             commands += [f"f1_stage_tbyb {plan['address']:#x}", "reset run"]
         else:
             commands.append("reset run")
@@ -135,8 +127,7 @@ def freeze_host():
     with DeviceSession("probe") as probe:
         pending = None
         try:
-            # The release goes in the finally: the probe may apply the reset and
-            # still fail to acknowledge it, and a held host stays held.
+            # Release in the finally: the probe may apply the reset without acking it.
             probe.command("gpio cpu_reset 0", 3.0)
             yield
         except BaseException as error:
@@ -147,6 +138,4 @@ def freeze_host():
                 probe.command("gpio cpu_reset 1", 3.0)
             except (RuntimeError, TimeoutError, OSError):
                 if pending is None:
-                    raise  # nothing else failed, so the release failure is the story
-                # Keep the original failure visible; the probe keeps cpu_reset low
-                # only if its console is gone, which the message above says anyway.
+                    raise  # nothing else failed

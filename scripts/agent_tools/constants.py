@@ -22,7 +22,6 @@ ROLES = {
 
 CPU_APP = "cpu_app_start"  # the MCU app that powers the host and shows its screen
 
-# RP2350 addresses used by the SWD layer
 XIP_BASE = 0x10000000
 RAW_FLASH_BASE = 0x1C000000  # flash without address translation
 QMI_ATRANS0 = 0x400D0034

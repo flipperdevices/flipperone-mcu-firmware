@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Print the Flipper One serial port for a role.
 
-The implementation lives in scripts/agent_tools/transport/ports.py; this file
-keeps the old path working for scripts and documentation that call it directly.
+Implemented in scripts/agent_tools/transport/ports.py; this keeps the old path
+working for scripts that call it.
 
     python3 scripts/get_port.py            # list all roles
-    python3 scripts/get_port.py mcu        # print one device path, exit 1 if absent
+    python3 scripts/get_port.py mcu        # print one device path
 """
 
 import os

@@ -13,11 +13,8 @@ class McuConsole:
     def sync(self):
         """Get the console to an idle prompt, whatever state it was left in.
 
-        A crashed tool can leave the console inside an RPC session, where plain
-        text would be parsed as a message length and swallow what follows. So
-        the RPC close request goes first: it ends a session cleanly and is
-        harmless noise at a prompt. Ctrl+C then stops a running command or
-        clears the line.
+        The RPC close request goes first: inside a leftover RPC session plain
+        text would be read as a message length. Ctrl+C clears the line.
         """
         self.port.read_until_quiet(0.5, quiet=0.1, wait_for_data=False)
         self.port.write(rpc.varint(2) + rpc.field_bytes(rpc.FIELD_SESSION_CLOSE, b""))

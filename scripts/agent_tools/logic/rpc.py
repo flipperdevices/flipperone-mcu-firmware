@@ -38,8 +38,7 @@ class RpcSession:
             except TimeoutError:
                 self.console.sync()
         except OSError:
-            # The port itself went away: the MCU's USB console is switched off
-            # when Linux powers up. The session died with it; nothing to close.
+            # The port went away with the MCU's USB console; nothing to close
             self.port_lost = True
         except Exception:
             if exc[0] is None:
@@ -61,10 +60,9 @@ class RpcSession:
         return rpc.parse_message(self.port.read_exact(size, max(deadline - time.monotonic(), 0.01)))
 
     def screenshot(self, timeout=15.0):
-        """Return (width, height, pixels): 8-bit grayscale, one byte per pixel, row by row.
+        """(width, height, pixels): 8-bit grayscale, row by row.
 
-        Starting the stream makes the MCU redraw, so the first frame is the
-        current screen and arrives right away even if nothing is changing.
+        The MCU redraws when the stream starts, so the frame is current.
         """
         self._send(rpc.FIELD_START_VIRTUAL_DISPLAY, b"")
         try:
@@ -88,11 +86,10 @@ class RpcSession:
         self._send(rpc.FIELD_BUTTON_EVENT, payload)
 
     def click(self, button, hold=0.0, repeats=0, gap=0.05):
-        """Send what the input service sends for a real button.
+        """Send the events the input service sends for a real button.
 
-        Short click: press, short, release. With `hold` seconds: press, then
-        long, then `repeats` repeat events, then release. The device derives
-        nothing from injected events, so every event is sent explicitly.
+        Injected events derive nothing, so press, short/long, repeat and release
+        are each sent explicitly.
         """
         self.button(button, "press")
         if hold > 0:

@@ -1,16 +1,12 @@
 """Find the Flipper One serial ports by role, on any OS.
 
     python3 scripts/get_port.py            # list all roles
-    python3 scripts/get_port.py mcu        # print one device path, exit 1 if absent
+    python3 scripts/get_port.py mcu        # print one device path
 
-Roles: linux, mcu, mcu-log, probe (the debug probe's ports), mcu-usb (the MCU's
-own USB). Ports are identified by USB serial number and CDC interface number,
-because their names differ per OS. Override any of them with F1_PORT_<ROLE>,
-e.g. F1_PORT_MCU_LOG=/dev/ttyACM2. With several probes attached, choose one
-with F1_PROBE=<chip ID or its beginning>.
-
-The probe runs its UART bridges at a fixed 1500000 baud and ignores the rate
-the host asks for, unless custom baud rates are enabled in the probe settings.
+Roles: linux, mcu, mcu-log, probe, mcu-usb. Ports are matched by USB serial and
+CDC interface, since names differ per OS; override with F1_PORT_<ROLE>, and pick
+one of several probes with F1_PROBE. The probe's UART bridges run at a fixed
+1500000 baud.
 """
 
 import glob
@@ -48,12 +44,8 @@ def _find_windows(serial, control_itf):
 
 
 # --- probes -----------------------------------------------------------------
-#
-# A probe's USB serial number is "f1_debug_d950_": the four hex digits are
-# folded from its chip ID, which is also at the end of the USB product string
-# ("Flipper One Debug Probe 63E7482F2DB3DF2B"). This needs probe firmware
-# 0.7.0 or newer. Select a probe with F1_PROBE=<the four
-# digits, or the chip ID or its beginning> when several are attached.
+# Serial "f1_debug_d950_": four hex digits folded from the chip ID (the tail of
+# the USB product string); probe firmware 0.7.0+. F1_PROBE selects one of several.
 
 
 def _ioreg(*args):

@@ -3,7 +3,7 @@
 import re
 
 SHELL_PROMPT = re.compile(rb"[$#] ?$")
-PROBE_BANNER = b"fixed baud rate"  # the probe prints its own line every time the port is opened
+PROBE_BANNER = b"fixed baud rate"  # printed by the probe when the port is opened
 DONE_PREFIX = "__F1_DONE__"
 DONE_PATTERN = re.compile(DONE_PREFIX.encode() + rb"(\d+)\r?\n")
 UPTIME_LINE = re.compile(r"^\d+\.\d+$", re.M)
