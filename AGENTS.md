@@ -41,7 +41,7 @@ targets forces a full rebuild. Output is `build/flipperone-mcu-firmware.uf2`.
 
 ## Test
 
-There is no host test suite. Unit tests run on a real device over its UART:
+Firmware unit tests run on a real device over its UART:
 
 ```shell
 python3 scripts/testops.py sanity --commit <sha> --target f2
@@ -51,6 +51,15 @@ python3 scripts/testops.py unit-tests
 Both require a leased stand (`FO_LEASE` / `/run/fo/lease.json`), which exists only on the
 self-hosted `fone-lab` runners. Which board CI covers is defined in the workflows — do not
 assume every target has hardware coverage.
+
+The agent tools have host unit tests, with no device and no firmware build:
+
+```shell
+python3 -m pytest scripts/agent_tools/tests -q
+```
+
+They need the pinned packages of `assets/python/requirements.txt`; CI runs them in
+`.github/workflows/agent-tools-tests.yml`.
 
 ## Agent Tools
 
