@@ -307,7 +307,7 @@ def test_freeze_host_releases_when_arming_fails(monkeypatch):
     assert calls == ["gpio cpu_reset 0", "gpio cpu_reset 1"]
 
 
-def test_freeze_host_keeps_the_original_failure_when_the_release_fails(monkeypatch):
+def test_freeze_host_reports_a_failed_release_and_keeps_the_write_failure(monkeypatch):
     from agent_tools.logic import flash
 
     class Probe:
@@ -322,6 +322,8 @@ def test_freeze_host_keeps_the_original_failure_when_the_release_fails(monkeypat
                 raise TimeoutError("no reply to the release")
 
     monkeypatch.setattr(flash, "DeviceSession", lambda role: Probe())
-    with pytest.raises(ValueError, match="the write failed"):
+    with pytest.raises(RuntimeError, match="the write failed") as caught:
         with flash.freeze_host():
             raise ValueError("the write failed")
+    assert "releasing cpu_reset also failed" in str(caught.value)
+    assert isinstance(caught.value.__cause__, ValueError)

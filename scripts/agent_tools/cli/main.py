@@ -97,12 +97,16 @@ def cmd_ports(args):
     emit(args, ports_data(), render_ports)
 
 
-def status_data(args):
-    data = {
+def serial_data():
+    return {
         "probe": probe_info(),
         "ports": {role: ports.find(role) for role in ports.ROLES},
         "linux": "not_running" if ports.find("mcu-usb") else "may_be_running",
     }
+
+
+def status_data(args):
+    data = serial_data()
     if not args.no_swd:
         data["swd"] = swd.status()
     return data
@@ -141,12 +145,7 @@ def cmd_status(args):
         emit(args, status_data(args), render_status)
         return
     # Text mode prints the serial part first, so a busy probe still shows the ports.
-    data = {
-        "probe": probe_info(),
-        "ports": {role: ports.find(role) for role in ports.ROLES},
-        "linux": "not_running" if ports.find("mcu-usb") else "may_be_running",
-    }
-    render_serial(data)
+    render_serial(serial_data())
     if not args.no_swd:
         render_swd(swd.status())
 

@@ -136,6 +136,8 @@ def freeze_host():
         finally:
             try:
                 probe.command("gpio cpu_reset 1", 3.0)
-            except (RuntimeError, TimeoutError, OSError):
+            except (RuntimeError, TimeoutError, OSError) as release_error:
                 if pending is None:
                     raise  # nothing else failed
+                # The host may still be held: say so, without hiding the write failure.
+                raise RuntimeError(f"{pending}\nwarning: releasing cpu_reset also failed: {release_error}") from pending
