@@ -108,7 +108,7 @@ def status_data(args):
     return data
 
 
-def render_status(data):
+def render_serial(data):
     print("probe    " + data["probe"]["text"])
     for role, path in data["ports"].items():
         print(f"port {role:8} {path or 'not connected'}")
@@ -116,9 +116,9 @@ def render_status(data):
         print("linux    not running (mcu-usb port is present)")
     else:
         print("linux    may be running (no mcu-usb port)")
-    state = data.get("swd")
-    if state is None:
-        return
+
+
+def render_swd(state):
     print("mcu      " + ("HALTED: by a debugger, or by the firmware after a crash (see the log)" if state["halted"] else "running") + f", uptime {state['uptime_s']:.1f}s")
     print("active   " + (f"slot {state['active_slot']}" if state["active_slot"] else "none: nothing booted, core is in the bootrom"))
     for name, slot in state["slots"].items():
@@ -130,8 +130,26 @@ def render_status(data):
         print(line)
 
 
+def render_status(data):
+    render_serial(data)
+    if data.get("swd") is not None:
+        render_swd(data["swd"])
+
+
 def cmd_status(args):
-    emit(args, status_data(args), render_status)
+    if getattr(args, "json", False):
+        emit(args, status_data(args), render_status)
+        return
+    # Text mode prints the serial part before touching SWD, so a probe held by a
+    # debugger still shows which ports are there before the command fails.
+    data = {
+        "probe": probe_info(),
+        "ports": {role: ports.find(role) for role in ports.ROLES},
+        "linux": "not_running" if ports.find("mcu-usb") else "may_be_running",
+    }
+    render_serial(data)
+    if not args.no_swd:
+        render_swd(swd.status())
 
 
 def cmd_cli(args):

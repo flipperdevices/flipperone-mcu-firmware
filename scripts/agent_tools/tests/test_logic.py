@@ -148,8 +148,10 @@ def test_board_config_owns_the_core_and_reading_helpers():
 
     text = open(swd.CONFIG).read()
     assert "source [find target/rp2350.cfg]" in text
-    assert "rp2350.cm0" in text
-    for proc in ("f1_core", "f1_halted", "f1_halt_cores", "f1_resume", "f1_where", "f1_read", "f1_stage_tbyb"):
+    # Core names come from the sourced config: OpenOCD builds name them differently
+    assert "_TARGETNAME_" in text
+    assert "set ::F1_CORE0 rp2350" not in text
+    for proc in ("f1_core", "f1_core_name", "f1_halted", "f1_halt_cores", "f1_resume", "f1_where", "f1_read", "f1_stage_tbyb"):
         assert f"proc {proc}" in text
 
 
@@ -303,3 +305,23 @@ def test_freeze_host_releases_when_arming_fails(monkeypatch):
         with flash.freeze_host():
             pytest.fail("the body must not run when the host was not held")
     assert calls == ["gpio cpu_reset 0", "gpio cpu_reset 1"]
+
+
+def test_freeze_host_keeps_the_original_failure_when_the_release_fails(monkeypatch):
+    from agent_tools.logic import flash
+
+    class Probe:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exception):
+            return False
+
+        def command(self, line, timeout=None):
+            if line == "gpio cpu_reset 1":
+                raise TimeoutError("no reply to the release")
+
+    monkeypatch.setattr(flash, "DeviceSession", lambda role: Probe())
+    with pytest.raises(ValueError, match="the write failed"):
+        with flash.freeze_host():
+            raise ValueError("the write failed")

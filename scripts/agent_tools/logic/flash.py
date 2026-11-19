@@ -7,7 +7,7 @@ import time
 from contextlib import contextmanager
 
 from .. import constants
-from ..packets import picobin, uf2
+from ..packets import openocd_output, picobin, uf2
 from . import swd
 from .device import DeviceSession
 
@@ -78,8 +78,13 @@ def wait_for_buy(plan, timeout=STAGE_TIMEOUT):
             image = slot_image(plan)
             if image.get("state") == "valid" and not image.get("tbyb_pending"):
                 return image
-        except (RuntimeError, TimeoutError, OSError):
-            pass  # the bootrom rewrites the sector, so a read may fail or come back erased
+        except (TimeoutError, OSError):
+            pass  # the bootrom rewrites the sector, so a read may come back erased
+        except RuntimeError as error:
+            # A read that hit the bootrom mid-write is expected; a missing OpenOCD or
+            # a probe held by a debugger is not, and waiting would only hide it.
+            if openocd_output.failure_hint(str(error)) or "OpenOCD not found" in str(error):
+                raise
         if time.monotonic() >= deadline:
             raise RuntimeError(
                 f"Slot {plan['slot']} still holds an unbought image after {timeout:.0f}s: the staged boot did not run. "
@@ -128,10 +133,20 @@ def flash(slot, path, activate=False):
 def freeze_host():
     """Hold the host CPU in reset through the probe while the write runs."""
     with DeviceSession("probe") as probe:
+        pending = None
         try:
             # The release goes in the finally: the probe may apply the reset and
             # still fail to acknowledge it, and a held host stays held.
             probe.command("gpio cpu_reset 0", 3.0)
             yield
+        except BaseException as error:
+            pending = error
+            raise
         finally:
-            probe.command("gpio cpu_reset 1", 3.0)
+            try:
+                probe.command("gpio cpu_reset 1", 3.0)
+            except (RuntimeError, TimeoutError, OSError):
+                if pending is None:
+                    raise  # nothing else failed, so the release failure is the story
+                # Keep the original failure visible; the probe keeps cpu_reset low
+                # only if its console is gone, which the message above says anyway.
