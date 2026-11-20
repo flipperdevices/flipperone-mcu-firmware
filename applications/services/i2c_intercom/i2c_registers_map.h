@@ -86,14 +86,19 @@
  * 0x0104+0 System interrupt register   (read, read to clear)
  *          Bit 0: The MCU (re)started and lost the settings the host wrote
  *                 (CPU state, interrupt masks, LEDs); the host writes them again
- *          Bit 1-15: Reserved
+ *          Bit 1: The MCU shows the host's screen again while the host was
+ *                 already running, and has no frame: the host sends its
+ *                 current one, which it would otherwise send only on a change
+ *          Bit 2-15: Reserved
  * 0x0184+0 System interrupt mask       (read, write)
  *          Bit 0: Restart interrupt masked
- *          Bit 1-15: Reserved
+ *          Bit 1: Frame request masked
+ *          Bit 2-15: Reserved
 */
 #define I2C_SYSTEM_INTERRUPT_REG_ADDRESS      (0x0104)
 #define I2C_SYSTEM_INTERRUPT_MASK_REG_ADDRESS (0x0184)
 #define I2C_SYSTEM_INTERRUPT_REG_BIT_RESET    (0)
+#define I2C_SYSTEM_INTERRUPT_REG_BIT_FRAME    (1)
 
 // Buttons state register
 /*

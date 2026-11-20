@@ -48,6 +48,7 @@ typedef struct {
         CpuState cpu_state;
         HostResetResponse reset_response;
         uint16_t reset_delay_100ms;
+        bool* was_powered_out;
     } as;
 } HostMessage;
 
@@ -68,14 +69,17 @@ static void host_power_reset_pd_and_charger(Host* instance) {
     power_bq2579x_reset_config(instance->power);
 }
 
-static void host_power_on_internal(Host* instance) {
+// Returns whether the host was already powered.
+static bool host_power_on_internal(Host* instance) {
     UNUSED(instance);
     // A host still powered across an MCU reset keeps running: only hand it
     // the expander back, which the reset gave to the MCU.
-    if(!furi_bsp_linux_is_load()) {
+    bool was_powered = furi_bsp_linux_is_load();
+    if(!was_powered) {
         furi_bsp_linux_reset();
     }
     furi_bsp_linux_start();
+    return was_powered;
 }
 
 static void host_power_off_internal(Host* instance) {
@@ -188,7 +192,12 @@ static void host_message_queue_callback(FuriEventLoopObject* object, void* conte
         host_set_cpu_state_internal(instance, msg.as.cpu_state);
         break;
     case HostMessageTypePowerOn:
-        host_power_on_internal(instance);
+        *msg.as.was_powered_out = host_power_on_internal(instance);
+        if(*msg.as.was_powered_out) {
+            // The host draws only on a change: ask for its current screen.
+            FURI_LOG_I(TAG, "Host already running: requesting its screen");
+            with_i2c_register({ i2c_register_set_interrupt(I2C_SYSTEM_INTERRUPT_REG_ADDRESS, 1 << I2C_SYSTEM_INTERRUPT_REG_BIT_FRAME); });
+        }
         break;
     case HostMessageTypePowerOff:
         host_power_off_internal(instance);
@@ -373,9 +382,11 @@ int32_t host_srv(void* p) {
     return 0;
 }
 
-void host_power_on(Host* instance) {
-    HostMessage msg = {.type = HostMessageTypePowerOn};
+bool host_power_on(Host* instance) {
+    bool was_powered = false;
+    HostMessage msg = {.type = HostMessageTypePowerOn, .as.was_powered_out = &was_powered};
     host_send_message(instance, &msg);
+    return was_powered;
 }
 
 void host_power_off(Host* instance) {

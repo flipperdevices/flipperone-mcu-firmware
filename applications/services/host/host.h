@@ -43,8 +43,14 @@ extern "C" {
  */
 void host_i2c_setup(Host* instance);
 
-/** Power the host unless it already is, and hand it the main expander. */
-void host_power_on(Host* instance);
+/**
+ * Power the host unless it already is, and hand it the main expander. A host
+ * that was already powered is running: it is asked to send its screen again.
+ * Call with the frame receiver up.
+ *
+ * @return true when the host was already powered
+ */
+bool host_power_on(Host* instance);
 /** Put PD and the charger back to defaults and cut the host rails. */
 void host_power_off(Host* instance);
 /** Cut the host rails and power it again. */

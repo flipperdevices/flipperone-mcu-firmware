@@ -109,6 +109,15 @@ static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     return true;
 }
 
+// Attached to a host that was already running: it sends its screen only on
+// request, so say we wait for it, unless a frame came first.
+static bool cpu_app_model_waiting(CpuAppModel* model, void* context) {
+    UNUSED(context);
+    if(model->frame.data != display_starting.data) return false;
+    model->frame = display_waiting;
+    return true;
+}
+
 /* Update the model to the latest frame WITHOUT triggering a redraw. The GUI
  * service decides how to present the frame (direct blit or Clay composite);
  * keeping the model in sync ensures a Clay redraw always uses the latest
@@ -162,7 +171,9 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
         case CpuAppMessageTypeStart:
-            host_power_on(instance->host);
+            if(host_power_on(instance->host)) {
+                cpu_app_model_apply(instance, cpu_app_model_waiting, NULL);
+            }
             break;
         case CpuAppMessageTypeReset:
             host_power_restart(instance->host);
