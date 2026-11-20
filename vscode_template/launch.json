@@ -16,7 +16,8 @@
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg"
+                // The SDK RP2350 target plus the board helpers, f1_stage_tbyb among them
+                "${workspaceFolder}/scripts/agent_tools/openocd/flipperone-mcu.cfg"
             ],
             "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "runToEntryPoint": "main",
@@ -26,15 +27,8 @@
                 "monitor reset halt",
                 "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000",
                 // The image is try-before-you-buy: a plain reset ignores it until it is bought.
-                // Leave a flash-update reboot vector for slot A in watchdog scratch (PSM WDSEL,
-                // scratch2..7, see furi_hal_power_reboot_to_partition); the reset below keeps it.
-                "monitor mww 0x40018008 0x01fffff3",
-                "monitor mww 0x400d8014 0x10002000",
-                "monitor mww 0x400d8018 0",
-                "monitor mww 0x400d801c 0xb007c0d3",
-                "monitor mww 0x400d8020 0xfffffffe",
-                "monitor mww 0x400d8024 4",
-                "monitor mww 0x400d8028 0xb007c0d3",
+                // Boot slot A as a flash-update boot, as after an update (board config).
+                "monitor f1_stage_tbyb 0x10002000",
                 "monitor reset halt"
             ],
             "openOCDLaunchCommands": [
@@ -106,7 +100,8 @@
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg"
+                // The SDK RP2350 target plus the board helpers, f1_stage_tbyb among them
+                "${workspaceFolder}/scripts/agent_tools/openocd/flipperone-mcu.cfg"
             ],
             "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "rtos": "FreeRTOS",
@@ -117,15 +112,8 @@
                 "monitor reset halt",
                 "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000",
                 // The image is try-before-you-buy: a plain reset ignores it until it is bought.
-                // Leave a flash-update reboot vector for slot A in watchdog scratch (PSM WDSEL,
-                // scratch2..7, see furi_hal_power_reboot_to_partition); the reset below keeps it.
-                "monitor mww 0x40018008 0x01fffff3",
-                "monitor mww 0x400d8014 0x10002000",
-                "monitor mww 0x400d8018 0",
-                "monitor mww 0x400d801c 0xb007c0d3",
-                "monitor mww 0x400d8020 0xfffffffe",
-                "monitor mww 0x400d8024 4",
-                "monitor mww 0x400d8028 0xb007c0d3",
+                // Boot slot A as a flash-update boot, as after an update (board config).
+                "monitor f1_stage_tbyb 0x10002000",
                 "monitor reset halt"
             ],
             "openOCDLaunchCommands": [
