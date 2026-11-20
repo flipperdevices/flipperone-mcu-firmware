@@ -97,5 +97,5 @@ picotool load -x build/flipperone-mcu-firmware.uf2
 
 If the MCU no longer boots, flash the recovery image: `flipper-one-mcu-<target>-recovery-<version>.uf2` from CI, or `build/recovery.uf2` from a build configured with `-DFW_RECOVERY=ON`. It holds the partition table and the firmware.
 
-1. Put the MCU into its USB bootloader (BOOTSEL), as described in the firmware update guide above
-2. Copy the recovery file onto the `RP2350` drive that appears
+1. Put the MCU into BOOTSEL (DFU) mode as described in the [firmware update guide](https://docs.flipper.net/one/mcu-firmware/firmware-update); use its button combination, which works even when the firmware does not start
+2. Copy the recovery file onto the drive that appears
