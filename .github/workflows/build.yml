@@ -184,6 +184,7 @@ jobs:
         mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.uf2
         mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.elf
         mv ${{github.workspace}}/firmware/build/partition_table.uf2 artifacts/flipper-one-mcu-partition-table-${SUFFIX}.uf2
+        mv ${{github.workspace}}/firmware/build/recovery.uf2 artifacts/flipper-one-mcu-${{ matrix.target }}-recovery-${SUFFIX}.uf2
 
     - name: 'Stash artifacts for the jobs below'
       if: ${{ !github.event.pull_request.head.repo.fork }}
@@ -248,6 +249,7 @@ jobs:
           echo "- [Partition table]($BASE/flipper-one-mcu-partition-table-$SUFFIX.uf2)"
           for t in $(echo "$TARGETS" | jq -r '.[]'); do
             echo "- [🍓 $t UF2 file]($BASE/flipper-one-mcu-$t-firmware-$SUFFIX.uf2)"
+            echo "- [🛟 $t recovery UF2]($BASE/flipper-one-mcu-$t-recovery-$SUFFIX.uf2)"
           done
         } > comment.md
         cat comment.md

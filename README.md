@@ -92,3 +92,20 @@ Alternatively, you can flash the firmware with [`picotool`](https://github.com/r
 ```shell
 picotool load -x build/flipperone-mcu-firmware.uf2
 ```
+
+### Recovering the MCU
+
+The build also produces `build/recovery.uf2` (in CI: `flipper-one-mcu-<target>-recovery-<version>.uf2`): the partition table together with the firmware placed in partition 0. It brings an erased chip back to a bootable state in one step, with no separate partition table flash. Erase the chip and reboot it into the bootloader first:
+
+```shell
+picotool erase
+picotool reboot -u
+```
+
+Then copy `recovery.uf2` onto the `RP2350` drive, or load it with `picotool`:
+
+```shell
+picotool load -x build/recovery.uf2
+```
+
+`picotool erase` wipes the whole flash, the `Data` partition included.
