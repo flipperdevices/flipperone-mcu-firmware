@@ -29,6 +29,29 @@ env:
   # them from the header of CMakeLists.txt.
 
 jobs:
+  workflow-tests:
+    name: Validate MCU workflow and dispatch protocol
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install and verify pinned actionlint
+        env:
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/actionlint.tar.gz" \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+      - name: Validate the Build workflow
+        run: '"$RUNNER_TEMP/actionlint" -shellcheck= .github/workflows/build.yml .github/workflows/mcu-system-smoke.yml'
+      - name: Verify dispatch correlation and fail-closed result handling
+        run: python3 -m unittest discover -s scripts/tests -p test_system_smoke.py -v
+
   # The list of hardware targets: every directory under targets/ with a
   # target.cmake. Everything below fans out over this list, so adding a target is
   # adding a directory — nothing in this file has to change.
@@ -195,7 +218,7 @@ jobs:
 
   unit-tests:
     needs: firmware
-    if: ${{ !github.event.pull_request.head.repo.fork }}
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/unit-test.yml
     with:
       commit_sha: ${{ github.sha }}
@@ -203,6 +226,16 @@ jobs:
       artifact_name: firmware-f2
       artifact_suffix: ${{ needs.firmware.outputs.suffix }}
       target: f2
+
+  mcu-system-smoke:
+    needs: firmware
+    if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/mcu-system-smoke.yml
+    secrets:
+      MCU_PR_TEST_TOKEN: ${{ secrets.MCU_PR_TEST_TOKEN }}
 
   publish:
     runs-on: ubuntu-latest
@@ -298,17 +331,28 @@ jobs:
   # is added — so the required check is this fixed-name job instead.
   build:
     runs-on: ubuntu-latest
-    needs: [firmware, publish, unit-tests]
+    needs: [firmware, publish, unit-tests, mcu-system-smoke, workflow-tests]
     if: always()
 
     steps:
     # A job skipped because something it needed failed still counts as success
     # for a required check, so the results are inspected explicitly.
     - name: 'Check the jobs above'
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INTERNAL_PR: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
       run: |
         echo "firmware: ${{ needs.firmware.result }}"
         echo "publish:  ${{ needs.publish.result }}"
         echo "unit-tests: ${{ needs.unit-tests.result }}"
+        echo "mcu-system-smoke: ${{ needs.mcu-system-smoke.result }}"
+        echo "workflow-tests: ${{ needs.workflow-tests.result }}"
+        [ "${{ needs.workflow-tests.result }}" = success ] || exit 1
         [ "${{ needs.firmware.result }}" = "success" ] || exit 1
         case "${{ needs.publish.result }}" in success|skipped) ;; *) exit 1 ;; esac
         case "${{ needs.unit-tests.result }}" in success|skipped) ;; *) exit 1 ;; esac
+        if [ "$EVENT_NAME" = pull_request ] && [ "$INTERNAL_PR" = true ]; then
+          [ "${{ needs.mcu-system-smoke.result }}" = success ] || exit 1
+        else
+          case "${{ needs.mcu-system-smoke.result }}" in success|skipped) ;; *) exit 1 ;; esac
+        fi

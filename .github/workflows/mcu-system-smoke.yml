@@ -1,0 +1,43 @@
+name: MCU tests
+
+on:
+  workflow_call:
+    secrets:
+      MCU_PR_TEST_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  system-smoke:
+    if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
+    name: MCU tests (units + system)
+    runs-on: ubuntu-latest
+    timeout-minutes: 185
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Download the exact f2 artifact from this build
+        id: artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: firmware-f2
+          path: firmware
+      - name: Identify the immutable f2 artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact_id=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+            --jq '[.artifacts[] | select(.name == "firmware-f2" and .expired == false)] | if length == 1 then .[0].id else error("Expected one f2 artifact") end')
+          echo "MCU_ARTIFACT_ID=$artifact_id" >> "$GITHUB_ENV"
+      - name: Dispatch system qualification and return its result
+        env:
+          MCU_PR_TEST_TOKEN: ${{ secrets.MCU_PR_TEST_TOKEN }}
+          FONE_SYSTEM_TESTS_REF: ${{ vars.FONE_SYSTEM_TESTS_REF || 'main' }}
+          FONE_SYSTEM_TESTS_WORKFLOW: ${{ vars.FONE_SYSTEM_TESTS_WORKFLOW || 'pr-mcu-smoke.yml' }}
+          FONE_MCU_LINUX_BUILD: ${{ vars.FONE_MCU_LINUX_BUILD }}
+          FONE_MCU_LINUX_CHANNEL: ${{ vars.FONE_MCU_LINUX_CHANNEL || 'nightly' }}
+        run: python3 scripts/system_smoke.py
