@@ -3,12 +3,13 @@
 #include <api_lock.h>
 #include <desktop/desktop.h>
 #include <power/power.h>
+#include <updater/updater.h>
 #include <pd/pd.h>
 #include <furi_bsp_linux.h>
 #include <furi_hal_power.h>
-#include <furi_hal_flash.h>
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
+#include <hardware/structs/watchdog.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
 
@@ -17,7 +18,6 @@
 #define HOST_MAX_MESSAGES          (8)
 #define HOST_POWER_OFF_DELAY_MS    (300)
 #define HOST_MASKROM_RELEASE_MS    (1000)
-#define HOST_UPDATE_REBOOT_DELAY_MS (10000) // host power-cycle delay after a switch
 #define HOST_RESET_ATTEMPTS        (3) // charger power-reset tries before giving up
 #define HOST_CPU_APP_RETRY_MS      (1000) // wait for self_check to release the desktop
 
@@ -29,12 +29,11 @@ struct Host {
     FuriEventLoopTimer* cpu_app_retry_timer;
     FuriEventLoopTimer* maskrom_timer;
     FuriEventLoopTimer* reset_timer;
-    FuriEventLoopTimer* update_reboot_timer;
     HostResetResponse reset_response;
     uint16_t reset_delay_100ms;
-    size_t update_base;
     uint32_t dropped_messages_logged;
     Power* power;
+    Updater* updater;
 };
 
 typedef enum {
@@ -45,7 +44,6 @@ typedef enum {
     HostMessageTypePowerMaskrom,
     HostMessageTypeSetResetResponse,
     HostMessageTypeSetResetDelay,
-    HostMessageTypeSetUpdateBase,
     HostMessageTypeI2cSystemReset,
 } HostMessageType;
 
@@ -57,7 +55,6 @@ typedef struct {
         CpuState cpu_state;
         HostResetResponse reset_response;
         uint16_t reset_delay_100ms;
-        size_t update_base;
         uint16_t i2c_value;
     } as;
 } HostMessage;
@@ -113,7 +110,7 @@ static void host_maskrom_timer_callback(void* context) {
 // Response to the host going down
 
 // The reset mode register always shows the armed response: an invalid host
-// write is put back, and the updater's arming shows up there too.
+// write is put back.
 static bool host_set_reset_response_internal(Host* instance, HostResetResponse response) {
     bool valid = response < HostResetResponseCount;
     if(valid) {
@@ -129,8 +126,10 @@ static bool host_set_reset_response_internal(Host* instance, HostResetResponse r
 static void host_reset_state_changed(Host* instance, CpuState cpu_state) {
     if(instance->reset_response == HostResetResponseDisabled) return;
 
-    if(cpu_state == CpuStateShuttingDown || cpu_state == CpuStatePoweredOff) {
-        // Host going down: (re)start the reset timer.
+    // Only the states the kernel sends once its devices are shut down.
+    // ShuttingDown comes before that, and on every kexec as well.
+    if(cpu_state == CpuStatePoweredOff || cpu_state == CpuStateRestarting) {
+        // Host down: (re)start the reset timer.
         uint32_t delay_ms = (uint32_t)instance->reset_delay_100ms * 100;
         FURI_LOG_I(TAG, "Host going down (state %d), arming reset timer in %lu ms", cpu_state, (unsigned long)delay_ms);
         furi_event_loop_timer_start(instance->reset_timer, delay_ms);
@@ -143,30 +142,17 @@ static void host_reset_state_changed(Host* instance, CpuState cpu_state) {
     }
 }
 
-// A flash-update boot needs a valid image header in the target slot.
-static bool host_update_base_is_bootable(Host* instance) {
-    if(instance->update_base == 0) return false;
-    FuriHalFwVersion version;
-    return furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(instance->update_base), &version);
-}
-
+// Cut the host's power first, so that nothing runs on it while the MCU is
+// away, then boot a staged image or reset. The next boot powers it again.
 static void host_reset_timer_callback(void* context) {
     furi_assert(context);
     Host* instance = context;
 
-    switch(instance->reset_response) {
-    case HostResetResponseResetMcu:
-        if(host_update_base_is_bootable(instance)) {
-            FURI_LOG_I(TAG, "Host is down, booting updated partition at 0x%08lX", (unsigned long)instance->update_base);
-            furi_hal_power_reboot_to_partition((uint32_t)instance->update_base);
-        } else {
-            FURI_LOG_I(TAG, "Host is down, resetting MCU");
-            furi_hal_power_reset();
-        }
-        break;
-    case HostResetResponseResetMcuAndPower:
-        FURI_LOG_I(TAG, "Host is down, resetting MCU and cycling host power");
-        host_power_reset_pd_and_charger(instance);
+    FURI_LOG_I(TAG, "Host is down, cutting its power");
+    host_power_off_internal(instance);
+
+    if(instance->reset_response == HostResetResponseResetMcuAndPower) {
+        FURI_LOG_I(TAG, "Cycling system power through the charger");
         for(uint32_t attempt = 0; attempt < HOST_RESET_ATTEMPTS; attempt++) {
             if(attempt) {
                 furi_delay_ms(1000);
@@ -175,36 +161,21 @@ static void host_reset_timer_callback(void* context) {
                 break;
             }
         }
-        // Reset the MCU explicitly as well: the charger cycle only handles
-        // the host, and a failing charger must not leave the MCU half-switched.
-        furi_hal_power_reset();
-        break;
-    default:
-        FURI_LOG_E(TAG, "Host reset timer fired while disabled");
-        break;
     }
+
+    // Boot a staged image, or reset: also after the charger cycle, which only
+    // handles the host, so a failing charger can't leave the MCU half-switched.
+    updater_activate(instance->updater);
+    FURI_LOG_I(TAG, "Resetting MCU");
+    furi_hal_power_reset();
 }
 
-// SYSTEM_RESET from the host: activate an armed image, else a plain reset.
-// The host keeps its power, and the next boot finds it powered.
+// SYSTEM_RESET from the host: boot a staged image, else a plain reset. The
+// host keeps its power, and the next boot finds it powered.
 static void host_reset_request_internal(Host* instance) {
-    if(host_update_base_is_bootable(instance)) {
-        FURI_LOG_I(TAG, "Host reset request: booting updated partition at 0x%08lX", (unsigned long)instance->update_base);
-        furi_hal_power_reboot_to_partition((uint32_t)instance->update_base);
-    } else {
-        FURI_LOG_I(TAG, "Host reset request: resetting MCU");
-        furi_hal_power_reset();
-    }
-}
-
-/* A flash-update boot strands the host mid-reboot: cycle its rails (PD +
- * charger + expander) so it comes back. */
-static void host_update_reboot_timer_callback(void* context) {
-    furi_assert(context);
-    Host* instance = context;
-
-    FURI_LOG_I(TAG, "Flash-update boot: power-cycling the host");
-    host_power_restart_internal(instance);
+    updater_activate(instance->updater);
+    FURI_LOG_I(TAG, "Host reset request: resetting MCU");
+    furi_hal_power_reset();
 }
 
 // Messages
@@ -264,10 +235,6 @@ static void host_message_queue_callback(FuriEventLoopObject* object, void* conte
     case HostMessageTypeSetResetDelay:
         instance->reset_delay_100ms = msg.as.reset_delay_100ms;
         FURI_LOG_I(TAG, "Host reset delay: %u (100ms)", instance->reset_delay_100ms);
-        break;
-    case HostMessageTypeSetUpdateBase:
-        instance->update_base = msg.as.update_base;
-        FURI_LOG_I(TAG, "Host reset update base: 0x%08lX", (unsigned long)instance->update_base);
         break;
     case HostMessageTypeI2cSystemReset:
         if(msg.as.i2c_value == I2C_SYSTEM_RESET_MAGIC) {
@@ -365,15 +332,22 @@ static void host_cpu_app_retry_timer_callback(void* context) {
     host_start_cpu_app(context);
 }
 
-// Pick the boot path from the boot type and the host rails, which an MCU
-// reset leaves as they were: a powered host after a normal boot is running
-// (Linux only ever holds them on), so show it right away; Linux replays its
-// state on the restart interrupt. Flash-update boots power-cycle the host.
+// Pick the boot path. An MCU reset leaves the host rails as they were, and
+// Linux only ever holds them on, so a powered host is running: show it, and
+// Linux replays its state on the restart interrupt. A switch to a new image
+// (a flash-update boot, bought by now: the updater record comes after the
+// buy) and a try-before-you-buy revert (the watchdog fired) follow a host
+// that went down, whose power the old image cut: power it again.
 static void host_boot_start(Host* instance) {
+    // Power first: the screen may wait for self_check, the host need not.
     if(rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) {
-        // After a partition switch the host is stranded mid-reboot: power-cycle it.
-        FURI_LOG_I(TAG, "Flash-update boot detected, cycling host power in %lu ms", (unsigned long)HOST_UPDATE_REBOOT_DELAY_MS);
-        furi_event_loop_timer_start(instance->update_reboot_timer, HOST_UPDATE_REBOOT_DELAY_MS);
+        FURI_LOG_I(TAG, "Flash-update boot: starting the host");
+        host_power_on_internal(instance);
+        host_start_cpu_app(instance);
+    } else if(watchdog_hw->reason & WATCHDOG_REASON_TIMER_BITS) {
+        FURI_LOG_I(TAG, "Watchdog reset, an update reverted: starting the host");
+        host_power_on_internal(instance);
+        host_start_cpu_app(instance);
     } else if(furi_bsp_linux_is_load()) {
         FURI_LOG_I(TAG, "Host is powered: starting CPU app");
         host_start_cpu_app(instance);
@@ -434,9 +408,8 @@ static Host* host_alloc(void) {
     instance->cpu_app_retry_timer = furi_event_loop_timer_alloc(instance->event_loop, host_cpu_app_retry_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->maskrom_timer = furi_event_loop_timer_alloc(instance->event_loop, host_maskrom_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->reset_timer = furi_event_loop_timer_alloc(instance->event_loop, host_reset_timer_callback, FuriEventLoopTimerTypeOnce, instance);
-    instance->update_reboot_timer =
-        furi_event_loop_timer_alloc(instance->event_loop, host_update_reboot_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->power = furi_record_open(RECORD_POWER);
+    instance->updater = furi_record_open(RECORD_UPDATER);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, host_message_queue_callback, instance);
 
@@ -475,14 +448,3 @@ void host_power_maskrom(Host* instance) {
     HostMessage msg = {.type = HostMessageTypePowerMaskrom};
     host_send_message(instance, &msg);
 }
-
-bool host_set_reset_response(Host* instance, HostResetResponse response) {
-    HostMessage msg = {.type = HostMessageTypeSetResetResponse, .as.reset_response = response};
-    return host_send_message(instance, &msg);
-}
-
-bool host_set_update_base(Host* instance, size_t update_base) {
-    HostMessage msg = {.type = HostMessageTypeSetUpdateBase, .as.update_base = update_base};
-    return host_send_message(instance, &msg);
-}
-

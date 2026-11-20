@@ -43,9 +43,9 @@ void furi_hal_power_reset(void) {
     }
 }
 
-// Slow the watchdog tick so LOAD=0xffffff spans ~18s: at the default 1-clk_ref
-// tick it re-fires (~1.4s) mid-bootrom and the flash-update boot loops.
-static void furi_hal_power_watchdog_slow(void) {
+// Run the watchdog on the SDK's 1 us tick (clk_ref/12), so LOAD counts in
+// microseconds whatever clk_ref is.
+static void furi_hal_power_watchdog_tick_us(void) {
     watchdog_hw->ctrl = 0;
     ticks_hw->ticks[TICK_WATCHDOG].ctrl = 0;
     ticks_hw->ticks[TICK_WATCHDOG].cycles = 12;
@@ -65,11 +65,14 @@ static void furi_hal_power_watchdog_flash_update_vector(uint32_t partition_stora
     watchdog_hw->scratch[7] = 0xb007c0d3;
 }
 
+#define FURI_HAL_POWER_REBOOT_DELAY_US (1000)
+
 void furi_hal_power_reboot_to_partition(uint32_t partition_storage_offset) {
-    furi_hal_power_watchdog_slow();
+    furi_hal_power_watchdog_tick_us();
     furi_hal_power_watchdog_flash_update_vector(partition_storage_offset);
-    // ENABLE only: TRIGGER resets immediately and then re-fires in a loop.
-    watchdog_hw->load = WATCHDOG_CTRL_TIME_BITS;
+    // A short LOAD and ENABLE: TRIGGER resets immediately and then re-fires
+    // in a loop. The bootrom arms its own watchdog for the image it runs.
+    watchdog_hw->load = FURI_HAL_POWER_REBOOT_DELAY_US;
     watchdog_hw->ctrl = WATCHDOG_CTRL_ENABLE_BITS;
     // Wait for the watchdog; a SYSRESETREQ here would clear scratch and
     // degrade the flash-update boot into a plain normal boot.

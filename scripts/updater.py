@@ -250,8 +250,8 @@ def main() -> int:
         "--reset-mode",
         type=int,
         choices=[mode.value for mode in ResetMode],
-        default=None,
-        help="MCU response to the host shutting down (default: none, the MCU arms reset-on-host-shutdown itself after a successful update); to reset now, use --reset",
+        default=ResetMode.RESET_MCU,
+        help="MCU response to the host powering off or rebooting, armed after the update (default: 1, switch to the new image; 0 leaves it staged); to switch now, use --reset",
     )
     parser.add_argument(
         "--reset-delay",
@@ -290,12 +290,14 @@ def main() -> int:
                     # The MCU resets as soon as the worker handles the write,
                     # possibly before the transfer completes: that is success.
                     print("Reset command sent; the MCU reset mid-transfer.")
-            elif args.reset_mode is not None:
+            else:
                 mcu.write_register(Reg.SYSTEM_RESET_DELAY, args.reset_delay)
                 mcu.write_register(Reg.SYSTEM_RESET_MODE, args.reset_mode)
                 print(f"Reset response set: {ResetMode(args.reset_mode).name}, delay: {args.reset_delay * 100} ms")
-            else:
-                print("Update complete. The image is staged in the inactive partition; the MCU switches to it only on a flash-update boot.")
+                if args.reset_mode == ResetMode.DISABLED:
+                    print("The image stays staged; the MCU switches to it on a reset command (--reset).")
+                else:
+                    print("The MCU switches to the new image when the host powers off or reboots.")
     except UpdateError as exc:
         print(f"Update failed: {exc}")
         return 1

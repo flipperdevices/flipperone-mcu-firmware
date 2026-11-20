@@ -21,14 +21,15 @@ typedef enum {
     CpuStatePoweroffReq, /* Userspace preparing to power off */
     CpuStateShuttingDown, /* Kernel reboot/power-off in progress */
     CpuStatePoweredOff, /* Safe to cut power to the PMIC */
+    CpuStateRestarting, /* Safe to power-cycle the PMIC */
     CpuStateNumStates,
 } CpuState;
 
 /* MCU response to the host going down; wire values of the reset mode register */
 typedef enum {
     HostResetResponseDisabled, /* Ignore host shutdown (default) */
-    HostResetResponseResetMcu, /* Reset the MCU when the host goes down */
-    HostResetResponseResetMcuAndPower, /* Also power-cycle the host */
+    HostResetResponseResetMcu, /* Cut host power, reset the MCU into a staged image if any */
+    HostResetResponseResetMcuAndPower, /* Also cycle system power through the charger */
     HostResetResponseCount,
 } HostResetResponse;
 
@@ -51,11 +52,6 @@ void host_power_off(Host* instance);
 void host_power_restart(Host* instance);
 /** Power the host into the SoC maskrom; the strap is released after a second. */
 void host_power_maskrom(Host* instance);
-
-/** Arm the MCU response to the host going down (RAM-only). */
-bool host_set_reset_response(Host* instance, HostResetResponse response);
-/** Flash storage offset of a freshly written partition, booted by an armed ResetMcu response (0 clears it). */
-bool host_set_update_base(Host* instance, size_t update_base);
 
 #ifdef __cplusplus
 }

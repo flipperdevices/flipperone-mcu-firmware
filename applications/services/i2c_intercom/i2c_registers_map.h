@@ -38,15 +38,20 @@
 // System reset registers
 /*
  * 0x0090+0 System reset command register (write)
- *          Writing the 16-bit magic value I2C_SYSTEM_RESET_MAGIC resets the MCU.
+ *          Writing the 16-bit magic value I2C_SYSTEM_RESET_MAGIC resets the MCU,
+ *          into the image the last update staged if there is one. The host
+ *          keeps its power.
  *          Any other value is ignored.
  * 0x0090+2 System reset mode register (read, write)
- *          MCU response to the host (Linux) going down:
+ *          MCU response to the host (Linux) going down, that is to the CPU
+ *          state powered-off (9) or restarting (10), which the host sends once
+ *          its devices are shut down:
  *          0x0000: Disabled, the MCU ignores host shutdown (default)
- *          0x0001: Reset the MCU when the host shuts down
- *          0x0002: Reset the MCU and power-cycle the host when the host shuts down
- *          Other values are ignored.
- *          The firmware arms 0x0001 itself after a successful update.
+ *          0x0001: Cut host power and reset the MCU, into the image the last
+ *                  update staged if there is one; the MCU powers the host again
+ *          0x0002: The same, cycling system power through the charger first
+ *          Other values are ignored. The host writes 0x0001 after an update
+ *          reaches DONE to switch to the new image; the MCU forgets it on reset.
  * 0x0090+4 System reset delay register (read, write)
  *          Delay in 100 ms units between the triggering host state and the
  *          reset. 0 resets immediately. If the host comes back online before

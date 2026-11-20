@@ -3,7 +3,7 @@
 #include <hardware/flash.h>
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
-#include <host/host.h>
+#include <furi_hal_power.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
 
@@ -56,7 +56,9 @@ struct Updater {
     volatile uint32_t isr_error;
     bool update_supported;
 
-    Host* host;
+    // Inactive slot holding a complete, verified image, 0 for none. Written
+    // by the updater thread, read by updater_activate() from the host's.
+    volatile size_t staged_base;
 
     UpdaterI2cRx i2c_rx;
 };
@@ -173,11 +175,9 @@ static bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, 
     return true;
 }
 
-// A stale armed reset would flash-update-boot a half-written slot on host down.
-static void updater_disarm_host_reset(Updater* updater) {
-    if(!updater->host) return;
-    host_set_update_base(updater->host, 0);
-    host_set_reset_response(updater->host, HostResetResponseDisabled);
+// A stale staged image would flash-update-boot a half-written slot.
+static void updater_unstage(Updater* updater) {
+    updater->staged_base = 0;
 }
 
 static void updater_state_change(Updater* updater, UpdaterState new_state, UpdaterError error) {
@@ -185,7 +185,7 @@ static void updater_state_change(Updater* updater, UpdaterState new_state, Updat
     if(updater->state != new_state) {
         updater->state = new_state;
         if(new_state == UpdaterStateError) {
-            updater_disarm_host_reset(updater);
+            updater_unstage(updater);
         }
         uint16_t status = ((new_state == UpdaterStateError ? error : UpdaterErrorNone) << 8) | new_state;
         with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, status, 0xFFFF); });
@@ -239,10 +239,9 @@ static void updater_finalize_update(Updater* updater) {
     // The bootrom handles invalidation on the flash-update boot; erasing here
     // would leave it nothing to boot.
 
-    // Arm before DONE: the host reads the reset mode register once it sees DONE.
-    host_set_update_base(updater->host, updater->inactive_partition_address);
-    host_set_reset_response(updater->host, HostResetResponseResetMcu);
-    FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
+    // Stage before DONE: the host arms the switch once it sees DONE.
+    updater->staged_base = updater->inactive_partition_address;
+    FURI_LOG_I(TAG, "Image staged at 0x%08lX", (unsigned long)updater->staged_base);
 
     with_i2c_register({
         i2c_register_update(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, ((uint16_t)new_version.major << 8) | new_version.minor, 0xFFFF);
@@ -372,7 +371,7 @@ static void updater_start_update(Updater* updater) {
     }
 
     // A new update voids whatever the previous session armed.
-    updater_disarm_host_reset(updater);
+    updater_unstage(updater);
 
     updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
     updater->current_block = 0;
@@ -382,7 +381,7 @@ static void updater_start_update(Updater* updater) {
 }
 
 static void updater_abort_update(Updater* updater) {
-    updater_disarm_host_reset(updater);
+    updater_unstage(updater);
     updater->update_params.crc_set = false;
     updater->update_params.size_set = false;
     updater->update_params.blocks = 0;
@@ -509,7 +508,6 @@ int32_t updater_srv(void* p) {
         instance->current_version = (FuriHalFwVersion){0};
     }
 
-    instance->host = furi_record_open(RECORD_HOST);
     furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);
@@ -544,4 +542,20 @@ void updater_i2c_setup(Updater* updater) {
         I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
         "I2C updater data window must match the updater block layout");
     i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, updater);
+}
+
+void updater_activate(Updater* updater) {
+    furi_check(updater);
+    size_t base = updater->staged_base;
+    if(base == 0) return;
+
+    // A flash-update boot needs a valid image header in the target slot.
+    FuriHalFwVersion version;
+    if(!furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(base), &version)) {
+        FURI_LOG_E(TAG, "Staged image at 0x%08lX has no valid header", (unsigned long)base);
+        return;
+    }
+
+    FURI_LOG_I(TAG, "Booting the staged image at 0x%08lX", (unsigned long)base);
+    furi_hal_power_reboot_to_partition((uint32_t)base);
 }

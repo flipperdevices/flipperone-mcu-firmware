@@ -72,3 +72,12 @@ uint16_t updater_crc16(const uint8_t* buf, size_t len, uint16_t crc_init);
  * @param updater Updater instance.
  */
 void updater_i2c_setup(Updater* updater);
+
+/**
+ * @brief Boot the image the last update staged, as a flash-update boot.
+ *
+ * Returns only when nothing is staged, or the slot holds no valid image.
+ *
+ * @param updater Updater instance.
+ */
+void updater_activate(Updater* updater);
