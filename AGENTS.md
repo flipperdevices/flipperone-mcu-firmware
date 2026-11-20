@@ -67,8 +67,8 @@ To see and control a Flipper One attached to this machine (screen, buttons, cons
 
 ## Opening a pull request
 
-Open the PR as a **draft** against `dev`: CI builds only pull requests, and the hardware
-check needs its artifacts. Fill [.github/pull_request_template.md](.github/pull_request_template.md)
+Open the PR as a **draft** against `dev`: CI does not build a branch until it has a PR,
+and the hardware check needs its artifacts. Fill [.github/pull_request_template.md](.github/pull_request_template.md)
 (`gh pr create --body` skips it, so copy it in by hand) and keep it short: *Verification*
 lists only steps a reviewer can realistically repeat, other cases you tried get two or
 three words each. Leave the *Contributor checklist* unticked: it is the author's personal
