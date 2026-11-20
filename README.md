@@ -95,19 +95,7 @@ picotool load -x build/flipperone-mcu-firmware.uf2
 
 ### Recovering the MCU
 
-A recovery image (in CI: `flipper-one-mcu-<target>-recovery-<version>.uf2`) holds the partition table together with the firmware placed in partition 0. It brings an erased chip back to a bootable state in one step, with no separate partition table flash. To build it yourself, configure with `-DFW_RECOVERY=ON`; the build then writes `build/recovery.uf2`. Its firmware is built without try-before-you-buy, because the bootrom does not boot a TBYB image after loading such a file.
+If the MCU no longer boots, flash the recovery image: `flipper-one-mcu-<target>-recovery-<version>.uf2` from CI, or `build/recovery.uf2` from a build configured with `-DFW_RECOVERY=ON`. It holds the partition table and the firmware.
 
-Erase the chip and reboot it into the bootloader first:
-
-```shell
-picotool erase
-picotool reboot -u
-```
-
-Then copy `recovery.uf2` onto the `RP2350` drive, or load it with `picotool`:
-
-```shell
-picotool load -x build/recovery.uf2
-```
-
-`picotool erase` wipes the whole flash, the `Data` partition included.
+1. Put the MCU into its USB bootloader (BOOTSEL), as described in the firmware update guide above
+2. Copy the recovery file onto the `RP2350` drive that appears
