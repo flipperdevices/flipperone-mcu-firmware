@@ -3,7 +3,7 @@
 #include <hardware/flash.h>
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
-#include <power/power.h>
+#include <host/host.h>
 
 #define TAG "Updater"
 
@@ -58,7 +58,7 @@ struct Updater {
     UpdaterStateCallback state_callback;
     void* state_callback_context;
 
-    Power* power;
+    Host* host;
 
     UpdaterI2cRx i2c_rx;
 };
@@ -177,9 +177,9 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
 
 // A stale armed reset would flash-update-boot a half-written slot on host down.
 static void updater_disarm_host_reset(Updater* updater) {
-    if(!updater->power) return;
-    power_set_update_base(updater->power, 0);
-    power_set_host_reset_response(updater->power, PowerHostResetResponseDisabled);
+    if(!updater->host) return;
+    host_set_update_base(updater->host, 0);
+    host_set_reset_response(updater->host, HostResetResponseDisabled);
 }
 
 static void updater_state_change(Updater* updater, UpdaterState new_state, UpdaterError error) {
@@ -244,8 +244,8 @@ static void updater_finalize_update(Updater* updater) {
 
     // Arm before DONE: the negotiator mirrors the armed state into the
     // reset-mode register on the DONE callback.
-    power_set_update_base(updater->power, updater->inactive_partition_address);
-    power_set_host_reset_response(updater->power, PowerHostResetResponseResetMcu);
+    host_set_update_base(updater->host, updater->inactive_partition_address);
+    host_set_reset_response(updater->host, HostResetResponseResetMcu);
     FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
 
     updater->last_written_version = new_version;
@@ -510,7 +510,7 @@ int32_t updater_srv(void* p) {
         instance->current_version = (FuriHalFwVersion){0};
     }
 
-    instance->power = furi_record_open(RECORD_POWER);
+    instance->host = furi_record_open(RECORD_HOST);
     furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);

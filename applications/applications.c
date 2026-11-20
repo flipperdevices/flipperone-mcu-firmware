@@ -19,7 +19,7 @@ extern int32_t usb_mux_srv(void* p);
 extern int32_t cli_uart_srv(void* p);
 extern int32_t cli_vcp_srv(void* p);
 extern int32_t updater_srv(void* p);
-extern int32_t cpu_mode_srv(void* p);
+extern int32_t host_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -167,10 +167,10 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = cpu_mode_srv,
-        .name = "CpuModeSrv",
-        .appid = "cpu_mode_srv",
-        .stack_size = 1024,
+        .app = host_srv,
+        .name = "HostSrv",
+        .appid = "host_srv",
+        .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
 };
