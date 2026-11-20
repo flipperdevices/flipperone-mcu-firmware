@@ -232,7 +232,10 @@
  * 0xF000 + 0x00: Updater status register (read), High byte: UpdaterError, Low byte: UpdaterState
  * 0xF000 + 0x02: Updater firmware version register (read), 2 bytes, current firmware version
  * 0xF000 + 0x04: Updater command register (write), UpdaterCommand
- * 0xF000 + 0x06: Updater boot status register (read), Low byte: active partition ('A'/'B'), High byte: boot type (0 normal, 1 flash-update)
+ * 0xF000 + 0x06: Updater boot status register (read), Low byte: active partition ('A'/'B'), High byte: boot type:
+ *                0 normal; 1 flash-update, the switch to a new image, which the MCU bought;
+ *                2 revert, a normal boot after the watchdog fired: a new image did not
+ *                get as far as buying itself, and the bootrom went back to the old one
  * 0xF000 + 0x08: Updater last written version register (read), version of the last accepted update, 0 until the first update
  * 0xF000 + 0x0A: Updater firmware patch register (read), patch of the current firmware, 0 on silicon B3 (see cmake/fw_version.cmake)
  * 0xF000 + 0x0C: Updater last written patch register (read), patch of the last accepted update, 0 until the first update, 0 on B3

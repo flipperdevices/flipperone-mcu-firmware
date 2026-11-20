@@ -7,9 +7,6 @@
 #include <pd/pd.h>
 #include <furi_bsp_linux.h>
 #include <furi_hal_power.h>
-#include <pico/bootrom.h>
-#include <boot/bootrom_constants.h>
-#include <hardware/structs/watchdog.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
 
@@ -340,12 +337,9 @@ static void host_cpu_app_retry_timer_callback(void* context) {
 // that went down, whose power the old image cut: power it again.
 static void host_boot_start(Host* instance) {
     // Power first: the screen may wait for self_check, the host need not.
-    if(rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) {
-        FURI_LOG_I(TAG, "Flash-update boot: starting the host");
-        host_power_on_internal(instance);
-        host_start_cpu_app(instance);
-    } else if(watchdog_hw->reason & WATCHDOG_REASON_TIMER_BITS) {
-        FURI_LOG_I(TAG, "Watchdog reset, an update reverted: starting the host");
+    UpdaterBootType boot_type = updater_get_boot_type(instance->updater);
+    if(boot_type != UpdaterBootTypeNormal) {
+        FURI_LOG_I(TAG, "%s: starting the host", boot_type == UpdaterBootTypeFlashUpdate ? "Switched to a new image" : "Update reverted");
         host_power_on_internal(instance);
         host_start_cpu_app(instance);
     } else if(furi_bsp_linux_is_load()) {

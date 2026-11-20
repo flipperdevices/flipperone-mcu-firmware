@@ -3,6 +3,7 @@
 #include <hardware/flash.h>
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
+#include <hardware/structs/watchdog.h>
 #include <furi_hal_power.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
@@ -59,6 +60,8 @@ struct Updater {
     // Inactive slot holding a complete, verified image, 0 for none. Written
     // by the updater thread, read by updater_activate() from the host's.
     volatile size_t staged_base;
+
+    UpdaterBootType boot_type;
 
     UpdaterI2cRx i2c_rx;
 };
@@ -465,12 +468,23 @@ static void updater_commit_flash_update_boot(void) {
     }
 }
 
+// A try-before-you-buy image not bought in time is reverted by the bootrom's
+// watchdog: the old image then boots normally, with the watchdog as the reset
+// reason. The firmware never resets through the watchdog timer otherwise (a
+// switch is a flash-update boot).
+static UpdaterBootType updater_detect_boot_type(void) {
+    if(rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) return UpdaterBootTypeFlashUpdate;
+    if(watchdog_hw->reason & WATCHDOG_REASON_TIMER_BITS) return UpdaterBootTypeReverted;
+    return UpdaterBootTypeNormal;
+}
+
 int32_t updater_srv(void* p) {
     UNUSED(p);
 
     updater_commit_flash_update_boot();
 
     Updater* instance = malloc(sizeof(Updater));
+    instance->boot_type = updater_detect_boot_type();
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(8, sizeof(UpdaterMessage));
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, updater_message_callback, instance);
@@ -523,8 +537,7 @@ static uint16_t updater_boot_status(Updater* updater) {
     } else if(updater->active_partition == FlashPartitionIdFwB) {
         partition = 'B';
     }
-    uint8_t boot_type = rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE ? 1 : 0;
-    return (uint16_t)((boot_type << 8) | partition);
+    return (uint16_t)((updater->boot_type << 8) | partition);
 }
 
 void updater_i2c_setup(Updater* updater) {
@@ -558,4 +571,9 @@ void updater_activate(Updater* updater) {
 
     FURI_LOG_I(TAG, "Booting the staged image at 0x%08lX", (unsigned long)base);
     furi_hal_power_reboot_to_partition((uint32_t)base);
+}
+
+UpdaterBootType updater_get_boot_type(Updater* updater) {
+    furi_check(updater);
+    return updater->boot_type;
 }

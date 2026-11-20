@@ -51,6 +51,16 @@ typedef enum {
     UpdaterCommandAbort,
 } UpdaterCommand;
 
+/**
+ * @brief How this boot relates to an update. Wire values of the boot type
+ *        byte in the boot status register.
+ */
+typedef enum {
+    UpdaterBootTypeNormal = 0, /**< Not after an update */
+    UpdaterBootTypeFlashUpdate = 1, /**< Switched to a new image, bought at startup */
+    UpdaterBootTypeReverted = 2, /**< A new image failed before its buy: the old one runs */
+} UpdaterBootType;
+
 /** Updater instance. */
 typedef struct Updater Updater;
 
@@ -81,3 +91,11 @@ void updater_i2c_setup(Updater* updater);
  * @param updater Updater instance.
  */
 void updater_activate(Updater* updater);
+
+/**
+ * @brief How this boot relates to an update.
+ *
+ * @param updater Updater instance.
+ * @return Boot type.
+ */
+UpdaterBootType updater_get_boot_type(Updater* updater);
