@@ -29,7 +29,6 @@ typedef enum {
 typedef enum {
     HostResetResponseDisabled, /* Ignore host shutdown (default) */
     HostResetResponseResetMcu, /* Cut host power, reset the MCU into a staged image if any */
-    HostResetResponseResetMcuAndPower, /* Also cycle system power through the charger */
     HostResetResponseCount,
 } HostResetResponse;
 
@@ -38,8 +37,8 @@ extern "C" {
 #endif
 
 /**
- * Register the host's I2C registers: CPU state (0x0040), system reset
- * (0x0090..0x0094) and the system interrupt (0x0104/0x0184), and raise its
+ * Register the host's I2C registers: CPU state (0x0040), system reset mode
+ * and delay (0x0092, 0x0094) and the system interrupt (0x0104/0x0184), and raise its
  * restart bit. Once, before i2c_intercom_setup_end().
  */
 void host_i2c_setup(Host* instance);

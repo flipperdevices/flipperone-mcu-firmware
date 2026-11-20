@@ -34,18 +34,13 @@ class Reg(IntEnum):
     FW_CRC = 0xF020
     FW_BLOCKS = 0xF022
     FW_DATA = 0xF040
-    SYSTEM_RESET = 0x0090
     SYSTEM_RESET_MODE = 0x0092
     SYSTEM_RESET_DELAY = 0x0094
-
-
-SYSTEM_RESET_MAGIC = 0x5A52
 
 
 class ResetMode(IntEnum):
     DISABLED = 0
     RESET_MCU = 1
-    RESET_MCU_AND_POWER = 2
 
 
 # Keep in sync with UpdaterState/UpdaterError/UpdaterCommand from the MCU firmware
@@ -242,16 +237,11 @@ def main() -> int:
     parser.add_argument("--bus", default="/dev/i2c-0", help="I2C bus device (default: /dev/i2c-0)")
     parser.add_argument("--file", dest="file_path", type=Path, required=True, help="Firmware file to send to the MCU")
     parser.add_argument(
-        "--reset",
-        action="store_true",
-        help="Reset the MCU immediately after the update",
-    )
-    parser.add_argument(
         "--reset-mode",
         type=int,
         choices=[mode.value for mode in ResetMode],
         default=ResetMode.RESET_MCU,
-        help="MCU response to the host powering off or rebooting, armed after the update (default: 1, switch to the new image; 0 leaves it staged); to switch now, use --reset",
+        help="MCU response to the host powering off or rebooting, armed after the update (default: 1, switch to the new image; 0 leaves it staged)",
     )
     parser.add_argument(
         "--reset-delay",
@@ -282,22 +272,13 @@ def main() -> int:
                 if attempt == UPDATE_ATTEMPTS:
                     raise UpdateError(f"Update failed after {UPDATE_ATTEMPTS} attempts")
 
-            if args.reset:
-                try:
-                    mcu.write_register(Reg.SYSTEM_RESET, SYSTEM_RESET_MAGIC)
-                    print("Reset command sent to the MCU.")
-                except UpdateError:
-                    # The MCU resets as soon as the worker handles the write,
-                    # possibly before the transfer completes: that is success.
-                    print("Reset command sent; the MCU reset mid-transfer.")
+            mcu.write_register(Reg.SYSTEM_RESET_DELAY, args.reset_delay)
+            mcu.write_register(Reg.SYSTEM_RESET_MODE, args.reset_mode)
+            print(f"Reset response set: {ResetMode(args.reset_mode).name}, delay: {args.reset_delay * 100} ms")
+            if args.reset_mode == ResetMode.DISABLED:
+                print("The image stays staged until the MCU is armed to switch to it.")
             else:
-                mcu.write_register(Reg.SYSTEM_RESET_DELAY, args.reset_delay)
-                mcu.write_register(Reg.SYSTEM_RESET_MODE, args.reset_mode)
-                print(f"Reset response set: {ResetMode(args.reset_mode).name}, delay: {args.reset_delay * 100} ms")
-                if args.reset_mode == ResetMode.DISABLED:
-                    print("The image stays staged; the MCU switches to it on a reset command (--reset).")
-                else:
-                    print("The MCU switches to the new image when the host powers off or reboots.")
+                print("The MCU switches to the new image when the host powers off or reboots.")
     except UpdateError as exc:
         print(f"Update failed: {exc}")
         return 1
