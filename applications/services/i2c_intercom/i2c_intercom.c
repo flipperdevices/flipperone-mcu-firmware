@@ -229,6 +229,8 @@ int32_t i2c_intercom_srv(void* p) {
     instance->held_valid = false;
     instance->pointer_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
+    // Interrupts raised during setup (the restart one) wait for the slave
+    i2c_registers_enable_interrupt_line();
 
     while(1) {
         furi_delay_ms(I2C_INTERCOM_LOG_PERIOD_MS);

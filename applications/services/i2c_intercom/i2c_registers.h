@@ -116,6 +116,13 @@ bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
 uint16_t i2c_register_get_value(uint16_t address);
 
 /**
+ * @brief Drive the interrupt line from now on, raising it for what is already
+ *        pending. Until then interrupts only collect in the status register.
+ *        Call once the slave answers.
+ */
+void i2c_registers_enable_interrupt_line(void);
+
+/**
  * @brief Set interrupt bits unless masked, raising the interrupt line when any are set.
  *
  * @param interrupt_address Interrupt register address.

@@ -110,6 +110,9 @@ typedef struct {
     // Pin numbers copied out of the flash-resident GpioPin constants
     uint32_t cpu_int_pin;
     uint32_t m40_pin;
+    // Off until the slave answers: a host reading the status before then
+    // gets a NACK
+    bool line_enabled;
 } I2CRegisters;
 
 static I2CRegisters i2c;
@@ -161,6 +164,7 @@ void i2c_registers_init(void) {
 
     i2c.reg_count = 0;
     i2c.region_count = 0;
+    i2c.line_enabled = false;
     i2c_register_add_readable(I2C_STATUS_REG_ADDRESS, 0);
     i2c.status_register = i2c_register_get(I2C_STATUS_REG_ADDRESS);
     furi_check(i2c.status_register);
@@ -472,8 +476,15 @@ void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_b
 
     if(interrupt_reg->value) {
         i2c.status_register->value |= (1 << interrupt_reg->status_register_bit);
-        i2c_register_interrupt_line_set(true);
+        if(i2c.line_enabled) i2c_register_interrupt_line_set(true);
     }
+}
+
+void i2c_registers_enable_interrupt_line(void) {
+    with_i2c_register({
+        i2c.line_enabled = true;
+        i2c_register_interrupt_line_set(i2c.status_register->value != 0);
+    });
 }
 
 uint16_t i2c_register_get_value(uint16_t address) {
