@@ -225,8 +225,11 @@ static void self_check_app_autorun(void) {
 
     // Occupy the desktop app slot right away: no other app can be started
     // via desktop while we are running (and desktop can stop us on demand).
+    // A taken slot is the host's screen, started for a host still powered
+    // across an MCU reset: it wins over the check, as it does once running.
     if(!desktop_register_app("self_check", furi_thread_get_current())) {
-        FURI_LOG_E(TAG, "Failed to register with desktop");
+        FURI_LOG_W(TAG, "Desktop slot taken, skipping self check");
+        return;
     }
 
     if(!self_check_process(NULL)) {

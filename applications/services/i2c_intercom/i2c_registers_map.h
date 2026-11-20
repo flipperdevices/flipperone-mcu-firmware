@@ -10,11 +10,14 @@
 /*
  * 0x0000   Status register             (read)
  *          Bit 0: Input interrupt flag (cleared when input interrupt register is cleared)
- *          Bit 1-15: Reserved
+ *          Bit 1: Reserved for USB-C (UCSI) events
+ *          Bit 2: System interrupt flag (cleared when system interrupt register is cleared)
+ *          Bit 3-15: Reserved
 */
-#define I2C_STATUS_REG_BASE      (0x0000)
-#define I2C_STATUS_REG_ADDRESS   (I2C_STATUS_REG_BASE + 0x00)
-#define I2C_STATUS_REG_BIT_INPUT (0)
+#define I2C_STATUS_REG_BASE       (0x0000)
+#define I2C_STATUS_REG_ADDRESS    (I2C_STATUS_REG_BASE + 0x00)
+#define I2C_STATUS_REG_BIT_INPUT  (0)
+#define I2C_STATUS_REG_BIT_SYSTEM (2)
 
 // CPU state registers
 /*
@@ -78,6 +81,20 @@
 #define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
 #define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
 #define I2C_INPUT_INTERRUPT_REG_BIT_SW_BUTTONS (3)
+
+// System interrupt register and mask
+/*
+ * 0x0104+0 System interrupt register   (read, read to clear)
+ *          Bit 0: The MCU (re)started and lost the settings the host wrote
+ *                 (CPU state, interrupt masks, LEDs); the host writes them again
+ *          Bit 1-15: Reserved
+ * 0x0184+0 System interrupt mask       (read, write)
+ *          Bit 0: Restart interrupt masked
+ *          Bit 1-15: Reserved
+*/
+#define I2C_SYSTEM_INTERRUPT_REG_ADDRESS      (0x0104)
+#define I2C_SYSTEM_INTERRUPT_MASK_REG_ADDRESS (0x0184)
+#define I2C_SYSTEM_INTERRUPT_REG_BIT_RESET    (0)
 
 // Buttons state register
 /*

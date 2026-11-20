@@ -149,8 +149,8 @@ How it works, for when you need the pieces:
 
 A reset of the MCU alone (`swd reset`, `swd flash`, the probe's `mcu_reset`, a firmware crash) leaves Linux running: the host power rails are held by an I/O expander that keeps its outputs. Afterwards:
 
-- The MCU is back on its own desktop with no host app running, so the device screen and buttons belong to the MCU while Linux runs unseen. `linux state` reports exactly this.
-- `linux start` attaches to the running Linux: the host app sees on the expander that the host is powered and leaves it alone, the screen shows Linux again, nothing restarts, and `--entry` is ignored. The tool runs `sync` on the host first and checks afterwards that the host uptime went on.
+- The MCU sees on the expander that the host is powered and starts the host app by itself, under a second after boot, so the screen shows Linux again and nothing restarts; the self check is skipped for it. The MCU also raises its restart interrupt, and the Linux driver writes the CPU state and its other settings back (`MCU restarted, restoring its settings` in the kernel log).
+- `linux start` still works and attaches to the running Linux: the host app leaves a powered host alone and `--entry` is ignored. The tool runs `sync` on the host first and checks afterwards that the host uptime went on.
 - Rarely the MCU fails to initialise that expander when it boots, because the bus is shared with the running host (see [Pitfalls](#pitfalls)); the MCU log then has `Failed to initialize Main Expander` and the MCU's `cli dmesg` has `Not initialized Main Expander`. Until the next reset the MCU has no control over host power. `linux start` checks that and refuses; reset the MCU again and retry. Linux itself is not disturbed by that state.
 - Should the host restart anyway when the host app starts, `linux start` notices by the host uptime and says so.
 - By hand it is the same: `Start Flipper OS` in the power menu, or `cli "desktop start_app cpu_app_start"`.
@@ -267,7 +267,7 @@ python3 scripts/agent_tools/f1.py press back          # close the self-check, if
 ```
 
 - `swd flash` takes about 8 seconds. The MCU console answers within a second after `swd flash`, `swd reset` and a reset through the probe; no waiting is needed before the next command.
-- With Linux running, a plain `swd flash` resets only the MCU; run `linux start` afterwards to attach to it again, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs). `--activate` is different: the firmware sees the flash-update boot and cycles host power (`Flash-update boot: power-cycling the host` in the log), so sync and ask first.
+- With Linux running, a plain `swd flash` resets only the MCU, and the MCU shows the running Linux again by itself, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs). `--activate` is different: the firmware sees the flash-update boot and cycles host power (`Flash-update boot: power-cycling the host` in the log), so sync and ask first.
 
 ### Try-before-you-buy images
 
@@ -306,7 +306,7 @@ The firmware does not reboot after a crash at this stage of development: it prin
 - The ELF in `build/` has to be the build that is running, otherwise the lines are wrong. Keep one `.elf` there: the tools take the first one they find.
 - Fault registers can also be read without halting: `f1.py swd read 0xE000ED28 4` gives CFSR, HFSR, DFSR, MMFAR.
 - To get going again: `f1.py swd reset`, or the reset pin through the probe. `swd resume` does not help after a crash, the firmware halts again at once.
-- Linux keeps running when the MCU crashes, with nothing about it in the kernel log. The tools that need the MCU console fail meanwhile, `linux stop` among them. Reset the MCU first; `linux start` then attaches to the running Linux, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
+- Linux keeps running when the MCU crashes, with nothing about it in the kernel log. The tools that need the MCU console fail meanwhile, `linux stop` among them. Reset the MCU first; it then shows the running Linux again by itself, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
 
 ## Pitfalls
 

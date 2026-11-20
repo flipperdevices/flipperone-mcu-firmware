@@ -37,12 +37,13 @@ extern "C" {
 #endif
 
 /**
- * Register the host's I2C registers: CPU state (0x0040) and system reset
- * (0x0090..0x0094). Once, before i2c_intercom_setup_end().
+ * Register the host's I2C registers: CPU state (0x0040), system reset
+ * (0x0090..0x0094) and the system interrupt (0x0104/0x0184), and raise its
+ * restart bit. Once, before i2c_intercom_setup_end().
  */
 void host_i2c_setup(Host* instance);
 
-/** Power the host unless it already is. */
+/** Power the host unless it already is, and hand it the main expander. */
 void host_power_on(Host* instance);
 /** Put PD and the charger back to defaults and cut the host rails. */
 void host_power_off(Host* instance);

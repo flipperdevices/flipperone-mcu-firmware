@@ -9,7 +9,6 @@
 #include <furi_hal_flash.h>
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
-#include <hardware/structs/powman.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
 
@@ -20,25 +19,17 @@
 #define HOST_MASKROM_RELEASE_MS    (1000)
 #define HOST_UPDATE_REBOOT_DELAY_MS (10000) // host power-cycle delay after a switch
 #define HOST_RESET_ATTEMPTS        (3) // charger power-reset tries before giving up
-// Boot probe: catch host announcements lost in an MCU reset (skipped on
-// flash-update boots).
-#define HOST_BOOT_PROBE_DELAY_MS   (3000)
-#define HOST_BOOT_PROBE_RETRY_MS   (1000)
-#define HOST_BOOT_PROBE_TIMEOUT_MS (30000)
-// Host reset-request marker, rides POWMAN scratch across the SYSRESETREQ.
-#define HOST_RESET_REQUEST_MAGIC (0x48525354u)
+#define HOST_CPU_APP_RETRY_MS      (1000) // wait for self_check to release the desktop
 
 struct Host {
     FuriEventLoop* event_loop;
     FuriMessageQueue* message_queue;
     CpuState cpu_state;
     FuriEventLoopTimer* shutdown_timer;
-    FuriEventLoopTimer* boot_probe_timer;
+    FuriEventLoopTimer* cpu_app_retry_timer;
     FuriEventLoopTimer* maskrom_timer;
     FuriEventLoopTimer* reset_timer;
     FuriEventLoopTimer* update_reboot_timer;
-    uint32_t boot_probe_deadline;
-    bool reset_request;
     HostResetResponse reset_response;
     uint16_t reset_delay_100ms;
     size_t update_base;
@@ -90,10 +81,12 @@ static void host_power_reset_pd_and_charger(Host* instance) {
 
 static void host_power_on_internal(Host* instance) {
     UNUSED(instance);
+    // A host still powered across an MCU reset keeps running: only hand it
+    // the expander back, which the reset gave to the MCU.
     if(!furi_bsp_linux_is_load()) {
         furi_bsp_linux_reset();
-        furi_bsp_linux_start();
     }
+    furi_bsp_linux_start();
 }
 
 static void host_power_off_internal(Host* instance) {
@@ -192,14 +185,14 @@ static void host_reset_timer_callback(void* context) {
     }
 }
 
-// SYSTEM_RESET from the host: activate an armed image, else a marked reset.
+// SYSTEM_RESET from the host: activate an armed image, else a plain reset.
+// The host keeps its power, and the next boot finds it powered.
 static void host_reset_request_internal(Host* instance) {
     if(host_update_base_is_bootable(instance)) {
         FURI_LOG_I(TAG, "Host reset request: booting updated partition at 0x%08lX", (unsigned long)instance->update_base);
         furi_hal_power_reboot_to_partition((uint32_t)instance->update_base);
     } else {
         FURI_LOG_I(TAG, "Host reset request: resetting MCU");
-        powman_hw->boot[0] = HOST_RESET_REQUEST_MAGIC;
         furi_hal_power_reset();
     }
 }
@@ -335,7 +328,7 @@ static bool host_state_is_live(CpuState cpu_state) {
 }
 
 // Start the CPU app unless the user is in another app; stops self_check and
-// retries via the probe timer until it releases the slot.
+// retries on a timer until it releases the slot.
 static void host_start_cpu_app(Host* instance) {
     const char* appid = desktop_get_running_app_id();
     if(appid && (!strcmp(appid, "cpu_app_start") || !strcmp(appid, "cpu_app_maskrom"))) {
@@ -346,7 +339,7 @@ static void host_start_cpu_app(Host* instance) {
         FURI_LOG_I(TAG, "Host live, stopping self_check to start CPU app");
         desktop_stop_app(appid);
         // self_check may take a beat to release the desktop slot; retry.
-        furi_event_loop_timer_start(instance->boot_probe_timer, HOST_BOOT_PROBE_RETRY_MS);
+        furi_event_loop_timer_start(instance->cpu_app_retry_timer, HOST_CPU_APP_RETRY_MS);
         return;
     }
 
@@ -354,7 +347,10 @@ static void host_start_cpu_app(Host* instance) {
         FURI_LOG_I(TAG, "Host live, starting CPU app");
         for(size_t i = 0; i < FLIPPER_APPS_COUNT; i++) {
             if(strcmp(FLIPPER_APPS[i].appid, "cpu_app_start") == 0) {
-                desktop_start_app(&FLIPPER_APPS[i]);
+                // self_check autorun may register in between: try again then
+                if(!desktop_start_app(&FLIPPER_APPS[i])) {
+                    furi_event_loop_timer_start(instance->cpu_app_retry_timer, HOST_CPU_APP_RETRY_MS);
+                }
                 break;
             }
         }
@@ -364,37 +360,23 @@ static void host_start_cpu_app(Host* instance) {
     FURI_LOG_D(TAG, "App %s running, leaving it alone", appid);
 }
 
-// Poll the desktop until the host announces or the window closes; live
-// transitions afterwards are event-driven.
-static void host_boot_probe_timer_callback(void* context) {
+static void host_cpu_app_retry_timer_callback(void* context) {
     furi_check(context);
-    Host* instance = context;
-
-    if(instance->reset_request || host_state_is_live(instance->cpu_state)) {
-        host_start_cpu_app(instance);
-        return;
-    }
-
-    if(furi_get_tick() < instance->boot_probe_deadline) {
-        furi_event_loop_timer_start(instance->boot_probe_timer, HOST_BOOT_PROBE_RETRY_MS);
-    } else {
-        FURI_LOG_I(TAG, "Boot probe: host never announced (state %d), keeping default app", instance->cpu_state);
-    }
+    host_start_cpu_app(context);
 }
 
-// Pick the boot path: host-requested resets start the CPU app right away;
-// flash-update boots power-cycle the host and rely on event-driven
-// announcements; other normal boots probe for a late one.
+// Pick the boot path from the boot type and the host rails, which an MCU
+// reset leaves as they were: a powered host after a normal boot is running
+// (Linux only ever holds them on), so show it right away; Linux replays its
+// state on the restart interrupt. Flash-update boots power-cycle the host.
 static void host_boot_start(Host* instance) {
-    if(instance->reset_request) {
-        FURI_LOG_I(TAG, "Host reset request: starting CPU app");
-        host_start_cpu_app(instance);
-    } else if(rom_get_last_boot_type() != BOOT_TYPE_FLASH_UPDATE) {
-        furi_event_loop_timer_start(instance->boot_probe_timer, HOST_BOOT_PROBE_DELAY_MS);
-    } else {
+    if(rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) {
         // After a partition switch the host is stranded mid-reboot: power-cycle it.
         FURI_LOG_I(TAG, "Flash-update boot detected, cycling host power in %lu ms", (unsigned long)HOST_UPDATE_REBOOT_DELAY_MS);
         furi_event_loop_timer_start(instance->update_reboot_timer, HOST_UPDATE_REBOOT_DELAY_MS);
+    } else if(furi_bsp_linux_is_load()) {
+        FURI_LOG_I(TAG, "Host is powered: starting CPU app");
+        host_start_cpu_app(instance);
     }
 }
 
@@ -435,23 +417,25 @@ void host_i2c_setup(Host* instance) {
     i2c_register_add_writable(I2C_SYSTEM_RESET_REG_ADDRESS, 0, host_on_i2c_system_reset_write, instance);
     i2c_register_add_writable(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, HostResetResponseDisabled, host_on_i2c_reset_mode_write, instance);
     i2c_register_add_writable(I2C_SYSTEM_RESET_DELAY_REG_ADDRESS, 0, host_on_i2c_reset_delay_write, instance);
+
+    // Unmasked by default: the host restores its masks only once this fires.
+    i2c_register_add_interrupt(I2C_SYSTEM_INTERRUPT_REG_ADDRESS, I2C_SYSTEM_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_SYSTEM);
+    // Every boot is a restart for the host: whatever it wrote before is gone.
+    with_i2c_register({ i2c_register_set_interrupt(I2C_SYSTEM_INTERRUPT_REG_ADDRESS, 1 << I2C_SYSTEM_INTERRUPT_REG_BIT_RESET); });
 }
 
 static Host* host_alloc(void) {
     Host* instance = (Host*)malloc(sizeof(Host));
     instance->cpu_state = CpuStateUnknown;
     instance->reset_response = HostResetResponseDisabled;
-    instance->reset_request = (powman_hw->boot[0] == HOST_RESET_REQUEST_MAGIC);
-    powman_hw->boot[0] = 0;
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(HOST_MAX_MESSAGES, sizeof(HostMessage));
     instance->shutdown_timer = furi_event_loop_timer_alloc(instance->event_loop, host_shutdown_timer_callback, FuriEventLoopTimerTypeOnce, instance);
-    instance->boot_probe_timer = furi_event_loop_timer_alloc(instance->event_loop, host_boot_probe_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    instance->cpu_app_retry_timer = furi_event_loop_timer_alloc(instance->event_loop, host_cpu_app_retry_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->maskrom_timer = furi_event_loop_timer_alloc(instance->event_loop, host_maskrom_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->reset_timer = furi_event_loop_timer_alloc(instance->event_loop, host_reset_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->update_reboot_timer =
         furi_event_loop_timer_alloc(instance->event_loop, host_update_reboot_timer_callback, FuriEventLoopTimerTypeOnce, instance);
-    instance->boot_probe_deadline = furi_get_tick() + HOST_BOOT_PROBE_TIMEOUT_MS;
     instance->power = furi_record_open(RECORD_POWER);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, host_message_queue_callback, instance);
