@@ -417,3 +417,9 @@ void host_power_maskrom(Host* instance) {
     HostMessage msg = {.type = HostMessageTypePowerMaskrom};
     host_send_message(instance, &msg);
 }
+
+bool host_is_reporting(Host* instance) {
+    furi_check(instance);
+    // One word written by the host thread only
+    return instance->cpu_state != CpuStateUnknown;
+}

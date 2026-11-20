@@ -28,7 +28,7 @@ typedef enum {
 /* MCU response to the host going down; wire values of the reset mode register */
 typedef enum {
     HostResetResponseDisabled, /* Ignore host shutdown (default) */
-    HostResetResponseResetMcu, /* Cut host power, reset the MCU into a staged image if any */
+    HostResetResponseResetMcu, /* Switch: cut host power and boot the staged image; without one, as Disabled */
     HostResetResponseCount,
 } HostResetResponse;
 
@@ -50,6 +50,13 @@ void host_power_off(Host* instance);
 void host_power_restart(Host* instance);
 /** Power the host into the SoC maskrom; the strap is released after a second. */
 void host_power_maskrom(Host* instance);
+
+/**
+ * Whether Linux has written its CPU state since the MCU booted. After an MCU
+ * reset its driver writes it back on the restart interrupt; a powered host
+ * that never does sits in maskrom, a hung bootloader or a dead kernel.
+ */
+bool host_is_reporting(Host* instance);
 
 #ifdef __cplusplus
 }
