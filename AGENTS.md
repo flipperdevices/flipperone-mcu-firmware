@@ -98,7 +98,8 @@ Then make these checks as separate passes, not along the way while editing:
    it works. A procedure quoted in an issue may be stale. Without a device, write "not
    tried on hardware" in *Verification* instead.
 5. **Self-review.** Have a fresh subagent on the most capable model available review the
-   PR. Give it only the PR: no memory, no notes, nothing from your session, so it reads
+   PR. If you are not sure which model that is, ask the user; either way, tell the user
+   which model reviewed. Give it only the PR: no memory, no notes, nothing from your session, so it reads
    the change as the human reviewer will. Fix the serious remarks (bugs, architecture,
    misleading documentation; not style or taste), pass the fixes through checks 2 and 3
    again. If serious remarks were fixed, run one more round with a new subagent. After
