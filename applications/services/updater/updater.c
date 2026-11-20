@@ -4,6 +4,8 @@
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
 #include <host/host.h>
+#include <i2c_intercom/i2c_registers.h>
+#include <i2c_intercom/i2c_registers_map.h>
 
 #define TAG "Updater"
 
@@ -45,7 +47,6 @@ struct Updater {
 
     FlashPartitionId active_partition;
     FuriHalFwVersion current_version;
-    FuriHalFwVersion last_written_version;
 
     size_t inactive_partition_address;
     size_t inactive_partition_size;
@@ -54,9 +55,6 @@ struct Updater {
     // Set by the I2C ISR callbacks, read and cleared by the event loop thread
     volatile uint32_t isr_error;
     bool update_supported;
-
-    UpdaterStateCallback state_callback;
-    void* state_callback_context;
 
     Host* host;
 
@@ -93,7 +91,7 @@ static void __isr __not_in_flash_func(updater_message_queue_put_from_isr)(Update
 }
 
 // I2C write callbacks, called from interrupt context
-void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint16_t address, uint16_t value) {
+static void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -105,7 +103,7 @@ void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint
     updater_message_queue_put_from_isr(updater, &msg);
 }
 
-void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, uint16_t address, uint16_t value) {
+static void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -117,7 +115,7 @@ void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, u
     updater_message_queue_put_from_isr(updater, &msg);
 }
 
-void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, uint16_t address, uint16_t value) {
+static void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -133,7 +131,7 @@ void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, 
 
 // Gets each host write transaction to the data region whole: normally one
 // complete frame, but a frame split over several transactions is assembled.
-bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_t offset, const uint8_t* data, size_t length) {
+static bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_t offset, const uint8_t* data, size_t length) {
     Updater* updater = context;
     furi_check(updater);
 
@@ -189,9 +187,8 @@ static void updater_state_change(Updater* updater, UpdaterState new_state, Updat
         if(new_state == UpdaterStateError) {
             updater_disarm_host_reset(updater);
         }
-        if(updater->state_callback) {
-            updater->state_callback(new_state, new_state == UpdaterStateError ? error : UpdaterErrorNone, updater->state_callback_context);
-        }
+        uint16_t status = ((new_state == UpdaterStateError ? error : UpdaterErrorNone) << 8) | new_state;
+        with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, status, 0xFFFF); });
     }
 }
 
@@ -242,13 +239,15 @@ static void updater_finalize_update(Updater* updater) {
     // The bootrom handles invalidation on the flash-update boot; erasing here
     // would leave it nothing to boot.
 
-    // Arm before DONE: the negotiator mirrors the armed state into the
-    // reset-mode register on the DONE callback.
+    // Arm before DONE: the host reads the reset mode register once it sees DONE.
     host_set_update_base(updater->host, updater->inactive_partition_address);
     host_set_reset_response(updater->host, HostResetResponseResetMcu);
     FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
 
-    updater->last_written_version = new_version;
+    with_i2c_register({
+        i2c_register_update(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, ((uint16_t)new_version.major << 8) | new_version.minor, 0xFFFF);
+        i2c_register_update(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, new_version.patch, 0xFFFF);
+    });
     updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
     FURI_LOG_I(TAG, "Done");
 }
@@ -518,18 +517,7 @@ int32_t updater_srv(void* p) {
     return 0;
 }
 
-FuriHalFwVersion updater_get_current_fw_version(Updater* updater) {
-    furi_check(updater);
-    return updater->current_version;
-}
-
-FuriHalFwVersion updater_get_last_written_fw_version(Updater* updater) {
-    furi_check(updater);
-    return updater->last_written_version;
-}
-
-uint16_t updater_get_boot_status(Updater* updater) {
-    furi_check(updater);
+static uint16_t updater_boot_status(Updater* updater) {
     // Low byte: active partition letter; high byte: boot type
     uint8_t partition = 0;
     if(updater->active_partition == FlashPartitionIdFwA) {
@@ -541,8 +529,19 @@ uint16_t updater_get_boot_status(Updater* updater) {
     return (uint16_t)((boot_type << 8) | partition);
 }
 
-void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback, void* context) {
+void updater_i2c_setup(Updater* updater) {
     furi_check(updater);
-    updater->state_callback = callback;
-    updater->state_callback_context = context;
+    i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
+    i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, ((uint16_t)updater->current_version.major << 8) | updater->current_version.minor);
+    i2c_register_add_readable(I2C_UPDATER_FW_PATCH_REG_ADDRESS, updater->current_version.patch);
+    i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_boot_status(updater));
+    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
+    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, 0);
+    i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, updater);
+    i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, updater);
+    i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, updater);
+    static_assert(
+        I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
+        "I2C updater data window must match the updater block layout");
+    i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, updater);
 }

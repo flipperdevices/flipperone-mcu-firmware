@@ -51,15 +51,6 @@ typedef enum {
     UpdaterCommandAbort,
 } UpdaterCommand;
 
-/**
- * @brief Callback for updater state changes.
- *
- * @param state New updater state.
- * @param error Associated error; UpdaterErrorNone unless the state is UpdaterStateError.
- * @param context Callback context passed at registration.
- */
-typedef void (*UpdaterStateCallback)(UpdaterState state, UpdaterError error, void* context);
-
 /** Updater instance. */
 typedef struct Updater Updater;
 
@@ -75,72 +66,9 @@ typedef struct Updater Updater;
 uint16_t updater_crc16(const uint8_t* buf, size_t len, uint16_t crc_init);
 
 /**
- * @brief Get the currently installed firmware version.
+ * @brief Register the updater's I2C registers (0xF000 block). Once, before
+ *        i2c_intercom_setup_end(); the updater keeps their values current.
  *
  * @param updater Updater instance.
- * @return Firmware version.
  */
-FuriHalFwVersion updater_get_current_fw_version(Updater* updater);
-
-/** Boot status of the running image: low byte partition ('A'/'B', 0 unknown), high byte boot type (0 normal, 1 flash-update). */
-uint16_t updater_get_boot_status(Updater* updater);
-
-/** Version of the last accepted update, zeroed until the first one. */
-FuriHalFwVersion updater_get_last_written_fw_version(Updater* updater);
-
-/**
- * @brief Set the state change callback.
- *
- * @param updater Updater instance.
- * @param callback Callback to invoke on state changes, may be NULL.
- * @param context Passed to the callback.
- */
-void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback, void* context);
-
-/**
- * @brief Serve a host write into the updater data region.
- *
- * @param context Updater instance.
- * @param offset Offset of data[0] relative to the data region base.
- * @param data Bytes written by the host.
- * @param length Number of bytes.
- * @return true if the write was accepted, false otherwise.
- *
- * @warning I2C intercom callback, registered by i2c_negotiator and called
- *          from interrupt context; the definition carries
- *          __isr/__not_in_flash_func.
- */
-bool updater_on_i2c_data_write(void* context, uint16_t offset, const uint8_t* data, size_t length);
-
-/**
- * @brief Serve a host write to the update CRC register.
- *
- * @param context Updater instance.
- * @param address Register address, always even.
- * @param value Full 16-bit register value.
- *
- * @warning Same ISR context as updater_on_i2c_data_write.
- */
-void updater_on_i2c_crc_reg_write(void* context, uint16_t address, uint16_t value);
-
-/**
- * @brief Serve a host write to the blocks-written register.
- *
- * @param context Updater instance.
- * @param address Register address, always even.
- * @param value Full 16-bit register value.
- *
- * @warning Same ISR context as updater_on_i2c_data_write.
- */
-void updater_on_i2c_blocks_reg_write(void* context, uint16_t address, uint16_t value);
-
-/**
- * @brief Serve a host write to the command register.
- *
- * @param context Updater instance.
- * @param address Register address, always even.
- * @param value Full 16-bit register value.
- *
- * @warning Same ISR context as updater_on_i2c_data_write.
- */
-void updater_on_i2c_command_reg_write(void* context, uint16_t address, uint16_t value);
+void updater_i2c_setup(Updater* updater);

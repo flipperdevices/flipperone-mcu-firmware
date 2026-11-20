@@ -36,8 +36,11 @@ typedef enum {
 extern "C" {
 #endif
 
-bool host_set_cpu_state(Host* instance, CpuState cpu_state);
-bool host_get_cpu_state(Host* instance, CpuState* cpu_state);
+/**
+ * Register the host's I2C registers: CPU state (0x0040) and system reset
+ * (0x0090..0x0094). Once, before i2c_intercom_setup_end().
+ */
+void host_i2c_setup(Host* instance);
 
 /** Power the host unless it already is. */
 void host_power_on(Host* instance);
@@ -50,13 +53,8 @@ void host_power_maskrom(Host* instance);
 
 /** Arm the MCU response to the host going down (RAM-only). */
 bool host_set_reset_response(Host* instance, HostResetResponse response);
-bool host_get_reset_response(Host* instance, HostResetResponse* response);
-/** Delay between the triggering host state and the response, in 100 ms units. */
-bool host_set_reset_delay(Host* instance, uint16_t reset_delay_100ms);
 /** Flash storage offset of a freshly written partition, booted by an armed ResetMcu response (0 clears it). */
 bool host_set_update_base(Host* instance, size_t update_base);
-/** Host-requested MCU reset: activate a staged image if armed, else reset with a marker. Never returns. */
-void host_reset_request(Host* instance);
 
 #ifdef __cplusplus
 }

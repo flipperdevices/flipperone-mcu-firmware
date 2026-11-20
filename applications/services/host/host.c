@@ -10,6 +10,8 @@
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
 #include <hardware/structs/powman.h>
+#include <i2c_intercom/i2c_registers.h>
+#include <i2c_intercom/i2c_registers_map.h>
 
 #define TAG "Host"
 
@@ -40,21 +42,20 @@ struct Host {
     HostResetResponse reset_response;
     uint16_t reset_delay_100ms;
     size_t update_base;
+    uint32_t dropped_messages_logged;
     Power* power;
 };
 
 typedef enum {
     HostMessageTypeSetCpuState,
-    HostMessageTypeGetCpuState,
     HostMessageTypePowerOn,
     HostMessageTypePowerOff,
     HostMessageTypePowerRestart,
     HostMessageTypePowerMaskrom,
     HostMessageTypeSetResetResponse,
-    HostMessageTypeGetResetResponse,
     HostMessageTypeSetResetDelay,
     HostMessageTypeSetUpdateBase,
-    HostMessageTypeResetRequest,
+    HostMessageTypeI2cSystemReset,
 } HostMessageType;
 
 typedef struct {
@@ -63,13 +64,16 @@ typedef struct {
     bool* result;
     union {
         CpuState cpu_state;
-        CpuState* cpu_state_out;
         HostResetResponse reset_response;
-        HostResetResponse* reset_response_out;
         uint16_t reset_delay_100ms;
         size_t update_base;
+        uint16_t i2c_value;
     } as;
 } HostMessage;
+
+// Host register writes the queue had no room for. Counted in the register
+// software interrupt, logged by the host thread.
+static volatile uint32_t host_dropped_messages;
 
 static bool host_state_is_live(CpuState cpu_state);
 static void host_start_cpu_app(Host* instance);
@@ -115,14 +119,18 @@ static void host_maskrom_timer_callback(void* context) {
 
 // Response to the host going down
 
+// The reset mode register always shows the armed response: an invalid host
+// write is put back, and the updater's arming shows up there too.
 static bool host_set_reset_response_internal(Host* instance, HostResetResponse response) {
-    if(response >= HostResetResponseCount) {
+    bool valid = response < HostResetResponseCount;
+    if(valid) {
+        instance->reset_response = response;
+        FURI_LOG_I(TAG, "Host reset response: %d", instance->reset_response);
+    } else {
         FURI_LOG_W(TAG, "Invalid host reset response: %u", response);
-        return false;
     }
-    instance->reset_response = response;
-    FURI_LOG_I(TAG, "Host reset response: %d", instance->reset_response);
-    return true;
+    with_i2c_register({ i2c_register_update(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, instance->reset_response, 0xFFFF); });
+    return valid;
 }
 
 static void host_reset_state_changed(Host* instance, CpuState cpu_state) {
@@ -245,9 +253,6 @@ static void host_message_queue_callback(FuriEventLoopObject* object, void* conte
         }
         host_set_cpu_state_internal(instance, msg.as.cpu_state);
         break;
-    case HostMessageTypeGetCpuState:
-        *msg.as.cpu_state_out = instance->cpu_state;
-        break;
     case HostMessageTypePowerOn:
         host_power_on_internal(instance);
         break;
@@ -263,9 +268,6 @@ static void host_message_queue_callback(FuriEventLoopObject* object, void* conte
     case HostMessageTypeSetResetResponse:
         result = host_set_reset_response_internal(instance, msg.as.reset_response);
         break;
-    case HostMessageTypeGetResetResponse:
-        *msg.as.reset_response_out = instance->reset_response;
-        break;
     case HostMessageTypeSetResetDelay:
         instance->reset_delay_100ms = msg.as.reset_delay_100ms;
         FURI_LOG_I(TAG, "Host reset delay: %u (100ms)", instance->reset_delay_100ms);
@@ -274,8 +276,13 @@ static void host_message_queue_callback(FuriEventLoopObject* object, void* conte
         instance->update_base = msg.as.update_base;
         FURI_LOG_I(TAG, "Host reset update base: 0x%08lX", (unsigned long)instance->update_base);
         break;
-    case HostMessageTypeResetRequest:
-        host_reset_request_internal(instance);
+    case HostMessageTypeI2cSystemReset:
+        if(msg.as.i2c_value == I2C_SYSTEM_RESET_MAGIC) {
+            FURI_LOG_I(TAG, "Reset command received from host");
+            host_reset_request_internal(instance);
+        } else {
+            FURI_LOG_W(TAG, "Invalid reset magic: 0x%04X", msg.as.i2c_value);
+        }
         break;
     default:
         furi_crash("Invalid message type");
@@ -288,6 +295,12 @@ static void host_message_queue_callback(FuriEventLoopObject* object, void* conte
 
     if(msg.lock) {
         api_lock_unlock(msg.lock);
+    }
+
+    uint32_t dropped = host_dropped_messages;
+    if(dropped != instance->dropped_messages_logged) {
+        FURI_LOG_E(TAG, "%lu register writes dropped: queue full", dropped - instance->dropped_messages_logged);
+        instance->dropped_messages_logged = dropped;
     }
 }
 
@@ -385,6 +398,45 @@ static void host_boot_start(Host* instance) {
     }
 }
 
+// I2C registers. The write callbacks run in the register software interrupt:
+// they only queue the value for the host thread, without waiting.
+
+static void host_i2c_post(void* context, HostMessage message) {
+    furi_check(context);
+    Host* instance = context;
+    FuriStatus status = furi_message_queue_put(instance->message_queue, &message, 0);
+    furi_check(status != FuriStatusErrorParameter);
+    if(status != FuriStatusOk) host_dropped_messages = host_dropped_messages + 1;
+}
+
+static void host_on_i2c_cpu_state_write(void* context, uint16_t address, uint16_t value) {
+    UNUSED(address);
+    host_i2c_post(context, (HostMessage){.type = HostMessageTypeSetCpuState, .as.cpu_state = (CpuState)value});
+}
+
+static void host_on_i2c_system_reset_write(void* context, uint16_t address, uint16_t value) {
+    UNUSED(address);
+    host_i2c_post(context, (HostMessage){.type = HostMessageTypeI2cSystemReset, .as.i2c_value = value});
+}
+
+static void host_on_i2c_reset_mode_write(void* context, uint16_t address, uint16_t value) {
+    UNUSED(address);
+    host_i2c_post(context, (HostMessage){.type = HostMessageTypeSetResetResponse, .as.reset_response = (HostResetResponse)value});
+}
+
+static void host_on_i2c_reset_delay_write(void* context, uint16_t address, uint16_t value) {
+    UNUSED(address);
+    host_i2c_post(context, (HostMessage){.type = HostMessageTypeSetResetDelay, .as.reset_delay_100ms = value});
+}
+
+void host_i2c_setup(Host* instance) {
+    furi_check(instance);
+    i2c_register_add_writable(I2C_CPU_STATUS_REG_ADDRESS, 0, host_on_i2c_cpu_state_write, instance);
+    i2c_register_add_writable(I2C_SYSTEM_RESET_REG_ADDRESS, 0, host_on_i2c_system_reset_write, instance);
+    i2c_register_add_writable(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, HostResetResponseDisabled, host_on_i2c_reset_mode_write, instance);
+    i2c_register_add_writable(I2C_SYSTEM_RESET_DELAY_REG_ADDRESS, 0, host_on_i2c_reset_delay_write, instance);
+}
+
 static Host* host_alloc(void) {
     Host* instance = (Host*)malloc(sizeof(Host));
     instance->cpu_state = CpuStateUnknown;
@@ -420,17 +472,6 @@ int32_t host_srv(void* p) {
     return 0;
 }
 
-bool host_set_cpu_state(Host* instance, CpuState cpu_state) {
-    HostMessage msg = {.type = HostMessageTypeSetCpuState, .as.cpu_state = cpu_state};
-    return host_send_message(instance, &msg);
-}
-
-bool host_get_cpu_state(Host* instance, CpuState* cpu_state) {
-    furi_check(cpu_state);
-    HostMessage msg = {.type = HostMessageTypeGetCpuState, .as.cpu_state_out = cpu_state};
-    return host_send_message(instance, &msg);
-}
-
 void host_power_on(Host* instance) {
     HostMessage msg = {.type = HostMessageTypePowerOn};
     host_send_message(instance, &msg);
@@ -456,23 +497,8 @@ bool host_set_reset_response(Host* instance, HostResetResponse response) {
     return host_send_message(instance, &msg);
 }
 
-bool host_get_reset_response(Host* instance, HostResetResponse* response) {
-    furi_check(response);
-    HostMessage msg = {.type = HostMessageTypeGetResetResponse, .as.reset_response_out = response};
-    return host_send_message(instance, &msg);
-}
-
-bool host_set_reset_delay(Host* instance, uint16_t reset_delay_100ms) {
-    HostMessage msg = {.type = HostMessageTypeSetResetDelay, .as.reset_delay_100ms = reset_delay_100ms};
-    return host_send_message(instance, &msg);
-}
-
 bool host_set_update_base(Host* instance, size_t update_base) {
     HostMessage msg = {.type = HostMessageTypeSetUpdateBase, .as.update_base = update_base};
     return host_send_message(instance, &msg);
 }
 
-void host_reset_request(Host* instance) {
-    HostMessage msg = {.type = HostMessageTypeResetRequest};
-    host_send_message(instance, &msg);
-}
