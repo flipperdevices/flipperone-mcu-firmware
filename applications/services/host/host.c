@@ -6,7 +6,6 @@
 #include <updater/updater.h>
 #include <pd/pd.h>
 #include <furi_bsp_linux.h>
-#include <furi_hal_power.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
 
@@ -119,19 +118,23 @@ static void host_set_reset_response_internal(Host* instance, HostResetResponse r
     with_i2c_register({ i2c_register_update(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, instance->reset_response, 0xFFFF); });
 }
 
+// Armed by the host, and there is an image to switch to: the mode outlives a
+// later update that fails or is aborted.
+static bool host_switch_armed(Host* instance) {
+    return instance->reset_response == HostResetResponseResetMcu && updater_has_staged_image(instance->updater);
+}
+
 // The host is down at the states the kernel sends once its devices are shut
 // down: powered-off, and restarting when a switch is armed (the host restarts
 // on its own otherwise). ShuttingDown comes before that, and on every kexec.
 static bool host_is_down(Host* instance, CpuState cpu_state) {
-    return cpu_state == CpuStatePoweredOff ||
-           (cpu_state == CpuStateRestarting && instance->reset_response == HostResetResponseResetMcu);
+    return cpu_state == CpuStatePoweredOff || (cpu_state == CpuStateRestarting && host_switch_armed(instance));
 }
 
 static void host_down_state_changed(Host* instance, CpuState cpu_state) {
     if(host_is_down(instance, cpu_state)) {
-        uint32_t delay_ms = instance->reset_response == HostResetResponseResetMcu ?
-                                (uint32_t)instance->reset_delay_100ms * 100 :
-                                HOST_POWER_OFF_DELAY_MS;
+        uint32_t delay_ms = host_switch_armed(instance) ? (uint32_t)instance->reset_delay_100ms * 100 :
+                                                          HOST_POWER_OFF_DELAY_MS;
         FURI_LOG_I(TAG, "Host is going down (state %d), in %lu ms", cpu_state, (unsigned long)delay_ms);
         furi_event_loop_timer_start(instance->down_timer, delay_ms);
     } else if(furi_event_loop_timer_is_running(instance->down_timer) && host_state_is_live(cpu_state)) {
@@ -140,20 +143,26 @@ static void host_down_state_changed(Host* instance, CpuState cpu_state) {
     }
 }
 
-// Cut the host's power. With a switch armed, then boot the staged image, or
-// reset; the next boot powers the host again. Otherwise only leave its screen.
+// Cut the host's power. With a switch armed, then boot the staged image; the
+// new image powers the host again. Otherwise only leave its screen.
 static void host_down_timer_callback(void* context) {
     furi_assert(context);
     Host* instance = context;
     if(!host_is_down(instance, instance->cpu_state)) return; // disarmed meanwhile
+    bool armed = host_switch_armed(instance);
 
     FURI_LOG_I(TAG, "Host is down, cutting its power");
     host_power_off_internal(instance);
 
-    if(instance->reset_response == HostResetResponseResetMcu) {
+    if(armed) {
         updater_activate(instance->updater);
-        FURI_LOG_I(TAG, "Resetting MCU");
-        furi_hal_power_reset();
+        // Returns only if the staged image went away meanwhile: a restarting
+        // host still expects to come back.
+        if(instance->cpu_state == CpuStateRestarting) {
+            FURI_LOG_E(TAG, "Switch failed, powering the host again");
+            host_power_on_internal(instance);
+            return;
+        }
     }
 
     host_stop_cpu_app(instance);

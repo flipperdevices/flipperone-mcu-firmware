@@ -4,6 +4,7 @@
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
 #include <hardware/structs/watchdog.h>
+#include <hardware/structs/powman.h>
 #include <furi_hal_power.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
@@ -18,6 +19,11 @@
 #define UPDATER_ISR_ERROR_OUT_OF_ORDER (1 << 1)
 
 #define UPDATER_CUSTOM_EVENT_ERROR (1 << 0)
+
+// Switch-in-progress marker: set before a flash-update boot, cleared by the
+// image that boots next. POWMAN scratch survives every reset but power-on.
+#define UPDATER_SWITCH_MARKER       (powman_hw->scratch[0])
+#define UPDATER_SWITCH_MARKER_MAGIC (0x5317C4ED)
 
 typedef struct {
     uint16_t crc;
@@ -464,17 +470,22 @@ static void updater_commit_flash_update_boot(void) {
     }
     FURI_CRITICAL_EXIT();
     if(rc != 0) {
+        // Keep the marker: the old image reports the revert.
         FURI_LOG_E(TAG, "rom_explicit_buy failed: %d, update will be reverted", rc);
+    } else {
+        UPDATER_SWITCH_MARKER = 0;
     }
 }
 
 // A try-before-you-buy image not bought in time is reverted by the bootrom's
 // watchdog: the old image then boots normally, with the watchdog as the reset
-// reason. The firmware never resets through the watchdog timer otherwise (a
-// switch is a flash-update boot).
+// reason and the switch marker still set. The watchdog alone is not enough:
+// the bootrom also leaves BOOTSEL through it.
 static UpdaterBootType updater_detect_boot_type(void) {
     if(rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) return UpdaterBootTypeFlashUpdate;
-    if(watchdog_hw->reason & WATCHDOG_REASON_TIMER_BITS) return UpdaterBootTypeReverted;
+    bool switching = UPDATER_SWITCH_MARKER == UPDATER_SWITCH_MARKER_MAGIC;
+    UPDATER_SWITCH_MARKER = 0;
+    if(switching && (watchdog_hw->reason & WATCHDOG_REASON_TIMER_BITS)) return UpdaterBootTypeReverted;
     return UpdaterBootTypeNormal;
 }
 
@@ -557,19 +568,27 @@ void updater_i2c_setup(Updater* updater) {
     i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, updater);
 }
 
+// A flash-update boot needs a valid image header in the target slot.
+static bool updater_staged_image_valid(size_t base) {
+    FuriHalFwVersion version;
+    return base != 0 && furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(base), &version);
+}
+
+bool updater_has_staged_image(Updater* updater) {
+    furi_check(updater);
+    return updater_staged_image_valid(updater->staged_base);
+}
+
 void updater_activate(Updater* updater) {
     furi_check(updater);
     size_t base = updater->staged_base;
-    if(base == 0) return;
-
-    // A flash-update boot needs a valid image header in the target slot.
-    FuriHalFwVersion version;
-    if(!furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(base), &version)) {
-        FURI_LOG_E(TAG, "Staged image at 0x%08lX has no valid header", (unsigned long)base);
+    if(!updater_staged_image_valid(base)) {
+        FURI_LOG_E(TAG, "No bootable staged image");
         return;
     }
 
     FURI_LOG_I(TAG, "Booting the staged image at 0x%08lX", (unsigned long)base);
+    UPDATER_SWITCH_MARKER = UPDATER_SWITCH_MARKER_MAGIC;
     furi_hal_power_reboot_to_partition((uint32_t)base);
 }
 

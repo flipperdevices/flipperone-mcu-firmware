@@ -44,13 +44,15 @@
  *          its devices are shut down:
  *          0x0000: Disabled (default): on powered-off the MCU cuts host power
  *                  and leaves the host's screen; restarting is left to the host
- *          0x0001: Cut host power and reset the MCU, into the image the last
- *                  update staged if there is one; the MCU powers the host again
+ *          0x0001: Switch: if the last update staged an image, cut host
+ *                  power and boot that image, which powers the host again.
+ *                  Without a staged image (none written, or a later update
+ *                  started, aborted or failed) it acts as 0x0000.
  *          Other values are ignored. The host writes 0x0001 after an update
  *          reaches DONE to switch to the new image; the MCU forgets it on reset.
  * 0x0090+4 System reset delay register (read, write)
  *          Delay in 100 ms units between the triggering host state and the
- *          reset. 0 resets immediately. If the host comes back online before
+ *          switch. 0 switches immediately. If the host comes back online before
  *          the delay elapses, the pending reset is cancelled.
 */
 #define I2C_SYSTEM_RESET_REG_BASE          (0x0090)
@@ -233,8 +235,8 @@
  * 0xF000 + 0x04: Updater command register (write), UpdaterCommand
  * 0xF000 + 0x06: Updater boot status register (read), Low byte: active partition ('A'/'B'), High byte: boot type:
  *                0 normal; 1 flash-update, the switch to a new image, which the MCU bought;
- *                2 revert, a normal boot after the watchdog fired: a new image did not
- *                get as far as buying itself, and the bootrom went back to the old one
+ *                2 revert, the old image after a switch: the new image did not get as
+ *                far as buying itself, and the bootrom's watchdog went back to the old one
  * 0xF000 + 0x08: Updater last written version register (read), version of the last accepted update, 0 until the first update
  * 0xF000 + 0x0A: Updater firmware patch register (read), patch of the current firmware, 0 on silicon B3 (see cmake/fw_version.cmake)
  * 0xF000 + 0x0C: Updater last written patch register (read), patch of the last accepted update, 0 until the first update, 0 on B3

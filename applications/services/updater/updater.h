@@ -84,6 +84,14 @@ uint16_t updater_crc16(const uint8_t* buf, size_t len, uint16_t crc_init);
 void updater_i2c_setup(Updater* updater);
 
 /**
+ * @brief Whether the last update staged an image that can be booted.
+ *
+ * @param updater Updater instance.
+ * @return true if updater_activate() would switch to it.
+ */
+bool updater_has_staged_image(Updater* updater);
+
+/**
  * @brief Boot the image the last update staged, as a flash-update boot.
  *
  * Returns only when nothing is staged, or the slot holds no valid image.
