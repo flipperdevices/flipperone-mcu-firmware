@@ -1,6 +1,9 @@
 #pragma once
 #include <furi.h>
+#include <furi_hal_resources.h>
 
+/** Created once the negotiator's registers are in the map. */
+#define RECORD_I2C_NEGOTIATOR "i2c_negotiator"
 
 #ifdef __cplusplus
 extern "C" {

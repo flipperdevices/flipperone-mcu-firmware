@@ -37,13 +37,6 @@ extern "C" {
 #endif
 
 /**
- * Register the host's I2C registers: CPU state (0x0040), system reset mode
- * and delay (0x0092, 0x0094) and the system interrupt (0x0104/0x0184), and raise its
- * restart bit. Once, before i2c_intercom_setup_end().
- */
-void host_i2c_setup(Host* instance);
-
-/**
  * Power the host unless it already is, and hand it the main expander. A host
  * that was already powered is running: it is asked to send its screen again.
  * Call with the frame receiver up.

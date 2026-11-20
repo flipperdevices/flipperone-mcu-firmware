@@ -1,5 +1,8 @@
 #include "furi.h"
 #include "applications.h"
+#include <host/host.h>
+#include <i2c_negotiator/i2c_negotiator.h>
+#include <updater/updater.h>
 const char* FLIPPER_AUTORUN_APP_NAME = "";
 
 // services
@@ -340,3 +343,11 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     },
 };
 const size_t FLIPPER_CLI_COMMANDS_COUNT = COUNT_OF(FLIPPER_CLI_COMMANDS);
+
+const char* const FLIPPER_I2C_REGISTER_OWNERS[] = {
+    RECORD_I2C_NEGOTIATOR,
+    RECORD_HOST,
+    RECORD_UPDATER,
+};
+
+const size_t FLIPPER_I2C_REGISTER_OWNERS_COUNT = COUNT_OF(FLIPPER_I2C_REGISTER_OWNERS);

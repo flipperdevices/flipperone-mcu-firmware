@@ -349,8 +349,10 @@ static void host_on_i2c_reset_delay_write(void* context, uint16_t address, uint1
     host_i2c_post(context, (HostMessage){.type = HostMessageTypeSetResetDelay, .as.reset_delay_100ms = value});
 }
 
-void host_i2c_setup(Host* instance) {
-    furi_check(instance);
+// CPU state (0x0040), system reset mode and delay (0x0092, 0x0094) and the
+// system interrupt (0x0104/0x0184).
+static void host_i2c_setup(Host* instance) {
+    i2c_registers_owner_begin(RECORD_HOST);
     i2c_register_add_writable(I2C_CPU_STATUS_REG_ADDRESS, 0, host_on_i2c_cpu_state_write, instance);
     i2c_register_add_writable(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, HostResetResponseDisabled, host_on_i2c_reset_mode_write, instance);
     i2c_register_add_writable(I2C_SYSTEM_RESET_DELAY_REG_ADDRESS, 0, host_on_i2c_reset_delay_write, instance);
@@ -375,6 +377,9 @@ static Host* host_alloc(void) {
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, host_message_queue_callback, instance);
 
+    // Before the record: the slave starts once it exists, and the host API
+    // raises the system interrupt.
+    host_i2c_setup(instance);
     furi_record_create(RECORD_HOST, instance);
 
     host_boot_start(instance);

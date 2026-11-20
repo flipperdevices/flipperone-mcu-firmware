@@ -1,4 +1,5 @@
 #include <furi.h>
+#include <applications.h>
 #include <furi_hal_i2c.h>
 #include <furi_hal_i2c_config.h>
 #include <drivers/i2c_slave/i2c_slave.h>
@@ -26,15 +27,12 @@
  *   regmap driver does not rely on this, it sends the address every time.
  */
 
-#define I2C_INTERCOM_THREAD_SETUP_END_FLAG (1 << 0)
-
 #define I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER 0x00
 #define I2C_INTERCOM_LOG_PERIOD_MS            1000
 #define I2C_INTERCOM_INVALID_ADDRESS_VALUE    0x00
 
 /** I2C Intercom state */
 struct I2CIntercom {
-    FuriThreadId thread_id;
     const FuriHalI2cBusHandle* bus_handle;
 
     volatile bool in_transaction;
@@ -196,15 +194,10 @@ I2C_ISR_FUNC(void, i2c_intercom_isr)(const FuriHalI2cBusHandle* handle, FuriHalI
     }
 }
 
-void i2c_intercom_setup_end(I2CIntercom* instance) {
-    furi_thread_flags_set(instance->thread_id, I2C_INTERCOM_THREAD_SETUP_END_FLAG);
-}
-
 int32_t i2c_intercom_srv(void* p) {
     UNUSED(p);
     furi_thread_set_current_priority(FuriThreadPriorityHigh);
     I2CIntercom* instance = malloc(sizeof(I2CIntercom));
-    instance->thread_id = furi_thread_get_current_id();
     instance->bus_handle = &furi_hal_i2c_handle_cpu;
 
     i2c_registers_init();
@@ -213,10 +206,10 @@ int32_t i2c_intercom_srv(void* p) {
 
     FURI_LOG_I(TAG, "Started");
 
-    // wait to end of setup before allowing interrupts
-    {
-        uint32_t flags = furi_thread_flags_wait(I2C_INTERCOM_THREAD_SETUP_END_FLAG, FuriFlagWaitAny, FuriWaitForever);
-        furi_check(!(flags & FuriFlagError));
+    // Each owner registers its registers before it creates its record
+    for(size_t i = 0; i < FLIPPER_I2C_REGISTER_OWNERS_COUNT; i++) {
+        furi_record_open(FLIPPER_I2C_REGISTER_OWNERS[i]);
+        furi_record_close(FLIPPER_I2C_REGISTER_OWNERS[i]);
     }
 
     FURI_LOG_I(TAG, "Setup completed, enabling I2C slave mode");
@@ -230,7 +223,7 @@ int32_t i2c_intercom_srv(void* p) {
     instance->pointer_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
     instance->mem_address = I2C_INTERCOM_DEFAULT_ADDRESS_REGISTER;
     // Interrupts raised during setup (the restart one) wait for the slave
-    i2c_registers_enable_interrupt_line();
+    i2c_registers_start();
 
     while(1) {
         furi_delay_ms(I2C_INTERCOM_LOG_PERIOD_MS);

@@ -489,6 +489,35 @@ static UpdaterBootType updater_detect_boot_type(void) {
     return UpdaterBootTypeNormal;
 }
 
+static uint16_t updater_boot_status(Updater* updater) {
+    // Low byte: active partition letter; high byte: boot type
+    uint8_t partition = 0;
+    if(updater->active_partition == FlashPartitionIdFwA) {
+        partition = 'A';
+    } else if(updater->active_partition == FlashPartitionIdFwB) {
+        partition = 'B';
+    }
+    return (uint16_t)((updater->boot_type << 8) | partition);
+}
+
+// The 0xF000 block; the updater keeps the values current.
+static void updater_i2c_setup(Updater* updater) {
+    i2c_registers_owner_begin(RECORD_UPDATER);
+    i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
+    i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, ((uint16_t)updater->current_version.major << 8) | updater->current_version.minor);
+    i2c_register_add_readable(I2C_UPDATER_FW_PATCH_REG_ADDRESS, updater->current_version.patch);
+    i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_boot_status(updater));
+    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
+    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, 0);
+    i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, updater);
+    i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, updater);
+    i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, updater);
+    static_assert(
+        I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
+        "I2C updater data window must match the updater block layout");
+    i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, updater);
+}
+
 int32_t updater_srv(void* p) {
     UNUSED(p);
 
@@ -501,7 +530,7 @@ int32_t updater_srv(void* p) {
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, updater_message_callback, instance);
     furi_event_loop_set_custom_event_callback(instance->event_loop, updater_custom_event_callback, instance);
 
-    // Nothing below may crash: the negotiator blocks on RECORD_UPDATER
+    // Nothing below may crash: the I2C slave waits for RECORD_UPDATER
     if(furi_hal_flash_get_active_fw_partition(&instance->active_partition)) {
         FlashPartitionId inactive_partition =
             instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
@@ -533,39 +562,13 @@ int32_t updater_srv(void* p) {
         instance->current_version = (FuriHalFwVersion){0};
     }
 
+    // Before the record: the slave starts once it exists
+    updater_i2c_setup(instance);
     furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);
 
     return 0;
-}
-
-static uint16_t updater_boot_status(Updater* updater) {
-    // Low byte: active partition letter; high byte: boot type
-    uint8_t partition = 0;
-    if(updater->active_partition == FlashPartitionIdFwA) {
-        partition = 'A';
-    } else if(updater->active_partition == FlashPartitionIdFwB) {
-        partition = 'B';
-    }
-    return (uint16_t)((updater->boot_type << 8) | partition);
-}
-
-void updater_i2c_setup(Updater* updater) {
-    furi_check(updater);
-    i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
-    i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, ((uint16_t)updater->current_version.major << 8) | updater->current_version.minor);
-    i2c_register_add_readable(I2C_UPDATER_FW_PATCH_REG_ADDRESS, updater->current_version.patch);
-    i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_boot_status(updater));
-    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
-    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, 0);
-    i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, updater);
-    i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, updater);
-    i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, updater);
-    static_assert(
-        I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
-        "I2C updater data window must match the updater block layout");
-    i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, updater);
 }
 
 // A flash-update boot needs a valid image header in the target slot.

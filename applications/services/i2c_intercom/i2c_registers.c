@@ -1,10 +1,12 @@
 #include <furi.h>
+#include <applications.h>
 #include <furi_hal_resources.h>
 #include <furi_hal_interrupt.h>
 #include <hardware/gpio.h>
 #include <hardware/structs/nvic.h>
 #include <hardware/regs/addressmap.h>
 
+#include "i2c_intercom.h"
 #include "i2c_registers.h"
 #include "i2c_registers_i.h"
 #include "i2c_registers_map.h"
@@ -39,6 +41,7 @@ typedef enum {
 } I2CRegFlag;
 
 #define I2C_REGISTERS_MAX_COUNT (64)
+#define I2C_REGISTERS_MAX_OWNERS (8)
 #define I2C_REG_NO_MASK         (0xFF)
 
 typedef struct {
@@ -112,7 +115,12 @@ typedef struct {
     uint32_t m40_pin;
     // Off until the slave answers: a host reading the status before then
     // gets a NACK
-    bool line_enabled;
+    bool started; // the slave answers: no more registration, the line is driven
+
+    // Threads allowed to register: the intercom's, and each owner's from its
+    // i2c_registers_owner_begin(), at the owner's FLIPPER_I2C_REGISTER_OWNERS index
+    FuriThreadId intercom_thread;
+    FuriThreadId owner_threads[I2C_REGISTERS_MAX_OWNERS];
 } I2CRegisters;
 
 static I2CRegisters i2c;
@@ -159,21 +167,57 @@ I2C_ISR_FUNC(static inline I2CRegion*, i2c_region_find)(uint16_t address) {
     return NULL;
 }
 
+// Only listed owners register, and only before the slave starts: an owner
+// missing from FLIPPER_I2C_REGISTER_OWNERS fails here on every boot instead of
+// racing the slave start.
+static void i2c_registers_check_registrar(void) {
+    furi_check(!i2c.started);
+    FuriThreadId thread = furi_thread_get_current_id();
+    bool allowed = thread == i2c.intercom_thread;
+    for(size_t i = 0; i < I2C_REGISTERS_MAX_OWNERS && !allowed; i++) {
+        allowed = thread == i2c.owner_threads[i];
+    }
+    furi_check(allowed);
+}
+
 void i2c_registers_init(void) {
     i2c_register_interrupt_line_init();
+    i2c.intercom_thread = furi_thread_get_current_id();
 
     i2c.reg_count = 0;
     i2c.region_count = 0;
-    i2c.line_enabled = false;
+    i2c.started = false;
     i2c_register_add_readable(I2C_STATUS_REG_ADDRESS, 0);
     i2c.status_register = i2c_register_get(I2C_STATUS_REG_ADDRESS);
     furi_check(i2c.status_register);
+    i2c_register_add_readable(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION);
 
     // Below the syscall level: register and region callbacks may use the ISR-safe OS API
     furi_hal_interrupt_set_isr_ex(I2C_REGISTERS_RING_IRQ_ID, FuriHalInterruptPriorityNormal, i2c_registers_ring_isr, NULL);
 }
 
+void i2c_registers_owner_begin(const char* owner_record) {
+    furi_check(owner_record);
+    furi_check(FLIPPER_I2C_REGISTER_OWNERS_COUNT <= I2C_REGISTERS_MAX_OWNERS);
+    size_t index = 0;
+    while(index < FLIPPER_I2C_REGISTER_OWNERS_COUNT && strcmp(FLIPPER_I2C_REGISTER_OWNERS[index], owner_record) != 0) {
+        index++;
+    }
+    furi_check(index < FLIPPER_I2C_REGISTER_OWNERS_COUNT); // list it in applications.c
+
+    // The map is initialised once the intercom record exists
+    furi_record_open(RECORD_I2C_INTERCOM);
+    furi_record_close(RECORD_I2C_INTERCOM);
+
+    with_i2c_register({
+        furi_check(!i2c.started);
+        furi_check(i2c.owner_threads[index] == NULL);
+        i2c.owner_threads[index] = furi_thread_get_current_id();
+    });
+}
+
 static void i2c_register_add_internal(uint16_t address, uint16_t default_value, uint32_t flags) {
+    i2c_registers_check_registrar();
     furi_check(address % 2 == 0); // registers are 16-bit, even-aligned
     furi_check(i2c_register_get(address) == NULL);
     // Regions win the lookup, so a register inside one would never be reached
@@ -186,6 +230,7 @@ static void i2c_register_add_internal(uint16_t address, uint16_t default_value, 
 }
 
 void i2c_register_add_region(uint16_t base, uint16_t length, const volatile uint8_t* read_buffer, I2CRegionWriteFn write, void* context) {
+    i2c_registers_check_registrar();
     furi_check(length > 0);
     furi_check(base % 2 == 0);
     furi_check((uint32_t)base + length <= 0x10000);
@@ -476,13 +521,13 @@ void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_b
 
     if(interrupt_reg->value) {
         i2c.status_register->value |= (1 << interrupt_reg->status_register_bit);
-        if(i2c.line_enabled) i2c_register_interrupt_line_set(true);
+        if(i2c.started) i2c_register_interrupt_line_set(true);
     }
 }
 
-void i2c_registers_enable_interrupt_line(void) {
+void i2c_registers_start(void) {
     with_i2c_register({
-        i2c.line_enabled = true;
+        i2c.started = true;
         i2c_register_interrupt_line_set(i2c.status_register->value != 0);
     });
 }

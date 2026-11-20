@@ -76,14 +76,6 @@ typedef struct Updater Updater;
 uint16_t updater_crc16(const uint8_t* buf, size_t len, uint16_t crc_init);
 
 /**
- * @brief Register the updater's I2C registers (0xF000 block). Once, before
- *        i2c_intercom_setup_end(); the updater keeps their values current.
- *
- * @param updater Updater instance.
- */
-void updater_i2c_setup(Updater* updater);
-
-/**
  * @brief Whether the last update staged an image that can be booted.
  *
  * @param updater Updater instance.

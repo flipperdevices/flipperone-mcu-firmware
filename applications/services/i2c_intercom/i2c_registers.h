@@ -116,11 +116,23 @@ bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
 uint16_t i2c_register_get_value(uint16_t address);
 
 /**
- * @brief Drive the interrupt line from now on, raising it for what is already
- *        pending. Until then interrupts only collect in the status register.
- *        Call once the slave answers.
+ * @brief Begin registering an owner's registers, from the owner's thread.
+ *
+ * Waits for the register map. The thread may then add registers until the
+ * I2C slave starts, which happens once every owner has created its record:
+ * add them all, then create the record.
+ *
+ * @param owner_record Owner's record name, listed in FLIPPER_I2C_REGISTER_OWNERS.
  */
-void i2c_registers_enable_interrupt_line(void);
+void i2c_registers_owner_begin(const char* owner_record);
+
+/**
+ * @brief Close registration and drive the interrupt line from now on, raising
+ *        it for what is already pending. Until then interrupts only collect in
+ *        the status register. Call once the slave answers: the I2C ISR runs
+ *        above FURI_CRITICAL, so the map may not change after that.
+ */
+void i2c_registers_start(void);
 
 /**
  * @brief Set interrupt bits unless masked, raising the interrupt line when any are set.
