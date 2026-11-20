@@ -362,7 +362,31 @@ static void cli_command_otp_help(PipeSide* pipe, FuriString* args, void* context
         "otp <OTP_ACTION>\r\n"
         "Where <OTP_ACTION> is:\r\n"
         "\twhitelabel <FIRMWARE_ID> <BODY_ID> <CONNECTIVITY_ID>\r\n"
+        "\tname <NAME>\r\n"
         "");
+}
+
+static void cli_command_otp_name(PipeSide* pipe, FuriString* args, void* context) {
+    FuriString* name = furi_string_alloc();
+    do {
+        // One word only: "otp name Big Cat" must not burn "Big"
+        if(!args_read_string_and_trim(args, name) || furi_string_size(args) != 0) {
+            cli_command_otp_help(pipe, args, context);
+            break;
+        }
+
+        printf("Programming device name in OTP: %s\r\n", furi_string_get_cstr(name));
+
+        FuriHalOtpDeviceNameError error = furi_hal_otp_write_device_name(furi_string_get_cstr(name));
+        if(error == FuriHalOtpDeviceNameErrorNone) {
+            // Pick the name up now; the I2C interconnect registers are filled at boot
+            furi_hal_version_init();
+            printf("Device name written to OTP successfully, the I2C interconnect shows it after reboot\r\n");
+        } else {
+            printf("Failed to write device name to OTP: %s\r\n", furi_hal_otp_device_name_error_to_string(error));
+        }
+    } while(0);
+    furi_string_free(name);
 }
 
 void cli_command_otp(PipeSide* pipe, FuriString* args, void* context) {
@@ -370,6 +394,11 @@ void cli_command_otp(PipeSide* pipe, FuriString* args, void* context) {
     do {
         if(!args_read_string_and_trim(args, action)) {
             cli_command_otp_help(pipe, args, context);
+            break;
+        }
+
+        if(furi_string_cmp(action, "name") == 0) {
+            cli_command_otp_name(pipe, args, context);
             break;
         }
 

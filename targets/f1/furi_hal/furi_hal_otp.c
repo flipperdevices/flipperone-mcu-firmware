@@ -1,5 +1,6 @@
 #include <furi.h>
 #include <furi_hal_otp.h>
+#include <furi_hal_version.h>
 #include <pico/bootrom.h>
 #include <hardware/structs/otp.h>
 #include <hardware/regs/otp_data.h>
@@ -69,6 +70,17 @@ static_assert(STR_LEN(OTP_SCSI_VERSION)     <= 4,   "OTP_SCSI_VERSION too long")
 static_assert(STR_LEN(OTP_REDIRECT_URL)     <= 127, "OTP_REDIRECT_URL too long");
 static_assert(STR_LEN(OTP_REDIRECT_NAME)    <= 127, "OTP_REDIRECT_NAME too long");
 static_assert(STR_LEN(OTP_MODEL)            <= 127, "OTP_MODEL too long");
+
+// Device name: a STRDEF row (same encoding as the white label) followed by the
+// string, 2 ASCII chars per ECC row. It starts on its own OTP page, after the
+// rows the white label can use with the longest board ID, so the page can be
+// locked separately.
+#define DEVICE_NAME_BASE_ROW   0x04C0
+#define DEVICE_NAME_STR_OFFSET 0x01
+#define DEVICE_NAME_STR_ROWS   ((FURI_HAL_VERSION_NAME_LENGTH + 1) / 2)
+
+static_assert(DEVICE_NAME_BASE_ROW % 0x40 == 0, "Device name must start an OTP page");
+static_assert(DEVICE_NAME_BASE_ROW >= WL_BASE_ROW + WL_OFF_BOARD_ID + (127 + 1) / 2, "Device name overlaps the USB white label");
 
 // clang-format on
 
@@ -342,6 +354,140 @@ const char* furi_hal_otp_usb_white_label_error_to_string(FuriHalOtpUsbWhiteLabel
         return "Write USB boot flags R1 failed";
     case FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR2Failed:
         return "Write USB boot flags R2 failed";
+    }
+    return "Unknown error";
+}
+
+static bool furi_hal_otp_read_ecc(uint16_t row, uint16_t* buf, size_t rows) {
+    otp_cmd_t cmd = {.flags = row | OTP_CMD_ECC_BITS};
+    int rc = rom_func_otp_access((uint8_t*)buf, rows * sizeof(uint16_t), cmd);
+    if(rc != BOOTROM_OK) {
+        FURI_LOG_E(TAG, "OTP ECC read row 0x%04x failed: %d", row, rc);
+        return false;
+    }
+    return true;
+}
+
+bool furi_hal_otp_device_name_is_valid(const char* name) {
+    furi_check(name);
+
+    size_t len = strlen(name);
+    if(len == 0 || len > FURI_HAL_VERSION_NAME_LENGTH) {
+        return false;
+    }
+
+    for(size_t i = 0; i < len; i++) {
+        const char c = name[i];
+        if(!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool furi_hal_otp_read_device_name(char* name, size_t name_size) {
+    furi_check(name);
+    furi_check(name_size >= FURI_HAL_VERSION_ARRAY_NAME_LENGTH);
+
+    name[0] = '\0';
+
+    uint16_t strdef = 0;
+    if(!furi_hal_otp_read_ecc(DEVICE_NAME_BASE_ROW, &strdef, 1) || strdef == 0) {
+        return false;
+    }
+
+    const uint8_t row_offset = strdef >> 8;
+    const uint8_t len = strdef & 0xFF;
+    if(row_offset != DEVICE_NAME_STR_OFFSET || len == 0 || len > FURI_HAL_VERSION_NAME_LENGTH) {
+        FURI_LOG_E(TAG, "Device name STRDEF 0x%04x is not valid", strdef);
+        return false;
+    }
+
+    uint16_t buf[DEVICE_NAME_STR_ROWS] = {0};
+    if(!furi_hal_otp_read_ecc(DEVICE_NAME_BASE_ROW + row_offset, buf, DEVICE_NAME_STR_ROWS)) {
+        return false;
+    }
+
+    char chars[DEVICE_NAME_STR_ROWS * 2];
+    for(uint8_t i = 0; i < sizeof(chars); i++) {
+        chars[i] = (i & 1) ? (char)(buf[i / 2] >> 8) : (char)(buf[i / 2] & 0xFF);
+    }
+
+    // The rest of the rows must be blank, so that a STRDEF write cut short,
+    // which can read back with a smaller length, doesn't give a shorter name
+    for(uint8_t i = len; i < sizeof(chars); i++) {
+        if(chars[i] != '\0') {
+            FURI_LOG_E(TAG, "Device name in OTP is not valid");
+            return false;
+        }
+    }
+
+    memcpy(name, chars, len);
+    name[len] = '\0';
+
+    if(strlen(name) != len || !furi_hal_otp_device_name_is_valid(name)) {
+        FURI_LOG_E(TAG, "Device name in OTP is not valid");
+        name[0] = '\0';
+        return false;
+    }
+
+    return true;
+}
+
+FuriHalOtpDeviceNameError furi_hal_otp_write_device_name(const char* name) {
+    furi_check(name);
+
+    if(!furi_hal_otp_device_name_is_valid(name)) {
+        return FuriHalOtpDeviceNameErrorInvalidName;
+    }
+
+    uint16_t strdef = 0;
+    if(!furi_hal_otp_read_ecc(DEVICE_NAME_BASE_ROW, &strdef, 1)) {
+        return FuriHalOtpDeviceNameErrorReadFailed;
+    }
+
+    // Any value in the STRDEF row, even a broken one, means the rows were already used
+    if(strdef != 0) {
+        return FuriHalOtpDeviceNameErrorAlreadyProgrammed;
+    }
+
+    // String first, STRDEF last: the name only counts once it is complete. If the
+    // write is cut short, writing the same name again succeeds, because OTP only
+    // refuses writes that would clear bits.
+    if(!furi_hal_otp_usb_white_label_write_string(DEVICE_NAME_BASE_ROW, DEVICE_NAME_STR_OFFSET, name)) {
+        return FuriHalOtpDeviceNameErrorWriteNameFailed;
+    }
+
+    if(!furi_hal_otp_write_ecc(DEVICE_NAME_BASE_ROW, WL_STRDEF(DEVICE_NAME_STR_OFFSET, strlen(name)))) {
+        return FuriHalOtpDeviceNameErrorWriteStrdefFailed;
+    }
+
+    // The bootrom doesn't check what got programmed, so read it back
+    char check[FURI_HAL_VERSION_ARRAY_NAME_LENGTH];
+    if(!furi_hal_otp_read_device_name(check, sizeof(check)) || strcmp(check, name) != 0) {
+        return FuriHalOtpDeviceNameErrorVerifyFailed;
+    }
+
+    return FuriHalOtpDeviceNameErrorNone;
+}
+
+const char* furi_hal_otp_device_name_error_to_string(FuriHalOtpDeviceNameError error) {
+    switch(error) {
+    case FuriHalOtpDeviceNameErrorNone:
+        return "None";
+    case FuriHalOtpDeviceNameErrorInvalidName:
+        return "Name must be 1 to " TOSTRING(FURI_HAL_VERSION_NAME_LENGTH) " ASCII letters or digits";
+    case FuriHalOtpDeviceNameErrorReadFailed:
+        return "Read device name STRDEF failed";
+    case FuriHalOtpDeviceNameErrorAlreadyProgrammed:
+        return "Device name is already programmed";
+    case FuriHalOtpDeviceNameErrorWriteNameFailed:
+        return "Write device name string failed";
+    case FuriHalOtpDeviceNameErrorWriteStrdefFailed:
+        return "Write device name STRDEF failed";
+    case FuriHalOtpDeviceNameErrorVerifyFailed:
+        return "Device name read back from OTP does not match";
     }
     return "Unknown error";
 }
