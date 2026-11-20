@@ -95,7 +95,9 @@ picotool load -x build/flipperone-mcu-firmware.uf2
 
 ### Recovering the MCU
 
-The build also produces `build/recovery.uf2` (in CI: `flipper-one-mcu-<target>-recovery-<version>.uf2`): the partition table together with the firmware placed in partition 0. It brings an erased chip back to a bootable state in one step, with no separate partition table flash. Erase the chip and reboot it into the bootloader first:
+A recovery image (in CI: `flipper-one-mcu-<target>-recovery-<version>.uf2`) holds the partition table together with the firmware placed in partition 0. It brings an erased chip back to a bootable state in one step, with no separate partition table flash. To build it yourself, configure with `-DFW_RECOVERY=ON`; the build then writes `build/recovery.uf2`. Its firmware is built without try-before-you-buy, because the bootrom does not boot a TBYB image after loading such a file.
+
+Erase the chip and reboot it into the bootloader first:
 
 ```shell
 picotool erase

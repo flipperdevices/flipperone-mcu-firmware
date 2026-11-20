@@ -60,6 +60,9 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJson(needs.targets.outputs.list) }}
+        # 'recovery' builds the firmware without TBYB (FW_RECOVERY) and ships only
+        # recovery.uf2; it runs as its own job so it adds no time to the build.
+        variant: [firmware, recovery]
 
     # Identical across the matrix — the targets only differ in what they build
     outputs:
@@ -118,7 +121,7 @@ jobs:
       # Note the current convention is to use the -S and -B options here to specify source 
       # and build directories, but this is only available with CMake 3.13 and higher.  
       # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: PICO_SDK_PATH=${{ steps.toolchain.outputs.pico_sdk_path }} cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -Dpicotool_DIR=${{ steps.toolchain.outputs.picotool_dir }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf.map"
+      run: PICO_SDK_PATH=${{ steps.toolchain.outputs.pico_sdk_path }} cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -DFW_RECOVERY=${{ matrix.variant == 'recovery' && 'ON' || 'OFF' }} -Dpicotool_DIR=${{ steps.toolchain.outputs.picotool_dir }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf.map"
 
     - name: Get core count
       id: core_count
@@ -143,6 +146,7 @@ jobs:
     # MemBrowse needs the linker script tree flattened into one directory; see
     # scripts/membrowse_ldscripts.sh for why and for what goes in.
     - name: Collect linker script for MemBrowse
+      if: ${{ matrix.variant == 'firmware' }}
       run: >
         ${{github.workspace}}/firmware/scripts/membrowse_ldscripts.sh
         ${{github.workspace}}/firmware
@@ -151,6 +155,7 @@ jobs:
 
     # One MemBrowse target per board, named after the firmware artifact
     - name: Run MemBrowse analysis
+      if: ${{ matrix.variant == 'firmware' }}
       uses: membrowse/membrowse-action@v1
       env:
         GIT_DIR: ${{github.workspace}}/firmware/.git
@@ -178,19 +183,26 @@ jobs:
         mkdir artifacts
 
     - name: 'Move upload files'
-      if: ${{ !github.event.pull_request.head.repo.fork }}
+      if: ${{ !github.event.pull_request.head.repo.fork && matrix.variant == 'firmware' }}
       run: |
         mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.bin artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.bin
         mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.uf2 artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.uf2
         mv ${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf artifacts/flipper-one-mcu-${{ matrix.target }}-firmware-${SUFFIX}.elf
         mv ${{github.workspace}}/firmware/build/partition_table.uf2 artifacts/flipper-one-mcu-partition-table-${SUFFIX}.uf2
+
+    - name: 'Move recovery file'
+      if: ${{ !github.event.pull_request.head.repo.fork && matrix.variant == 'recovery' }}
+      run: |
         mv ${{github.workspace}}/firmware/build/recovery.uf2 artifacts/flipper-one-mcu-${{ matrix.target }}-recovery-${SUFFIX}.uf2
 
+    # firmware-<target> for the firmware, firmware-<target>-recovery for the
+    # recovery image: the jobs below collect both through 'firmware-*', and
+    # unit-tests takes firmware-<target> by its exact name.
     - name: 'Stash artifacts for the jobs below'
       if: ${{ !github.event.pull_request.head.repo.fork }}
       uses: actions/upload-artifact@v4
       with:
-        name: firmware-${{ matrix.target }}
+        name: firmware-${{ matrix.target }}${{ matrix.variant == 'recovery' && '-recovery' || '' }}
         path: artifacts/*
         if-no-files-found: error
 

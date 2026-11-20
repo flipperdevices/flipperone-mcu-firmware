@@ -55,6 +55,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(FW_TARGET "f1" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
+# A recovery build is the firmware without try-before-you-buy, combined with the
+# partition table into recovery.uf2. A TBYB image boots only through a
+# flash-update boot, and the bootrom does not do one after an absolute-family
+# UF2, so a TBYB image in a recovery UF2 never starts.
+option(FW_RECOVERY "Build recovery.uf2: no TBYB, partition table and firmware in one UF2" OFF)
 
 # version.c reports the target as a bare number, so f1 -> 1
 if(NOT FW_TARGET MATCHES "^f([0-9]+)$")
@@ -134,9 +139,11 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     # TODO: When enabling multi-core, this needs to be disabled and the correct flash access mechanism implemented
     PICO_FLASH_ASSUME_CORE1_SAFE=1
     #PICO_USE_SW_SPIN_LOCKS=0
-    # TBYB: a new image boots only via a flash-update boot and commits by buying.
-    PICO_CRT0_IMAGE_TYPE_TBYB=1
 )
+if(NOT FW_RECOVERY)
+    # TBYB: a new image boots only via a flash-update boot and commits by buying.
+    target_compile_definitions(${PROJECT_NAME} PRIVATE PICO_CRT0_IMAGE_TYPE_TBYB=1)
+endif()
 
 pico_add_linker_script_override_path(${PROJECT_NAME} "${CMAKE_CURRENT_LIST_DIR}/targets")
 # Link-time heap symbols (__heap_start__, __heap_end__, __heap_size__).
@@ -236,22 +243,27 @@ if(picotool_FOUND)
     )
     add_dependencies(${PROJECT_NAME} partition_table)
 
-    # Recovery image: the partition table plus the firmware in partition 0, as one
-    # UF2. Loaded onto an erased chip (BOOTSEL drive or `picotool load -x`) it sets
-    # up the partitions and boots the firmware in one step.
-    add_custom_target(recovery ALL
-        COMMAND picotool uf2 combine
-            ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
-            ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.uf2
-            ${CMAKE_CURRENT_BINARY_DIR}/recovery.uf2
-            --partition 0
-        BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/recovery.uf2
-        COMMENT "Building recovery image"
-        VERBATIM
-    )
-    add_dependencies(recovery ${PROJECT_NAME})
+    if(FW_RECOVERY)
+        # The partition table plus the firmware in partition 0, as one UF2. Loaded
+        # onto an erased chip (BOOTSEL drive or `picotool load -x`) it sets up the
+        # partitions and boots the firmware in one step.
+        add_custom_target(recovery ALL
+            COMMAND picotool uf2 combine
+                ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
+                ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.uf2
+                ${CMAKE_CURRENT_BINARY_DIR}/recovery.uf2
+                --partition 0
+            BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/recovery.uf2
+            COMMENT "Building recovery image"
+            VERBATIM
+        )
+        add_dependencies(recovery ${PROJECT_NAME})
+    endif()
 else()
-    message(WARNING "picotool not found, partition table and recovery image will not be built")
+    if(FW_RECOVERY)
+        message(FATAL_ERROR "FW_RECOVERY needs picotool to build recovery.uf2")
+    endif()
+    message(WARNING "picotool not found, partition table will not be built")
 endif()
 # The binary name is the same for every board, so say which one this is. A custom
 # target produces no output, so it is always out of date and reports on every
