@@ -3,44 +3,35 @@ description: Report an MCU firmware, build or bootloader failure.
 title: "[MCU] "
 type: Bug
 body:
-  - type: markdown
-    attributes:
-      value: >-
-        Use a title describing the observed failure and the action that triggers it.
-        Search existing issues before submitting. Use Unknown for unavailable
-        version details and N/A for components not involved.
-
   - type: textarea
     id: environment
     attributes:
       label: Versions and configuration
       description: >-
-        Record firmware versions or source commits. State whether the MCU runs
-        with Linux or independently. For build failures, include the target,
-        toolchain and host or container version.
-      placeholder: |
-        MCU firmware / source commit:
-        Bootloader version, if relevant:
+        Fill in the tested versions. Add other involved versions, connections
+        or build details when relevant.
+      value: |
+        MCU firmware / commit:
         Board revision:
-        Runtime mode: with Linux / standalone
-        Linux image and profile, if involved:
-        Connected peripherals, ports and power source:
-        Build target, toolchain and host / container, for build failures:
-        Source and target versions, for update failures:
     validations:
       required: true
 
-  - type: textarea
-    id: preconditions
+  - type: dropdown
+    id: runtime_mode
     attributes:
-      label: Preconditions
-      description: Starting state and settings needed to reproduce the failure.
+      label: MCU mode
+      options:
+        - With Linux
+        - Standalone (MCU only)
+        - Not applicable (build failure)
+    validations:
+      required: false
 
   - type: textarea
     id: steps
     attributes:
       label: Steps to reproduce
-      description: List exact actions and commands. Attach any required scripts or files under Evidence.
+      description: Include starting conditions and exact actions or commands.
       placeholder: |
         1.
         2.
@@ -52,7 +43,6 @@ body:
     id: expected
     attributes:
       label: Expected result
-      description: State the expected behavior. Link the requirement or specification when available.
     validations:
       required: true
 
@@ -60,48 +50,30 @@ body:
     id: actual
     attributes:
       label: Actual result
-      description: Describe what happened and include the exact error message, if any.
+      description: Describe the failure. Add its impact or a workaround if known.
     validations:
       required: true
 
-  - type: input
+  - type: dropdown
     id: reproducibility
     attributes:
-      label: Reproducibility
-      description: Record failures / attempts. For intermittent failures, describe the differing conditions.
-      placeholder: "3 failures / 5 attempts; only after a warm reboot"
+      label: Frequency
+      description: How often have you observed the failure?
+      options:
+        - Not checked
+        - Observed once
+        - Sometimes
+        - Every attempt
+      default: 0
     validations:
-      required: true
-
-  - type: textarea
-    id: impact
-    attributes:
-      label: Impact and workaround
-      description: Describe affected functions, recovery and any tested workaround. State if none was tested.
-    validations:
-      required: true
+      required: false
 
   - type: textarea
     id: evidence
     attributes:
-      label: Evidence
-      description: Attach logs, screenshots, recordings or measurements. Include the specific TestOps execution URL when available.
-
-  - type: textarea
-    id: related_issues
-    attributes:
-      label: Related issues
-      description: Use full issue URLs or owner/repository#number. Identify the primary issue and explain each relationship.
-
-  - type: textarea
-    id: triage
-    attributes:
-      label: Proposed severity and priority
+      label: Evidence and links
       description: >-
-        Optional assessment with a reason for each value. Final values are recorded
-        in issue fields during triage, or in the description if fields are unavailable.
-      placeholder: |
-        Severity: Critical / Major / Minor / Trivial
-        Severity reason:
-        Priority: Urgent / High / Medium / Low
-        Priority reason:
+        Attach logs, screenshots or recordings. Add links to the specific
+        TestOps execution and related issues.
+    validations:
+      required: false
