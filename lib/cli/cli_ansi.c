@@ -4,7 +4,7 @@ typedef enum {
     CliAnsiParserStateInitial,
     CliAnsiParserStateEscape,
     CliAnsiParserStateEscapeBrace,
-    CliAnsiParserStateEscapeBraceOne,
+    CliAnsiParserStateEscapeBraceNumber,
     CliAnsiParserStateEscapeBraceOneSemicolon,
     CliAnsiParserStateEscapeBraceOneSemicolonModifiers,
 } CliAnsiParserState;
@@ -12,12 +12,14 @@ typedef enum {
 struct CliAnsiParser {
     CliAnsiParserState state;
     CliModKey modifiers;
+    uint8_t number;
 };
 
 CliAnsiParser* cli_ansi_parser_alloc(void) {
     CliAnsiParser* parser = malloc(sizeof(CliAnsiParser));
     parser->state = CliAnsiParserStateInitial;
     parser->modifiers = CliModKeyNo;
+    parser->number = 0;
     return parser;
 }
 
@@ -43,6 +45,19 @@ static CliKey cli_ansi_key_from_mnemonic(char c) {
         return CliKeyEnd;
     case 'H':
         return CliKeyHome;
+    default:
+        return CliKeyUnrecognized;
+    }
+}
+
+/**
+ * @brief Converts the numeric parameter of a `<ESC> [ <n> ~` sequence into
+ * the enum representation
+ */
+static CliKey cli_ansi_key_from_number(uint8_t n) {
+    switch(n) {
+    case 3:
+        return CliKeyDelete;
     default:
         return CliKeyUnrecognized;
     }
@@ -81,20 +96,38 @@ CliAnsiParserResult cli_ansi_parser_feed(CliAnsiParser* parser, char c) {
         break;
 
     case CliAnsiParserStateEscapeBrace:
+        // <ESC> [ <digit> ... -> numeric CSI sequence, e.g. <ESC> [ 3 ~ for
+        // Delete, or <ESC> [ 1 ; <modifiers> <key mnemonic> for a modified
+        // arrow/home/end key. Which of the two it is can only be told apart
+        // once we see what follows the accumulated digits.
+        if(c >= '0' && c <= '9') {
+            parser->number = (uint8_t)(c - '0');
+            parser->state = CliAnsiParserStateEscapeBraceNumber;
+            break;
+        }
+
         // <ESC> [ <key mnemonic> -> <key>
-        if(c != '1') PARSER_RESET_AND_RETURN(parser, CliModKeyNo, cli_ansi_key_from_mnemonic(c));
+        PARSER_RESET_AND_RETURN(parser, CliModKeyNo, cli_ansi_key_from_mnemonic(c));
 
-        // <ESC> [ 1 ...
-        parser->state = CliAnsiParserStateEscapeBraceOne;
-        break;
+    case CliAnsiParserStateEscapeBraceNumber:
+        // <ESC> [ <digits> <more digits> -> keep accumulating (e.g. function keys)
+        if(c >= '0' && c <= '9') {
+            parser->number = (uint8_t)(parser->number * 10 + (c - '0'));
+            break;
+        }
 
-    case CliAnsiParserStateEscapeBraceOne:
-        // <ESC> [ 1 <non-;> -> error
-        if(c != ';') PARSER_RESET_AND_RETURN(parser, CliModKeyNo, CliKeyUnrecognized);
+        // <ESC> [ <digits> ~ -> special key
+        if(c == '~')
+            PARSER_RESET_AND_RETURN(parser, CliModKeyNo, cli_ansi_key_from_number(parser->number));
 
-        // <ESC> [ 1 ; ...
-        parser->state = CliAnsiParserStateEscapeBraceOneSemicolon;
-        break;
+        // <ESC> [ 1 ; ... -> arrow/home/end key with modifiers (only "1" supports this form)
+        if(c == ';' && parser->number == 1) {
+            parser->state = CliAnsiParserStateEscapeBraceOneSemicolon;
+            break;
+        }
+
+        // anything else -> malformed/unsupported sequence, discard
+        PARSER_RESET_AND_RETURN(parser, CliModKeyNo, CliKeyUnrecognized);
 
     case CliAnsiParserStateEscapeBraceOneSemicolon:
         // <ESC> [ 1 ; <modifiers> ...
