@@ -27,6 +27,7 @@ struct RpcSession {
     FuriStreamBuffer* stream;
     Flipper_One_Rpc_RpcMessage* decoded_message;
     bool terminate;
+    bool close_requested;
     FuriMutex* callbacks_mutex;
     RpcSendBytesCallback send_bytes_callback;
     RpcSessionCloseCallback close_callback;
@@ -69,6 +70,9 @@ void rpc_session_set_close_callback(RpcSession* session, RpcSessionCloseCallback
 
 void rpc_session_trigger_close_callback(RpcSession* session) {
     furi_check(session);
+    /* Called from a message handler on the worker thread: from here on the
+     * session only waits for rpc_session_close() */
+    session->close_requested = true;
     RpcSessionCloseCallback cb;
     void* ctx;
     furi_mutex_acquire(session->callbacks_mutex, FuriWaitForever);
@@ -159,7 +163,12 @@ static int32_t rpc_session_worker(void* context) {
 #endif
             RpcHandler* handler = RpcHandlerDict_get(session->handlers, tag);
 
-            if(handler && handler->message_handler) {
+            if(session->close_requested) {
+                /* Fed together with the close request. The owner may already
+                 * be tearing down, so don't act on it: a screen stream started
+                 * now would outlive the session. */
+                FURI_LOG_D(TAG, "Ignoring message tag %d after close", tag);
+            } else if(handler && handler->message_handler) {
                 furi_check(furi_mutex_acquire(rpc->busy_mutex, FuriWaitForever) == FuriStatusOk);
                 handler->message_handler(session->decoded_message, handler->context);
                 furi_check(furi_mutex_release(rpc->busy_mutex) == FuriStatusOk);
@@ -187,6 +196,10 @@ static int32_t rpc_session_worker(void* context) {
              * immediately instead of blocking with timeout (which would
              * stall the CLI pipe-drain loop and deadlock pipe_send). */
             furi_stream_buffer_reset(session->stream);
+            /* Stop a screen stream while the session it sends on still
+             * exists. Handlers only run on this thread, so none can start
+             * another one after this. */
+            rpc_stop_virtual_display_handler(NULL, NULL);
             break;
         }
     }
@@ -230,6 +243,7 @@ RpcSession* rpc_session_open(Rpc* rpc, RpcOwner owner) {
     session->stream = furi_stream_buffer_alloc(RPC_BUFFER_SIZE, 1);
     session->rpc = rpc;
     session->terminate = false;
+    session->close_requested = false;
     session->owner = owner;
     RpcHandlerDict_init(session->handlers);
     session->decoded_message = malloc(sizeof(Flipper_One_Rpc_RpcMessage));
