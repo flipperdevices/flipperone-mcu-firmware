@@ -99,7 +99,8 @@ Then make these checks as separate passes, not along the way while editing:
    PR. Give it only the PR: no memory, no notes, nothing from your session, so it reads
    the change as the human reviewer will. Fix the serious remarks (bugs, architecture,
    misleading documentation; not style or taste), pass the fixes through checks 2 and 3
-   again, and repeat with a new subagent until none are left.
+   again, and repeat with a new subagent until none are left, at most two rounds. Hand
+   what is still open after the second round to the user.
 
 Only then mark the PR **ready for review**. Before pushing follow-up commits, check that it
 is still open: commits pushed after a merge never reach `dev`.
