@@ -67,12 +67,13 @@ To see and control a Flipper One attached to this machine (screen, buttons, cons
 
 ## Opening a pull request
 
-Open the PR as a **draft** against `dev`: CI does not build a branch until it has a PR,
-and the hardware check needs its artifacts. Fill [.github/pull_request_template.md](.github/pull_request_template.md)
+Open the PR from a branch in this repository as a **draft** against `dev`: CI does not
+build a branch until it has a PR, and the hardware check needs its artifacts (fork PRs get
+none). Fill [.github/pull_request_template.md](.github/pull_request_template.md)
 (`gh pr create --body` skips it, so copy it in by hand) and keep it short: *Verification*
 lists only steps a reviewer can realistically repeat, other cases you tried get two or
-three words each. Leave the *Contributor checklist* unticked: it is the author's personal
-attestation.
+three words each. Leave the *Contributor checklist* unticked: it is the human author's
+personal attestation, and they tick it.
 
 Then make these checks as separate passes, not along the way while editing:
 
@@ -83,7 +84,7 @@ Then make these checks as separate passes, not along the way while editing:
    - no case is handled in two places;
    - no case is left uncovered because a check sits in the wrong place.
 
-   If something is in the wrong place, stop. Describe the target structure to the author
+   If something is in the wrong place, stop. Describe the target structure to the user
    (who owns what, what moves where) and let them decide whether to widen the PR.
 2. **Comments.** Every comment the PR adds or touches is needed, current and short. It
    explains what the code cannot say (a non-obvious reason or constraint); it doesn't
@@ -91,7 +92,7 @@ Then make these checks as separate passes, not along the way while editing:
 3. **Documentation.** The same for every document the PR adds or touches. User
    documentation follows the user's scenario. The product is in development and its
    procedures, buttons and names still change, so link the single source of truth (the
-   official guide) instead of retelling steps or naming details such as the USB drive.
+   official guide) instead of retelling its steps or UI details.
 4. **Hardware.** Run a user-facing flow on hardware the way the user will before claiming
    it works. A procedure quoted in an issue may be stale.
 5. **Self-review.** Have a fresh subagent on the most capable model available review the
@@ -101,7 +102,7 @@ Then make these checks as separate passes, not along the way while editing:
    again, and repeat with a new subagent until none are left.
 
 Only then mark the PR **ready for review**. Before pushing follow-up commits, check that it
-is still open: commits pushed after a merge are lost.
+is still open: commits pushed after a merge never reach `dev`.
 
 ## Rules that are easy to get wrong
 
