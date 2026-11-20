@@ -55,8 +55,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(FW_TARGET "f1" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
-# No TBYB: a TBYB image starts only via a flash-update boot, which the bootrom does
-# not do after an absolute-family UF2.
+# A TBYB image starts only via a flash-update boot, which the bootrom does not do
+# after an absolute-family UF2.
 option(FW_RECOVERY "Build recovery.uf2: no TBYB, partition table and firmware in one UF2" OFF)
 
 # version.c reports the target as a bare number, so f1 -> 1
