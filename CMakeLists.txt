@@ -55,10 +55,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 set(FW_TARGET "f1" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
-# A recovery build is the firmware without try-before-you-buy, combined with the
-# partition table into recovery.uf2. A TBYB image boots only through a
-# flash-update boot, and the bootrom does not do one after an absolute-family
-# UF2, so a TBYB image in a recovery UF2 never starts.
+# A TBYB image starts only via a flash-update boot, which the bootrom does not do
+# after an absolute-family UF2.
 option(FW_RECOVERY "Build recovery.uf2: no TBYB, partition table and firmware in one UF2" OFF)
 
 # version.c reports the target as a bare number, so f1 -> 1
@@ -244,9 +242,6 @@ if(picotool_FOUND)
     add_dependencies(${PROJECT_NAME} partition_table)
 
     if(FW_RECOVERY)
-        # The partition table plus the firmware in partition 0, as one UF2. Loaded
-        # onto an erased chip (BOOTSEL drive or `picotool load -x`) it sets up the
-        # partitions and boots the firmware in one step.
         add_custom_target(recovery ALL
             COMMAND picotool uf2 combine
                 ${CMAKE_CURRENT_BINARY_DIR}/partition_table.uf2
