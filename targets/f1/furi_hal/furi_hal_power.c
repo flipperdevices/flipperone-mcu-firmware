@@ -1,10 +1,15 @@
 #include <furi.h>
 #include <furi_hal.h>
-#include <hardware/watchdog.h>
+#include <hardware/regs/addressmap.h>
+#include <hardware/regs/m33.h>
+#include <hardware/structs/psm.h>
+#include <hardware/structs/watchdog.h>
+#include <hardware/structs/ticks.h>
 #include <hardware/clocks.h>
 #include <hardware/pll.h>
 #include <pico/platform/cpu_regs.h>
 #include <pico/bootrom.h>
+#include <boot/picoboot_constants.h>
 #include <furi_hal_clock.h>
 
 #define TAG "FuriHalPower"
@@ -20,7 +25,45 @@ static volatile FuriHalPower furi_hal_power = {
 static volatile int wakeup_alarm_irq_num;
 
 void furi_hal_power_reset(void) {
-    watchdog_reboot(0, 0, 0);
+    // AIRCR: watchdog_reboot() would leave the watchdog running -> boot loop.
+    *(volatile uint32_t*)(PPB_BASE + M33_AIRCR_OFFSET) = (0x05FAu << M33_AIRCR_VECTKEY_LSB) | M33_AIRCR_SYSRESETREQ_BITS;
+    while(1) {
+    }
+}
+
+// Slow the watchdog tick so LOAD=0xffffff spans ~18s: at the default 1-clk_ref
+// tick it re-fires (~1.4s) mid-bootrom and the flash-update boot loops.
+static void furi_hal_power_watchdog_slow(void) {
+    watchdog_hw->ctrl = 0;
+    ticks_hw->ticks[TICK_WATCHDOG].ctrl = 0;
+    ticks_hw->ticks[TICK_WATCHDOG].cycles = 12;
+    ticks_hw->ticks[TICK_WATCHDOG].ctrl = TICKS_WATCHDOG_CTRL_ENABLE_BITS;
+}
+
+// Reboot2-style flash-update vector in watchdog scratch, written directly:
+// rom_reboot() faults on this silicon (RCP canary). p0 must be XIP_BASE +
+// storage offset, the bootrom computes it as p0 - XIP_BASE.
+static void furi_hal_power_watchdog_flash_update_vector(uint32_t partition_storage_offset) {
+    psm_hw->wdsel = PSM_WDSEL_BITS & ~(PSM_WDSEL_ROSC_BITS | PSM_WDSEL_XOSC_BITS);
+    watchdog_hw->scratch[2] = XIP_BASE + partition_storage_offset;
+    watchdog_hw->scratch[3] = 0;
+    watchdog_hw->scratch[4] = 0xb007c0d3;
+    watchdog_hw->scratch[5] = 0xfffffffe;
+    watchdog_hw->scratch[6] = REBOOT2_FLAG_REBOOT_TYPE_FLASH_UPDATE;
+    watchdog_hw->scratch[7] = 0xb007c0d3;
+}
+
+void furi_hal_power_reboot_to_partition(uint32_t partition_storage_offset) {
+    furi_hal_power_watchdog_slow();
+    furi_hal_power_watchdog_flash_update_vector(partition_storage_offset);
+    // ENABLE only: TRIGGER resets immediately and then re-fires in a loop.
+    watchdog_hw->load = WATCHDOG_CTRL_TIME_BITS;
+    watchdog_hw->ctrl = WATCHDOG_CTRL_ENABLE_BITS;
+    // Wait for the watchdog; a SYSRESETREQ here would clear scratch and
+    // degrade the flash-update boot into a plain normal boot.
+    while(1) {
+        __wfi();
+    }
 }
 
 void furi_hal_power_enter_bootsel(void) {

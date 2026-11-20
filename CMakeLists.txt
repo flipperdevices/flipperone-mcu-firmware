@@ -1,17 +1,51 @@
-# Generated Cmake Pico project filecorelibs
-
 cmake_minimum_required(VERSION 3.13)
 
-# Automatically initialise required git submodules if not done yet
+# Make sure every git submodule the build needs is checked out.
 find_package(Git QUIET)
 if(Git_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+    # Check the status of git submodules first so a routine configure never hits the network.
     execute_process(
-        COMMAND ${GIT_EXECUTABLE} submodule update --init --depth 1
+        COMMAND ${GIT_EXECUTABLE} submodule status --recursive
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        RESULT_VARIABLE GIT_SUBMOD_RESULT
+        OUTPUT_VARIABLE _fw_submodules
+        RESULT_VARIABLE _fw_git_status
+        ERROR_QUIET
     )
-    if(NOT GIT_SUBMOD_RESULT EQUAL "0")
-        message(WARNING "git submodule update --init failed (${GIT_SUBMOD_RESULT})")
+
+    # A line starting with '-' is a submodule that has not been initialised
+    if(NOT _fw_git_status EQUAL 0 OR _fw_submodules MATCHES "(^|\n)-")
+        message(STATUS "Fetching missing git submodules")
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive --depth 1
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            RESULT_VARIABLE _fw_git_status
+        )
+
+        # Error out here, not in the build step (on empty globs)
+        if(NOT _fw_git_status EQUAL 0)
+            message(FATAL_ERROR
+                "git submodule update --init --recursive failed (${_fw_git_status}). "
+                "Run it by hand in ${CMAKE_CURRENT_SOURCE_DIR} and re-run cmake.")
+        endif()
+    else()
+        # '+' is a submodule checked out at another commit than this tree records
+        # (e.g. after a pull that moved it), 'U' one with merge conflicts. Only
+        # warn: it may just as well be work in progress inside the submodule, and
+        # configure must not throw that away.
+        string(REPLACE "\n" ";" _fw_lines "${_fw_submodules}")
+        set(_fw_stale "")
+        foreach(_fw_line IN LISTS _fw_lines)
+            if(_fw_line MATCHES "^[+U][0-9a-f]+ ([^ ]+)")
+                list(APPEND _fw_stale "${CMAKE_MATCH_1}")
+            endif()
+        endforeach()
+        if(_fw_stale)
+            list(JOIN _fw_stale ", " _fw_stale)
+            message(WARNING
+                "Submodules not at the commit this tree records: ${_fw_stale}. "
+                "Unless that is intentional, run "
+                "'git submodule update --init --recursive'.")
+        endif()
     endif()
 endif()
 
@@ -45,7 +79,8 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-# TODO: custom board with RP2350_B_
+
+# Define our board
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/targets/ CACHE STRING "Board header directories" FORCE)
 set(PICO_BOARD "board_mcu_2350" CACHE STRING "Board type" FORCE)
 set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
@@ -99,7 +134,8 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
     # TODO: When enabling multi-core, this needs to be disabled and the correct flash access mechanism implemented
     PICO_FLASH_ASSUME_CORE1_SAFE=1
     #PICO_USE_SW_SPIN_LOCKS=0
-    PICO_CRT0_IMAGE_TYPE_TBYB=0
+    # TBYB: a new image boots only via a flash-update boot and commits by buying.
+    PICO_CRT0_IMAGE_TYPE_TBYB=1
 )
 
 pico_add_linker_script_override_path(${PROJECT_NAME} "${CMAKE_CURRENT_LIST_DIR}/targets")
@@ -124,19 +160,15 @@ target_link_options(${PROJECT_NAME} PRIVATE
     "LINKER:--wrap=_realloc_r"
 )
 
-include(lib/corelibs/lib/version/CMakeLists.txt)
-
 pico_set_program_name(${PROJECT_NAME} "${PROJECT_NAME}")
-pico_set_program_version(${PROJECT_NAME} "0.1")
 
-# Bump the version numbers on release. Packed into the picobin MAJOR word;
-# the picobin MINOR word is the updater's boot counter (always 0 at build).
-set(FW_IMAGE_MAJOR 0) # 0-15
-set(FW_IMAGE_MINOR 1) # 0-255
-set(FW_IMAGE_PATCH 0) # 0-15
+# Version: git tag on HEAD wins, FW_IMAGE_* is the dev fallback; packs the
+# picobin version word (see cmake/fw_version.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/fw_version.cmake")
 
-math(EXPR VERSION_PACKED "(${FW_IMAGE_MAJOR} & 0x0F) << 12 | (${FW_IMAGE_MINOR} & 0xFF) << 4 | (${FW_IMAGE_PATCH} & 0x0F)")
-pico_set_binary_version(${PROJECT_NAME} MAJOR ${VERSION_PACKED} MINOR 0)
+# Build metadata for version.c (commit, branch, dirty flag...) as a
+# build-time generated version.inc.h, not the configure-time corelibs
+include("${CMAKE_CURRENT_LIST_DIR}/scripts/cmake/version.cmake")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(${PROJECT_NAME} 0)

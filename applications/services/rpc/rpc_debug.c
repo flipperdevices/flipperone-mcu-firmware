@@ -1,5 +1,13 @@
 #include "rpc_i.h"
 
+static const char* const rpc_debug_button_action_names[] = {
+    [Flipper_One_Input_ButtonAction_PRESS] = "PRESS",
+    [Flipper_One_Input_ButtonAction_RELEASE] = "RELEASE",
+    [Flipper_One_Input_ButtonAction_SHORT] = "SHORT",
+    [Flipper_One_Input_ButtonAction_LONG] = "LONG",
+    [Flipper_One_Input_ButtonAction_REPEAT] = "REPEAT",
+};
+
 static const char* rpc_debug_button_name(Flipper_One_Input_Button btn) {
     switch(btn) {
     case Flipper_One_Input_Button_OK:
@@ -105,7 +113,7 @@ void rpc_debug_print_message(const Flipper_One_Rpc_RpcMessage* message) {
             str, "\t\tbutton: %s\r\n", rpc_debug_button_name(evt->button));
         furi_string_cat_printf(
             str, "\t\taction: %s\r\n",
-            evt->action == Flipper_One_Input_ButtonAction_PRESS ? "PRESS" : "RELEASE");
+            evt->action < COUNT_OF(rpc_debug_button_action_names) ? rpc_debug_button_action_names[evt->action] : "UNKNOWN");
         furi_string_cat_printf(str, "\t}\r\n");
         break;
     }

@@ -56,6 +56,16 @@ void i2c_slave_deinit(i2c_inst_t* i2c);
  */
 void i2c_slave_reset(i2c_inst_t* i2c);
 
+/**
+ * \brief Number of bytes discarded while no transaction was tracked
+ * \ingroup pico_i2c_slave
+ * \param i2c Either \ref i2c0 or \ref i2c1
+ * \return Cumulative dropped byte count
+ */
+uint32_t i2c_slave_dropped_bytes_get(i2c_inst_t* i2c);
+
+uint8_t i2c_slave_rxflr_get(i2c_inst_t* i2c);
+
 #ifdef __cplusplus
 }
 #endif

@@ -1,9 +1,7 @@
-# Packages for the assets build (image_convert.py, nanopb generator).
-# Installed into .venv by run_venv.sh/.cmd on first run; the venv.stamp step
-# in assets/CMakeLists.txt re-installs when this file changes.
-pypng
-lz4
-pillow
-protobuf
-# provides bundled protoc for the nanopb generator (no system protoc needed)
-grpcio-tools
+# Pinned for the assets build and the agent-tools tests: every checkout and CI
+# run must generate identical output, so bump versions deliberately.
+# assets/CMakeLists.txt installs this file into build/assets/.venv.
+pillow==12.2.0
+protobuf==7.35.1
+grpcio-tools==1.83.0  # bundles protoc, so no system protoc is needed
+pytest==9.2.0  # scripts/agent_tools tests, see .github/workflows/agent-tools-tests.yml

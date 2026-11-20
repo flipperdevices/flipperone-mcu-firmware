@@ -1,14 +1,17 @@
 {
+    // openocd comes from the Pico extension (see tasks.json). svdFile cannot: the
+    // extension's getSVDPath only answers for Rust projects, so the SDK version
+    // stays spelled out here and must match sdkVersion in CMakeLists.txt.
     "version": "0.2.0",
     "configurations": [
         {
             "name": "Pico Debug",
-            "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+            "cwd": "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "serverpath": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
@@ -24,7 +27,9 @@
                 "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000"
             ],
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
+                "rp2350.dap.core0 configure -event gdb-detach { resume }",
+                "rp2350.dap.core1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -44,12 +49,12 @@
         },
         {
             "name": "Pico Debug Attach",
-            "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+            "cwd": "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "serverpath": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
@@ -58,7 +63,9 @@
             ],
             "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
+                "rp2350.dap.core0 configure -event gdb-detach { resume }",
+                "rp2350.dap.core1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -78,12 +85,12 @@
         },
         {
             "name": "Pico Debug (FreeRTOS)",
-            "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+            "cwd": "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "serverpath": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
@@ -100,7 +107,9 @@
                 "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000"
             ],
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
+                "rp2350.dap.core0 configure -event gdb-detach { resume }",
+                "rp2350.dap.core1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -120,12 +129,12 @@
         },
         {
             "name": "Pico Debug Attach (FreeRTOS)",
-            "cwd": "${userHome}/.pico-sdk/openocd/0.12.0+dev/scripts",
+            "cwd": "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
             "executable": "${command:raspberry-pi-pico.launchTargetPath}",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
+            "serverpath": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
             "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
             "device": "${command:raspberry-pi-pico.getChipUppercase}",
             "configFiles": [
@@ -135,7 +144,9 @@
             "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
             "rtos": "FreeRTOS",
             "openOCDLaunchCommands": [
-                "adapter speed 5000"
+                "adapter speed 5000",
+                "rp2350.dap.core0 configure -event gdb-detach { resume }",
+                "rp2350.dap.core1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
