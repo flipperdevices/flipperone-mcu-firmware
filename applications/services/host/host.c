@@ -8,6 +8,7 @@
 #include <furi_bsp_linux.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
+#include <hardware/structs/powman.h>
 
 #define TAG "Host"
 
@@ -15,6 +16,17 @@
 #define HOST_POWER_OFF_DELAY_MS    (300) // after powered-off, unless a switch is armed
 #define HOST_MASKROM_RELEASE_MS    (1000)
 #define HOST_CPU_APP_RETRY_MS      (1000) // wait for self_check to release the desktop
+// How long Linux gets to write its CPU state before the host counts as not
+// responding. Its driver replays the state ~350 ms after an MCU reset; a cold
+// boot first reports ~3 s in, the margin is for a slower loader.
+#define HOST_RUNNING_RESPONSE_MS (5000)
+#define HOST_STARTING_RESPONSE_MS (30000)
+
+// Set before a switch when the host restarts, so the image that boots next
+// (the new one, or the old one after a revert) powers it again; a host that
+// powered off stays off. POWMAN scratch survives every reset but power-on.
+#define HOST_RESTART_MARKER       (powman_hw->scratch[1])
+#define HOST_RESTART_MARKER_MAGIC (0x4057B007)
 
 struct Host {
     FuriEventLoop* event_loop;
@@ -23,6 +35,10 @@ struct Host {
     FuriEventLoopTimer* cpu_app_retry_timer;
     FuriEventLoopTimer* maskrom_timer;
     FuriEventLoopTimer* down_timer;
+    FuriEventLoopTimer* response_timer;
+    HostState state;
+    bool reported; // Linux wrote its CPU state since the host was powered
+    FuriPubSub* pubsub;
     HostResetResponse reset_response;
     uint16_t reset_delay_100ms;
     uint32_t dropped_messages_logged;
@@ -47,7 +63,6 @@ typedef struct {
         CpuState cpu_state;
         HostResetResponse reset_response;
         uint16_t reset_delay_100ms;
-        bool* was_powered_out;
     } as;
 } HostMessage;
 
@@ -58,43 +73,87 @@ static volatile uint32_t host_dropped_messages;
 static bool host_state_is_live(CpuState cpu_state);
 static void host_start_cpu_app(Host* instance);
 
+// Host state
+
+static void host_set_state(Host* instance, HostState state) {
+    if(instance->state == state) return;
+    instance->state = state;
+    FURI_LOG_I(TAG, "Host state: %d", state);
+    furi_pubsub_publish(instance->pubsub, &state);
+}
+
+// The host was just powered: Linux has to write its CPU state in time.
+static void host_await_report(Host* instance, HostState state, uint32_t timeout_ms) {
+    instance->reported = false;
+    furi_event_loop_timer_start(instance->response_timer, timeout_ms);
+    host_set_state(instance, state);
+}
+
+static void host_response_timer_callback(void* context) {
+    furi_check(context);
+    Host* instance = context;
+    FURI_LOG_W(TAG, "Host has not reported its CPU state");
+    host_set_state(instance, HostStateNotResponding);
+}
+
+static void host_reported(Host* instance) {
+    if(instance->reported || instance->state == HostStateOff || instance->state == HostStateMaskrom) return;
+    instance->reported = true;
+    furi_event_loop_timer_stop(instance->response_timer);
+    if(instance->state == HostStateNotResponding) host_set_state(instance, HostStateRunning);
+}
+
 // Host power. Runs on the host thread only, so the rails have one owner.
 
-static void host_power_reset_pd_and_charger(Host* instance) {
+static void host_power_cut(Host* instance) {
     Pd* pd = furi_record_open(RECORD_PD);
     pd_reset_config(pd);
     furi_record_close(RECORD_PD);
 
     power_bq2579x_reset_config(instance->power);
+
+    furi_bsp_linux_reset();
+    furi_event_loop_timer_stop(instance->response_timer);
+    // A pending powered-off from before is answered by this cut: a host
+    // powered again right after must not be cut by it.
+    furi_event_loop_timer_stop(instance->down_timer);
+    furi_event_loop_timer_stop(instance->cpu_app_retry_timer);
 }
 
-// Returns whether the host was already powered.
-static bool host_power_on_internal(Host* instance) {
-    UNUSED(instance);
+static void host_power_on_internal(Host* instance) {
+    if(!furi_bsp_linux_is_load()) {
+        furi_bsp_linux_reset();
+        furi_bsp_linux_start();
+        host_await_report(instance, HostStateStarting, HOST_STARTING_RESPONSE_MS);
+        return;
+    }
     // A host still powered across an MCU reset keeps running: only hand it
     // the expander back, which the reset gave to the MCU.
-    bool was_powered = furi_bsp_linux_is_load();
-    if(!was_powered) {
-        furi_bsp_linux_reset();
-    }
     furi_bsp_linux_start();
-    return was_powered;
+    if(instance->state == HostStateOff) {
+        host_await_report(instance, HostStateRunning, HOST_RUNNING_RESPONSE_MS);
+    }
 }
 
+// Both the host going down and the CPU app leaving its screen power the host
+// off: the second one finds it off already.
 static void host_power_off_internal(Host* instance) {
-    host_power_reset_pd_and_charger(instance);
-    furi_bsp_linux_reset();
+    if(instance->state == HostStateOff) return;
+    host_power_cut(instance);
+    host_set_state(instance, HostStateOff);
 }
 
 static void host_power_restart_internal(Host* instance) {
-    host_power_off_internal(instance);
+    host_power_cut(instance);
     furi_bsp_linux_start();
+    host_await_report(instance, HostStateStarting, HOST_STARTING_RESPONSE_MS);
 }
 
 static void host_power_maskrom_internal(Host* instance) {
-    host_power_off_internal(instance);
+    host_power_cut(instance);
     furi_bsp_linux_maskrom(true);
     furi_event_loop_timer_start(instance->maskrom_timer, HOST_MASKROM_RELEASE_MS);
+    host_set_state(instance, HostStateMaskrom);
 }
 
 static void host_maskrom_timer_callback(void* context) {
@@ -143,8 +202,8 @@ static void host_down_state_changed(Host* instance, CpuState cpu_state) {
     }
 }
 
-// Cut the host's power. With a switch armed, then boot the staged image; the
-// new image powers the host again. Otherwise only leave its screen.
+// Cut the host's power. With a switch armed, then boot the staged image, which
+// powers the host again if it was restarting. Otherwise only leave its screen.
 static void host_down_timer_callback(void* context) {
     furi_assert(context);
     Host* instance = context;
@@ -155,7 +214,9 @@ static void host_down_timer_callback(void* context) {
     host_power_off_internal(instance);
 
     if(armed) {
+        HOST_RESTART_MARKER = instance->cpu_state == CpuStateRestarting ? HOST_RESTART_MARKER_MAGIC : 0;
         updater_activate(instance->updater);
+        HOST_RESTART_MARKER = 0;
         // Returns only if the staged image went away meanwhile: a restarting
         // host still expects to come back.
         if(instance->cpu_state == CpuStateRestarting) {
@@ -174,6 +235,7 @@ static void host_set_cpu_state_internal(Host* instance, CpuState cpu_state) {
     instance->cpu_state = cpu_state;
     FURI_LOG_I(TAG, "CPU State: %d", instance->cpu_state);
 
+    if(cpu_state != CpuStateUnknown) host_reported(instance);
     host_down_state_changed(instance, cpu_state);
 
     if(host_state_is_live(cpu_state)) {
@@ -192,17 +254,15 @@ static void host_message_queue_callback(FuriEventLoopObject* object, void* conte
     switch(msg.type) {
     case HostMessageTypeSetCpuState:
         if(msg.as.cpu_state >= CpuStateNumStates) {
-            // Ignore garbage from the I2C link (bus glitch, protocol/version
-            // mismatch, etc.) instead of corrupting our state; log it so the
-            // mismatch is still visible.
+            // A bus glitch or a newer driver: keep the state
             FURI_LOG_E(TAG, "Invalid CPU state from I2C: %u", msg.as.cpu_state);
             break;
         }
         host_set_cpu_state_internal(instance, msg.as.cpu_state);
         break;
     case HostMessageTypePowerOn:
-        *msg.as.was_powered_out = host_power_on_internal(instance);
-        if(*msg.as.was_powered_out) {
+        host_power_on_internal(instance);
+        if(instance->state == HostStateRunning || instance->state == HostStateNotResponding) {
             // The host draws only on a change: ask for its current screen.
             FURI_LOG_I(TAG, "Host already running: requesting its screen");
             with_i2c_register({ i2c_register_set_interrupt(I2C_SYSTEM_INTERRUPT_REG_ADDRESS, 1 << I2C_SYSTEM_INTERRUPT_REG_BIT_FRAME); });
@@ -254,7 +314,7 @@ static bool host_cpu_app_running(void) {
     return appid && (!strcmp(appid, "cpu_app_start") || !strcmp(appid, "cpu_app_maskrom"));
 }
 
-// Leave the host's screen; the CPU app powers the host off on exit as well.
+// Leave the host's screen.
 static void host_stop_cpu_app(Host* instance) {
     UNUSED(instance);
     if(host_cpu_app_running()) {
@@ -271,7 +331,8 @@ static bool host_state_is_live(CpuState cpu_state) {
 // Start the CPU app unless the user is in another app; stops self_check and
 // retries on a timer until it releases the slot.
 static void host_start_cpu_app(Host* instance) {
-    if(host_cpu_app_running()) return; // already showing the host
+    // A state queued before a cut must not bring the app, and with it the power, back
+    if(instance->state == HostStateOff || host_cpu_app_running()) return;
     const char* appid = desktop_get_running_app_id();
 
     if(appid && strcmp(appid, "self_check") == 0) {
@@ -309,17 +370,27 @@ static void host_cpu_app_retry_timer_callback(void* context) {
 // Linux replays its state on the restart interrupt. A switch to a new image
 // (a flash-update boot, bought by now: the updater record comes after the
 // buy) and a try-before-you-buy revert (the watchdog fired) follow a host
-// that went down, whose power the old image cut: power it again.
+// that went down, whose power the old image cut: power it again if it was
+// restarting.
 static void host_boot_start(Host* instance) {
+    bool restart = HOST_RESTART_MARKER == HOST_RESTART_MARKER_MAGIC;
+    HOST_RESTART_MARKER = 0;
+
     // Power first: the screen may wait for self_check, the host need not.
     UpdaterBootType boot_type = updater_get_boot_type(instance->updater);
-    if(boot_type != UpdaterBootTypeNormal) {
-        FURI_LOG_I(TAG, "%s: starting the host", boot_type == UpdaterBootTypeFlashUpdate ? "Switched to a new image" : "Update reverted");
+    const char* after = boot_type == UpdaterBootTypeFlashUpdate ? "Switched to a new image" :
+                        boot_type == UpdaterBootTypeReverted    ? "Update reverted" :
+                                                                  NULL;
+    if(after && restart) {
+        FURI_LOG_I(TAG, "%s: starting the host", after);
         host_power_on_internal(instance);
         host_start_cpu_app(instance);
     } else if(furi_bsp_linux_is_load()) {
         FURI_LOG_I(TAG, "Host is powered: starting CPU app");
+        host_await_report(instance, HostStateRunning, HOST_RUNNING_RESPONSE_MS);
         host_start_cpu_app(instance);
+    } else if(after) {
+        FURI_LOG_I(TAG, "%s: the host powered off, leaving it off", after);
     }
 }
 
@@ -372,6 +443,9 @@ static Host* host_alloc(void) {
     instance->cpu_app_retry_timer = furi_event_loop_timer_alloc(instance->event_loop, host_cpu_app_retry_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->maskrom_timer = furi_event_loop_timer_alloc(instance->event_loop, host_maskrom_timer_callback, FuriEventLoopTimerTypeOnce, instance);
     instance->down_timer = furi_event_loop_timer_alloc(instance->event_loop, host_down_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    instance->response_timer = furi_event_loop_timer_alloc(instance->event_loop, host_response_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    instance->state = HostStateOff;
+    instance->pubsub = furi_pubsub_alloc();
     instance->power = furi_record_open(RECORD_POWER);
     instance->updater = furi_record_open(RECORD_UPDATER);
 
@@ -396,11 +470,9 @@ int32_t host_srv(void* p) {
     return 0;
 }
 
-bool host_power_on(Host* instance) {
-    bool was_powered = false;
-    HostMessage msg = {.type = HostMessageTypePowerOn, .as.was_powered_out = &was_powered};
+void host_power_on(Host* instance) {
+    HostMessage msg = {.type = HostMessageTypePowerOn};
     host_send_message(instance, &msg);
-    return was_powered;
 }
 
 void host_power_off(Host* instance) {
@@ -418,8 +490,13 @@ void host_power_maskrom(Host* instance) {
     host_send_message(instance, &msg);
 }
 
-bool host_is_reporting(Host* instance) {
+HostState host_get_state(Host* instance) {
     furi_check(instance);
     // One word written by the host thread only
-    return instance->cpu_state != CpuStateUnknown;
+    return instance->state;
+}
+
+FuriPubSub* host_get_pubsub(Host* instance) {
+    furi_check(instance);
+    return instance->pubsub;
 }

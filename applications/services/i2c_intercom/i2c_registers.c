@@ -113,9 +113,8 @@ typedef struct {
     // Pin numbers copied out of the flash-resident GpioPin constants
     uint32_t cpu_int_pin;
     uint32_t m40_pin;
-    // Off until the slave answers: a host reading the status before then
-    // gets a NACK
-    bool started; // the slave answers: no more registration, the line is driven
+    // The slave answers: no more registration, the line is driven
+    bool started;
 
     // Threads allowed to register: the intercom's, and each owner's from its
     // i2c_registers_owner_begin(), at the owner's FLIPPER_I2C_REGISTER_OWNERS index

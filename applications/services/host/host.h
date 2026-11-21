@@ -32,18 +32,25 @@ typedef enum {
     HostResetResponseCount,
 } HostResetResponse;
 
+/* The host as its screen shows it; published on host_get_pubsub() */
+typedef enum {
+    HostStateOff, /* Rails off */
+    HostStateStarting, /* Powered from cold; stays until the next power change */
+    HostStateRunning, /* Found powered after an MCU reset, or reported back after not responding */
+    HostStateNotResponding, /* Powered, but Linux has not written its CPU state in time */
+    HostStateMaskrom, /* Powered into the SoC maskrom */
+} HostState;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * Power the host unless it already is, and hand it the main expander. A host
- * that was already powered is running: it is asked to send its screen again.
- * Call with the frame receiver up.
- *
- * @return true when the host was already powered
+ * Power the host unless it already is, and hand it the main expander. A
+ * running host is asked to send its screen again. Call with the frame
+ * receiver up.
  */
-bool host_power_on(Host* instance);
+void host_power_on(Host* instance);
 /** Put PD and the charger back to defaults and cut the host rails. */
 void host_power_off(Host* instance);
 /** Cut the host rails and power it again. */
@@ -51,12 +58,10 @@ void host_power_restart(Host* instance);
 /** Power the host into the SoC maskrom; the strap is released after a second. */
 void host_power_maskrom(Host* instance);
 
-/**
- * Whether Linux has written its CPU state since the MCU booted. After an MCU
- * reset its driver writes it back on the restart interrupt; a powered host
- * that never does sits in maskrom, a hung bootloader or a dead kernel.
- */
-bool host_is_reporting(Host* instance);
+HostState host_get_state(Host* instance);
+
+/** Publishes the new HostState on every change, from the host thread. */
+FuriPubSub* host_get_pubsub(Host* instance);
 
 #ifdef __cplusplus
 }

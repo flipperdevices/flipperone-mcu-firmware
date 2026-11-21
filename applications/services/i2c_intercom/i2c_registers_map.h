@@ -21,8 +21,8 @@
 
 // CPU state registers
 /*
- * 0x0040   CPU state register          (read)
- *          ToDo: add ENUM: state register values
+ * 0x0040   CPU state register          (read, write)
+ *          Written by the host; values: CpuState in host.h
 */
 #define I2C_CPU_STATUS_REG_BASE    (0x0040)
 #define I2C_CPU_STATUS_REG_ADDRESS (I2C_CPU_STATUS_REG_BASE + 0x00)
@@ -45,15 +45,18 @@
  *          0x0000: Disabled (default): on powered-off the MCU cuts host power
  *                  and leaves the host's screen; restarting is left to the host
  *          0x0001: Switch: if the last update staged an image, cut host
- *                  power and boot that image, which powers the host again.
+ *                  power and boot that image. After restarting the new
+ *                  image powers the host again, after powered-off it leaves
+ *                  it off.
  *                  Without a staged image (none written, or a later update
  *                  started, aborted or failed) it acts as 0x0000.
  *          Other values are ignored. The host writes 0x0001 after an update
  *          reaches DONE to switch to the new image; the MCU forgets it on reset.
  * 0x0090+4 System reset delay register (read, write)
  *          Delay in 100 ms units between the triggering host state and the
- *          switch. 0 switches immediately. If the host comes back online before
- *          the delay elapses, the pending reset is cancelled.
+ *          switch. 0 switches immediately. If the host writes a live state
+ *          (bootloader, kernel init, online) before the delay elapses, the
+ *          pending switch is cancelled.
 */
 #define I2C_SYSTEM_RESET_REG_BASE          (0x0090)
 #define I2C_SYSTEM_RESET_MODE_REG_ADDRESS  (I2C_SYSTEM_RESET_REG_BASE + 0x02)

@@ -14,11 +14,7 @@
 #define TAG "CpuApp"
 
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
-
-// Attached to a powered host: how long its driver gets to write its CPU state
-// back before the screen says it does not respond, and how often to look.
-#define CPU_APP_HOST_RESPONSE_TIMEOUT_MS (5000)
-#define CPU_APP_HOST_CHECK_PERIOD_MS     (1000)
+#define CPU_APP_HOST_STATE_FLAG    (1 << 0)
 
 #define CPU_ARG_START   "start"
 #define CPU_ARG_MASKROM "maskrom"
@@ -60,8 +56,8 @@ typedef struct {
     PioGetFrame* pio_get_frame;
     size_t skip_frames;
     Host* host;
-    FuriEventLoopTimer* host_check_timer;
-    uint32_t attached_tick;
+    FuriPubSubSubscription* host_subscription;
+    FuriEventFlag* host_state_flag;
 } CpuApp;
 
 static bool cpu_app_layout(void* _model) {
@@ -116,19 +112,11 @@ static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     return true;
 }
 
-// Attached to a host that was already running: it sends its screen only on
-// request, so say we wait for it, unless a frame came first.
-static bool cpu_app_model_waiting(CpuAppModel* model, void* context) {
-    UNUSED(context);
-    if(model->frame.data != display_starting.data) return false;
-    model->frame = display_waiting;
-    return true;
-}
-
-// Swap one waiting placeholder for the other, never a frame from the host.
+// Swap one placeholder for another, never a frame from the host.
 static bool cpu_app_model_placeholder(CpuAppModel* model, void* context) {
     const Image* image = context;
-    bool placeholder = model->frame.data == display_waiting.data || model->frame.data == display_not_responding.data;
+    bool placeholder = model->frame.data == display_starting.data || model->frame.data == display_waiting.data ||
+                       model->frame.data == display_not_responding.data;
     if(!placeholder || model->frame.data == image->data) return false;
     model->frame = *image;
     return true;
@@ -155,15 +143,38 @@ static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* 
     with_view_model(instance->display_view, CpuAppModel * model, { update = callback(model, context); }, update);
 }
 
-// Waiting for a host that was already powered: a host that never writes its
-// CPU state back does not respond; one that does but sends no frame yet is
-// still waited for. The first frame ends the check.
-static void cpu_app_host_check_timer_callback(void* context) {
+// Until the host sends a frame, show what state it is in.
+static void cpu_app_show_host_state(CpuApp* instance) {
+    const Image* image = NULL;
+    switch(host_get_state(instance->host)) {
+    case HostStateStarting:
+        image = &display_starting;
+        break;
+    case HostStateRunning:
+        image = &display_waiting;
+        break;
+    case HostStateNotResponding:
+        image = &display_not_responding;
+        break;
+    default:
+        return;
+    }
+    cpu_app_model_apply(instance, cpu_app_model_placeholder, (void*)image);
+}
+
+// Host thread: hand the change over to the app's event loop.
+static void cpu_app_host_state_callback(const void* message, void* context) {
+    UNUSED(message);
+    CpuApp* instance = context;
+    furi_event_flag_set(instance->host_state_flag, CPU_APP_HOST_STATE_FLAG);
+}
+
+static void cpu_app_host_state_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     CpuApp* instance = context;
-    if(furi_get_tick() - instance->attached_tick < CPU_APP_HOST_RESPONSE_TIMEOUT_MS) return;
-    const Image* image = host_is_reporting(instance->host) ? &display_waiting : &display_not_responding;
-    cpu_app_model_apply(instance, cpu_app_model_placeholder, (void*)image);
+    furi_check(object == instance->host_state_flag);
+    furi_event_flag_clear(instance->host_state_flag, CPU_APP_HOST_STATE_FLAG);
+    cpu_app_show_host_state(instance);
 }
 
 static void cpu_app_do_shutdown(CpuApp* instance) {
@@ -198,15 +209,11 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
         case CpuAppMessageTypeStart:
-            if(host_power_on(instance->host)) {
-                cpu_app_model_apply(instance, cpu_app_model_waiting, NULL);
-                instance->attached_tick = furi_get_tick();
-                furi_event_loop_timer_start(instance->host_check_timer, CPU_APP_HOST_CHECK_PERIOD_MS);
-            }
+            host_power_on(instance->host);
+            cpu_app_show_host_state(instance);
             break;
         case CpuAppMessageTypeReset:
             host_power_restart(instance->host);
-            furi_event_loop_timer_stop(instance->host_check_timer);
             instance->skip_frames = 2;
             // Drop the stale frame so the screen shows the "starting" image
             // right away instead of the old picture.
@@ -230,7 +237,6 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
                  * to the GUI: it decides internally whether to blit it directly
                  * to the display (menu hidden) or composite it via Clay (menu
                  * drawn on top). */
-                furi_event_loop_timer_stop(instance->host_check_timer);
                 cpu_app_model_set_frame(instance, message.as.new_frame.data);
                 gui_push_frame(instance->gui, message.as.new_frame.data);
             }
@@ -267,14 +273,14 @@ static CpuApp* cpu_app_alloc(void) {
     instance->host = furi_record_open(RECORD_HOST);
     instance->event_loop = furi_event_loop_alloc();
     instance->app_queue = furi_message_queue_alloc(CPU_APP_MESSAGE_QUEUE_SIZE, sizeof(CpuAppMessage));
-    instance->skip_frames = 0; /* must be initialized — malloc does not zero memory */
 
     instance->pio_get_frame = pio_get_frame_init(&gpio_cpu_spi_cs, &gpio_cpu_spi_sck, &gpio_cpu_spi_mosi);
     pio_get_frame_set_callback_rx(instance->pio_get_frame, cpu_app_pio_get_frame_isr, instance);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->app_queue, FuriEventLoopEventIn, cpu_app_message_logic, instance);
-    instance->host_check_timer =
-        furi_event_loop_timer_alloc(instance->event_loop, cpu_app_host_check_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
+    instance->host_state_flag = furi_event_flag_alloc();
+    furi_event_loop_subscribe_event_flag(instance->event_loop, instance->host_state_flag, FuriEventLoopEventIn, cpu_app_host_state_logic, instance);
+    instance->host_subscription = furi_pubsub_subscribe(host_get_pubsub(instance->host), cpu_app_host_state_callback, instance);
 
     instance->display_view = view_alloc();
     view_allocate_model(instance->display_view, ViewModelTypeLockFree, sizeof(CpuAppModel));
@@ -304,12 +310,14 @@ static void cpu_app_free(CpuApp* instance) {
     popup_menu_free(instance->menu);
 
     furi_record_close(RECORD_GUI);
-    furi_record_close(RECORD_HOST);
 
     view_free(instance->display_view);
     view_free(instance->menu_view);
 
-    furi_event_loop_timer_free(instance->host_check_timer);
+    furi_pubsub_unsubscribe(host_get_pubsub(instance->host), instance->host_subscription);
+    furi_event_loop_unsubscribe(instance->event_loop, instance->host_state_flag);
+    furi_event_flag_free(instance->host_state_flag);
+    furi_record_close(RECORD_HOST);
     furi_event_loop_unsubscribe(instance->event_loop, instance->app_queue);
     furi_event_loop_free(instance->event_loop);
     furi_message_queue_free(instance->app_queue);

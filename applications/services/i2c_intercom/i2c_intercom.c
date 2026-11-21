@@ -122,7 +122,7 @@ I2C_ISR_FUNC(static inline void, i2c_intercom_receive)(const FuriHalI2cBusHandle
             instance->address_index = 0;
         }
         if(instance->address_index == 0) {
-            if(flags & (FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE | FURI_HAL_I2C_SLAVE_RX_FLAG_RESTART)) {
+            if(flags & FURI_HAL_I2C_SLAVE_RX_FLAG_FIRST_DATA_BYTE) {
                 instance->address_hi = data;
                 instance->address_index = 1;
             } else {

@@ -530,7 +530,7 @@ int32_t updater_srv(void* p) {
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, updater_message_callback, instance);
     furi_event_loop_set_custom_event_callback(instance->event_loop, updater_custom_event_callback, instance);
 
-    // Nothing below may crash: the I2C slave waits for RECORD_UPDATER
+    // Whatever the partitions, the record has to come: the I2C slave waits for it
     if(furi_hal_flash_get_active_fw_partition(&instance->active_partition)) {
         FlashPartitionId inactive_partition =
             instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
