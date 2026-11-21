@@ -10,16 +10,19 @@
 /*
  * 0x0000   Status register             (read)
  *          Bit 0: Input interrupt flag (cleared when input interrupt register is cleared)
- *          Bit 1-15: Reserved
+ *          Bit 1: Reserved for USB-C (UCSI) events
+ *          Bit 2: System interrupt flag (cleared when system interrupt register is cleared)
+ *          Bit 3-15: Reserved
 */
-#define I2C_STATUS_REG_BASE      (0x0000)
-#define I2C_STATUS_REG_ADDRESS   (I2C_STATUS_REG_BASE + 0x00)
-#define I2C_STATUS_REG_BIT_INPUT (0)
+#define I2C_STATUS_REG_BASE       (0x0000)
+#define I2C_STATUS_REG_ADDRESS    (I2C_STATUS_REG_BASE + 0x00)
+#define I2C_STATUS_REG_BIT_INPUT  (0)
+#define I2C_STATUS_REG_BIT_SYSTEM (2)
 
 // CPU state registers
 /*
- * 0x0040   CPU state register          (read)
- *          ToDo: add ENUM: state register values
+ * 0x0040   CPU state register          (read, write)
+ *          Written by the host; values: CpuState in host.h
 */
 #define I2C_CPU_STATUS_REG_BASE    (0x0040)
 #define I2C_CPU_STATUS_REG_ADDRESS (I2C_CPU_STATUS_REG_BASE + 0x00)
@@ -34,27 +37,30 @@
 
 // System reset registers
 /*
- * 0x0090+0 System reset command register (write)
- *          Writing the 16-bit magic value I2C_SYSTEM_RESET_MAGIC resets the MCU.
- *          Any other value is ignored.
+ * 0x0090+0 Reserved, was the system reset command register
  * 0x0090+2 System reset mode register (read, write)
- *          MCU response to the host (Linux) going down:
- *          0x0000: Disabled, the MCU ignores host shutdown (default)
- *          0x0001: Reset the MCU when the host shuts down
- *          0x0002: Reset the MCU and power-cycle the host when the host shuts down
- *          0x0003: Immediate MCU reset - firmware-internal, rejected here
- *          Other values are ignored.
- *          The firmware arms 0x0001 itself after a successful update.
+ *          MCU response to the host (Linux) going down, that is to the CPU
+ *          state powered-off (9) or restarting (10), which the host sends once
+ *          its devices are shut down:
+ *          0x0000: Disabled (default): on powered-off the MCU cuts host power
+ *                  and leaves the host's screen; restarting is left to the host
+ *          0x0001: Switch: if the last update staged an image, cut host
+ *                  power and boot that image. After restarting the new
+ *                  image powers the host again, after powered-off it leaves
+ *                  it off.
+ *                  Without a staged image (none written, or a later update
+ *                  started, aborted or failed) it acts as 0x0000.
+ *          Other values are ignored. The host writes 0x0001 after an update
+ *          reaches DONE to switch to the new image; the MCU forgets it on reset.
  * 0x0090+4 System reset delay register (read, write)
  *          Delay in 100 ms units between the triggering host state and the
- *          reset. 0 resets immediately. If the host comes back online before
- *          the delay elapses, the pending reset is cancelled.
+ *          switch. 0 switches immediately. If the host writes a live state
+ *          (bootloader, kernel init, online) before the delay elapses, the
+ *          pending switch is cancelled.
 */
 #define I2C_SYSTEM_RESET_REG_BASE          (0x0090)
-#define I2C_SYSTEM_RESET_REG_ADDRESS       (I2C_SYSTEM_RESET_REG_BASE + 0x00)
 #define I2C_SYSTEM_RESET_MODE_REG_ADDRESS  (I2C_SYSTEM_RESET_REG_BASE + 0x02)
 #define I2C_SYSTEM_RESET_DELAY_REG_ADDRESS (I2C_SYSTEM_RESET_REG_BASE + 0x04)
-#define I2C_SYSTEM_RESET_MAGIC             (0x5A52)
 
 // Input interrupt register and mask
 /*
@@ -79,6 +85,25 @@
 #define I2C_INPUT_INTERRUPT_REG_BIT_TOUCHPAD   (1)
 #define I2C_INPUT_INTERRUPT_REG_BIT_HEADPHONES (2)
 #define I2C_INPUT_INTERRUPT_REG_BIT_SW_BUTTONS (3)
+
+// System interrupt register and mask
+/*
+ * 0x0104+0 System interrupt register   (read, read to clear)
+ *          Bit 0: The MCU (re)started and lost the settings the host wrote
+ *                 (CPU state, interrupt masks, LEDs); the host writes them again
+ *          Bit 1: The MCU shows the host's screen again while the host was
+ *                 already running, and has no frame: the host sends its
+ *                 current one, which it would otherwise send only on a change
+ *          Bit 2-15: Reserved
+ * 0x0184+0 System interrupt mask       (read, write)
+ *          Bit 0: Restart interrupt masked
+ *          Bit 1: Frame request masked
+ *          Bit 2-15: Reserved
+*/
+#define I2C_SYSTEM_INTERRUPT_REG_ADDRESS      (0x0104)
+#define I2C_SYSTEM_INTERRUPT_MASK_REG_ADDRESS (0x0184)
+#define I2C_SYSTEM_INTERRUPT_REG_BIT_RESET    (0)
+#define I2C_SYSTEM_INTERRUPT_REG_BIT_FRAME    (1)
 
 // Buttons state register
 /*
@@ -211,7 +236,10 @@
  * 0xF000 + 0x00: Updater status register (read), High byte: UpdaterError, Low byte: UpdaterState
  * 0xF000 + 0x02: Updater firmware version register (read), 2 bytes, current firmware version
  * 0xF000 + 0x04: Updater command register (write), UpdaterCommand
- * 0xF000 + 0x06: Updater boot status register (read), Low byte: active partition ('A'/'B'), High byte: boot type (0 normal, 1 flash-update)
+ * 0xF000 + 0x06: Updater boot status register (read), Low byte: active partition ('A'/'B'), High byte: boot type:
+ *                0 normal; 1 flash-update, the switch to a new image, which the MCU bought;
+ *                2 revert, the old image after a switch: the new image did not get as
+ *                far as buying itself, and the bootrom's watchdog went back to the old one
  * 0xF000 + 0x08: Updater last written version register (read), version of the last accepted update, 0 until the first update
  * 0xF000 + 0x0A: Updater firmware patch register (read), patch of the current firmware, 0 on silicon B3 (see cmake/fw_version.cmake)
  * 0xF000 + 0x0C: Updater last written patch register (read), patch of the last accepted update, 0 until the first update, 0 on B3
