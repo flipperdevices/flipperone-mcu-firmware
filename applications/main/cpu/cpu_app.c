@@ -12,6 +12,7 @@
 #include <pd/pd.h>
 #include <power/power.h>
 #include <i2c_negotiator/i2c_negotiator.h>
+#include <led/led_batch.h>
 
 #define TAG "CpuApp"
 
@@ -148,6 +149,8 @@ static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* 
 static void cpu_app_do_shutdown(CpuApp* instance) {
     furi_hal_reset_pd_and_charger();
     furi_bsp_linux_reset();
+    // Turn off all LEDs so none are left lit after Linux is stopped.
+    led_set_color_batch_simple(&led_batch_all_off);
     // Do not leave the old frame on screen after the app exits.
     gui_clear_frame(instance->gui);
 }
