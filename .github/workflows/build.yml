@@ -60,8 +60,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJson(needs.targets.outputs.list) }}
-        # 'recovery' builds the firmware without TBYB (FW_RECOVERY) and ships only
-        # recovery.uf2; it runs as its own job so it adds no time to the build.
+        # 'recovery' is the FW_RECOVERY build and ships only recovery.uf2
         variant: [firmware, recovery]
 
     # Identical across the matrix — the targets only differ in what they build
@@ -195,9 +194,7 @@ jobs:
       run: |
         mv ${{github.workspace}}/firmware/build/recovery.uf2 artifacts/flipper-one-mcu-${{ matrix.target }}-recovery-${SUFFIX}.uf2
 
-    # firmware-<target> for the firmware, firmware-<target>-recovery for the
-    # recovery image: the jobs below collect both through 'firmware-*', and
-    # unit-tests takes firmware-<target> by its exact name.
+    # The jobs below collect 'firmware-*'; unit-tests takes firmware-<target> by name.
     - name: 'Stash artifacts for the jobs below'
       if: ${{ !github.event.pull_request.head.repo.fork }}
       uses: actions/upload-artifact@v4

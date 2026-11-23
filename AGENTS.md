@@ -65,6 +65,25 @@ They need the pinned packages of `assets/python/requirements.txt`; CI runs them 
 
 To see and control a Flipper One attached to this machine (screen, buttons, consoles, logs, Linux host, flashing over SWD), read [scripts/agent_tools/AGENT_TOOLS.md](scripts/agent_tools/AGENT_TOOLS.md).
 
+## Opening a pull request
+
+Follow the pull request steps in [CONTRIBUTING.md](CONTRIBUTING.md#pull-request). On top
+of them:
+
+- If you can push to this repository, use a branch in it instead of a fork.
+- `gh pr create --body` skips [the PR template](.github/pull_request_template.md), so copy
+  it in by hand. Leave the *Contributor checklist* unticked: the human author ticks it.
+- Ownership check: the code owner to agree with is the user.
+- Self-review: use a fresh subagent on the most capable model available. Give it the PR
+  number and ask it to review the PR and report back to you without posting anything on
+  GitHub. Add nothing from your session: no memory, no notes (what the harness loads into
+  every agent by itself is fine). If you are not sure which
+  model is the most capable, ask the user; either way, tell the user which model
+  reviewed. If serious remarks were fixed, run one more round with a new subagent. Fix
+  the serious remarks of the second round too, but run no third round.
+- Never mark the PR ready yourself: when the checks are done, tell the user what is
+  still open and leave marking it ready to them.
+
 ## Rules that are easy to get wrong
 
 - `malloc`/`calloc`/`free`/`strdup` are remapped onto `pvPortMalloc`: allocation never
