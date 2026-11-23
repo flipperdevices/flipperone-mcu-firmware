@@ -59,7 +59,7 @@ for open tasks. Leave a comment on the issue before starting work to avoid dupli
 ## Making changes
 
 1. Fork the repository.
-2. Create a working branch from the main branch.
+2. Create a working branch from `dev`.
 3. Make your changes and verify the build.
 4. Flash and test on hardware.
 
@@ -71,9 +71,44 @@ for open tasks. Leave a comment on the issue before starting work to avoid dupli
 
 ## Pull Request
 
-When you're done, open a pull request:
+Open the pull request as a **draft** against `dev`: CI builds a branch only once it has a
+PR, and reviewers, Copilot included, are asked only when you mark it ready. Fill out the
+PR template and keep it short: *Verification* lists only steps a reviewer can
+realistically repeat, other cases you tried get two or three words each.
 
-- Fill out the PR template completely.
+Then make these checks as separate passes, not along the way while editing:
+
+1. **Ownership.** For every state, resource and decision the PR touches, make sure that:
+   - it has exactly one owner, and that owner is the right module;
+   - all its code lives in the owner, and other modules go through the owner without
+     reading or duplicating its internal state;
+   - no case is handled in two places;
+   - no case is left uncovered because a check sits in the wrong place.
+
+   If something is in the wrong place, don't patch around it. Describe the target
+   structure (who owns what, what moves where) and agree with the code owner whether to
+   widen the PR.
+2. **Comments.** Every comment the PR adds or touches is needed, current and short. It
+   explains what the code cannot say (a non-obvious reason or constraint); it doesn't
+   retell the code next to it or repeat an option's own description.
+3. **Documentation.** The same for every passage of documentation the PR adds or touches. User
+   documentation follows the user's scenario. The product is in development and its
+   procedures, buttons and names still change, so link the single source of truth (the
+   page on docs.flipper.net) instead of retelling its steps or UI details.
+4. **Hardware.** Run a user-facing flow on hardware the way the user will before claiming
+   it works. A procedure quoted in an issue may be stale. In *Verification*, write what you
+   actually ran; if it was not the way the user will run it, or not on a device at all,
+   say so.
+5. **Self-review.** Have the PR reviewed by someone who has not seen your work on it: a
+   colleague, or an AI reviewer given only the PR and nothing from your session; it reads
+   the diff and whatever code it needs itself. Fix the serious remarks (bugs,
+   architecture, misleading documentation; not style or taste) and pass the fixes through
+   checks 1-4 again.
+
+Only then mark the PR **ready for review**.
+
+Also:
+
 - Don't forget to [link the PR to an issue](https://docs.github.com/en/issues/tracking-your-work-with-issues/linking-a-pull-request-to-an-issue) if you are solving one.
 - [Enable maintainer edits](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/allowing-changes-to-a-pull-request-branch-created-from-a-fork) so the branch can be updated for merging.
 - As you address review comments, mark each conversation as [resolved](https://docs.github.com/en/github/collaborating-with-issues-and-pull-requests/commenting-on-a-pull-request#resolving-conversations).
