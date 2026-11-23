@@ -1,11 +1,19 @@
 #pragma once
 
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <drivers/i2c_slave/i2c_slave.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
  * @brief Callback for writable registers.
+ *
+ * Runs in the register software interrupt, which applies host writes one after
+ * another: keep it short and do not log, every write queued behind it waits.
  *
  * @param context Callback context passed at registration.
  * @param address Register address, always even.
@@ -44,48 +52,46 @@ void i2c_register_add_interrupt(uint16_t address, uint16_t mask_address, uint8_t
 #define I2C_REGISTERS_MAX_REGIONS (4)
 
 /**
- * @brief Read callback for a byte-addressed region.
- *
- * @param context Region context passed at registration.
- * @param offset Byte offset relative to the region base.
- * @param value Pointer to store the byte read.
- * @return true if the access was served; false makes the transfer report an
- *         invalid address (reads yield 0x00), same as for an unmapped register.
- *
- * @warning Called from the I2C slave ISR inside a critical section — must be
- *          short, non-blocking and must not allocate.
+ * Longest host write transaction, data bytes after the address. A longer one
+ * is dropped whole and counted. Covers an updater frame (260 bytes) and a
+ * UCSI MESSAGE_OUT (256 bytes).
  */
-typedef bool (*I2CRegionReadFn)(void* context, uint16_t offset, uint8_t* value);
+#define I2C_REGISTERS_TRANSACTION_MAX (512)
 
 /**
  * @brief Write callback for a byte-addressed region.
  *
- * @param context Region context passed at registration.
- * @param offset Byte offset relative to the region base.
- * @param value Byte to write.
- * @return true if the access was served, false otherwise.
+ * Gets the part of one host write transaction that falls inside the region,
+ * in one call, however many bytes it carries.
  *
- * @warning Same ISR constraints as I2CRegionReadFn.
+ * @param context Region context passed at registration.
+ * @param offset Offset of data[0] relative to the region base.
+ * @param data Bytes written.
+ * @param length Number of bytes.
+ * @return true if the write was accepted; false counts it as invalid.
+ *
+ * Called from interrupt context, like I2CRegisterCallback.
  */
-typedef bool (*I2CRegionWriteFn)(void* context, uint16_t offset, uint8_t value);
+typedef bool (*I2CRegionWriteFn)(void* context, uint16_t offset, const uint8_t* data, size_t length);
 
 /**
  * @brief Map [base, base + length) onto storage owned by someone else.
  *
- * A region keeps no data here and carries no 16-bit semantics — every byte
- * goes straight to the callbacks as an offset relative to the region base,
- * with no hi/lo byte splitting. Base must be even; either callback may be
- * NULL (making the region write-only or read-only respectively). Regions are
- * matched before regular registers, so a region may not overlap another
- * region or an existing register — both are checked here.
+ * A region carries no 16-bit semantics: offsets are bytes relative to base.
+ * Regions are matched before regular registers, so a region may not overlap
+ * another region or an existing register; both are checked here.
+ *
+ * Reads are served by the I2C ISR straight from read_buffer, so it must be in
+ * RAM (checked here). The owner updates it under with_i2c_register so that
+ * the host never reads a half-updated buffer.
  *
  * @param base Region start address, must be even.
  * @param length Region size in bytes.
- * @param read Read callback, may be NULL.
- * @param write Write callback, may be NULL.
- * @param context Passed to both callbacks.
+ * @param read_buffer Buffer of `length` bytes the host reads, NULL if the region is write-only.
+ * @param write Write callback, NULL if the region is read-only.
+ * @param context Passed to the write callback.
  */
-void i2c_register_add_region(uint16_t base, uint16_t length, I2CRegionReadFn read, I2CRegionWriteFn write, void* context);
+void i2c_register_add_region(uint16_t base, uint16_t length, const volatile uint8_t* read_buffer, I2CRegionWriteFn write, void* context);
 
 /**
  * @brief Update only the masked bits of a register.
@@ -95,7 +101,7 @@ void i2c_register_add_region(uint16_t base, uint16_t length, I2CRegionReadFn rea
  * @param mask Bits to update.
  * @return true if the register value changed, false otherwise.
  *
- * @warning Must be called in a critical section, use with_i2c_register macro for convenience.
+ * @warning Must be called inside with_i2c_register: FURI_CRITICAL does not mask the I2C ISR.
  */
 bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
 
@@ -105,9 +111,28 @@ bool i2c_register_update(uint16_t address, uint16_t value, uint16_t mask);
  * @param address Register address.
  * @return Register value.
  *
- * @warning Must be called in a critical section, use with_i2c_register macro for convenience.
+ * @warning Must be called inside with_i2c_register: FURI_CRITICAL does not mask the I2C ISR.
  */
 uint16_t i2c_register_get_value(uint16_t address);
+
+/**
+ * @brief Begin registering an owner's registers, from the owner's thread.
+ *
+ * Waits for the register map. The thread may then add registers until the
+ * I2C slave starts, which happens once every owner has created its record:
+ * add them all, then create the record.
+ *
+ * @param owner_record Owner's record name, listed in FLIPPER_I2C_REGISTER_OWNERS.
+ */
+void i2c_registers_owner_begin(const char* owner_record);
+
+/**
+ * @brief Close registration and drive the interrupt line from now on, raising
+ *        it for what is already pending. Until then interrupts only collect in
+ *        the status register. Call once the slave answers: the I2C ISR runs
+ *        above FURI_CRITICAL, so the map may not change after that.
+ */
+void i2c_registers_start(void);
 
 /**
  * @brief Set interrupt bits unless masked, raising the interrupt line when any are set.
@@ -115,16 +140,33 @@ uint16_t i2c_register_get_value(uint16_t address);
  * @param interrupt_address Interrupt register address.
  * @param interrupt_bits Bits to set.
  *
- * @warning Must be called in a critical section, use with_i2c_register macro for convenience.
+ * @warning Must be called inside with_i2c_register: FURI_CRITICAL does not mask the I2C ISR.
  */
 void i2c_register_set_interrupt(uint16_t interrupt_address, uint16_t interrupt_bits);
 
-/** Execute `code` in a critical section when accessing registers. */
-#define with_i2c_register(code) \
-    {                           \
-        FURI_CRITICAL_ENTER();  \
-        {code};                 \
-        FURI_CRITICAL_EXIT();   \
+/**
+ * @brief Mask the I2C slave ISR, which FURI_CRITICAL does not mask.
+ *
+ * Raises BASEPRI to I2C_SLAVE_IRQ_PRIORITY. Keep the section short: it also
+ * masks the scheduler and every interrupt below it.
+ */
+static inline __attribute__((always_inline)) uint32_t i2c_registers_lock(void) {
+    uint32_t previous;
+    __asm volatile("mrs %0, basepri" : "=r"(previous));
+    __asm volatile("msr basepri_max, %0\n isb" : : "r"(I2C_SLAVE_IRQ_PRIORITY_RAW) : "memory");
+    return previous;
+}
+
+static inline __attribute__((always_inline)) void i2c_registers_unlock(uint32_t previous) {
+    __asm volatile("msr basepri, %0\n isb" : : "r"(previous) : "memory");
+}
+
+/** Execute `code` with the I2C slave ISR masked, for register access. */
+#define with_i2c_register(code)                              \
+    {                                                        \
+        uint32_t __i2c_register_lock = i2c_registers_lock(); \
+        {code};                                              \
+        i2c_registers_unlock(__i2c_register_lock);           \
     }
 
 #ifdef __cplusplus

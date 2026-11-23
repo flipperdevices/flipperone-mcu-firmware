@@ -86,9 +86,9 @@ Commands that need `--yes` refuse without it and change nothing. Write addresses
 - **Use the cheapest signal that answers the question.** `linux state`, `cli "desktop get_run_app"`, `status` and `log` are text and cost little; a screenshot costs an image. Take one when the answer is on the screen and nowhere else: before you press buttons on a screen you have not seen, and when the screen itself is what you are checking.
 - **Use these tools for SWD, never `probe-rs`.** One-shot `probe-rs` reads left the device frozen until a debugger attach and detach. The cause is unknown.
 - **The probe accepts one SWD client.** Only the `swd` commands and `status` without `--no-swd` use SWD; everything else goes over serial ports and works during a debug session. While a debugger holds the probe, an SWD command fails within a few seconds with `The probe is probably held by another debugger` (OpenOCD: `CMSIS-DAP command CMD_INFO failed`). That is not a fault: ask the user, or do without SWD.
-- **Run `host sync` before anything that cuts host power**: `cli "desktop stop_app"` while the host app runs, `Stop` or `Reboot` in the MCU power menu, `cli "power off"` / `cli "power ship"` / `cli "power reboot"`, and `swd flash --activate` (a flash-update boot power-cycles the host, see [Try-before-you-buy images](#try-before-you-buy-images)). `linux stop --hard` runs the sync for you; it is `desktop stop_app` with a `sync` in front. A plain reset of the MCU (`swd reset`, `swd flash` without `--activate`) does not cut it, but see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
+- **Run `host sync` before anything that cuts host power**: `cli "desktop stop_app"` while the host app runs, `Stop` or `Reboot` in the MCU power menu, `cli "power off"` / `cli "power ship"` / `cli "power reboot"`. `linux stop --hard` runs the sync for you; it is `desktop stop_app` with a `sync` in front. A reset of the MCU (`swd reset`, `swd flash` with or without `--activate`) does not cut it, but see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
 - **Check each step before the next.** Read state back after every action and stop if it is not what you expected.
-- **Ask before destructive actions** unless the user said the device is free to use: `swd flash` (and `swd flash --activate` in particular, which power-cycles the host), `swd erase-header`, `probe flash`, `linux stop --hard`, whatever else cuts host power under a running Linux (the list in the rule above), and what switches the device off or sends the MCU to its bootloader: `cli "power off"`, `cli "power ship"`, `cli "power boot"`, `Power Off` in the MCU power menu. `--yes` is how you tell the tool that they agreed. No need to ask before `linux stop`, `swd reset`, a reset of the MCU through the probe, `probe "power reboot"`, or starting and leaving maskrom mode with the host off.
+- **Ask before destructive actions** unless the user said the device is free to use: `swd flash`, `swd erase-header`, `probe flash`, `linux stop --hard`, whatever else cuts host power under a running Linux (the list in the rule above), and what switches the device off or sends the MCU to its bootloader: `cli "power off"`, `cli "power ship"`, `cli "power boot"`, `Power Off` in the MCU power menu. `--yes` is how you tell the tool that they agreed. No need to ask before `linux stop`, `swd reset`, a reset of the MCU through the probe, `probe "power reboot"`, or starting and leaving maskrom mode with the host off.
 - **Measure time from `log` timestamps**, which are this machine's time. The MCU's own timestamps lose time (see [Pitfalls](#pitfalls)).
 - **If what you observe contradicts what the user says about the device, the user is right.** They are looking at it.
 - **Report what you verified and what you did not**, and the state you leave the device in.
@@ -149,8 +149,8 @@ How it works, for when you need the pieces:
 
 A reset of the MCU alone (`swd reset`, `swd flash`, the probe's `mcu_reset`, a firmware crash) leaves Linux running: the host power rails are held by an I/O expander that keeps its outputs. Afterwards:
 
-- The MCU is back on its own desktop with no host app running, so the device screen and buttons belong to the MCU while Linux runs unseen. `linux state` reports exactly this.
-- `linux start` attaches to the running Linux: the host app sees on the expander that the host is powered and leaves it alone, the screen shows Linux again, nothing restarts, and `--entry` is ignored. The tool runs `sync` on the host first and checks afterwards that the host uptime went on.
+- The MCU sees on the expander that the host is powered and starts the host app by itself, about a second and a half after boot, and nothing restarts; the screen shows "Waiting for CPU screen..." until Linux sends its next frame; the self check is skipped for it. The MCU also raises its restart interrupt, and the Linux driver writes the CPU state and its other settings back (`MCU restarted, restoring its settings` in the kernel log).
+- `linux start` still works and attaches to the running Linux: the host app leaves a powered host alone and `--entry` is ignored. The tool runs `sync` on the host first and checks afterwards that the host uptime went on.
 - Rarely the MCU fails to initialise that expander when it boots, because the bus is shared with the running host (see [Pitfalls](#pitfalls)); the MCU log then has `Failed to initialize Main Expander` and the MCU's `cli dmesg` has `Not initialized Main Expander`. Until the next reset the MCU has no control over host power. `linux start` checks that and refuses; reset the MCU again and retry. Linux itself is not disturbed by that state.
 - Should the host restart anyway when the host app starts, `linux start` notices by the host uptime and says so.
 - By hand it is the same: `Start Flipper OS` in the power menu, or `cli "desktop start_app cpu_app_start"`.
@@ -267,7 +267,7 @@ python3 scripts/agent_tools/f1.py press back          # close the self-check, if
 ```
 
 - `swd flash` takes about 8 seconds. The MCU console answers within a second after `swd flash`, `swd reset` and a reset through the probe; no waiting is needed before the next command.
-- With Linux running, a plain `swd flash` resets only the MCU; run `linux start` afterwards to attach to it again, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs). `--activate` is different: the firmware sees the flash-update boot and cycles host power (`Flash-update boot: power-cycling the host` in the log), so sync and ask first.
+- With Linux running, a plain `swd flash` resets only the MCU, and the MCU shows the running Linux again by itself, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs). The same holds with `--activate`.
 
 ### Try-before-you-buy images
 
@@ -275,7 +275,7 @@ Current builds are written with `PICO_CRT0_IMAGE_TYPE_TBYB`, which makes the boo
 
 - A normal reset skips such an image, so a slot that holds one stays inactive and `status` keeps reporting the other slot. This is also what the MCU finds when it boots on its own after `swd flash`.
 - `swd flash ... --activate` writes the slot, then resets into the bootrom's FLASH_UPDATE path, which runs the image so that the firmware's updater service buys it. The command then waits up to two minutes for the slot header to come back bought and fails if it does not, so a reported success means the slot really is bootable. Costs a few seconds more than a plain flash. The reboot vector is `f1_stage_tbyb` in the board config, so it can be run by hand in a debug session too.
-- That flash-update boot power-cycles the host: `applications/services/power/power.c` cuts and restores the host rails because a host that was mid-boot would otherwise stay stranded, and the log says `Flash-update boot: power-cycling the host`. A running Linux therefore ends up off: run `host sync` first if it matters, and expect to start it again afterwards.
+- That flash-update boot leaves a running Linux running: the new firmware finds the host powered and starts the host app (`Host is powered: starting CPU app` in the log). A real update differs: the host powers off or reboots, the old firmware cuts its power before switching, and the new one powers it again after a reboot (`Switched to a new image: starting the host`) and leaves it off after a power-off.
 - The bootrom invalidates the other slot's header when it commits the staged image, so after an `--activate` the previous slot reads `no image header` in `status`. That is expected; flash it again to get a second bootable slot back.
 - Without `--activate`, `swd flash` warns about a TBYB image: it wrote and verified it, but nothing boots it until a flash-update boot stages it.
 
@@ -306,7 +306,7 @@ The firmware does not reboot after a crash at this stage of development: it prin
 - The ELF in `build/` has to be the build that is running, otherwise the lines are wrong. Keep one `.elf` there: the tools take the first one they find.
 - Fault registers can also be read without halting: `f1.py swd read 0xE000ED28 4` gives CFSR, HFSR, DFSR, MMFAR.
 - To get going again: `f1.py swd reset`, or the reset pin through the probe. `swd resume` does not help after a crash, the firmware halts again at once.
-- Linux keeps running when the MCU crashes, with nothing about it in the kernel log. The tools that need the MCU console fail meanwhile, `linux stop` among them. Reset the MCU first; `linux start` then attaches to the running Linux, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
+- Linux keeps running when the MCU crashes, with nothing about it in the kernel log. The tools that need the MCU console fail meanwhile, `linux stop` among them. Reset the MCU first; it then shows the running Linux again by itself, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
 
 ## Pitfalls
 

@@ -11,7 +11,7 @@ static I2cSlave i2c_slaves[2];
 static bool i2c_transaction_active[2] = {false, false};
 static volatile uint32_t i2c_slave_dropped_bytes[2];
 
-static void __isr __not_in_flash_func(i2c_slave_handle_stop)(i2c_inst_t* i2c, I2cSlave* slave, bool* is_started, uint32_t intr_stat) {
+I2C_ISR_FUNC(static void, i2c_slave_handle_stop)(i2c_inst_t* i2c, I2cSlave* slave, bool* is_started, uint32_t intr_stat) {
     i2c_hw_t* hw = i2c_get_hw(i2c);
     if(intr_stat & (I2C_IC_INTR_STAT_R_STOP_DET_BITS | I2C_IC_INTR_STAT_R_TX_ABRT_BITS)) {
         (void)hw->clr_stop_det;
@@ -22,7 +22,7 @@ static void __isr __not_in_flash_func(i2c_slave_handle_stop)(i2c_inst_t* i2c, I2
 }
 
 // Clears latched flags when idle, otherwise the interrupt re-fires forever
-static void __isr __not_in_flash_func(i2c_slave_clear_latched)(i2c_inst_t* i2c, uint32_t intr_stat) {
+I2C_ISR_FUNC(static void, i2c_slave_clear_latched)(i2c_inst_t* i2c, uint32_t intr_stat) {
     i2c_hw_t* hw = i2c_get_hw(i2c);
     if(intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) {
         // The slave holds SCL until a read request is served with data;
@@ -43,11 +43,7 @@ uint32_t i2c_slave_dropped_bytes_get(i2c_inst_t* i2c) {
     return i2c_slave_dropped_bytes[i2c_hw_index(i2c)];
 }
 
-uint8_t i2c_slave_rxflr_get(i2c_inst_t* i2c) {
-    return (uint8_t)i2c_get_hw(i2c)->rxflr;
-}
-
-static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
+I2C_ISR_FUNC(static void, i2c_slave_irq_callback)(void) {
     uint i2c_index = __get_current_exception() - VTABLE_FIRST_IRQ - I2C0_IRQ;
     I2cSlave* slave = &i2c_slaves[i2c_index];
     i2c_inst_t* i2c = i2c_get_instance(i2c_index);
@@ -57,6 +53,19 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
     uint32_t intr_stat = hw->intr_stat;
     if(intr_stat == 0) {
         return;
+    }
+
+    // A pending read request holds SCL, so the transfer being read cannot
+    // have stopped: a STOP latched with it ended an earlier transfer (several
+    // queue up while the IRQ is masked). Deliver it first; delivered after
+    // the read started, it would end the transfer being read.
+    if((intr_stat & I2C_IC_INTR_STAT_R_RD_REQ_BITS) && (intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS)) {
+        (void)hw->clr_stop_det;
+        intr_stat &= ~I2C_IC_INTR_STAT_R_STOP_DET_BITS;
+        if(*is_started) {
+            slave->callback(i2c, I2cSlaveEventStop);
+            *is_started = false;
+        }
     }
 
     // A transfer can start without a START_DET of its own: its START arrived
@@ -69,6 +78,18 @@ static void __isr __not_in_flash_func(i2c_slave_irq_callback)(void) {
 
     // Handle events in different order depending on previous transaction state
     if(*is_started) {
+        // This transfer's START was handled, so a START latched with a STOP
+        // came after it: STOP, START, then the next transfer's bytes. Deliver
+        // them in that order: Stop takes this transfer's bytes up to the next
+        // one's first byte, and the rest goes to the next transfer.
+        if((intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) && (intr_stat & I2C_IC_INTR_STAT_R_START_DET_BITS) &&
+           !(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS)) {
+            i2c_slave_handle_stop(i2c, slave, is_started, intr_stat);
+            (void)hw->clr_start_det;
+            slave->callback(i2c, I2cSlaveEventStart);
+            *is_started = true;
+            intr_stat &= ~(I2C_IC_INTR_STAT_R_STOP_DET_BITS | I2C_IC_INTR_STAT_R_TX_ABRT_BITS | I2C_IC_INTR_STAT_R_START_DET_BITS);
+        }
         // Data events before stop: the intercom must not receive while idle
         if(intr_stat & I2C_IC_INTR_STAT_R_RESTART_DET_BITS) {
             (void)hw->clr_restart_det;
@@ -139,7 +160,8 @@ void i2c_slave_init(i2c_inst_t* i2c, uint8_t address, I2cSlaveCallback callback)
     // enable interrupt for current core
     uint32_t num = I2C0_IRQ + i2c_index;
     irq_set_exclusive_handler(num, i2c_slave_irq_callback);
-    irq_set_priority(num, configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY << (8 - __NVIC_PRIO_BITS));
+    static_assert(I2C_SLAVE_IRQ_PRIORITY < configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY, "must stay unmasked by FURI_CRITICAL");
+    irq_set_priority(num, I2C_SLAVE_IRQ_PRIORITY_RAW);
     irq_set_enabled(num, true);
 }
 

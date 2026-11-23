@@ -1,5 +1,8 @@
 #include "furi.h"
 #include "applications.h"
+#include <host/host.h>
+#include <i2c_negotiator/i2c_negotiator.h>
+#include <updater/updater.h>
 const char* FLIPPER_AUTORUN_APP_NAME = "";
 
 // services
@@ -19,7 +22,7 @@ extern int32_t usb_mux_srv(void* p);
 extern int32_t cli_uart_srv(void* p);
 extern int32_t cli_vcp_srv(void* p);
 extern int32_t updater_srv(void* p);
-extern int32_t cpu_mode_srv(void* p);
+extern int32_t host_srv(void* p);
 
 // applications
 extern int32_t keypad_test_app(void* p);
@@ -167,10 +170,10 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = cpu_mode_srv,
-        .name = "CpuModeSrv",
-        .appid = "cpu_mode_srv",
-        .stack_size = 1024,
+        .app = host_srv,
+        .name = "HostSrv",
+        .appid = "host_srv",
+        .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },
 };
@@ -340,3 +343,11 @@ const FlipperInternalCommandApplication FLIPPER_CLI_COMMANDS[] = {
     },
 };
 const size_t FLIPPER_CLI_COMMANDS_COUNT = COUNT_OF(FLIPPER_CLI_COMMANDS);
+
+const char* const FLIPPER_I2C_REGISTER_OWNERS[] = {
+    RECORD_I2C_NEGOTIATOR,
+    RECORD_HOST,
+    RECORD_UPDATER,
+};
+
+const size_t FLIPPER_I2C_REGISTER_OWNERS_COUNT = COUNT_OF(FLIPPER_I2C_REGISTER_OWNERS);
