@@ -51,6 +51,15 @@ extern const size_t FLIPPER_APPS_COUNT;
 extern const FlipperInternalApplication FLIPPER_AUTORUN_APPS[];
 extern const size_t FLIPPER_AUTORUN_APPS_COUNT;
 
+/* I2C register owners
+ * Records of the services that own host I2C registers. Each one calls
+ * i2c_registers_owner_begin() with its record name, registers them and then
+ * creates its record; the I2C intercom starts the slave once all of these
+ * records exist. Registering without being listed here fails a check.
+ */
+extern const char* const FLIPPER_I2C_REGISTER_OWNERS[];
+extern const size_t FLIPPER_I2C_REGISTER_OWNERS_COUNT;
+
 /* Internal CLI commands
  * Added to main CLI registry by CLI startup hook
  */

@@ -3,7 +3,11 @@
 #include <hardware/flash.h>
 #include <pico/bootrom.h>
 #include <boot/bootrom_constants.h>
-#include <power/power.h>
+#include <hardware/structs/watchdog.h>
+#include <hardware/structs/powman.h>
+#include <furi_hal_power.h>
+#include <i2c_intercom/i2c_registers.h>
+#include <i2c_intercom/i2c_registers_map.h>
 
 #define TAG "Updater"
 
@@ -15,6 +19,11 @@
 #define UPDATER_ISR_ERROR_OUT_OF_ORDER (1 << 1)
 
 #define UPDATER_CUSTOM_EVENT_ERROR (1 << 0)
+
+// Switch-in-progress marker: set before a flash-update boot, cleared by the
+// image that boots next. POWMAN scratch survives every reset but power-on.
+#define UPDATER_SWITCH_MARKER       (powman_hw->scratch[0])
+#define UPDATER_SWITCH_MARKER_MAGIC (0x5317C4ED)
 
 typedef struct {
     uint16_t crc;
@@ -45,7 +54,6 @@ struct Updater {
 
     FlashPartitionId active_partition;
     FuriHalFwVersion current_version;
-    FuriHalFwVersion last_written_version;
 
     size_t inactive_partition_address;
     size_t inactive_partition_size;
@@ -55,10 +63,11 @@ struct Updater {
     volatile uint32_t isr_error;
     bool update_supported;
 
-    UpdaterStateCallback state_callback;
-    void* state_callback_context;
+    // Inactive slot holding a complete, verified image, 0 for none. Written
+    // by the updater thread, read by updater_activate() from the host's.
+    volatile size_t staged_base;
 
-    Power* power;
+    UpdaterBootType boot_type;
 
     UpdaterI2cRx i2c_rx;
 };
@@ -93,7 +102,7 @@ static void __isr __not_in_flash_func(updater_message_queue_put_from_isr)(Update
 }
 
 // I2C write callbacks, called from interrupt context
-void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint16_t address, uint16_t value) {
+static void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -105,7 +114,7 @@ void __isr __not_in_flash_func(updater_on_i2c_crc_reg_write)(void* context, uint
     updater_message_queue_put_from_isr(updater, &msg);
 }
 
-void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, uint16_t address, uint16_t value) {
+static void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -117,7 +126,7 @@ void __isr __not_in_flash_func(updater_on_i2c_blocks_reg_write)(void* context, u
     updater_message_queue_put_from_isr(updater, &msg);
 }
 
-void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, uint16_t address, uint16_t value) {
+static void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, uint16_t address, uint16_t value) {
     UNUSED(address);
     Updater* updater = context;
     furi_check(updater);
@@ -131,11 +140,13 @@ void __isr __not_in_flash_func(updater_on_i2c_command_reg_write)(void* context, 
     updater_message_queue_put_from_isr(updater, &msg);
 }
 
-bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_t offset, uint8_t value) {
+// Gets each host write transaction to the data region whole: normally one
+// complete frame, but a frame split over several transactions is assembled.
+static bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_t offset, const uint8_t* data, size_t length) {
     Updater* updater = context;
     furi_check(updater);
 
-    if(offset >= sizeof(updater->i2c_rx.raw)) return false;
+    if((size_t)offset + length > sizeof(updater->i2c_rx.raw)) return false;
 
     if(offset == 0) {
         // New frame: announce it only once complete, so a truncated frame
@@ -152,7 +163,8 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
         return true;
     }
 
-    updater->i2c_rx.raw[updater->i2c_rx.offset++] = value;
+    memcpy(&updater->i2c_rx.raw[offset], data, length);
+    updater->i2c_rx.offset += length;
 
     if(updater->i2c_rx.offset == sizeof(updater->i2c_rx.raw)) {
         const UpdaterMessage msg_start = {
@@ -172,11 +184,9 @@ bool __isr __not_in_flash_func(updater_on_i2c_data_write)(void* context, uint16_
     return true;
 }
 
-// A stale armed reset would flash-update-boot a half-written slot on host down.
-static void updater_disarm_host_reset(Updater* updater) {
-    if(!updater->power) return;
-    power_set_update_base(updater->power, 0);
-    power_set_host_reset_response(updater->power, PowerHostResetResponseDisabled);
+// A stale staged image would flash-update-boot a half-written slot.
+static void updater_unstage(Updater* updater) {
+    updater->staged_base = 0;
 }
 
 static void updater_state_change(Updater* updater, UpdaterState new_state, UpdaterError error) {
@@ -184,11 +194,10 @@ static void updater_state_change(Updater* updater, UpdaterState new_state, Updat
     if(updater->state != new_state) {
         updater->state = new_state;
         if(new_state == UpdaterStateError) {
-            updater_disarm_host_reset(updater);
+            updater_unstage(updater);
         }
-        if(updater->state_callback) {
-            updater->state_callback(new_state, new_state == UpdaterStateError ? error : UpdaterErrorNone, updater->state_callback_context);
-        }
+        uint16_t status = ((new_state == UpdaterStateError ? error : UpdaterErrorNone) << 8) | new_state;
+        with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, status, 0xFFFF); });
     }
 }
 
@@ -239,13 +248,14 @@ static void updater_finalize_update(Updater* updater) {
     // The bootrom handles invalidation on the flash-update boot; erasing here
     // would leave it nothing to boot.
 
-    // Arm before DONE: the negotiator mirrors the armed state into the
-    // reset-mode register on the DONE callback.
-    power_set_update_base(updater->power, updater->inactive_partition_address);
-    power_set_host_reset_response(updater->power, PowerHostResetResponseResetMcu);
-    FURI_LOG_I(TAG, "Armed MCU reset on host shutdown");
+    // Stage before DONE: the host arms the switch once it sees DONE.
+    updater->staged_base = updater->inactive_partition_address;
+    FURI_LOG_I(TAG, "Image staged at 0x%08lX", (unsigned long)updater->staged_base);
 
-    updater->last_written_version = new_version;
+    with_i2c_register({
+        i2c_register_update(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, ((uint16_t)new_version.major << 8) | new_version.minor, 0xFFFF);
+        i2c_register_update(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, new_version.patch, 0xFFFF);
+    });
     updater_state_change(updater, UpdaterStateDone, UpdaterErrorNone);
     FURI_LOG_I(TAG, "Done");
 }
@@ -370,7 +380,7 @@ static void updater_start_update(Updater* updater) {
     }
 
     // A new update voids whatever the previous session armed.
-    updater_disarm_host_reset(updater);
+    updater_unstage(updater);
 
     updater_state_change(updater, UpdaterStateBusy, UpdaterErrorNone);
     updater->current_block = 0;
@@ -380,7 +390,7 @@ static void updater_start_update(Updater* updater) {
 }
 
 static void updater_abort_update(Updater* updater) {
-    updater_disarm_host_reset(updater);
+    updater_unstage(updater);
     updater->update_params.crc_set = false;
     updater->update_params.size_set = false;
     updater->update_params.blocks = 0;
@@ -460,8 +470,52 @@ static void updater_commit_flash_update_boot(void) {
     }
     FURI_CRITICAL_EXIT();
     if(rc != 0) {
+        // Keep the marker: the old image reports the revert.
         FURI_LOG_E(TAG, "rom_explicit_buy failed: %d, update will be reverted", rc);
+    } else {
+        UPDATER_SWITCH_MARKER = 0;
     }
+}
+
+// A try-before-you-buy image not bought in time is reverted by the bootrom's
+// watchdog: the old image then boots normally, with the watchdog as the reset
+// reason and the switch marker still set. The watchdog alone is not enough:
+// the bootrom also leaves BOOTSEL through it.
+static UpdaterBootType updater_detect_boot_type(void) {
+    if(rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE) return UpdaterBootTypeFlashUpdate;
+    bool switching = UPDATER_SWITCH_MARKER == UPDATER_SWITCH_MARKER_MAGIC;
+    UPDATER_SWITCH_MARKER = 0;
+    if(switching && (watchdog_hw->reason & WATCHDOG_REASON_TIMER_BITS)) return UpdaterBootTypeReverted;
+    return UpdaterBootTypeNormal;
+}
+
+static uint16_t updater_boot_status(Updater* updater) {
+    // Low byte: active partition letter; high byte: boot type
+    uint8_t partition = 0;
+    if(updater->active_partition == FlashPartitionIdFwA) {
+        partition = 'A';
+    } else if(updater->active_partition == FlashPartitionIdFwB) {
+        partition = 'B';
+    }
+    return (uint16_t)((updater->boot_type << 8) | partition);
+}
+
+// The 0xF000 block; the updater keeps the values current.
+static void updater_i2c_setup(Updater* updater) {
+    i2c_registers_owner_begin(RECORD_UPDATER);
+    i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
+    i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, ((uint16_t)updater->current_version.major << 8) | updater->current_version.minor);
+    i2c_register_add_readable(I2C_UPDATER_FW_PATCH_REG_ADDRESS, updater->current_version.patch);
+    i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_boot_status(updater));
+    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
+    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, 0);
+    i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, updater);
+    i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, updater);
+    i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, updater);
+    static_assert(
+        I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
+        "I2C updater data window must match the updater block layout");
+    i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, updater);
 }
 
 int32_t updater_srv(void* p) {
@@ -470,12 +524,13 @@ int32_t updater_srv(void* p) {
     updater_commit_flash_update_boot();
 
     Updater* instance = malloc(sizeof(Updater));
+    instance->boot_type = updater_detect_boot_type();
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(8, sizeof(UpdaterMessage));
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->message_queue, FuriEventLoopEventIn, updater_message_callback, instance);
     furi_event_loop_set_custom_event_callback(instance->event_loop, updater_custom_event_callback, instance);
 
-    // Nothing below may crash: the negotiator blocks on RECORD_UPDATER
+    // Whatever the partitions, the record has to come: the I2C slave waits for it
     if(furi_hal_flash_get_active_fw_partition(&instance->active_partition)) {
         FlashPartitionId inactive_partition =
             instance->active_partition == FlashPartitionIdFwA ? FlashPartitionIdFwB : FlashPartitionIdFwA;
@@ -507,7 +562,8 @@ int32_t updater_srv(void* p) {
         instance->current_version = (FuriHalFwVersion){0};
     }
 
-    instance->power = furi_record_open(RECORD_POWER);
+    // Before the record: the slave starts once it exists
+    updater_i2c_setup(instance);
     furi_record_create(RECORD_UPDATER, instance);
 
     furi_event_loop_run(instance->event_loop);
@@ -515,31 +571,31 @@ int32_t updater_srv(void* p) {
     return 0;
 }
 
-FuriHalFwVersion updater_get_current_fw_version(Updater* updater) {
-    furi_check(updater);
-    return updater->current_version;
+// A flash-update boot needs a valid image header in the target slot.
+static bool updater_staged_image_valid(size_t base) {
+    FuriHalFwVersion version;
+    return base != 0 && furi_hal_flash_get_image_version(furi_hal_flash_get_read_ptr(base), &version);
 }
 
-FuriHalFwVersion updater_get_last_written_fw_version(Updater* updater) {
+bool updater_has_staged_image(Updater* updater) {
     furi_check(updater);
-    return updater->last_written_version;
+    return updater_staged_image_valid(updater->staged_base);
 }
 
-uint16_t updater_get_boot_status(Updater* updater) {
+void updater_activate(Updater* updater) {
     furi_check(updater);
-    // Low byte: active partition letter; high byte: boot type
-    uint8_t partition = 0;
-    if(updater->active_partition == FlashPartitionIdFwA) {
-        partition = 'A';
-    } else if(updater->active_partition == FlashPartitionIdFwB) {
-        partition = 'B';
+    size_t base = updater->staged_base;
+    if(!updater_staged_image_valid(base)) {
+        FURI_LOG_E(TAG, "No bootable staged image");
+        return;
     }
-    uint8_t boot_type = rom_get_last_boot_type() == BOOT_TYPE_FLASH_UPDATE ? 1 : 0;
-    return (uint16_t)((boot_type << 8) | partition);
+
+    FURI_LOG_I(TAG, "Booting the staged image at 0x%08lX", (unsigned long)base);
+    UPDATER_SWITCH_MARKER = UPDATER_SWITCH_MARKER_MAGIC;
+    furi_hal_power_reboot_to_partition((uint32_t)base);
 }
 
-void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback, void* context) {
+UpdaterBootType updater_get_boot_type(Updater* updater) {
     furi_check(updater);
-    updater->state_callback = callback;
-    updater->state_callback_context = context;
+    return updater->boot_type;
 }

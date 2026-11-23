@@ -98,7 +98,9 @@ def write(plan, activate=False):
         temp.write(plan["payload"])
         temp.close()
         quoted = "{" + temp.name + "}"
-        commands = ["halt", f"flash write_image erase {quoted} {plan['payload_address']:#x} bin", f"verify_image {quoted} {plan['payload_address']:#x} bin"]
+        # reset halt, not halt: after a TBYB revert the core sits in the bootrom,
+        # where the flash driver fails with "Failed to invoke rcp_init".
+        commands = ["reset halt", f"flash write_image erase {quoted} {plan['payload_address']:#x} bin", f"verify_image {quoted} {plan['payload_address']:#x} bin"]
         staged = activate and tbyb
         if staged:
             # The armed vector turns the reset into a flash-update boot; the running

@@ -1,16 +1,12 @@
+#include "i2c_negotiator.h"
 #include <furi.h>
 #include <gui/gui.h>
-#include <furi_hal_power.h>
 #include <headphones/headphones.h>
-#include <i2c_intercom/i2c_intercom.h>
 #include <i2c_intercom/i2c_registers.h>
 #include <i2c_intercom/i2c_registers_map.h>
 #include <led/led.h>
 #include <haptic/haptic.h>
-#include <updater/updater.h>
 #include <drivers/drv2605l/drv2605l.h>
-#include <cpu_mode/cpu_mode.h>
-#include <power/power.h>
 
 #define TAG "I2CNegotiator"
 
@@ -20,12 +16,9 @@ typedef struct {
     Gui* gui;
     FuriEventLoop* event_loop;
     FuriMessageQueue* negotiator_queue;
-    I2CIntercom* intercom;
     Led* led;
     Haptic* haptic;
-    Updater* updater;
-    CpuMode* cpu_mode;
-    Power* power;
+    uint32_t dropped_messages_logged;
 } I2CNegotiator;
 
 typedef void (*I2CNegotiatorMessageFunction)(I2CNegotiator* instance, uint16_t value);
@@ -35,14 +28,20 @@ typedef struct {
     uint16_t value;
 } I2CNegotiatorI2CMessage;
 
-#define I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(func)                                           \
-    void func##_message(void* context, uint16_t address, uint16_t value) {                       \
-        furi_check(context);                                                                     \
-        FuriMessageQueue* queue = context;                                                       \
-        I2CNegotiatorI2CMessage message = {.fn = func, .value = value};                          \
-        FuriStatus stat = furi_message_queue_put(queue, &message, 0);                            \
-        furi_check(stat != FuriStatusErrorParameter);                                            \
-        if(stat != FuriStatusOk) FURI_LOG_E(TAG, "Failed to receive 0x%04X: %d", address, stat); \
+// Register writes the queue had no room for. Counted here and logged by the
+// queue worker: the callbacks run in the register software interrupt, and a
+// log line there would hold up every write queued after it.
+static volatile uint32_t i2c_negotiator_dropped_messages;
+
+#define I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(func)                                                  \
+    void func##_message(void* context, uint16_t address, uint16_t value) {                              \
+        UNUSED(address);                                                                                \
+        furi_check(context);                                                                            \
+        FuriMessageQueue* queue = context;                                                              \
+        I2CNegotiatorI2CMessage message = {.fn = func, .value = value};                                 \
+        FuriStatus stat = furi_message_queue_put(queue, &message, 0);                                   \
+        furi_check(stat != FuriStatusErrorParameter);                                                   \
+        if(stat != FuriStatusOk) i2c_negotiator_dropped_messages = i2c_negotiator_dropped_messages + 1; \
     }
 
 // Input event
@@ -124,12 +123,6 @@ bool i2c_negotiator_input_sw_button_event(SwInputKey key, bool pressed, void* co
     // we dont consume the event in any case
     return false;
 }
-
-//Cpu state register
-void i2c_negotiator_cpu_state(I2CNegotiator* instance, uint16_t value) {
-    cpu_mode_set_cpu_state(instance->cpu_mode, (CpuState)value);
-}
-I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_cpu_state);
 
 // Headphones event
 static void i2c_negotiator_headphones_event_glue(const void* value, void* ctx) {
@@ -215,39 +208,6 @@ void i2c_negotiator_haptic_play_effect(I2CNegotiator* instance, uint16_t value) 
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_haptic_play_effect);
 
-// System reset functions
-void i2c_negotiator_system_reset(I2CNegotiator* instance, uint16_t value) {
-    if(value != I2C_SYSTEM_RESET_MAGIC) {
-        FURI_LOG_W(TAG, "Invalid reset magic: 0x%04X", value);
-        return;
-    }
-    FURI_LOG_I(TAG, "Reset command received from host");
-    power_host_reset_request(instance->power);
-}
-I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_system_reset);
-
-void i2c_negotiator_reset_mode_set(I2CNegotiator* instance, uint16_t value) {
-    // Immediate reset is firmware-internal; the register path only arms 0-2.
-    if(value >= PowerHostResetResponseResetMcuImmediately) {
-        FURI_LOG_W(TAG, "Invalid host reset response: %u", value);
-        // The register already holds the rejected value: put the armed one back.
-        PowerHostResetResponse current = PowerHostResetResponseDisabled;
-        if(power_get_host_reset_response(instance->power, &current)) {
-            with_i2c_register({ i2c_register_update(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, current, 0xFF); });
-        }
-        return;
-    }
-    if(!power_set_host_reset_response(instance->power, (PowerHostResetResponse)value)) {
-        FURI_LOG_W(TAG, "Invalid host reset response: %u", value);
-    }
-}
-I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_reset_mode_set);
-
-void i2c_negotiator_reset_delay_set(I2CNegotiator* instance, uint16_t value) {
-    power_set_host_reset_delay(instance->power, value);
-}
-I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_reset_delay_set);
-
 // Internal functions
 static void i2c_negotiator_queue_worker(FuriEventLoopObject* object, void* context) {
     furi_check(context);
@@ -256,6 +216,12 @@ static void i2c_negotiator_queue_worker(FuriEventLoopObject* object, void* conte
     while(furi_message_queue_get(object, &message, 0) == FuriStatusOk) {
         furi_check(message.fn);
         message.fn(instance, message.value);
+    }
+
+    uint32_t dropped = i2c_negotiator_dropped_messages;
+    if(dropped != instance->dropped_messages_logged) {
+        FURI_LOG_E(TAG, "%lu register writes dropped: queue full", dropped - instance->dropped_messages_logged);
+        instance->dropped_messages_logged = dropped;
     }
 }
 
@@ -289,21 +255,6 @@ static void i2c_negotiator_backlight_timeout_callback(const void* item, void* co
     with_i2c_register({ i2c_register_update(I2C_BACKLIGHT_TIMEOUT, *timeout / 100, 0xFFFF); });
 }
 
-static void i2c_updater_state_callback(UpdaterState state, UpdaterError error, void* context) {
-    I2CNegotiator* instance = context;
-    with_i2c_register({ i2c_register_update(I2C_UPDATER_STATUS_REG_ADDRESS, (error << 8) | state, 0xFFFF); });
-    // Mirror the armed response: DONE arms it, Abort/Error disarm it.
-    PowerHostResetResponse response = PowerHostResetResponseDisabled;
-    if(power_get_host_reset_response(instance->power, &response)) {
-        with_i2c_register({ i2c_register_update(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, response, 0xFF); });
-    }
-    if(state == UpdaterStateDone) {
-        FuriHalFwVersion version = updater_get_last_written_fw_version(instance->updater);
-        with_i2c_register({ i2c_register_update(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, ((uint16_t)version.major << 8) | version.minor, 0xFFFF); });
-        with_i2c_register({ i2c_register_update(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, version.patch, 0xFFFF); });
-    }
-}
-
 static void i2c_negotiator_setup_touchpad(I2CNegotiator* instance) {
     UNUSED(instance);
     i2c_register_add_readable(I2C_TOUCHPAD_X_REG_ADDRESS, 0);
@@ -334,54 +285,20 @@ static void i2c_negotiator_setup_backlight(I2CNegotiator* instance) {
     furi_state_subscribe(led_get_backlight_time_state(instance->led), i2c_negotiator_backlight_timeout_callback, NULL);
 }
 
-static void i2c_negotiator_setup_system_reset(I2CNegotiator* instance) {
-    i2c_register_add_writable(I2C_SYSTEM_RESET_REG_ADDRESS, 0, i2c_negotiator_system_reset_message, instance->negotiator_queue);
-    i2c_register_add_writable(I2C_SYSTEM_RESET_MODE_REG_ADDRESS, PowerHostResetResponseDisabled, i2c_negotiator_reset_mode_set_message, instance->negotiator_queue);
-    i2c_register_add_writable(I2C_SYSTEM_RESET_DELAY_REG_ADDRESS, 0, i2c_negotiator_reset_delay_set_message, instance->negotiator_queue);
-}
-
-static void i2c_negotiator_setup_updater(I2CNegotiator* instance) {
-    i2c_register_add_readable(I2C_UPDATER_STATUS_REG_ADDRESS, UpdaterStateIdle);
-    FuriHalFwVersion fw_version = updater_get_current_fw_version(instance->updater);
-    i2c_register_add_readable(I2C_UPDATER_FW_VERSION_REG_ADDRESS, ((uint16_t)fw_version.major << 8) | fw_version.minor);
-    i2c_register_add_readable(I2C_UPDATER_FW_PATCH_REG_ADDRESS, fw_version.patch);
-    i2c_register_add_readable(I2C_UPDATER_BOOT_STATUS_REG_ADDRESS, updater_get_boot_status(instance->updater));
-    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_VERSION_REG_ADDRESS, 0);
-    i2c_register_add_readable(I2C_UPDATER_LAST_WRITTEN_PATCH_REG_ADDRESS, 0);
-    i2c_register_add_writable(I2C_UPDATER_CMD_REG_ADDRESS, 0, updater_on_i2c_command_reg_write, instance->updater);
-    i2c_register_add_writable(I2C_UPDATER_NEW_FW_CRC_REG_ADDRESS, 0, updater_on_i2c_crc_reg_write, instance->updater);
-    i2c_register_add_writable(I2C_UPDATER_NEW_FW_BLOCKS_REG_ADDRESS, 0, updater_on_i2c_blocks_reg_write, instance->updater);
-    static_assert(
-        I2C_UPDATER_BLOCK_SIZE == UPDATER_BLOCK_SIZE && I2C_UPDATER_DATA_LEN == UPDATER_BLOCK_SIZE + 4,
-        "I2C updater data window must match the updater block layout");
-    i2c_register_add_region(I2C_UPDATER_DATA_ADDRESS, I2C_UPDATER_DATA_LEN, NULL, updater_on_i2c_data_write, instance->updater);
-    updater_set_state_callback(instance->updater, i2c_updater_state_callback, instance);
-}
-
 I2CNegotiator* i2c_negotiator_alloc() {
     I2CNegotiator* instance = malloc(sizeof(I2CNegotiator));
     instance->gui = furi_record_open(RECORD_GUI);
-    instance->intercom = furi_record_open(RECORD_I2C_INTERCOM);
+    i2c_registers_owner_begin(RECORD_I2C_NEGOTIATOR);
     instance->led = furi_record_open(RECORD_LEDS);
     instance->haptic = furi_record_open(RECORD_HAPTIC);
-    // The updater creates its record before anything can fail
-    instance->updater = furi_record_open(RECORD_UPDATER);
-    instance->cpu_mode = furi_record_open(RECORD_CPU_MODE);
-    instance->power = furi_record_open(RECORD_POWER);
     instance->event_loop = furi_event_loop_alloc();
 
     instance->negotiator_queue = furi_message_queue_alloc(I2C_NEGOTIATOR_QUEUE_SIZE, sizeof(I2CNegotiatorI2CMessage));
 
     {
-        // Version
-        i2c_register_add_readable(I2C_INTERCOM_VERSION_REG_ADDRESS, I2C_INTERCOM_VERSION);
-
         // Input
         // Interrupt register
         i2c_register_add_interrupt(I2C_INPUT_INTERRUPT_REG_ADDRESS, I2C_INPUT_INTERRUPT_MASK_REG_ADDRESS, I2C_STATUS_REG_BIT_INPUT);
-
-        //Cpu state register
-        i2c_register_add_writable(I2C_CPU_STATUS_REG_ADDRESS, 0, i2c_negotiator_cpu_state_message, instance->negotiator_queue);
 
         // Buttons state
         i2c_register_add_readable(I2C_BUTTONS_STATE_REG_ADDRESS, 0);
@@ -401,10 +318,6 @@ I2CNegotiator* i2c_negotiator_alloc() {
 
         // Haptic
         i2c_register_add_writable(I2C_HAPTIC_PLAY_EFFECT_REG_ADDRESS, 0, i2c_negotiator_haptic_play_effect_message, instance->negotiator_queue);
-
-        i2c_negotiator_setup_system_reset(instance);
-
-        i2c_negotiator_setup_updater(instance);
     }
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->negotiator_queue, FuriEventLoopEventIn, i2c_negotiator_queue_worker, instance);
@@ -412,7 +325,7 @@ I2CNegotiator* i2c_negotiator_alloc() {
     gui_add_unhandled_input_callback(instance->gui, i2c_negotiator_input_event_glue, instance);
     gui_add_unhandled_touch_input_callback(instance->gui, i2c_negotiator_input_touch_event_glue, instance);
 
-    i2c_intercom_setup_end(instance->intercom);
+    furi_record_create(RECORD_I2C_NEGOTIATOR, instance);
 
     return instance;
 }

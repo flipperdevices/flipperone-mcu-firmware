@@ -156,7 +156,7 @@ void furi_hal_i2c_deinit_cpu(void) {
     furi_hal_i2c_bus_cpu.api.event(&furi_hal_i2c_bus_cpu, FuriHalI2cBusEventDeinit);
 }
 
-static uint8_t furi_hal_i2c_bus_slave_write(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
+I2C_ISR_FUNC(static uint8_t, furi_hal_i2c_bus_slave_write)(const FuriHalI2cBusHandle* handle, uint8_t* data, size_t size) {
     furi_assert(handle);
     furi_assert(data);
     // max size write 16 bytes.
@@ -169,7 +169,7 @@ static uint8_t furi_hal_i2c_bus_slave_write(const FuriHalI2cBusHandle* handle, u
     return len;
 }
 
-static uint8_t furi_hal_i2c_bus_slave_read(const FuriHalI2cBusHandle* handle, uint8_t* data, uint8_t* flags, size_t size) {
+I2C_ISR_FUNC(static uint8_t, furi_hal_i2c_bus_slave_read)(const FuriHalI2cBusHandle* handle, uint8_t* data, uint8_t* flags, size_t size) {
     furi_assert(handle);
     furi_assert(data);
     // max size read 16 bytes.
@@ -193,7 +193,7 @@ static void furi_hal_i2c_bus_slave_reset(const FuriHalI2cBusHandle* handle) {
     i2c_slave_reset(i2c);
 }
 
-static void __isr __not_in_flash_func(furi_hal_i2c_bus_cpu_slave_callback)(i2c_inst_t* i2c, I2cSlaveEvent event) {
+I2C_ISR_FUNC(static void, furi_hal_i2c_bus_cpu_slave_callback)(i2c_inst_t* i2c, I2cSlaveEvent event) {
     switch(event) {
     case I2cSlaveEventStart: // master has sent a Start signal
         if(furi_hal_i2c_bus_cpu.api.slave.callback) {
@@ -269,7 +269,8 @@ void furi_hal_i2c_bus_handle_cpu_event(const FuriHalI2cBusHandle* handle, FuriHa
     }
 }
 
-const FuriHalI2cBusHandle furi_hal_i2c_handle_cpu = {
+// In RAM: the I2C slave ISR dereferences it while flash may be busy
+const FuriHalI2cBusHandle __not_in_flash("i2c_handle_cpu") furi_hal_i2c_handle_cpu = {
     .bus = &furi_hal_i2c_bus_cpu,
     .callback = furi_hal_i2c_bus_handle_cpu_event,
 };

@@ -8,8 +8,6 @@ extern "C" {
 
 typedef struct I2CIntercom I2CIntercom;
 
-void i2c_intercom_setup_end(I2CIntercom* instance);
-
 #ifdef __cplusplus
 }
 #endif

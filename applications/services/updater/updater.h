@@ -52,13 +52,14 @@ typedef enum {
 } UpdaterCommand;
 
 /**
- * @brief Callback for updater state changes.
- *
- * @param state New updater state.
- * @param error Associated error; UpdaterErrorNone unless the state is UpdaterStateError.
- * @param context Callback context passed at registration.
+ * @brief How this boot relates to an update. Wire values of the boot type
+ *        byte in the boot status register.
  */
-typedef void (*UpdaterStateCallback)(UpdaterState state, UpdaterError error, void* context);
+typedef enum {
+    UpdaterBootTypeNormal = 0, /**< Not after an update */
+    UpdaterBootTypeFlashUpdate = 1, /**< Switched to a new image, bought at startup */
+    UpdaterBootTypeReverted = 2, /**< A new image failed before its buy: the old one runs */
+} UpdaterBootType;
 
 /** Updater instance. */
 typedef struct Updater Updater;
@@ -75,71 +76,26 @@ typedef struct Updater Updater;
 uint16_t updater_crc16(const uint8_t* buf, size_t len, uint16_t crc_init);
 
 /**
- * @brief Get the currently installed firmware version.
+ * @brief Whether the last update staged an image that can be booted.
  *
  * @param updater Updater instance.
- * @return Firmware version.
+ * @return true if updater_activate() would switch to it.
  */
-FuriHalFwVersion updater_get_current_fw_version(Updater* updater);
-
-/** Boot status of the running image: low byte partition ('A'/'B', 0 unknown), high byte boot type (0 normal, 1 flash-update). */
-uint16_t updater_get_boot_status(Updater* updater);
-
-/** Version of the last accepted update, zeroed until the first one. */
-FuriHalFwVersion updater_get_last_written_fw_version(Updater* updater);
+bool updater_has_staged_image(Updater* updater);
 
 /**
- * @brief Set the state change callback.
+ * @brief Boot the image the last update staged, as a flash-update boot.
+ *
+ * Returns only when nothing is staged, or the slot holds no valid image.
  *
  * @param updater Updater instance.
- * @param callback Callback to invoke on state changes, may be NULL.
- * @param context Passed to the callback.
  */
-void updater_set_state_callback(Updater* updater, UpdaterStateCallback callback, void* context);
+void updater_activate(Updater* updater);
 
 /**
- * @brief Serve a host write into the updater data region.
+ * @brief How this boot relates to an update.
  *
- * @param context Updater instance.
- * @param offset Byte offset relative to the data region base.
- * @param value Byte written by the host.
- * @return true if the byte was accepted, false otherwise.
- *
- * @warning I2C intercom callback, registered by i2c_negotiator and called
- *          from the I2C slave ISR; the definition carries
- *          __isr/__not_in_flash_func.
+ * @param updater Updater instance.
+ * @return Boot type.
  */
-bool updater_on_i2c_data_write(void* context, uint16_t offset, uint8_t value);
-
-/**
- * @brief Serve a host write to the update CRC register.
- *
- * @param context Updater instance.
- * @param address Register address, always even.
- * @param value Full 16-bit register value.
- *
- * @warning Same ISR context as updater_on_i2c_data_write.
- */
-void updater_on_i2c_crc_reg_write(void* context, uint16_t address, uint16_t value);
-
-/**
- * @brief Serve a host write to the blocks-written register.
- *
- * @param context Updater instance.
- * @param address Register address, always even.
- * @param value Full 16-bit register value.
- *
- * @warning Same ISR context as updater_on_i2c_data_write.
- */
-void updater_on_i2c_blocks_reg_write(void* context, uint16_t address, uint16_t value);
-
-/**
- * @brief Serve a host write to the command register.
- *
- * @param context Updater instance.
- * @param address Register address, always even.
- * @param value Full 16-bit register value.
- *
- * @warning Same ISR context as updater_on_i2c_data_write.
- */
-void updater_on_i2c_command_reg_write(void* context, uint16_t address, uint16_t value);
+UpdaterBootType updater_get_boot_type(Updater* updater);

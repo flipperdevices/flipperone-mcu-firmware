@@ -150,4 +150,4 @@ def _symbolize(addresses):
 def erase_slot_header(slot):
     """Erase the first sector of a slot, which makes its image unbootable."""
     address = XIP_BASE + partitions()[slot.upper()]
-    run(["halt", f"flash erase_address {address:#x} {SECTOR:#x}", "reset run"])
+    run(["reset halt", f"flash erase_address {address:#x} {SECTOR:#x}", "reset run"])
