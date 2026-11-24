@@ -100,6 +100,7 @@ set(PICO_BOARD "board_mcu_2350" CACHE STRING "Board type" FORCE)
 set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/toolchain_find.cmake")
 include("lib/sdk/pico_sdk_import.cmake")
 
 project(flipperone-mcu-firmware C CXX ASM)
@@ -236,7 +237,8 @@ target_link_libraries(${PROJECT_NAME}
     assets
     mlib
     kvstore
-    kvstore_default
+    kvstore_logkvs
+    blockdevice_flash
     rtt
 )
 

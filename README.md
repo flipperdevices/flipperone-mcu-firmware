@@ -51,7 +51,7 @@ cmake --build --preset f2-release
 
 The output firmware file will be at `build/f2-release/flipperone-mcu-firmware.uf2`.
 
-The first time, `fbtenv` downloads the archive for your machine (400–500 MB), checks its sha256 against `toolchain.json`, and unpacks it into `~/.flipperone-mcu-toolchain/<tag>/` (`%LOCALAPPDATA%\flipperone-mcu-toolchain\<tag>\` on Windows). After that it only sets up the environment; run it once in every new shell. To set it up offline, download the archive yourself and point `FLIPPERONE_TOOLCHAIN_ARCHIVE` at it.
+The first time, `fbtenv` downloads the archive for your machine (400–500 MB), checks its sha256 against `toolchain.json`, and unpacks it into `~/.flipperone-mcu-toolchain/<tag>/`. After that it only sets up the environment; run it once in every new shell. To set it up offline, download the archive yourself and point `FLIPPERONE_TOOLCHAIN_ARCHIVE` at it.
 
 The toolchain runs on Linux x86_64 and aarch64 with glibc 2.34 or newer, macOS on Apple silicon, and Windows x64. On Linux, picotool needs `libusb-1.0-0`, and OpenOCD also needs `libftdi1-2` and `libhidapi-hidraw0`.
 
@@ -68,11 +68,15 @@ Each board is described by `targets/<name>/target.cmake`, and a target can be ba
 
 Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
 
+### VSCode
+
+Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, Cortex-Debug). Set up the toolchain once with `fbtenv` as above; after that VSCode finds it in `~/.flipperone-mcu-toolchain` by itself. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Run Project**, **Write partition table** and **Flash** tasks act on the selected preset's build.
+
 ### Other setups
 
 Configuring checks the tools against `toolchain.json`: with the toolchain, that it is the pinned release; without it, that the Pico SDK and GCC versions match. A mismatch stops the configuration with a hint, and `-DFW_TOOLCHAIN_CHECK=WARN` builds anyway. Only the toolchain release reproduces CI's binaries exactly.
 
-* **VSCode with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico):** copy the `vscode_template` folder contents to `.vscode` and use the extension's compile button. The extension installs its own Pico SDK and Arm GCC, at the versions on the `sdkVersion`, `toolchainVersion` and `picotoolVersion` lines of `CMakeLists.txt`, which match `toolchain.json`. To build another board, run the **Select Target** task (`Terminal → Run Task`).
+* **The [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico)** installs its own Pico SDK and Arm GCC, at the versions on the `sdkVersion`, `toolchainVersion` and `picotoolVersion` lines of `CMakeLists.txt`, which match `toolchain.json`.
 
 ## How to update MCU firmware
 

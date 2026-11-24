@@ -4,12 +4,12 @@
     python3 scripts/toolchain/toolchain.py check
     python3 scripts/toolchain/toolchain.py update [--tag vN | --release-json FILE]
 
-`check` fails when toolchain.json is not in its canonical layout, or when the copy
-of its versions at the top of CMakeLists.txt, for the Pico VS Code extension,
-disagrees.
+`check` fails when toolchain.json is not in its canonical layout, or when a copy
+disagrees: the version lines at the top of CMakeLists.txt (Pico VS Code extension)
+and the toolchain paths in vscode_template/.
 
 `update` reads release.json of the newest toolchain release (or of --tag) and
-rewrites toolchain.json and that copy. Nothing is written when the pin is already
+rewrites toolchain.json and those copies. Nothing is written when the pin is already
 at that release. Under GitHub Actions it reports `tag` and `changed` as step outputs.
 
 The layout is canonical because scripts/toolchain/fbtenv.sh reads the file with sed,
@@ -30,6 +30,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PIN = REPO_ROOT / 'toolchain.json'
 CMAKELISTS = REPO_ROOT / 'CMakeLists.txt'
+VSCODE_TEMPLATE = REPO_ROOT / 'vscode_template'
 
 REPOSITORY = 'flipperdevices/flipperone-mcu-toolchain'
 PLATFORMS = ('linux-x86_64', 'linux-aarch64', 'darwin-arm64', 'windows-x64')
@@ -38,6 +39,7 @@ SHA256_RE = re.compile(r'[0-9a-f]{64}')
 IMAGE_RE = re.compile(r'ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}')
 # The Pico VS Code extension reads these lines literally; see CMakeLists.txt.
 VSCODE_LINE = 'set({name} {value})'
+BUNDLE_PATH_RE = re.compile(r'(\.flipperone-mcu-toolchain/)(v[0-9]+)/')
 
 
 class PinError(Exception):
@@ -161,6 +163,20 @@ def update_copies(pin: dict, cmakelists: str) -> str:
     return cmakelists
 
 
+def template_problems(pin: dict, templates: dict[str, str]) -> list[str]:
+    return [f'vscode_template/{name}: toolchain {tag}, toolchain.json says {pin["toolchain"]}'
+            for name, text in sorted(templates.items())
+            for tag in sorted(set(m.group(2) for m in BUNDLE_PATH_RE.finditer(text))) if tag != pin['toolchain']]
+
+
+def update_templates(pin: dict, templates: dict[str, str]) -> dict[str, str]:
+    return {name: BUNDLE_PATH_RE.sub(rf'\g<1>{pin["toolchain"]}/', text) for name, text in templates.items()}
+
+
+def _templates() -> dict[str, str]:
+    return {p.name: p.read_text(encoding='utf-8') for p in sorted(VSCODE_TEMPLATE.glob('*.json'))}
+
+
 def _get(url: str) -> bytes:
     headers = {'Accept': 'application/json', 'User-Agent': 'flipperone-mcu-firmware-toolchain-bump'}
     token = os.environ.get('GITHUB_TOKEN')
@@ -203,6 +219,7 @@ def cmd_check(_args) -> int:
     if text != render(pin):
         problems.append('toolchain.json is not in its canonical layout; rewrite it with this script')
     problems += check_copies(pin, CMAKELISTS.read_text(encoding='utf-8'))
+    problems += template_problems(pin, _templates())
     for problem in problems:
         print(f'error: {problem}', file=sys.stderr)
     if not problems:
@@ -227,6 +244,8 @@ def cmd_update(args) -> int:
     changed = render(pin) != current_text
     PIN.write_text(render(pin), encoding='utf-8')
     CMAKELISTS.write_text(cmakelists, encoding='utf-8')
+    for name, text in update_templates(pin, _templates()).items():
+        (VSCODE_TEMPLATE / name).write_text(text, encoding='utf-8')
     print(f'toolchain.json: {current["toolchain"]} -> {pin["toolchain"]}' if changed
           else f'toolchain.json: already at {pin["toolchain"]}')
     _output(tag=pin['toolchain'], changed=str(changed).lower())

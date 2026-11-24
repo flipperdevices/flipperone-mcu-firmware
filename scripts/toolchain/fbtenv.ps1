@@ -7,7 +7,7 @@
 #
 # The first time, it downloads the windows-x64 release archive, checks its sha256
 # against toolchain.json and unpacks it into
-# $env:FLIPPERONE_TOOLCHAIN_HOME (default %LOCALAPPDATA%\flipperone-mcu-toolchain)\<tag>\.
+# $env:FLIPPERONE_TOOLCHAIN_HOME (default ~\.flipperone-mcu-toolchain)\<tag>\.
 # Then, and on every later run, it dot-sources that bundle's own fbtenv.ps1, which
 # puts the tools first on PATH and sets PICO_SDK_PATH and the rest. Running it again
 # is harmless.
@@ -30,7 +30,7 @@ $_foBundle = & {
     }
 
     $home_ = if ($env:FLIPPERONE_TOOLCHAIN_HOME) { $env:FLIPPERONE_TOOLCHAIN_HOME }
-             else { Join-Path $env:LOCALAPPDATA 'flipperone-mcu-toolchain' }
+             else { Join-Path $HOME '.flipperone-mcu-toolchain' }
     $dir = Join-Path $home_ $tag
     $marker = Join-Path $dir '.archive-sha256'
     $installed = if (Test-Path -LiteralPath $marker) { (Get-Content -LiteralPath $marker -TotalCount 1).Trim() }

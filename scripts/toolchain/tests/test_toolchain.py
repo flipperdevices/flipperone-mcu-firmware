@@ -92,13 +92,22 @@ def test_a_later_arm_release_of_the_same_gcc_is_kept():
     assert toolchain.update_copies(pin, cmakelists) == cmakelists
 
 
+def test_template_paths_follow_the_pin():
+    pin = toolchain.pin_from_release(release('v7'))
+    templates = {'a.json': '~/.flipperone-mcu-toolchain/v6/x ~/.flipperone-mcu-toolchain/v7/y', 'b.json': '{}'}
+    assert toolchain.template_problems(pin, templates) == ['vscode_template/a.json: toolchain v6, toolchain.json says v7']
+    assert toolchain.template_problems(pin, toolchain.update_templates(pin, templates)) == []
+
+
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
     """A scratch tree with the pin files, for update."""
     monkeypatch.setattr(toolchain, 'PIN', tmp_path / 'toolchain.json')
     monkeypatch.setattr(toolchain, 'CMAKELISTS', tmp_path / 'CMakeLists.txt')
+    monkeypatch.setattr(toolchain, 'VSCODE_TEMPLATE', tmp_path)
     toolchain.PIN.write_text(toolchain.render(toolchain.pin_from_release(release('v7'))))
     toolchain.CMAKELISTS.write_text(CMAKELISTS)
+    (tmp_path / 'launch.json').write_text('"${userHome}/.flipperone-mcu-toolchain/v7/tools"')
     return tmp_path
 
 
@@ -111,6 +120,7 @@ def test_update_writes_the_pin_and_reports_it(repo, monkeypatch):
     assert json.loads(toolchain.PIN.read_text())['toolchain'] == 'v8'
     assert json.loads(toolchain.PIN.read_text())['image'].endswith('e' * 64)
     assert out.read_text() == 'tag=v8\nchanged=true\n'
+    assert (repo / 'launch.json').read_text() == '"${userHome}/.flipperone-mcu-toolchain/v8/tools"'
     assert toolchain.main(['update']) == 0
     assert out.read_text().endswith('tag=v8\nchanged=false\n')
 
