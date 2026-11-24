@@ -1,21 +1,17 @@
 #include <assets.h>
-#include <version.h>
 #include <gui/gui.h>
 #include <gui/clay_helper.h>
 #include "../scene.h"
 #include <power/power.h>
 #include "../desktop_i.h"
-#include <furi_hal_flash.h>
 
 #define TAG "Header"
 
 typedef struct {
-    FuriString* version_text;
     FuriString* charge_text;
     float charge_indicator_width;
 } HeaderViewModel;
 
-static const Clay_Color COLOR_VERSION = {0x69, 0x69, 0x69, 255};
 
 static bool header_layout(void* _model) {
     furi_assert(_model);
@@ -33,20 +29,6 @@ static bool header_layout(void* _model) {
                     .padding = {.left = 3, .right = 2, .top = 0, .bottom = 0},
                 },
         }) {
-        CLAY(
-            CLAY_APP_ID("VersionWrapper"),
-            {
-                .layout =
-                    {
-                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                        .childAlignment = {.x = CLAY_ALIGN_X_LEFT, .y = CLAY_ALIGN_Y_CENTER},
-                        .padding = {.left = 0, .right = 0, .top = 2, .bottom = 0},
-                    },
-            }) {
-            CLAY_TEXT(
-                clay_helper_string_from(model->version_text),
-                CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_VERSION, .wrapMode = CLAY_TEXT_WRAP_NONE}));
-        }
         CLAY(
             CLAY_APP_ID("ChargeWrapper"),
             {
@@ -123,17 +105,6 @@ static void header_on_alloc(Scene* scene, void* context) {
         view,
         HeaderViewModel * model,
         {
-            const Version* version = version_get();
-
-            model->version_text = furi_string_alloc();
-            FlashPartitionId active_partition;
-            if(furi_hal_flash_get_active_fw_partition(&active_partition)) {
-                furi_string_printf(model->version_text, "[%c] ", active_partition == FlashPartitionIdFwA ? 'A' : 'B');
-            } else {
-                furi_string_printf(model->version_text, "[?] ");
-            }
-            furi_string_cat_printf(model->version_text, "%s %s", version_get_gitbranch(version), version_get_githash(version));
-
             model->charge_text = furi_string_alloc();
         },
         false);

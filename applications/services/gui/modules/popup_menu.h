@@ -10,7 +10,17 @@ typedef struct PopupMenuItem PopupMenuItem;
 
 typedef void (*PopupMenuCallback)(size_t item_id, void* context);
 
+/** Look of the Power softkey drawn with the menu: it should match the screen
+ *  the menu opens over. */
+typedef enum {
+    PopupMenuSoftkeyStyleClassic,
+    PopupMenuSoftkeyStyleHomeTab,
+} PopupMenuSoftkeyStyle;
+
 PopupMenu* popup_menu_alloc(View* view);
+
+/** Default PopupMenuSoftkeyStyleClassic. */
+void popup_menu_set_softkey_style(PopupMenu* menu, PopupMenuSoftkeyStyle style);
 
 void popup_menu_free(PopupMenu* menu);
 

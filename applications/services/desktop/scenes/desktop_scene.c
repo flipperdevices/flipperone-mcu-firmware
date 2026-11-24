@@ -4,6 +4,8 @@
 #include <gui/modules/elements.h>
 #include <gui/modules/parallax.h>
 #include <power/power.h>
+#include <version.h>
+#include <furi_hal_flash.h>
 #include <math.h>
 #include "../scene.h"
 #include "../desktop_i.h"
@@ -11,10 +13,13 @@
 #define TAG "Desktop"
 
 /* Home screen parallax: an underwater scene laid out on the 256x144 screen
- * (scene coordinates are screen coordinates, centred on the 258 px display).
+ * (scene coordinates are screen coordinates, centred on the 258 px display
+ * and lifted by HOME_SCENE_Y).
  * Layers are drawn bottom to top; more arrive as their art lands in
  * assets/home_screen/. */
 #define HOME_SCENE_WIDTH 256
+#define HOME_SCENE_X     1
+#define HOME_SCENE_Y     -2
 
 static const Image* const home_bg_frames[] = {&home_bg};
 static const Image* const home_ship_frames[] = {&home_ship};
@@ -75,11 +80,19 @@ static float desktop_scene_speed_from_power(float watts) {
     return copysignf(fmaxf(fabsf(speed), HOME_SCENE_MIN_SPEED), speed);
 }
 
+/* Firmware version over the scene: top-left corner of the glyphs at
+ * (5, 111) as in the mock-up; the text box starts one pixel above them. */
+#define DESKTOP_VERSION_X 5
+#define DESKTOP_VERSION_Y 112
+
+static const Clay_Color COLOR_VERSION = {0xAA, 0xAA, 0xAA, 255};
+
 typedef struct {
     bool help_pressed;
     bool settings_pressed;
     Desktop* desktop;
     Parallax* scene;
+    FuriString* version_text;
 } DesktopViewModel;
 
 static void desktop_update_scene_speed(Scene* scene) {
@@ -124,9 +137,24 @@ static bool desktop_layout(void* _model) {
             parallax_element(CLAY_ID_LOCAL("Scene"), model->scene);
         }
 
-        elements_softkey_button_element(1, "Help", false, model->help_pressed);
-        elements_softkey_button_element(2, "Power", false, false);
-        elements_softkey_button_element(3, "Settings", false, model->settings_pressed);
+        CLAY(
+            CLAY_APP_ID("Version"),
+            {
+                .floating =
+                    {
+                        .offset = {.x = DESKTOP_VERSION_X, .y = DESKTOP_VERSION_Y},
+                        .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
+                        .attachTo = CLAY_ATTACH_TO_ROOT,
+                    },
+            }) {
+            CLAY_TEXT(
+                clay_helper_string_from(model->version_text),
+                CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_VERSION, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+        }
+
+        elements_home_tab_element(1, "Help", model->help_pressed);
+        elements_home_tab_element(2, "Power", false);
+        elements_home_tab_element(3, "Settings", model->settings_pressed);
     }
 
     return false;
@@ -188,7 +216,17 @@ static void desktop_on_alloc(Scene* scene, void* context) {
         {
             model->desktop = context;
             model->scene = parallax_alloc(home_scene_layers, COUNT_OF(home_scene_layers), HOME_SCENE_WIDTH);
-            parallax_set_origin(model->scene, 1, 0);
+            parallax_set_origin(model->scene, HOME_SCENE_X, HOME_SCENE_Y);
+
+            const Version* version = version_get();
+            model->version_text = furi_string_alloc();
+            FlashPartitionId active_partition;
+            if(furi_hal_flash_get_active_fw_partition(&active_partition)) {
+                furi_string_printf(model->version_text, "[%c] ", active_partition == FlashPartitionIdFwA ? 'A' : 'B');
+            } else {
+                furi_string_printf(model->version_text, "[?] ");
+            }
+            furi_string_cat_printf(model->version_text, "%s %s", version_get_gitbranch(version), version_get_githash(version));
         },
         false);
 
