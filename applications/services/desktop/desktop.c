@@ -434,6 +434,11 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         desktop_start_app_by_id(desktop, "display_test");
         consumed = true;
         break;
+    case DesktopSceneEventTypePowerUpdate:
+        /* The home screen scene paces itself by the charge power; the header
+         * gets the event as well, below, so it is not consumed here. */
+        scene_event(desktop->main_scene, message.event, message.data);
+        break;
     case DesktopSceneEventTypeStartAppById: {
         const char* appid = (const char*)message.data;
         furi_check(appid);

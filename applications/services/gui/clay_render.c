@@ -28,6 +28,13 @@ struct Canvas {
     int32_t scissors_y1;
 
     bool allocated_by_malloc;
+
+    /* Redraw bookkeeping for one clay_render_do_render() pass: the clock every
+     * time-dependent element of the pass is sampled at, and the shortest time
+     * until one of them wants to be drawn again (valid when redraw_pending). */
+    uint32_t render_time_ms;
+    uint32_t redraw_delay_ms;
+    bool redraw_pending;
 };
 
 typedef struct {
@@ -552,6 +559,103 @@ static void render_text(Canvas* canvas, Clay_BoundingBox* bb, Clay_TextRenderDat
     u8g2_font_render_print_multiline(font_render, bb->x, bb->y, text_data->stringContents.chars, text_data->stringContents.length, &ctx);
 }
 
+/*
+ * Image blits. The visible part of the image is clipped against the scissor
+ * rectangle up front, so the inner loops run over on-screen pixels only:
+ * opaque rows are a memcpy, masked rows test one bit per pixel. mirror_x
+ * draws the image flipped horizontally in the same rectangle.
+ */
+
+typedef struct {
+    int32_t src_x0, src_y0; /* first visible source column/row */
+    int32_t dst_x0, dst_y0; /* where it lands on the canvas */
+    int32_t width, height; /* visible size, > 0 when visible */
+} RenderClip;
+
+static bool render_clip_image(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, RenderClip* clip) {
+    int32_t x0 = MAX(x, canvas->scissors_x0);
+    int32_t y0 = MAX(y, canvas->scissors_y0);
+    int32_t x1 = MIN(x + width, canvas->scissors_x1);
+    int32_t y1 = MIN(y + height, canvas->scissors_y1);
+    if(x0 >= x1 || y0 >= y1) return false;
+
+    clip->src_x0 = x0 - x;
+    clip->src_y0 = y0 - y;
+    clip->dst_x0 = x0;
+    clip->dst_y0 = y0;
+    clip->width = x1 - x0;
+    clip->height = y1 - y0;
+    return true;
+}
+
+static void
+    render_blit_gray8(Canvas* canvas, int32_t x, int32_t y, const uint8_t* pixels, const uint8_t* mask, uint32_t width, uint32_t height, bool mirror_x) {
+    RenderClip clip;
+    if(!render_clip_image(canvas, x, y, width, height, &clip)) return;
+
+    uint32_t mask_stride = image_mask_stride(width);
+
+    for(int32_t row = 0; row < clip.height; row++) {
+        int32_t src_y = clip.src_y0 + row;
+        Color* dst = &canvas->data[(clip.dst_y0 + row) * canvas->width + clip.dst_x0];
+        const uint8_t* src_row = &pixels[src_y * width];
+        const uint8_t* mask_row = mask ? &mask[src_y * mask_stride] : NULL;
+
+        if(!mirror_x) {
+            if(!mask_row) {
+                memcpy(dst, &src_row[clip.src_x0], clip.width);
+                continue;
+            }
+            for(int32_t col = 0; col < clip.width; col++) {
+                int32_t src_x = clip.src_x0 + col;
+                if(mask_row[src_x >> 3] & (0x80 >> (src_x & 7))) dst[col] = src_row[src_x];
+            }
+        } else {
+            for(int32_t col = 0; col < clip.width; col++) {
+                int32_t src_x = (int32_t)width - 1 - (clip.src_x0 + col);
+                if(!mask_row || (mask_row[src_x >> 3] & (0x80 >> (src_x & 7)))) dst[col] = src_row[src_x];
+            }
+        }
+    }
+}
+
+void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image, bool mirror_x) {
+    furi_check(image);
+    const uint8_t* pixels = image->data;
+
+    switch(image->format) {
+    case ImageFormatRawGray8:
+        render_blit_gray8(canvas, x, y, pixels, NULL, image->width, image->height, mirror_x);
+        break;
+    case ImageFormatRawGray8Mask:
+        render_blit_gray8(canvas, x, y, pixels, pixels + image->width * image->height, image->width, image->height, mirror_x);
+        break;
+    case ImageFormatAnimation: {
+        const ImageAnimation* animation = image->data;
+        furi_check(animation->frame_count > 0 && animation->frame_duration_ms > 0);
+
+        uint32_t delay_ms;
+        uint32_t frame = image_animation_frame_at(animation, canvas->render_time_ms, &delay_ms);
+        render_blit_gray8(canvas, x, y, animation->frames[frame], NULL, image->width, image->height, mirror_x);
+        canvas_request_redraw(canvas, delay_ms);
+        break;
+    }
+    default:
+        FURI_LOG_E(TAG, "Unsupported image format: %d", image->format);
+    }
+}
+
+uint32_t canvas_get_render_time(Canvas* canvas) {
+    return canvas->render_time_ms;
+}
+
+void canvas_request_redraw(Canvas* canvas, uint32_t delay_ms) {
+    if(!canvas->redraw_pending || delay_ms < canvas->redraw_delay_ms) {
+        canvas->redraw_delay_ms = delay_ms;
+    }
+    canvas->redraw_pending = true;
+}
+
 static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderData* image_data) {
     Image* image = (Image*)image_data->imageData;
     furi_check(image);
@@ -567,45 +671,42 @@ static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderD
         image_data->cornerRadius.bottomLeft);
     RENDER_DEBUG(TAG, "    [img w: %lu, h: %lu]", image->width, image->height);
 
-    const uint8_t* data = image->data;
-    switch(image->format) {
-    case ImageFormatRawGray8: {
-        // Clip source dimensions to the target bounding box
-        int32_t src_w = (int32_t)MIN(image->width, bb->width);
-        int32_t src_h = (int32_t)MIN(image->height, bb->height);
-        int32_t dst_x0 = (int32_t)bb->x;
-        int32_t dst_y0 = (int32_t)bb->y;
+    /* The element box clips the image: Clay sizes it to the image as a rule
+     * (clay_fixed_image), a smaller box shows the top-left part. */
+    int32_t saved[4] = {canvas->scissors_x0, canvas->scissors_y0, canvas->scissors_x1, canvas->scissors_y1};
+    canvas->scissors_x0 = MAX(canvas->scissors_x0, (int32_t)bb->x);
+    canvas->scissors_y0 = MAX(canvas->scissors_y0, (int32_t)bb->y);
+    canvas->scissors_x1 = MIN(canvas->scissors_x1, (int32_t)(bb->x + bb->width));
+    canvas->scissors_y1 = MIN(canvas->scissors_y1, (int32_t)(bb->y + bb->height));
 
-        /*
-         * Fast path (no scissor clipping needed):
-         *
-         * The source image is grayscale (1 byte/pixel) and fully opaque
-         * (alpha = 255).  Since no alpha blending is required we can
-         * memcpy entire rows at once — much faster than calling
-         * render_set_pixel() once per pixel (which does bounds checks
-         * and blending math even for opaque pixels).
-         *
-         * Slow path (with scissor clipping):
-         * Fall back to pixel-by-pixel rendering which respects the
-         * scissor rectangle.
-         */
-        if(dst_x0 >= canvas->scissors_x0 && dst_y0 >= canvas->scissors_y0 && dst_x0 + src_w <= canvas->scissors_x1 && dst_y0 + src_h <= canvas->scissors_y1) {
-            for(int32_t y = 0; y < src_h; y++) {
-                memcpy(&canvas->data[(dst_y0 + y) * canvas->width + dst_x0], &data[y * image->width], src_w);
-            }
-        } else {
-            for(int32_t y = 0; y < src_h; y++) {
-                for(int32_t x = 0; x < src_w; x++) {
-                    uint8_t pixel = data[y * image->width + x];
-                    render_set_pixel(canvas, dst_x0 + x, dst_y0 + y, (ColorA){.color = pixel, .alpha = 255});
-                }
-            }
-        }
-        break;
-    }
-    default:
-        FURI_LOG_E(TAG, "Unsupported image format: %d", image->format);
-    }
+    canvas_draw_image(canvas, bb->x, bb->y, image, false);
+
+    canvas->scissors_x0 = saved[0];
+    canvas->scissors_y0 = saved[1];
+    canvas->scissors_x1 = saved[2];
+    canvas->scissors_y1 = saved[3];
+}
+
+static void render_custom(Canvas* canvas, Clay_BoundingBox* bb, Clay_CustomRenderData* custom_data) {
+    const ClayCustomElement* element = custom_data->customData;
+    furi_check(element && element->render);
+
+    RENDER_DEBUG(TAG, "Custom");
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f]", bb->x, bb->y, bb->width, bb->height);
+
+    /* The element draws into its own box only. */
+    int32_t saved[4] = {canvas->scissors_x0, canvas->scissors_y0, canvas->scissors_x1, canvas->scissors_y1};
+    canvas->scissors_x0 = MAX(canvas->scissors_x0, (int32_t)bb->x);
+    canvas->scissors_y0 = MAX(canvas->scissors_y0, (int32_t)bb->y);
+    canvas->scissors_x1 = MIN(canvas->scissors_x1, (int32_t)(bb->x + bb->width));
+    canvas->scissors_y1 = MIN(canvas->scissors_y1, (int32_t)(bb->y + bb->height));
+
+    element->render(canvas, bb, element->context);
+
+    canvas->scissors_x0 = saved[0];
+    canvas->scissors_y0 = saved[1];
+    canvas->scissors_x1 = saved[2];
+    canvas->scissors_y1 = saved[3];
 }
 
 static void render_scissor_start(Canvas* canvas, Clay_BoundingBox* bb) {
@@ -633,6 +734,9 @@ static void render_scissor_reset(Canvas* canvas) {
 }
 
 void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* render_commands) {
+    canvas->render_time_ms = furi_get_tick();
+    canvas->redraw_pending = false;
+
     for(int i = 0; i < render_commands->length; i++) {
         Clay_RenderCommand* render_command = &render_commands->internalArray[i];
         Clay_BoundingBox bounding_box = render_command->boundingBox;
@@ -685,10 +789,17 @@ void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* render_comma
             render_scissor_reset(canvas);
             break;
         case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
-            furi_crash("Custom render commands are not supported");
+            render_custom(canvas, &bounding_box, &render_command->renderData.custom);
             break;
         }
     }
+}
+
+bool canvas_get_redraw_delay(Canvas* canvas, uint32_t* delay_ms) {
+    if(canvas->redraw_pending) {
+        *delay_ms = canvas->redraw_delay_ms;
+    }
+    return canvas->redraw_pending;
 }
 
 Clay_Dimensions clay_render_measure_text(Clay_StringSlice text, Clay_TextElementConfig* config, void* userData) {
@@ -725,6 +836,9 @@ static Canvas* canvas_alloc_in_place_internal(void* buffer, size_t width, size_t
     canvas->height = height;
     render_scissor_reset(canvas);
     canvas->allocated_by_malloc = allocated_by_malloc;
+    canvas->render_time_ms = 0;
+    canvas->redraw_delay_ms = 0;
+    canvas->redraw_pending = false;
 
     return canvas;
 }

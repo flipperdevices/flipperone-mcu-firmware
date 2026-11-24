@@ -6,6 +6,7 @@ set(NANOPB_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/../lib/nanopb/generator/nanopb
 set(NANOPB_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
 set(NANOPB_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/proto")
 set(ASSETS_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/image_convert.py")
+set(ANIMATION_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/animation_convert.py")
 set(IMAGES_HEADER "${CMAKE_CURRENT_BINARY_DIR}/assets.h")
 
 # Host interpreter for the generators below. Chosen once at configure and
@@ -91,7 +92,34 @@ foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
     list(APPEND IMAGE_NAMES    ${IMAGE_NAME})
 endforeach()
 
-# Generate assets.h with extern declarations for all images
+# Each folder under animations/ is one animated image: its PNG frames in name
+# order plus an optional meta.json (see scripts/animation_convert.py).
+file(GLOB ANIMATION_DIRS LIST_DIRECTORIES true CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/animations/*")
+
+foreach(ANIMATION_DIR ${ANIMATION_DIRS})
+    if(NOT IS_DIRECTORY ${ANIMATION_DIR})
+        continue()
+    endif()
+    get_filename_component(ANIMATION_NAME ${ANIMATION_DIR} NAME)
+    set(ASSETS_SOURCE "${CMAKE_CURRENT_BINARY_DIR}/${ANIMATION_NAME}.c")
+    file(GLOB ANIMATION_INPUTS CONFIGURE_DEPENDS "${ANIMATION_DIR}/*.png" "${ANIMATION_DIR}/meta.json")
+
+    add_custom_command(
+        OUTPUT  ${ASSETS_SOURCE}
+        COMMAND ${ASSETS_COMMAND} ${ANIMATION_SCRIPT} ${ANIMATION_DIR} ${ASSETS_SOURCE} ${ANIMATION_NAME}
+        DEPENDS
+            ${ANIMATION_INPUTS}
+            ${ANIMATION_SCRIPT}
+            ${ASSETS_SCRIPT}
+            ${VENV_STAMP}
+        COMMENT "Generating ${ANIMATION_NAME}.c"
+    )
+
+    list(APPEND ASSETS_SOURCES ${ASSETS_SOURCE})
+    list(APPEND IMAGE_NAMES    ${ANIMATION_NAME})
+endforeach()
+
+# Generate assets.h with extern declarations for all images and animations
 set(IMAGES_HEADER_CONTENT "#pragma once\n#include <gui/image.h>\n\n")
 foreach(IMAGE ${IMAGE_NAMES})
     string(APPEND IMAGES_HEADER_CONTENT "extern const Image ${IMAGE};\n")

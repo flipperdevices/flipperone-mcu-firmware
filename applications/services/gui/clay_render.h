@@ -43,6 +43,20 @@ size_t canvas_get_height(Canvas* canvas);
 
 Image canvas_to_image(Canvas* canvas);
 
+/** Draw an image with its top-left corner at (x, y), clipped to the current
+ *  scissor rectangle. Handles every ImageFormat; an animation picks its frame
+ *  from the render clock and asks for the redraw that shows the next one.
+ *  mirror_x flips it horizontally within the same rectangle. */
+void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image, bool mirror_x);
+
+/** The clock (furi_get_tick(), ms) the current render pass is drawn at. Every
+ *  time-dependent element samples this one value, so one pass is consistent. */
+uint32_t canvas_get_render_time(Canvas* canvas);
+
+/** Ask for another render pass in delay_ms (from the render clock). The
+ *  shortest request of a pass wins; the GUI arms its redraw timer with it. */
+void canvas_request_redraw(Canvas* canvas, uint32_t delay_ms);
+
 // rendering primitives
 
 void render_draw_line(Canvas* canvas, int32_t x0, int32_t y0, int32_t x1, int32_t y1, ColorA color);
@@ -84,3 +98,18 @@ void render_draw_round_rectangle_ext(
 Clay_Dimensions clay_render_measure_text(Clay_StringSlice text, Clay_TextElementConfig* config, void* userData);
 
 void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* renderCommands);
+
+/** Whether anything in the last clay_render_do_render() pass asked to be drawn
+ *  again (an animated image, a custom element). If so, *delay_ms receives the
+ *  shortest requested delay, measured from the clock that pass was sampled at. */
+bool canvas_get_redraw_delay(Canvas* canvas, uint32_t* delay_ms);
+
+/** A Clay custom element: pass its address as `.custom = {.customData = ...}`
+ *  and the renderer calls `render` with the scissor set to the element's box.
+ *  Draw with the canvas_* primitives; call canvas_request_redraw() to animate. */
+typedef void (*ClayCustomRenderCallback)(Canvas* canvas, const Clay_BoundingBox* bounding_box, void* context);
+
+typedef struct {
+    ClayCustomRenderCallback render;
+    void* context;
+} ClayCustomElement;

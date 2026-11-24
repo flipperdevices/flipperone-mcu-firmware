@@ -16,6 +16,8 @@ extern "C" {
 #include "cb_test/circular_buffer_test.h"
 #include "nvm_test/nvm_test.h"
 #include "clay_test/clay_test.h"
+#include "animation_test/animation_test.h"
+#include "parallax_test/parallax_test.h"
 #undef TEST_FUNCTION_DECLS
 
 typedef int (*TestCallback)(void);
@@ -26,6 +28,8 @@ static TestCallback unit_test_callbacks[] = {
 #include "cb_test/circular_buffer_test.h"
 #include "nvm_test/nvm_test.h"
 #include "clay_test/clay_test.h"
+#include "animation_test/animation_test.h"
+#include "parallax_test/parallax_test.h"
 #undef TEST_FUNCTION_REFS
 };
 
