@@ -73,7 +73,6 @@ Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [TARGETS.md](TARGETS.m
 Configuring checks the tools against `toolchain.json`: with the toolchain, that it is the pinned release; without it, that the Pico SDK and GCC versions match. A mismatch stops the configuration with a hint, and `-DFW_TOOLCHAIN_CHECK=WARN` builds anyway. Only the toolchain release reproduces CI's binaries exactly.
 
 * **VSCode with the [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico):** copy the `vscode_template` folder contents to `.vscode` and use the extension's compile button. The extension installs its own Pico SDK and Arm GCC, at the versions on the `sdkVersion`, `toolchainVersion` and `picotoolVersion` lines of `CMakeLists.txt`, which match `toolchain.json`. To build another board, run the **Select Target** task (`Terminal → Run Task`).
-* **Dev container:** [`.devcontainer/devcontainer.json`](.devcontainer/devcontainer.json) uses the toolchain's Docker image, with the environment already set up.
 
 ## How to update MCU firmware
 

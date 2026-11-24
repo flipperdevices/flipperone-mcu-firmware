@@ -4,12 +4,12 @@
     python3 scripts/toolchain/toolchain.py check
     python3 scripts/toolchain/toolchain.py update [--tag vN | --release-json FILE]
 
-`check` fails when toolchain.json is not in its canonical layout, or when a copy of
-its values elsewhere in the repo disagrees: the Pico VS Code extension's lines at the
-top of CMakeLists.txt and the image of .devcontainer/devcontainer.json.
+`check` fails when toolchain.json is not in its canonical layout, or when the copy
+of its versions at the top of CMakeLists.txt, for the Pico VS Code extension,
+disagrees.
 
 `update` reads release.json of the newest toolchain release (or of --tag) and
-rewrites toolchain.json and those copies. Nothing is written when the pin is already
+rewrites toolchain.json and that copy. Nothing is written when the pin is already
 at that release. Under GitHub Actions it reports `tag` and `changed` as step outputs.
 
 The layout is canonical because scripts/toolchain/fbtenv.sh reads the file with sed,
@@ -30,7 +30,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PIN = REPO_ROOT / 'toolchain.json'
 CMAKELISTS = REPO_ROOT / 'CMakeLists.txt'
-DEVCONTAINER = REPO_ROOT / '.devcontainer' / 'devcontainer.json'
 
 REPOSITORY = 'flipperdevices/flipperone-mcu-toolchain'
 PLATFORMS = ('linux-x86_64', 'linux-aarch64', 'darwin-arm64', 'windows-x64')
@@ -136,7 +135,7 @@ def _vscode_line_re(name: str) -> re.Pattern:
     return re.compile(rf'^set\({name} ([^)\s]+)\)$', re.MULTILINE)
 
 
-def check_copies(pin: dict, cmakelists: str, devcontainer: str | None) -> list[str]:
+def check_copies(pin: dict, cmakelists: str) -> list[str]:
     problems = []
     for name, value in vscode_versions(pin).items():
         found = _vscode_line_re(name).findall(cmakelists)
@@ -148,14 +147,10 @@ def check_copies(pin: dict, cmakelists: str, devcontainer: str | None) -> list[s
                                 f'{pin["components"]["arm-none-eabi-gcc"]["version"]} (expected {value})')
         elif found[0] != value:
             problems.append(f'CMakeLists.txt: {name} is {found[0]}, toolchain.json says {value}')
-    if devcontainer is not None:
-        image = json.loads(devcontainer).get('image')
-        if image != pin['image']:
-            problems.append(f'.devcontainer/devcontainer.json: image {image}, toolchain.json says {pin["image"]}')
     return problems
 
 
-def update_copies(pin: dict, cmakelists: str, devcontainer: str | None) -> tuple[str, str | None]:
+def update_copies(pin: dict, cmakelists: str) -> str:
     for name, value in vscode_versions(pin).items():
         pattern = _vscode_line_re(name)
         current = pattern.findall(cmakelists)
@@ -163,9 +158,7 @@ def update_copies(pin: dict, cmakelists: str, devcontainer: str | None) -> tuple
         if name == 'toolchainVersion' and current and current[0].startswith(value.rsplit('_', 1)[0] + '_'):
             continue
         cmakelists = pattern.sub(VSCODE_LINE.format(name=name, value=value), cmakelists)
-    if devcontainer is not None:
-        devcontainer = re.sub(r'("image":\s*)"[^"]*"', lambda m: f'{m.group(1)}"{pin["image"]}"', devcontainer, count=1)
-    return cmakelists, devcontainer
+    return cmakelists
 
 
 def _get(url: str) -> bytes:
@@ -209,7 +202,7 @@ def cmd_check(_args) -> int:
     problems = []
     if text != render(pin):
         problems.append('toolchain.json is not in its canonical layout; rewrite it with this script')
-    problems += check_copies(pin, CMAKELISTS.read_text(encoding='utf-8'), _read(DEVCONTAINER))
+    problems += check_copies(pin, CMAKELISTS.read_text(encoding='utf-8'))
     for problem in problems:
         print(f'error: {problem}', file=sys.stderr)
     if not problems:
@@ -230,12 +223,10 @@ def cmd_update(args) -> int:
     if older and not args.allow_downgrade:
         raise PinError(f'{pin["toolchain"]} is older than the pinned {current["toolchain"]}; '
                        'pass --allow-downgrade to go back')
-    cmakelists, devcontainer = update_copies(pin, CMAKELISTS.read_text(encoding='utf-8'), _read(DEVCONTAINER))
+    cmakelists = update_copies(pin, CMAKELISTS.read_text(encoding='utf-8'))
     changed = render(pin) != current_text
     PIN.write_text(render(pin), encoding='utf-8')
     CMAKELISTS.write_text(cmakelists, encoding='utf-8')
-    if devcontainer is not None:
-        DEVCONTAINER.write_text(devcontainer, encoding='utf-8')
     print(f'toolchain.json: {current["toolchain"]} -> {pin["toolchain"]}' if changed
           else f'toolchain.json: already at {pin["toolchain"]}')
     _output(tag=pin['toolchain'], changed=str(changed).lower())

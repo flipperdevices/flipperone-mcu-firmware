@@ -20,8 +20,12 @@ jobs:
     permissions:
       contents: read
     steps:
+      # Full history and tags: the configure derives the version from them
       - name: "Checkout code"
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: "Update submodules"
         run: |

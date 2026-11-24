@@ -199,10 +199,13 @@ jobs:
         os: [windows-2022, macos-15]
 
     steps:
+    # The version comes from the newest semver tag, see cmake/fw_version.cmake
     - name: Checkout firmware
       uses: actions/checkout@v6
       with:
         submodules: recursive
+        fetch-depth: 0
+        fetch-tags: true
 
     - name: Set up toolchain
       uses: ./.github/actions/toolchain

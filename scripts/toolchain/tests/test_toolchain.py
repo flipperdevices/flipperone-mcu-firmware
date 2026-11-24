@@ -72,26 +72,24 @@ def test_validate_rejects(breakage):
 
 def test_copies_follow_the_pin():
     pin = toolchain.pin_from_release(release())
-    devcontainer = '{\n  "name": "x",\n  "image": "ghcr.io/old@sha256:' + '0' * 64 + '"\n}\n'
-    assert toolchain.check_copies(pin, CMAKELISTS, None) == []
-    assert len(toolchain.check_copies(pin, CMAKELISTS, devcontainer)) == 1
+    assert toolchain.check_copies(pin, CMAKELISTS) == []
 
     newer = copy.deepcopy(release())
     newer['components']['pico-sdk']['version'] = '2.4.0'
     newer['components']['arm-none-eabi-gcc']['version'] = '15.1.0-1.1'
     pin = toolchain.pin_from_release(newer)
-    assert len(toolchain.check_copies(pin, CMAKELISTS, None)) == 2
-    cmakelists, devcontainer = toolchain.update_copies(pin, CMAKELISTS, devcontainer)
+    assert len(toolchain.check_copies(pin, CMAKELISTS)) == 2
+    cmakelists = toolchain.update_copies(pin, CMAKELISTS)
     assert 'set(sdkVersion 2.4.0)\nset(toolchainVersion 15_1_Rel1)\nset(picotoolVersion 2.3.1)' in cmakelists
     assert cmakelists.startswith('x\n') and cmakelists.endswith('y\n')
-    assert toolchain.check_copies(pin, cmakelists, devcontainer) == []
+    assert toolchain.check_copies(pin, cmakelists) == []
 
 
 def test_a_later_arm_release_of_the_same_gcc_is_kept():
     pin = toolchain.pin_from_release(release())
     cmakelists = CMAKELISTS.replace('14_2_Rel1', '14_2_Rel2')
-    assert toolchain.check_copies(pin, cmakelists, None) == []
-    assert toolchain.update_copies(pin, cmakelists, None)[0] == cmakelists
+    assert toolchain.check_copies(pin, cmakelists) == []
+    assert toolchain.update_copies(pin, cmakelists) == cmakelists
 
 
 @pytest.fixture
@@ -99,10 +97,8 @@ def repo(tmp_path, monkeypatch):
     """A scratch tree with the pin files, for update."""
     monkeypatch.setattr(toolchain, 'PIN', tmp_path / 'toolchain.json')
     monkeypatch.setattr(toolchain, 'CMAKELISTS', tmp_path / 'CMakeLists.txt')
-    monkeypatch.setattr(toolchain, 'DEVCONTAINER', tmp_path / 'devcontainer.json')
     toolchain.PIN.write_text(toolchain.render(toolchain.pin_from_release(release('v7'))))
     toolchain.CMAKELISTS.write_text(CMAKELISTS)
-    toolchain.DEVCONTAINER.write_text('{"image": "x"}\n')
     return tmp_path
 
 
@@ -113,7 +109,7 @@ def test_update_writes_the_pin_and_reports_it(repo, monkeypatch):
     monkeypatch.setattr(toolchain, 'latest_tag', lambda: 'v8')
     assert toolchain.main(['update']) == 0
     assert json.loads(toolchain.PIN.read_text())['toolchain'] == 'v8'
-    assert json.loads(toolchain.DEVCONTAINER.read_text())['image'].endswith('e' * 64)
+    assert json.loads(toolchain.PIN.read_text())['image'].endswith('e' * 64)
     assert out.read_text() == 'tag=v8\nchanged=true\n'
     assert toolchain.main(['update']) == 0
     assert out.read_text().endswith('tag=v8\nchanged=false\n')
