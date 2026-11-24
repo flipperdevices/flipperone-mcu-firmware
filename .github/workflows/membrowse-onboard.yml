@@ -17,7 +17,7 @@ on:
 
 env:
   BUILD_TYPE: Release
-  # Tool versions come from the CMakeLists.txt header, see setup-toolchain
+  # Tools: the toolchain release pinned in toolchain.json at HEAD, see .github/actions/toolchain
 
 jobs:
   # Same discovery as in build.yml: every targets/*/target.cmake is a target
@@ -58,14 +58,10 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # Toolchain and picotool go to runner.temp, out of reach of `git clean`.
-      # pico-sdk lands in the workspace as a nested git repo, which git clean
-      # leaves alone.
+      # The toolchain is unpacked to runner.temp, out of reach of `git clean`, and
+      # set up once from HEAD: historical commits build with it too.
       - name: Set up toolchain
-        id: toolchain
-        uses: ./.github/actions/setup-toolchain
-        with:
-          install_dir: ${{ runner.temp }}
+        uses: ./.github/actions/toolchain
 
       # Taken from HEAD once: historical commits may not have the script at all.
       - name: Stash helper script outside the checkout
@@ -83,9 +79,9 @@ jobs:
             ([ "${{ matrix.target }}" = f1 ] || test -f targets/${{ matrix.target }}/target.cmake) &&
             cmake -E make_directory build &&
             cd build &&
-            PICO_SDK_PATH=${{ steps.toolchain.outputs.pico_sdk_path }} cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -Dpicotool_DIR=${{ steps.toolchain.outputs.picotool_dir }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
+            cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
             cmake --build . --config $BUILD_TYPE --parallel $(nproc) &&
-            ${{ runner.temp }}/membrowse_ldscripts.sh ${{ github.workspace }} $PWD ${{ steps.toolchain.outputs.pico_sdk_path }}
+            ${{ runner.temp }}/membrowse_ldscripts.sh ${{ github.workspace }} $PWD "$PICO_SDK_PATH"
           elf: build/flipperone-mcu-firmware.elf
           ld: build/ldscripts/memmap_default.ld
           map_file: build/flipperone-mcu-firmware.elf.map

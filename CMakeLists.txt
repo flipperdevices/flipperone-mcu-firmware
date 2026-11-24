@@ -1,4 +1,12 @@
-cmake_minimum_required(VERSION 3.13)
+# 3.28: CMakePresets.json, string(JSON) in cmake/toolchain_check.cmake
+cmake_minimum_required(VERSION 3.28)
+
+# Every find_package(Python3), the SDK's too, takes the first python3 on PATH: the
+# toolchain bundle's once its environment is set up. By default FindPython prefers
+# the newest version, and macOS frameworks and Windows registry entries over PATH.
+set(Python3_FIND_STRATEGY LOCATION)
+set(Python3_FIND_FRAMEWORK LAST)
+set(Python3_FIND_REGISTRY LAST)
 
 # Make sure every git submodule the build needs is checked out.
 find_package(Git QUIET)
@@ -53,7 +61,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(FW_TARGET "f1" CACHE STRING "Hardware target, a directory under targets/")
+set(FW_TARGET "f2" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
 # A TBYB image starts only via a flash-update boot, which the bootrom does not do
 # after an absolute-family UF2.
@@ -68,6 +76,9 @@ set(FIRMWARE_TARGET "${CMAKE_MATCH_1}")
 # Initialise pico_sdk from installed location
 # (note this can come from environment, CMake cache etc)
 
+# The pinned tools are in toolchain.json; the version lines below copy it for the
+# Raspberry Pi Pico VS Code extension. scripts/toolchain/toolchain.py keeps them in
+# sync, and cmake/toolchain_check.cmake checks them on every configure.
 # == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
 if(WIN32)
     set(USERHOME $ENV{USERPROFILE})
@@ -95,6 +106,8 @@ project(flipperone-mcu-firmware C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
+
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/toolchain_check.cmake")
 
 # Enable warnings and treat as errors
 add_compile_options(-fno-strict-aliasing)

@@ -104,7 +104,7 @@
             "id": "fwTarget",
             "type": "pickString",
             "description": "Hardware target",
-            "default": "f1",
+            "default": "f2",
             "options": [
                 "f1",
                 "f2"

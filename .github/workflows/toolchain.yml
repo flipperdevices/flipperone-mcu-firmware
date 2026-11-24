@@ -1,0 +1,100 @@
+name: Toolchain
+
+# check: toolchain.json, its copies and the bootstrap scripts are consistent.
+# bump: weekly, or by hand, pin the newest flipperone-mcu-toolchain release. Its
+#   release.json is the only input: the toolchain repository never writes here. A
+#   bump arrives as a pull request and goes through the full build and HIL like any
+#   other change.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/toolchain.yml'
+      - '.github/actions/toolchain/**'
+      - '.devcontainer/**'
+      - 'CMakeLists.txt'
+      - 'scripts/toolchain/**'
+      - 'toolchain.json'
+  push:
+    branches: [dev]
+    paths:
+      - '.github/workflows/toolchain.yml'
+      - '.github/actions/toolchain/**'
+      - '.devcontainer/**'
+      - 'CMakeLists.txt'
+      - 'scripts/toolchain/**'
+      - 'toolchain.json'
+  schedule:
+    - cron: '41 5 * * 1'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release to pin, v<N> (default the newest)
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: toolchain.json and its copies
+        run: python3 scripts/toolchain/toolchain.py check
+
+      - name: Tests
+        run: |
+          sudo apt-get install -y --no-install-recommends zsh
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check pytest==9.2.0
+          "$RUNNER_TEMP/venv/bin/python" -m pytest scripts/toolchain/tests -q
+
+  bump:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: toolchain-bump
+    env:
+      # Pull requests opened with the workflow's own token start no workflows, so
+      # the bump would sit without CI. A token in TOOLCHAIN_BUMP_TOKEN (contents and
+      # pull requests: write) avoids that; without one, push to the branch to start CI.
+      GH_TOKEN: ${{ secrets.TOOLCHAIN_BUMP_TOKEN || github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: dev
+          token: ${{ secrets.TOOLCHAIN_BUMP_TOKEN || github.token }}
+
+      - name: Pin the release
+        id: pin
+        run: python3 scripts/toolchain/toolchain.py update ${TAG:+--tag "$TAG"}
+
+      - name: Open or update the pull request
+        if: steps.pin.outputs.changed == 'true'
+        env:
+          NEW_TAG: ${{ steps.pin.outputs.tag }}
+        run: |
+          branch="toolchain/$NEW_TAG"
+          old_tag=$(git show HEAD:toolchain.json | sed -n 's/^  "toolchain": "\(.*\)",$/\1/p')
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git switch -c "$branch"
+          git commit -am "Toolchain: $old_tag -> $NEW_TAG"
+          git push --force origin "$branch"
+          if [ -z "$(gh pr list --head "$branch" --state open --json number --jq '.[].number')" ]; then
+            {
+              echo "Pins [flipperone-mcu-toolchain $NEW_TAG](https://github.com/flipperdevices/flipperone-mcu-toolchain/releases/tag/$NEW_TAG), up from $old_tag."
+              echo
+              echo 'Written by `scripts/toolchain/toolchain.py update` from the release'"'"'s `release.json`. Compare the `components` block of `toolchain.json` for what changed.'
+            } >"$RUNNER_TEMP/body.md"
+            gh pr create --base dev --head "$branch" --draft \
+              --title "Toolchain: $old_tag -> $NEW_TAG" --body-file "$RUNNER_TEMP/body.md"
+          fi

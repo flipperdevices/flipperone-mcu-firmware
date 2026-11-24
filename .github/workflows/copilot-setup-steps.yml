@@ -5,9 +5,13 @@ on:
   push:
     paths:
       - .github/workflows/copilot-setup-steps.yml
+      - .github/actions/toolchain/**
+      - toolchain.json
   pull_request:
     paths:
       - .github/workflows/copilot-setup-steps.yml
+      - .github/actions/toolchain/**
+      - toolchain.json
 
 jobs:
   copilot-setup-steps:
@@ -33,3 +37,7 @@ jobs:
             echo "submodule update attempt ${attempt}/3 failed; retrying in $((attempt * 15))s"
             sleep "$((attempt * 15))"
           done
+
+      # The pinned toolchain, so the agent can configure and build
+      - name: "Set up toolchain"
+        uses: ./.github/actions/toolchain

@@ -1,0 +1,46 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {"major": 3, "minor": 28, "patch": 0},
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "FW_RECOVERY": "OFF"
+      }
+    },
+    {
+      "name": "f2-release",
+      "displayName": "f2, release",
+      "inherits": "base",
+      "cacheVariables": {"FW_TARGET": "f2"}
+    },
+    {
+      "name": "f2-debug",
+      "displayName": "f2, debug",
+      "inherits": "base",
+      "cacheVariables": {"FW_TARGET": "f2", "CMAKE_BUILD_TYPE": "Debug"}
+    },
+    {
+      "name": "f2-recovery",
+      "displayName": "f2, recovery.uf2",
+      "inherits": "base",
+      "cacheVariables": {"FW_TARGET": "f2", "FW_RECOVERY": "ON"}
+    },
+    {
+      "name": "f1-release",
+      "displayName": "f1, release",
+      "inherits": "base",
+      "cacheVariables": {"FW_TARGET": "f1"}
+    }
+  ],
+  "buildPresets": [
+    {"name": "f2-release", "configurePreset": "f2-release"},
+    {"name": "f2-debug", "configurePreset": "f2-debug"},
+    {"name": "f2-recovery", "configurePreset": "f2-recovery"},
+    {"name": "f1-release", "configurePreset": "f1-release"}
+  ]
+}

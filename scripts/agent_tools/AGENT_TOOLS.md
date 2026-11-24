@@ -57,7 +57,7 @@ python3 scripts/agent_tools/f1.py status
 | `host "CMD"` | One shell command line on the Linux host over its serial console (join several with `;` or `&&`; nothing interactive); prints output and exit code. `--wait S` first waits up to `S` seconds for a shell prompt, for a host that is still booting |
 | `swd status` / `reset` / `resume` / `read ADDR [N]` | SWD through OpenOCD, without halting unless stated. `read` prints `N` 32-bit words |
 | `swd where` | Halt for a moment and print where both cores are (function, file, line), then run on |
-| `swd symbol ADDR...` | Function, file and line for addresses from a crash log; uses `build/*.elf`, no probe needed |
+| `swd symbol ADDR...` | Function, file and line for addresses from a crash log; uses the newest ELF under `build/`, no probe needed |
 | `swd flash a\|b FILE.bin --yes` | Write a firmware image to a slot, verify it, reset |
 | `swd flash a\|b FILE.uf2 --activate --yes` | Same for a try-before-you-buy image, and boot it once so that the bootrom stages and commits it |
 | `swd erase-header a\|b --yes` | Make a slot unbootable, so that the other one boots, and reset. Only flashing the slot again brings it back |
@@ -234,7 +234,7 @@ If the MCU console was left in a bad state (a command still running, or a crashe
 
 ## Firmware slots and SWD
 
-SWD goes through OpenOCD from the Pico SDK (`~/.pico-sdk/openocd/<version>/openocd`, or the binary named in `F1_OPENOCD`), which this repository needs anyway; a stock OpenOCD without RP2350 support will not do. To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f scripts/agent_tools/openocd/flipperone-mcu.cfg`. That board config sources `target/rp2350.cfg`, sets the adapter speed and holds all the board knowledge, so a debug session can reuse it too:
+SWD goes through the RP2350-capable OpenOCD this repository needs anyway: the binary named in `F1_OPENOCD`, else the toolchain's when `scripts/toolchain/fbtenv.sh` has set up its environment, else the Pico extension's (`~/.pico-sdk/openocd/<version>/openocd`); a stock OpenOCD without RP2350 support will not do. To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f scripts/agent_tools/openocd/flipperone-mcu.cfg`. That board config sources `target/rp2350.cfg`, sets the adapter speed and holds all the board knowledge, so a debug session can reuse it too:
 
 | Proc | Use |
 |---|---|
@@ -244,10 +244,10 @@ SWD goes through OpenOCD from the Pico SDK (`~/.pico-sdk/openocd/<version>/openo
 | `f1_halted` | 1 when the selected core is halted, 0 when it runs |
 | `f1_stage_tbyb BASE` | Boot the try-before-you-buy image at `BASE` once, so the bootrom stages and commits it |
 
-`swd symbol` uses `arm-none-eabi-addr2line` from the Pico SDK toolchain.
+`swd symbol` uses `arm-none-eabi-addr2line`: the toolchain's, else the first on `PATH`, else the Pico extension's.
 
 - There are two firmware slots, A and B. The bootrom boots the valid image with the higher version; with equal versions it boots A.
-- `build/flipperone-mcu-firmware.bin` runs from either slot. `swd flash` takes the `.bin` and writes it at the slot's own address.
+- `build/<preset>/flipperone-mcu-firmware.bin` runs from either slot. `swd flash` takes the `.bin` and writes it at the slot's own address.
 - `swd flash` also takes a `.uf2`, but only one whose payload lies inside the slot being written, so a slot-relocated `.uf2` from the release flow rather than a plain picotool `.uf2` linked for slot A. Anything outside the slot is refused before the flash is touched, picotool's boot-info block at `0x10FFFF00` aside, which the bootrom ignores.
 - With Linux running, add `--quiesce`: the tool then holds the host CPU in reset through the probe while it writes. That is a reset, not a freeze: a host that runs loses its state, but the slot write cannot race the host reading flash.
 - Flash your builds to slot A, with `--activate`: local builds all carry the same version, and with equal versions A wins, so a build written to B does not start while A holds a valid image of the same or a higher version. If B holds a higher version than your build, write the build to both slots, or make B unbootable with `swd erase-header b`.
@@ -260,7 +260,7 @@ SWD goes through OpenOCD from the Pico SDK (`~/.pico-sdk/openocd/<version>/openo
 
 ```shell
 DIST_SUFFIX=my-test-1 cmake -S . -B build && cmake --build build   # own version string, to tell builds apart
-python3 scripts/agent_tools/f1.py swd flash a build/flipperone-mcu-firmware.bin --yes
+python3 scripts/agent_tools/f1.py swd flash a build/f2-release/flipperone-mcu-firmware.bin --yes
 python3 scripts/agent_tools/f1.py status              # slot A is the active one
 python3 scripts/agent_tools/f1.py cli device_info     # the running build is yours
 python3 scripts/agent_tools/f1.py press back          # close the self-check, if the MCU opened it after booting
@@ -303,7 +303,7 @@ The firmware does not reboot after a crash at this stage of development: it prin
 - `running` in `status` only means the core executes instructions. A dead console with `running` is a crash or a hang, and `status` cannot tell them apart; the log does.
 - Turn addresses from the report into source lines: `f1.py swd symbol 0x1000a133`. In a `[CRASH]` report `lr` points into the function that failed the check. A HardFault report has `pc`, where it faulted, and `lr_st`, the return address saved at that moment, which is the caller; its plain `lr` is an exception code, not an address.
 - For a hang, `f1.py swd where` shows the line it is stuck on. After a crash it only shows the crash handler; use the log.
-- The ELF in `build/` has to be the build that is running, otherwise the lines are wrong. Keep one `.elf` there: the tools take the first one they find.
+- The ELF has to be the build that is running, otherwise the lines are wrong. The tools take the newest `.elf` in `build/` or in a preset's `build/<preset>/`.
 - Fault registers can also be read without halting: `f1.py swd read 0xE000ED28 4` gives CFSR, HFSR, DFSR, MMFAR.
 - To get going again: `f1.py swd reset`, or the reset pin through the probe. `swd resume` does not help after a crash, the firmware halts again at once.
 - Linux keeps running when the MCU crashes, with nothing about it in the kernel log. The tools that need the MCU console fail meanwhile, `linux stop` among them. Reset the MCU first; it then shows the running Linux again by itself, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
@@ -334,7 +334,7 @@ Dependencies run one way, `cli` → `logic` → `transport` → `packets`; `test
 python3 -m pytest scripts/agent_tools/tests -q
 ```
 
-The tests need the pinned packages of `assets/python/requirements.txt` and nothing else: no firmware build, no device, no probe. The logic tests pass in fake ports, so commands and timeouts run without hardware. `.github/workflows/agent-tools-tests.yml` runs the same command in CI.
+The tests need the packages of `scripts/requirements-test.txt` and nothing else: no firmware build, no device, no probe. The logic tests pass in fake ports, so commands and timeouts run without hardware. `.github/workflows/agent-tools-tests.yml` runs the same command in CI.
 
 ## What still needs the user
 

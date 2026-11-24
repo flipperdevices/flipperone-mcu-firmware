@@ -327,3 +327,38 @@ def test_freeze_host_reports_a_failed_release_and_keeps_the_write_failure(monkey
             raise ValueError("the write failed")
     assert "releasing cpu_reset also failed" in str(caught.value)
     assert isinstance(caught.value.__cause__, ValueError)
+
+
+def test_openocd_of_the_toolchain_bundle_comes_before_the_pico_sdk_one(tmp_path, monkeypatch):
+    from agent_tools.logic import swd
+
+    def fake_openocd(base):
+        (base / "scripts" / "target").mkdir(parents=True)
+        (base / "scripts" / "target" / "rp2350.cfg").write_text("")
+        (base / "openocd").write_text("")
+        return str(base / "openocd")
+
+    bundle = fake_openocd(tmp_path / "bundle" / "tools" / "openocd")
+    pico = fake_openocd(tmp_path / "home" / ".pico-sdk" / "openocd" / "0.12.0+dev")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("F1_OPENOCD", raising=False)
+    monkeypatch.delenv("FLIPPERONE_TOOLCHAIN_ROOT", raising=False)
+    assert swd.find_openocd()[0] == pico
+    monkeypatch.setenv("FLIPPERONE_TOOLCHAIN_ROOT", str(tmp_path / "bundle"))
+    assert swd.find_openocd() == (bundle, str(tmp_path / "bundle" / "tools" / "openocd" / "scripts"))
+
+
+def test_symbols_come_from_the_newest_elf_of_any_build_directory(tmp_path, monkeypatch):
+    import os
+
+    from agent_tools.logic import swd
+
+    monkeypatch.setattr(swd, "REPO", str(tmp_path))
+    assert swd.find_elf() is None
+    old = tmp_path / "build" / "flipperone-mcu-firmware.elf"
+    new = tmp_path / "build" / "f2-release" / "flipperone-mcu-firmware.elf"
+    new.parent.mkdir(parents=True)
+    old.write_text("")
+    new.write_text("")
+    os.utime(old, (1, 1))
+    assert swd.find_elf() == str(new)
