@@ -567,39 +567,58 @@ static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderD
         image_data->cornerRadius.bottomLeft);
     RENDER_DEBUG(TAG, "    [img w: %lu, h: %lu]", image->width, image->height);
 
-    const uint8_t* data = image->data;
+    /* The image is drawn unscaled from the box's top left corner: a smaller box
+     * crops it. What is drawn is that area clipped to the scissors, which always
+     * lie inside the canvas, so the loops below write without further checks. */
+    const int32_t dst_x = (int32_t)bb->x;
+    const int32_t dst_y = (int32_t)bb->y;
+    const int32_t x0 = MAX(dst_x, canvas->scissors_x0);
+    const int32_t y0 = MAX(dst_y, canvas->scissors_y0);
+    const int32_t x1 = MIN(dst_x + MIN((int32_t)image->width, (int32_t)bb->width), canvas->scissors_x1);
+    const int32_t y1 = MIN(dst_y + MIN((int32_t)image->height, (int32_t)bb->height), canvas->scissors_y1);
+    if(x0 >= x1 || y0 >= y1) return;
+
+    // Image coordinates of the first drawn pixel
+    const int32_t src_x0 = x0 - dst_x;
+    const int32_t src_y0 = y0 - dst_y;
+    const uint32_t mono1_stride = image_mono1_stride(image->width);
+
     switch(image->format) {
     case ImageFormatRawGray8: {
-        // Clip source dimensions to the target bounding box
-        int32_t src_w = (int32_t)MIN(image->width, bb->width);
-        int32_t src_h = (int32_t)MIN(image->height, bb->height);
-        int32_t dst_x0 = (int32_t)bb->x;
-        int32_t dst_y0 = (int32_t)bb->y;
+        const uint8_t* src = (const uint8_t*)image->data + src_y0 * image->width + src_x0;
+        const uint8_t* mask = image->mask ? image->mask + src_y0 * mono1_stride : NULL;
+        Color* dst = &canvas->data[y0 * canvas->width + x0];
 
-        /*
-         * Fast path (no scissor clipping needed):
-         *
-         * The source image is grayscale (1 byte/pixel) and fully opaque
-         * (alpha = 255).  Since no alpha blending is required we can
-         * memcpy entire rows at once — much faster than calling
-         * render_set_pixel() once per pixel (which does bounds checks
-         * and blending math even for opaque pixels).
-         *
-         * Slow path (with scissor clipping):
-         * Fall back to pixel-by-pixel rendering which respects the
-         * scissor rectangle.
-         */
-        if(dst_x0 >= canvas->scissors_x0 && dst_y0 >= canvas->scissors_y0 && dst_x0 + src_w <= canvas->scissors_x1 && dst_y0 + src_h <= canvas->scissors_y1) {
-            for(int32_t y = 0; y < src_h; y++) {
-                memcpy(&canvas->data[(dst_y0 + y) * canvas->width + dst_x0], &data[y * image->width], src_w);
-            }
-        } else {
-            for(int32_t y = 0; y < src_h; y++) {
-                for(int32_t x = 0; x < src_w; x++) {
-                    uint8_t pixel = data[y * image->width + x];
-                    render_set_pixel(canvas, dst_x0 + x, dst_y0 + y, (ColorA){.color = pixel, .alpha = 255});
+        for(int32_t y = y0; y < y1; y++) {
+            if(!mask) {
+                memcpy(dst, src, x1 - x0);
+            } else {
+                for(int32_t i = 0, sx = src_x0; i < x1 - x0; i++, sx++) {
+                    if(mask[sx >> 3] & (0x80 >> (sx & 7))) dst[i] = src[i];
                 }
+                mask += mono1_stride;
             }
+            src += image->width;
+            dst += canvas->width;
+        }
+        break;
+    }
+    case ImageFormatMono1: {
+        const Color ink = image_data->backgroundColor.a ? render_color(image_data->backgroundColor).color : 0x00;
+        const Color paper = 0xFF;
+        const uint8_t* src = (const uint8_t*)image->data + src_y0 * mono1_stride;
+        const uint8_t* mask = image->mask ? image->mask + src_y0 * mono1_stride : NULL;
+        Color* dst = &canvas->data[y0 * canvas->width + x0];
+
+        for(int32_t y = y0; y < y1; y++) {
+            for(int32_t i = 0, sx = src_x0; i < x1 - x0; i++, sx++) {
+                const uint8_t bit = 0x80 >> (sx & 7);
+                if(mask && !(mask[sx >> 3] & bit)) continue;
+                dst[i] = (src[sx >> 3] & bit) ? ink : paper;
+            }
+            src += mono1_stride;
+            if(mask) mask += mono1_stride;
+            dst += canvas->width;
         }
         break;
     }
@@ -776,6 +795,7 @@ Image canvas_to_image(Canvas* canvas) {
         .height = canvas->height,
         .format = ImageFormatRawGray8,
         .data = (uint8_t*)canvas->data,
+        .mask = NULL,
     };
     return image;
 }

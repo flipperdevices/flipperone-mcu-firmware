@@ -131,6 +131,9 @@ static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
         instance->display_view,
         CpuAppModel * model,
         {
+            // A placeholder may have been 1 bit or masked
+            model->frame.format = ImageFormatRawGray8;
+            model->frame.mask = NULL;
             model->frame.data = data;
             model->frame.width = JD9853_WIDTH;
             model->frame.height = JD9853_HEIGHT;

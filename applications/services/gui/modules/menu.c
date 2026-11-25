@@ -165,7 +165,6 @@ static void menu_draw_scrollbar(MenuViewModel* model) {
     CLAY(
         CLAY_ID("Scrollbar"),
         {
-            .backgroundColor = COLOR_WHITE,
             .layout =
                 {
                     .layoutDirection = CLAY_TOP_TO_BOTTOM,
