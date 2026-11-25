@@ -752,7 +752,7 @@ static bool furi_hal_otp_signature_ok(
     pico_sha256_update_blocking(&state, (const uint8_t*)label, label_len);
     pico_sha256_update_blocking(&state, data, size);
     pico_sha256_finish(&state, &hash);
-    return uECC_verify(key, hash.bytes, signature);
+    return uECC_verify(key, hash.bytes, sizeof(hash.bytes), signature, uECC_secp256r1());
 }
 
 static bool furi_hal_otp_signatures_ok(const FuriHalOtpBlock1Data* b1, const FuriHalOtpBlock2Data* b2, const FuriHalOtpBlock3Data* b3) {

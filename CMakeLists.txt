@@ -122,14 +122,15 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_common.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_encode.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_decode.c
-    # micro-ecc as pico-sdk's btstack ships it, set there to secp256r1: the
-    # OTP block signatures (furi_hal_otp.c)
-    ${PICO_SDK_PATH}/lib/btstack/3rd-party/micro-ecc/uECC.c
+    # The OTP block signatures (furi_hal_otp.c)
+    ${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c
 )
-target_include_directories(${PROJECT_NAME} PRIVATE ${PICO_SDK_PATH}/lib/btstack/3rd-party/micro-ecc)
-# ECDSA is off there; btstack's copy spells it twice ways, MICO for the bodies
-set_source_files_properties(${PICO_SDK_PATH}/lib/btstack/3rd-party/micro-ecc/uECC.c PROPERTIES
-    COMPILE_DEFINITIONS "ENABLE_MICRO_ECC_ECDSA;ENABLE_MICO_ECC_ECDSA")
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc)
+# secp256r1 only, in plain C: with the Thumb-2 assembly the UART CLI lost the
+# tail of long replies on the test device, a layout effect not understood yet
+set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c PROPERTIES COMPILE_DEFINITIONS
+    "uECC_SUPPORTS_secp160r1=0;uECC_SUPPORTS_secp192r1=0;uECC_SUPPORTS_secp224r1=0;uECC_SUPPORTS_secp256k1=0;uECC_PLATFORM=uECC_arch_other")
+set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c PROPERTIES COMPILE_OPTIONS -Wno-maybe-uninitialized)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE 
     PICO_DEFAULT_UART_TX_PIN=0
