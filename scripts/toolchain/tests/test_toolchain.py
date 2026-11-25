@@ -111,18 +111,16 @@ def repo(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_update_writes_the_pin_and_reports_it(repo, monkeypatch):
-    out = repo / 'github_output'
-    monkeypatch.setenv('GITHUB_OUTPUT', str(out))
+def test_update_writes_the_pin_and_its_copies(repo, monkeypatch, capsys):
     monkeypatch.setattr(toolchain, 'fetch_release', lambda tag: release(tag, 'b'))
     monkeypatch.setattr(toolchain, 'latest_tag', lambda: 'v8')
     assert toolchain.main(['update']) == 0
     assert json.loads(toolchain.PIN.read_text())['toolchain'] == 'v8'
     assert json.loads(toolchain.PIN.read_text())['image'].endswith('e' * 64)
-    assert out.read_text() == 'tag=v8\nchanged=true\n'
+    assert 'v7 -> v8' in capsys.readouterr().out
     assert (repo / 'launch.json').read_text() == '"${userHome}/.flipperone-mcu-toolchain/v8/tools"'
     assert toolchain.main(['update']) == 0
-    assert out.read_text().endswith('tag=v8\nchanged=false\n')
+    assert 'already at v8' in capsys.readouterr().out
 
 
 def test_update_refuses_to_go_back_unless_asked(repo, monkeypatch):

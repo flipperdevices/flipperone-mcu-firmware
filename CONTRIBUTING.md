@@ -68,10 +68,10 @@ for open tasks. Leave a comment on the issue before starting work to avoid dupli
 The build tools are the [flipperone-mcu-toolchain](https://github.com/flipperdevices/flipperone-mcu-toolchain)
 release pinned in `toolchain.json`; the README shows how to set it up.
 
-- New releases arrive as pull requests from the *Toolchain* workflow, which reads the
-  newest release's `release.json`. To pin a release by hand:
-  `python3 scripts/toolchain/toolchain.py update --tag v<N>`. It also rewrites the
-  version lines the Pico VS Code extension reads at the top of `CMakeLists.txt`.
+- To pin a new release: `python3 scripts/toolchain/toolchain.py update --tag v<N>`
+  (the newest without `--tag`). It reads the release's `release.json` and also rewrites
+  the version lines the Pico VS Code extension reads at the top of `CMakeLists.txt`,
+  and the toolchain paths in `vscode_template/`.
 - A change to the build's Python packages (`assets/python/requirements.txt`) needs a
   toolchain release with them first. Pin that release in the same pull request as the
   change. Otherwise the build ignores the toolchain's Python packages and installs its

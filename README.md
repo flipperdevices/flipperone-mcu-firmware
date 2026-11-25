@@ -70,13 +70,13 @@ Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [TARGETS.md](TARGETS.m
 
 ### VSCode
 
-Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, Cortex-Debug). Set up the toolchain once with `fbtenv` as above; after that VSCode finds it in `~/.flipperone-mcu-toolchain` by itself. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Run Project**, **Write partition table** and **Flash** tasks act on the selected preset's build.
+Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, Cortex-Debug). Set up the toolchain once with `fbtenv` as above; after that VSCode finds it in `~/.flipperone-mcu-toolchain` by itself. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Run Project**, **Write partition table** and **Flash** tasks act on the selected preset's build. The template expects the toolchain in `~/.flipperone-mcu-toolchain`: with `FLIPPERONE_TOOLCHAIN_HOME` set elsewhere, change its paths to match.
 
 ### Other setups
 
 Configuring checks the tools against `toolchain.json`: with the toolchain, that it is the pinned release; without it, that the Pico SDK and GCC versions match. A mismatch stops the configuration with a hint, and `-DFW_TOOLCHAIN_CHECK=WARN` builds anyway. Only the toolchain release reproduces CI's binaries exactly.
 
-* **The [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico)** installs its own Pico SDK and Arm GCC, at the versions on the `sdkVersion`, `toolchainVersion` and `picotoolVersion` lines of `CMakeLists.txt`, which match `toolchain.json`.
+The [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico) installs its own Pico SDK and Arm GCC, at the versions on the `sdkVersion`, `toolchainVersion` and `picotoolVersion` lines of `CMakeLists.txt`, which match `toolchain.json`. The build uses them only when the pinned toolchain is neither set up with `fbtenv` nor installed.
 
 ## How to update MCU firmware
 

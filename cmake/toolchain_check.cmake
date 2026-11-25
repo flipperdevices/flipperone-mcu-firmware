@@ -35,8 +35,9 @@ function(_fw_toolchain_check)
     string(JSON picotool_version GET "${pin}" components picotool version)
     string(REGEX MATCH "^[0-9]+\\.[0-9]+" gcc_major_minor "${gcc_version}")
     string(REPLACE "_" "." vscode_gcc "${toolchainVersion}")
+    string(REGEX MATCH "^[0-9]+\\.[0-9]+" vscode_gcc "${vscode_gcc}")
     if(NOT sdkVersion STREQUAL sdk_version OR NOT picotoolVersion STREQUAL picotool_version
-       OR NOT vscode_gcc MATCHES "^${gcc_major_minor}\\.")
+       OR NOT vscode_gcc STREQUAL gcc_major_minor)
         list(APPEND problems
             "CMakeLists.txt: sdkVersion/toolchainVersion/picotoolVersion (${sdkVersion}, "
             "${toolchainVersion}, ${picotoolVersion}) do not match toolchain.json. Run "
@@ -69,14 +70,22 @@ function(_fw_toolchain_check)
         set(hint "Source scripts/toolchain/fbtenv.sh (fbtenv.ps1 on Windows) and configure a fresh build directory.")
         set(source "flipperone-mcu-toolchain ${bundle_tag}")
     else()
+        if(DEFINED ENV{FLIPPERONE_TOOLCHAIN_ROOT})
+            list(APPEND problems
+                "fbtenv is set up, but the Pico SDK is ${PICO_SDK_PATH}, not the toolchain's.\n")
+        endif()
         if(NOT PICO_SDK_VERSION_STRING STREQUAL sdk_version)
             list(APPEND problems "Pico SDK ${PICO_SDK_VERSION_STRING} in ${PICO_SDK_PATH}, toolchain.json pins ${sdk_version}.\n")
         endif()
         if(NOT CMAKE_C_COMPILER_VERSION VERSION_EQUAL gcc_version)
             list(APPEND problems "GCC ${CMAKE_C_COMPILER_VERSION} (${CMAKE_C_COMPILER}), toolchain.json pins ${gcc_version}.\n")
         endif()
-        string(CONCAT hint "Use the pinned toolchain: source scripts/toolchain/fbtenv.sh "
-            "(fbtenv.ps1 on Windows), or install the versions above.")
+        if(DEFINED ENV{FLIPPERONE_TOOLCHAIN_ROOT})
+            set(hint "Configure a fresh build directory.")
+        else()
+            string(CONCAT hint "Use the pinned toolchain: source scripts/toolchain/fbtenv.sh "
+                "(fbtenv.ps1 on Windows), or install the versions above.")
+        endif()
         string(CONCAT source "Pico SDK ${PICO_SDK_VERSION_STRING}, GCC ${CMAKE_C_COMPILER_VERSION}, "
             "not the toolchain bundle, so the binaries may differ from CI's")
     endif()

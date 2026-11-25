@@ -59,7 +59,8 @@ jobs:
           fetch-depth: 0
 
       # Set up once from HEAD, out of reach of `git clean`. Older commits may pin
-      # another toolchain, hence FW_TOOLCHAIN_CHECK=WARN below.
+      # another toolchain, hence FW_TOOLCHAIN_CHECK=WARN below. Commits that link
+      # kvstore_default need BTstack, which a later toolchain may not ship.
       - name: Set up toolchain
         uses: ./.github/actions/toolchain
 

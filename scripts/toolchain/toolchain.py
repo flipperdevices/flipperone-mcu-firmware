@@ -9,8 +9,7 @@ disagrees: the version lines at the top of CMakeLists.txt (Pico VS Code extensio
 and the toolchain paths in vscode_template/.
 
 `update` reads release.json of the newest toolchain release (or of --tag) and
-rewrites toolchain.json and those copies. Nothing is written when the pin is already
-at that release. Under GitHub Actions it reports `tag` and `changed` as step outputs.
+rewrites toolchain.json and those copies.
 
 The layout is canonical because scripts/toolchain/fbtenv.sh reads the file with sed,
 not with a JSON parser: one line per archive, keys in a fixed order. Write it only
@@ -178,7 +177,7 @@ def _templates() -> dict[str, str]:
 
 
 def _get(url: str) -> bytes:
-    headers = {'Accept': 'application/json', 'User-Agent': 'flipperone-mcu-firmware-toolchain-bump'}
+    headers = {'Accept': 'application/json', 'User-Agent': 'flipperone-mcu-firmware'}
     token = os.environ.get('GITHUB_TOKEN')
     if token and url.startswith('https://api.github.com/'):
         headers['Authorization'] = f'Bearer {token}'
@@ -201,14 +200,6 @@ def fetch_release(tag: str) -> dict:
 
 def _read(path: Path) -> str | None:
     return path.read_text(encoding='utf-8') if path.exists() else None
-
-
-def _output(**values: str) -> None:
-    target = os.environ.get('GITHUB_OUTPUT')
-    if target:
-        with open(target, 'a', encoding='utf-8') as f:
-            for key, value in values.items():
-                f.write(f'{key}={value}\n')
 
 
 def cmd_check(_args) -> int:
@@ -248,7 +239,6 @@ def cmd_update(args) -> int:
         (VSCODE_TEMPLATE / name).write_text(text, encoding='utf-8')
     print(f'toolchain.json: {current["toolchain"]} -> {pin["toolchain"]}' if changed
           else f'toolchain.json: already at {pin["toolchain"]}')
-    _output(tag=pin['toolchain'], changed=str(changed).lower())
     return 0
 
 
