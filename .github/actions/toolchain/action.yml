@@ -20,12 +20,6 @@ inputs:
 runs:
   using: composite
   steps:
-    # The bundle's picotool links the system libusb
-    - name: Install libusb
-      if: runner.os == 'Linux'
-      shell: bash
-      run: sudo apt-get install -y --no-install-recommends libusb-1.0-0
-
     # GITHUB_PATH prepends every line it is given, so the bundle's directories go in
     # last first. The variables are the bundle's own exports, read from its script.
     - name: Set up the pinned toolchain

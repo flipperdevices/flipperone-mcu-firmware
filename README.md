@@ -53,7 +53,7 @@ The output firmware file will be at `build/f2-release/flipperone-mcu-firmware.uf
 
 The first time, `fbtenv` downloads the archive for your machine (400–500 MB), checks its sha256 against `toolchain.json`, and unpacks it into `~/.flipperone-mcu-toolchain/<tag>/`. After that it only sets up the environment and points `~/.flipperone-mcu-toolchain/current` at that release (a junction on Windows); run it once in every new shell. To set it up offline, download the archive yourself and point `FLIPPERONE_TOOLCHAIN_ARCHIVE` at it.
 
-The toolchain runs on Linux x86_64 and aarch64 with glibc 2.34 or newer, macOS on Apple silicon, and Windows x64. On Linux, picotool needs `libusb-1.0-0`, and OpenOCD also needs `libftdi1-2` and `libhidapi-hidraw0`.
+The toolchain runs on Linux x86_64 and aarch64 with glibc 2.34 or newer, macOS on Apple silicon, and Windows x64. It brings its own USB libraries; on Linux it needs only `libudev1`, which systemd-based distributions have, plus udev rules to use a debug probe or flash without root (see the toolchain's [README](https://github.com/flipperdevices/flipperone-mcu-toolchain#host-requirements)).
 
 ### Hardware targets
 

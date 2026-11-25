@@ -1,18 +1,22 @@
 {
   "schema": 1,
-  "toolchain": "v1",
+  "toolchain": "v2",
   "repository": "flipperdevices/flipperone-mcu-toolchain",
-  "source_commit": "11af32ec4b582eb192681b5e1ce4838d12bc5039",
-  "image": "ghcr.io/flipperdevices/flipperone-mcu-toolchain@sha256:a2c9ebb4bd666c2d52242bf11e3362fb392dabc9baa8f9bf7da782fb4a05fcf3",
+  "source_commit": "05928865d9d447e04d993ca2b93f2adb44609941",
+  "image": "ghcr.io/flipperdevices/flipperone-mcu-toolchain@sha256:cab070a94a6793e511141ce462674dd9382283bcbc55bc45aa1e5f48827d5ae1",
   "archives": {
-    "linux-x86_64": {"name": "flipperone-mcu-toolchain-v1-linux-x86_64.tar.gz", "sha256": "d0d8b995eb754c2e534d280ce6c2bb541c38bf5af7d7cdd0ca482e17b596aaed", "size": 477599412},
-    "linux-aarch64": {"name": "flipperone-mcu-toolchain-v1-linux-aarch64.tar.gz", "sha256": "e49b1c65c8999a2c0fc6a2db7b711e525a0296362276addbe9f9126accf62a87", "size": 452524554},
-    "darwin-arm64": {"name": "flipperone-mcu-toolchain-v1-darwin-arm64.tar.gz", "sha256": "6d0d1d18ad050d7756f0472eaa6c0ad13b1ab23c8abd5c716b93f3756fdd87a3", "size": 409352394},
-    "windows-x64": {"name": "flipperone-mcu-toolchain-v1-windows-x64.zip", "sha256": "5d0d3edcf4a263d588ddaf3a33ec416d961b4d23225b00c83fcbc7c432f4b135", "size": 486498698}
+    "linux-x86_64": {"name": "flipperone-mcu-toolchain-v2-linux-x86_64.tar.gz", "sha256": "7737dace85b4c2fe88b581c6c8f4c234507c99d3e5e1f7c3f02556a1ad2de42a", "size": 477659602},
+    "linux-aarch64": {"name": "flipperone-mcu-toolchain-v2-linux-aarch64.tar.gz", "sha256": "7cb48bf85e0fc38f0f0d76de70c64afb44029c9fe43c29944b6c1d3c399528f4", "size": 452641213},
+    "darwin-arm64": {"name": "flipperone-mcu-toolchain-v2-darwin-arm64.tar.gz", "sha256": "35e02da6320e12cbfce46cfa5fd452838bcb68b0637a7c0716ce0b6d86fab3fe", "size": 409356768},
+    "windows-x64": {"name": "flipperone-mcu-toolchain-v2-windows-x64.zip", "sha256": "4d4b098245baeb95a2719fa6be066f5fc958cdfc9ace948cd6154ecde6ed2f31", "size": 486483825}
   },
   "components": {
     "arm-none-eabi-gcc": {"version": "14.2.1-1.1", "license": "GPL-3.0-or-later WITH GCC-exception-3.1 AND LicenseRef-newlib"},
-    "pico-sdk": {"version": "2.3.1", "license": "BSD-3-Clause AND MIT AND LicenseRef-BTstack", "commit": "079c6f39023649b154152db30f1d781e884879bc"},
+    "pico-sdk": {"version": "2.3.1", "license": "BSD-3-Clause AND MIT", "commit": "079c6f39023649b154152db30f1d781e884879bc"},
+    "libusb": {"version": "1.0.26-1", "license": "LGPL-2.1-or-later", "platforms": ["linux-aarch64", "linux-x86_64"]},
+    "libftdi1": {"version": "1.5-6", "license": "LGPL-2.1-only", "platforms": ["linux-aarch64", "linux-x86_64"]},
+    "hidapi": {"version": "0.13.1-1", "license": "GPL-3.0-only OR BSD-3-Clause OR LicenseRef-HIDAPI", "platforms": ["linux-aarch64", "linux-x86_64"]},
+    "libgpiod": {"version": "1.6.3-1", "license": "LGPL-2.1-or-later", "platforms": ["linux-aarch64"]},
     "picotool": {"version": "2.3.1", "license": "BSD-3-Clause"},
     "pioasm": {"version": "2.3.1", "license": "BSD-3-Clause"},
     "openocd": {"version": "0.12.0+dev-gacff23f", "license": "GPL-2.0-or-later"},
