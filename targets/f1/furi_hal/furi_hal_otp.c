@@ -499,7 +499,7 @@ const char* furi_hal_otp_error_to_string(FuriHalOtpError error) {
     return "Unknown error";
 }
 
-// OTP_DEVICE: name, version, target, body, connect, timestamp
+// OTP_DEVICE
 
 bool furi_hal_otp_device_valid(void) {
     uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE];
