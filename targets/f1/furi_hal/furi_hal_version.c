@@ -68,7 +68,7 @@ void furi_hal_version_init(void) {
     const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
     if(board) {
         FURI_LOG_I(TAG, "Board: version %u, F%uB%uC%u", board->hw_version, board->target, board->body, board->connect);
-        // Two ECDSA checks, about 110 ms; cached for furi_hal_otp_valid() callers
+        // Two ECDSA checks, about 140 ms; cached for furi_hal_otp_valid() callers
         FURI_LOG_I(TAG, "OTP signatures: %s", furi_hal_otp_valid() ? "valid" : "not valid");
     } else {
         FURI_LOG_W(TAG, "No board info in OTP");
