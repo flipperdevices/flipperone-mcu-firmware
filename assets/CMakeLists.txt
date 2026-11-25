@@ -5,6 +5,8 @@ set(PYTHON_DIR    "${CMAKE_CURRENT_SOURCE_DIR}/python")
 set(NANOPB_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/../lib/nanopb/generator/nanopb_generator.py")
 set(NANOPB_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
 set(NANOPB_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/proto")
+# Parallel generators must not share nanopb_pb2.py: each builds its own in here
+set(NANOPB_PB2_DIR "${CMAKE_CURRENT_BINARY_DIR}/nanopb_pb2")
 set(ASSETS_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/image_convert.py")
 set(IMAGES_HEADER "${CMAKE_CURRENT_BINARY_DIR}/assets.h")
 
@@ -71,10 +73,11 @@ foreach(PROTO_FILE ${PROTO_SOURCES})
 
     add_custom_command(
         OUTPUT  ${PB_HEADER} ${PB_SOURCE}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${NANOPB_OUTPUT_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${NANOPB_OUTPUT_DIR} ${NANOPB_PB2_DIR}
         # -q drops the "Writing to ..." chatter; it would also silence the warning
         # about .options patterns that match nothing, so make those an error instead.
-        COMMAND ${ASSETS_COMMAND} ${NANOPB_GENERATOR}
+        COMMAND ${CMAKE_COMMAND} -E env NANOPB_PB2_TEMP_DIR=${NANOPB_PB2_DIR}
+            ${ASSETS_COMMAND} ${NANOPB_GENERATOR}
             --quiet --error-on-unmatched
             -D ${NANOPB_OUTPUT_DIR}
             -I ${NANOPB_PROTO_DIR}
