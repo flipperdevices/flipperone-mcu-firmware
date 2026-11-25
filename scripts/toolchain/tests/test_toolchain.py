@@ -190,6 +190,15 @@ def test_bootstrap_installs_once_then_reuses(shell, checkout, tmp_path):
 
 
 @pytest.mark.parametrize('shell', SHELLS)
+def test_bootstrap_replaces_an_unfinished_install(shell, checkout, tmp_path):
+    tree, archive = checkout
+    (tmp_path / 'tc' / 'v7' / 'leftover').mkdir(parents=True)
+    assert 'rc=0 v7' in source(shell, tree, archive, tmp_path).stdout
+    assert sorted(p.name for p in (tmp_path / 'tc' / 'v7').iterdir()) == ['.archive-sha256', 'fbtenv.sh']
+    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['v7']
+
+
+@pytest.mark.parametrize('shell', SHELLS)
 def test_bootstrap_rejects_an_archive_with_another_hash(shell, checkout, tmp_path):
     tree, archive = checkout
     fake_archive(archive, 'v6')

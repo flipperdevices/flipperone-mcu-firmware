@@ -27,7 +27,7 @@ execute_process(
 if(PYTHON_HAS_REQUIREMENTS EQUAL 0)
     message(STATUS "Generators run with ${Python3_EXECUTABLE}, which has the pinned packages")
     set(ASSETS_COMMAND "${Python3_EXECUTABLE}")
-    set(VENV_STAMP "")
+    set(ASSETS_DEPENDS "${VENV_REQUIREMENTS}")
 else()
     message(STATUS "Generators get a venv: ${PYTHON_MISSING} in ${Python3_EXECUTABLE}")
 
@@ -46,6 +46,7 @@ else()
     # below is only rewritten when its content changes). The stamp lives inside the
     # venv, so deleting the venv by hand also triggers a rebuild.
     set(VENV_STAMP "${VENV_DIR}/venv.stamp")
+    set(ASSETS_DEPENDS "${VENV_STAMP}")
     set(VENV_INTERPRETER "${CMAKE_CURRENT_BINARY_DIR}/venv_interpreter.txt")
     file(GENERATE OUTPUT ${VENV_INTERPRETER} CONTENT "${Python3_EXECUTABLE}\n")
     add_custom_command(
@@ -81,7 +82,7 @@ foreach(PROTO_FILE ${PROTO_SOURCES})
         DEPENDS
             ${PROTO_FILE}
             ${NANOPB_GENERATOR}
-            ${VENV_STAMP}
+            ${ASSETS_DEPENDS}
         COMMENT "Generating ${PROTO_NAME}.pb.h/.pb.c from proto"
     )
 
@@ -101,7 +102,7 @@ foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
         DEPENDS
             ${IMAGE_SOURCE}
             ${ASSETS_SCRIPT}
-            ${VENV_STAMP}
+            ${ASSETS_DEPENDS}
         COMMENT "Generating ${IMAGE_NAME}.c"
     )
 

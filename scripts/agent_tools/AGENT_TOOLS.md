@@ -259,7 +259,7 @@ SWD goes through the RP2350-capable OpenOCD this repository needs anyway: the bi
 ### Build, flash, check
 
 ```shell
-DIST_SUFFIX=my-test-1 cmake -S . -B build && cmake --build build   # own version string, to tell builds apart
+DIST_SUFFIX=my-test-1 cmake --preset f2-release && cmake --build --preset f2-release   # own version string, to tell builds apart
 python3 scripts/agent_tools/f1.py swd flash a build/f2-release/flipperone-mcu-firmware.bin --yes
 python3 scripts/agent_tools/f1.py status              # slot A is the active one
 python3 scripts/agent_tools/f1.py cli device_info     # the running build is yours

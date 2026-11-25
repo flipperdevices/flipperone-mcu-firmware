@@ -41,7 +41,7 @@ $_foBundle = & {
         if ($local) {
             $download = $env:FLIPPERONE_TOOLCHAIN_ARCHIVE
         } else {
-            $download = Join-Path $home_ ($archive.name + '.part')
+            $download = Join-Path $home_ "$($archive.name).$PID.part"
             $url = "https://github.com/$($pin.repository)/releases/download/$tag/$($archive.name)"
             Write-Host "fbtenv.ps1: downloading $url"
             try {
@@ -72,10 +72,16 @@ $_foBundle = & {
         }
         Set-Content -LiteralPath (Join-Path $partial '.archive-sha256') -Value $archive.sha256 -Encoding ascii
         if (-not $local) { Remove-Item -LiteralPath $download -Force }
-        if (Test-Path -LiteralPath $dir) {
-            Remove-Item -LiteralPath $dir -Recurse -Force  # an interrupted or foreign install
+        # Another session may have installed it meanwhile: keep that copy
+        if ((Test-Path -LiteralPath $marker) -and
+            (Get-Content -LiteralPath $marker -TotalCount 1).Trim() -eq $archive.sha256) {
+            Remove-Item -LiteralPath $partial -Recurse -Force
+        } else {
+            if (Test-Path -LiteralPath $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }
+            Move-Item -LiteralPath $partial -Destination $dir
+            # Moved into a copy installed meanwhile
+            Remove-Item -LiteralPath (Join-Path $dir (Split-Path -Leaf $partial)) -Recurse -Force -ErrorAction SilentlyContinue
         }
-        Move-Item -LiteralPath $partial -Destination $dir
     }
     $dir
 }

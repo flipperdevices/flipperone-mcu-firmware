@@ -62,7 +62,7 @@ _fo_bootstrap() {
         if [ -n "${FLIPPERONE_TOOLCHAIN_ARCHIVE:-}" ]; then
             download="$FLIPPERONE_TOOLCHAIN_ARCHIVE"
         else
-            download="$home/$name.part"
+            download="$home/$name.$$.part"
             url="https://github.com/$repository/releases/download/$tag/$name"
             echo "fbtenv.sh: downloading $url" >&2
             if [ -t 2 ]; then progress=--progress-bar; else progress=-sS; fi
@@ -97,11 +97,13 @@ _fo_bootstrap() {
             return 1
         }
         [ -n "${FLIPPERONE_TOOLCHAIN_ARCHIVE:-}" ] || rm -f "$download"
-        if [ -e "$dir" ] && [ "$(cat "$dir/.archive-sha256" 2>/dev/null)" != "$sha256" ]; then
-            rm -rf "$dir"  # an interrupted or foreign install
+        # Another shell may have installed it meanwhile: keep that copy
+        if [ "$(cat "$dir/.archive-sha256" 2>/dev/null)" = "$sha256" ]; then
+            rm -rf "$partial"
+        else
+            rm -rf "$dir" && mv "$partial" "$dir" || { rm -rf "$partial"; return 1; }
+            rm -rf "${dir:?}/${partial##*/}"  # moved into a copy installed meanwhile
         fi
-        # Another shell may have finished the same install meanwhile; either copy is good
-        mv "$partial" "$dir" 2>/dev/null || rm -rf "$partial"
     fi
 
     # shellcheck source=/dev/null

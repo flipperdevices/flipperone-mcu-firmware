@@ -58,8 +58,8 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
-      # The toolchain is unpacked to runner.temp, out of reach of `git clean`, and
-      # set up once from HEAD: historical commits build with it too.
+      # Set up once from HEAD, out of reach of `git clean`. Older commits may pin
+      # another toolchain, hence FW_TOOLCHAIN_CHECK=WARN below.
       - name: Set up toolchain
         uses: ./.github/actions/toolchain
 
@@ -79,7 +79,7 @@ jobs:
             ([ "${{ matrix.target }}" = f1 ] || test -f targets/${{ matrix.target }}/target.cmake) &&
             cmake -E make_directory build &&
             cd build &&
-            cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
+            cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -DFW_TOOLCHAIN_CHECK=WARN -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=$PWD/flipperone-mcu-firmware.elf.map" &&
             cmake --build . --config $BUILD_TYPE --parallel $(nproc) &&
             ${{ runner.temp }}/membrowse_ldscripts.sh ${{ github.workspace }} $PWD "$PICO_SDK_PATH"
           elf: build/flipperone-mcu-firmware.elf
