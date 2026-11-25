@@ -23,6 +23,7 @@
  *   +0      magic (FURI_HAL_OTP_DEVICE_MAGIC / FURI_HAL_OTP_MAC_MAGIC)
  *   +1      layout version (FURI_HAL_OTP_LAYOUT_VERSION)
  *   +2..25  payload, 48 bytes, little endian
+ *   +26     CRC-16/CCITT-FALSE of rows +1..25
  * The magic is written last, so a block cut short is never taken as written.
  *
  * OTP_DEVICE payload: name (31 chars + NUL), version, target, body, connect

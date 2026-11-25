@@ -360,7 +360,8 @@ static void cli_command_otp_help(void) {
     printf(
         "otp info\r\n"
         "otp device <NAME> <VERSION> <TARGET> <BODY> <CONNECT> <DATE>\r\n"
-        "\tNAME: up to %u chars of [A-Za-z0-9._-]; DATE: seconds since the epoch.\r\n"
+        "\tNAME: up to %u chars of [A-Za-z0-9._-]; TARGET: the board's FW_TARGET number (f2 is 2);\r\n"
+        "\tDATE: seconds since the epoch.\r\n"
         "\tAlso writes the USB white label (board id F<TARGET>B<BODY>C<CONNECT>) if it is not there.\r\n"
         "otp mac <ETH0> <ETH1> <USB> <WIFI_2G4_STA> <WIFI_5G_STA> <WIFI_2G4_AP> <WIFI_5G_AP> <BT>\r\n"
         "\teach as aa:bb:cc:dd:ee:ff\r\n"
