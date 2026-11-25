@@ -19,7 +19,7 @@ const struct Version* furi_hal_version_get_firmware_version(void) {
 const uint8_t* furi_hal_version_get_ble_mac(void) {
     uint32_t uid[3] = {0};
     const uint8_t* uid_ptr = furi_hal_version_uid();
-    uid[0] = uid_ptr[0]; 
+    uid[0] = uid_ptr[0];
     uid[1] = uid_ptr[1];
     uid[2] = uid_ptr[2];
 
@@ -31,21 +31,28 @@ const uint8_t* furi_hal_version_get_ble_mac(void) {
     return ble_mac;
 }
 
-// OTP_DEVICE, read once at start; all zero when the device has none
+// OTP_DEVICE. Written once, so a copy stays true once it is there; until then
+// every call looks again, so a block written while running shows at once.
 static FuriHalOtpDevice furi_hal_version_otp;
-static bool furi_hal_version_otp_valid;
+static volatile bool furi_hal_version_otp_valid;
+
+static const FuriHalOtpDevice* furi_hal_version_get_otp(void) {
+    if(!furi_hal_version_otp_valid) {
+        FuriHalOtpDevice device;
+        if(furi_hal_otp_device_read(&device)) {
+            // Published whole: readers see the flag only after the copy
+            furi_hal_version_otp = device;
+            __DMB();
+            furi_hal_version_otp_valid = true;
+        }
+    }
+    return furi_hal_version_otp_valid ? &furi_hal_version_otp : NULL;
+}
 
 void furi_hal_version_init(void) {
-    furi_hal_version_otp_valid = furi_hal_otp_device_read(&furi_hal_version_otp);
-    if(furi_hal_version_otp_valid) {
-        FURI_LOG_I(
-            TAG,
-            "%s: version %u, F%uB%uC%u",
-            furi_hal_version_otp.name,
-            furi_hal_version_otp.version,
-            furi_hal_version_otp.target,
-            furi_hal_version_otp.body,
-            furi_hal_version_otp.connect);
+    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
+    if(otp) {
+        FURI_LOG_I(TAG, "%s: version %u, F%uB%uC%u", otp->name, otp->version, otp->target, otp->body, otp->connect);
     } else {
         FURI_LOG_W(TAG, "No device info in OTP");
     }
@@ -53,31 +60,37 @@ void furi_hal_version_init(void) {
 
 FuriHalVersionOtpVersion furi_hal_version_get_otp_version(void) {
     // OTP_DEVICE has a single layout so far, its version 1
-    return furi_hal_version_otp_valid ? FuriHalVersionOtpVersion1 : FuriHalVersionOtpVersionEmpty;
+    return furi_hal_version_get_otp() ? FuriHalVersionOtpVersion1 : FuriHalVersionOtpVersionEmpty;
 }
 
 uint16_t furi_hal_version_get_hw_version(void) {
-    return furi_hal_version_otp.version;
+    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
+    return otp ? otp->version : 0;
 }
 
 uint16_t furi_hal_version_get_hw_target(void) {
-    return furi_hal_version_otp.target;
+    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
+    return otp ? otp->target : 0;
 }
 
 uint16_t furi_hal_version_get_hw_body(void) {
-    return furi_hal_version_otp.body;
+    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
+    return otp ? otp->body : 0;
 }
 
 uint16_t furi_hal_version_get_hw_connect(void) {
-    return furi_hal_version_otp.connect;
+    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
+    return otp ? otp->connect : 0;
 }
 
 uint64_t furi_hal_version_get_hw_timestamp(void) {
-    return furi_hal_version_otp.timestamp;
+    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
+    return otp ? otp->timestamp : 0;
 }
 
 const char* furi_hal_version_get_name_ptr(void) {
-    return furi_hal_version_otp_valid ? furi_hal_version_otp.name : NULL;
+    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
+    return otp ? otp->name : NULL;
 }
 
 size_t furi_hal_version_uid_size(void) {

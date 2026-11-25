@@ -26,8 +26,7 @@ static void cli_commands_init(CliRegistry* registry) {
     cli_registry_add_command(registry, "nvm", CliCommandFlagParallelSafe, cli_command_nvm, NULL);
     cli_registry_add_command(registry, "device_info", CliCommandFlagParallelSafe, cli_command_device_info, NULL);
     
-    // Exclusive: two sessions must not both find a block blank and write it
-    cli_registry_add_command(registry, "otp", CliCommandFlagParallelSafe | CliCommandFlagExclusive, cli_command_otp, NULL);
+    cli_registry_add_command(registry, "otp", CliCommandFlagParallelSafe, cli_command_otp, NULL);
 
     for(size_t i = 0; i < FLIPPER_CLI_COMMANDS_COUNT; i++) {
         const FlipperInternalCommandApplication* command = &FLIPPER_CLI_COMMANDS[i];

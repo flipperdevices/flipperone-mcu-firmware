@@ -31,7 +31,7 @@
  *
  * A page is locked by its PAGEn_LOCK1 row: read only for Secure, Non-secure
  * and bootloader access. The hardware applies it from the next reset; until
- * then the same lock is set in SW_LOCKn.
+ * then SW_LOCKn holds its Secure and Non-secure part.
  */
 
 #define FURI_HAL_OTP_DEVICE_ROW     0x0C0
@@ -118,7 +118,8 @@ FuriHalOtpError furi_hal_otp_mac_write(const FuriHalOtpMacs* macs);
 
 /* USB white label */
 
-/** Whether the USB white label is written. furi_hal_otp_device_write() writes it. */
+/** Whether the bootrom takes the USB white label as written (2 of 3 flag copies).
+ * furi_hal_otp_device_write() writes it. */
 bool furi_hal_otp_usb_white_label_valid(void);
 
 /** Check if BOOTSEL LED is enabled in OTP (BOOT_FLAGS0.ENABLE_BOOTSEL_LED)
@@ -127,7 +128,7 @@ bool furi_hal_otp_usb_white_label_valid(void);
  */
 bool furi_hal_otp_bootsel_led_valid(void);
 
-/** Enable BOOTSEL LED: writes BOOTSEL_LED_CFG (GPIO 40, active high)
+/** Enable BOOTSEL LED: writes BOOTSEL_LED_CFG (GPIO 35, active high)
  * and sets BOOT_FLAGS0.ENABLE_BOOTSEL_LED. OTP write is irreversible.
  *
  * @return true on success

@@ -30,6 +30,9 @@ typedef enum {
 
 static bool furi_hal_otp_usb_white_label_lock(void);
 
+// Two writers must not both find a block blank and write it
+static FuriMutex* furi_hal_otp_write_mutex;
+
 // Row in OTP where the USB white label table starts (must be page-aligned recommended)
 #define WL_BASE_ROW 0x0400
 
@@ -97,6 +100,7 @@ static_assert(STR_LEN(OTP_MODEL)            <= 127, "OTP_MODEL too long");
 
 void furi_hal_otp_init(void) {
     FURI_LOG_I(TAG, "OTP init");
+    furi_hal_otp_write_mutex = furi_mutex_alloc(FuriMutexTypeNormal);
 
     if(!furi_hal_otp_usb_white_label_valid()) {
         FURI_LOG_E(TAG, "USB white label is not valid");
@@ -115,6 +119,16 @@ static bool furi_hal_otp_write_ecc(uint16_t row, uint16_t value) {
         return false;
     }
     return true;
+}
+
+static int furi_hal_otp_write_ecc_rc(uint16_t row, uint16_t value) {
+    otp_cmd_t cmd = {.flags = row | OTP_CMD_ECC_BITS | OTP_CMD_WRITE_BITS};
+    return rom_func_otp_access((uint8_t*)&value, sizeof(value), cmd);
+}
+
+static bool furi_hal_otp_read_ecc(uint16_t row, uint16_t* value) {
+    otp_cmd_t cmd = {.flags = row | OTP_CMD_ECC_BITS};
+    return rom_func_otp_access((uint8_t*)value, sizeof(*value), cmd) == BOOTROM_OK;
 }
 
 static bool furi_hal_otp_write_raw(uint16_t row, uint32_t value) {
@@ -148,17 +162,22 @@ static bool furi_hal_otp_usb_white_label_write_string(uint16_t base_row, uint8_t
     return true;
 }
 
-bool furi_hal_otp_usb_white_label_valid(void) {
-    // USB_BOOT_FLAGS is a 3x redundant 24-bit row (no ECC)
-    // Raw mode: 4 bytes per row, low 24 bits = OTP value
-    uint32_t buf = 0;
-    otp_cmd_t cmd = {.flags = OTP_DATA_USB_BOOT_FLAGS_ROW};
-    int rc = rom_func_otp_access((uint8_t*)&buf, sizeof(buf), cmd);
-    if(rc != BOOTROM_OK) {
-        FURI_LOG_E(TAG, "OTP read failed: %d", rc);
-        return false;
+// Copies of USB_BOOT_FLAGS that mark the white label
+static uint32_t furi_hal_otp_usb_white_label_flag_copies(void) {
+    uint32_t copies = 0;
+    for(uint16_t row = OTP_DATA_USB_BOOT_FLAGS_ROW; row <= OTP_DATA_USB_BOOT_FLAGS_R2_ROW; row++) {
+        uint32_t flags = 0;
+        otp_cmd_t cmd = {.flags = row};
+        if(rom_func_otp_access((uint8_t*)&flags, sizeof(flags), cmd) == BOOTROM_OK && (flags & OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS)) {
+            copies++;
+        }
     }
-    return (buf & OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS) != 0;
+    return copies;
+}
+
+bool furi_hal_otp_usb_white_label_valid(void) {
+    // As the bootrom reads it: a majority of the three copies
+    return furi_hal_otp_usb_white_label_flag_copies() >= 2;
 }
 
 static FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t target, uint32_t body, uint32_t connect) {
@@ -401,8 +420,8 @@ static bool furi_hal_otp_read_raw(uint16_t row, uint32_t* value) {
 
 static bool furi_hal_otp_lock_page(uint32_t page) {
     furi_check(page < NUM_OTP_PAGES);
-    // Permanent from the next reset. A lock row is written only once, so a
-    // retry after a cut never depends on writing over one.
+    // Permanent from the next reset. Skipped once the row holds the lock; a
+    // row cut short is completed, as writing only adds bits.
     const uint16_t row = OTP_DATA_PAGE0_LOCK1_ROW + page * (OTP_DATA_PAGE1_LOCK1_ROW - OTP_DATA_PAGE0_LOCK1_ROW);
     uint32_t lock = 0;
     if(!furi_hal_otp_read_raw(row, &lock)) return false;
@@ -426,7 +445,9 @@ static bool furi_hal_otp_lock_rows(uint32_t first_row, uint32_t row_count) {
 
 // The white label and the longest board id OTP_BOARD_ID_FORMAT makes:
 // "F%luB%luC%lu" with 10 digits each is 33 chars, 17 rows
-#define WL_ROWS (WL_OFF_BOARD_ID + 17)
+#define WL_ROWS            (WL_OFF_BOARD_ID + 17)
+// Table entry with the board id's STRDEF
+#define WL_BOARD_ID_STRDEF 15
 static_assert(WL_BASE_ROW % OTP_PAGE_ROWS + WL_ROWS <= 2 * OTP_PAGE_ROWS, "USB white label outgrows pages 16..17");
 
 static bool furi_hal_otp_usb_white_label_lock(void) {
@@ -439,7 +460,7 @@ static bool furi_hal_otp_usb_white_label_board_id_is(uint32_t target, uint32_t b
     snprintf(want, sizeof(want), OTP_BOARD_ID_FORMAT, target, body, connect);
 
     uint16_t strdef = 0;
-    otp_cmd_t cmd = {.flags = (WL_BASE_ROW + 15) | OTP_CMD_ECC_BITS};
+    otp_cmd_t cmd = {.flags = (WL_BASE_ROW + WL_BOARD_ID_STRDEF) | OTP_CMD_ECC_BITS};
     if(rom_func_otp_access((uint8_t*)&strdef, sizeof(strdef), cmd) != BOOTROM_OK) return false;
     const size_t len = strdef & 0xFF;
     if(len != strlen(want)) return false;
@@ -489,32 +510,43 @@ static bool furi_hal_otp_block_read(uint16_t base_row, uint16_t magic, uint8_t p
     return true;
 }
 
-// Write what is missing of the block, the magic last, and lock its page. A
-// write cut short is finished by the same call with the same data; a row that
-// holds anything else refuses it.
+// Make the block hold this payload, the magic last, and lock its page. A
+// write cut short, even inside a row, is finished by the same call with the
+// same data: writing a row again only adds bits, and the bootrom refuses a
+// write that would clear one, which is how a row holding other data shows.
 static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, uint16_t magic, const uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE]) {
     uint16_t want[OTP_BLOCK_ROWS] = {magic, FURI_HAL_OTP_LAYOUT_VERSION};
     memcpy(&want[OTP_BLOCK_HEADER_ROWS], payload, OTP_BLOCK_PAYLOAD_SIZE);
 
-    // Raw, so that stray bits ECC would correct away do not pass for blank
-    uint32_t raw[OTP_BLOCK_ROWS];
-    bool blank = true;
-    for(size_t i = 0; i < OTP_BLOCK_ROWS; i++) {
-        if(!furi_hal_otp_read_raw(base_row + i, &raw[i])) return FuriHalOtpErrorWriteFailed;
-        if(raw[i]) blank = false;
-    }
-    if(!blank) {
-        uint16_t have[OTP_BLOCK_ROWS];
-        if(!furi_hal_otp_block_read_rows(base_row, have)) return FuriHalOtpErrorWriteFailed;
-        for(size_t i = 0; i < OTP_BLOCK_ROWS; i++) {
-            if(raw[i] && have[i] != want[i]) return raw[0] ? FuriHalOtpErrorAlreadyWritten : FuriHalOtpErrorNotBlank;
-        }
+    // Row by row: one row cut short must not hide the others
+    bool complete = true;
+    for(size_t i = 0; i < OTP_BLOCK_ROWS && complete; i++) {
+        uint16_t have = 0;
+        complete = furi_hal_otp_read_ecc(base_row + i, &have) && have == want[i];
     }
 
-    for(size_t i = 1; i <= OTP_BLOCK_ROWS; i++) {
-        size_t row = i % OTP_BLOCK_ROWS; // the magic, row 0, last
-        // A row to hold 0 is blank already
-        if(!raw[row] && want[row] && !furi_hal_otp_write_ecc(base_row + row, want[row])) return FuriHalOtpErrorWriteFailed;
+    if(!complete) {
+        // A finished block with other data, its page likely locked: leave it
+        uint16_t have_magic = 0;
+        if(furi_hal_otp_read_ecc(base_row, &have_magic) && have_magic == magic) return FuriHalOtpErrorAlreadyWritten;
+
+        for(size_t i = 1; i <= OTP_BLOCK_ROWS; i++) {
+            const uint16_t row = base_row + i % OTP_BLOCK_ROWS; // the magic, row 0, last
+            const uint16_t value = want[i % OTP_BLOCK_ROWS];
+            if(!value) {
+                // Nothing to program; any bit there is someone else's
+                uint32_t raw = 0;
+                if(!furi_hal_otp_read_raw(row, &raw)) return FuriHalOtpErrorWriteFailed;
+                if(raw) return FuriHalOtpErrorNotBlank;
+                continue;
+            }
+            int rc = furi_hal_otp_write_ecc_rc(row, value);
+            if(rc == BOOTROM_ERROR_UNSUPPORTED_MODIFICATION) return FuriHalOtpErrorNotBlank;
+            if(rc != BOOTROM_OK) {
+                FURI_LOG_E(TAG, "OTP ECC write row 0x%04x failed: %d", row, rc);
+                return FuriHalOtpErrorWriteFailed;
+            }
+        }
     }
 
     if(!furi_hal_otp_lock_rows(base_row, OTP_BLOCK_ROWS)) return FuriHalOtpErrorLockFailed;
@@ -568,7 +600,7 @@ bool furi_hal_otp_device_read(FuriHalOtpDevice* device) {
     return true;
 }
 
-FuriHalOtpError furi_hal_otp_device_write(const FuriHalOtpDevice* device) {
+static FuriHalOtpError furi_hal_otp_device_write_locked(const FuriHalOtpDevice* device) {
     furi_check(device);
     if(strnlen(device->name, FURI_HAL_OTP_DEVICE_NAME_SIZE) >= FURI_HAL_OTP_DEVICE_NAME_SIZE) {
         return FuriHalOtpErrorInvalidArg;
@@ -584,18 +616,20 @@ FuriHalOtpError furi_hal_otp_device_write(const FuriHalOtpDevice* device) {
     memcpy(p + 6, &device->connect, 2);
     memcpy(p + 8, &device->timestamp, 8);
 
-    // The white label carries the same board id: one with another is refused
-    // before anything is written. One written before the locks existed is
-    // locked now.
-    const bool wl_written = furi_hal_otp_usb_white_label_valid();
-    if(wl_written && !furi_hal_otp_usb_white_label_board_id_is(device->target, device->body, device->connect)) {
+    // The white label carries the same board id. One started earlier, finished
+    // or cut short, with another is refused before anything is written.
+    uint32_t board_id_strdef = 0;
+    if(!furi_hal_otp_read_raw(WL_BASE_ROW + WL_BOARD_ID_STRDEF, &board_id_strdef)) return FuriHalOtpErrorWriteFailed;
+    if(board_id_strdef && !furi_hal_otp_usb_white_label_board_id_is(device->target, device->body, device->connect)) {
         return FuriHalOtpErrorWhiteLabelMismatch;
     }
 
     FuriHalOtpError error = furi_hal_otp_block_write(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload);
     if(error != FuriHalOtpErrorNone) return error;
 
-    if(wl_written) {
+    // A white label written before the locks existed is locked now. One cut
+    // short is written again: it only adds what is missing.
+    if(furi_hal_otp_usb_white_label_flag_copies() == 3) {
         return furi_hal_otp_usb_white_label_lock() ? FuriHalOtpErrorNone : FuriHalOtpErrorWhiteLabelFailed;
     }
     FuriHalOtpUsbWhiteLabelError wl_error = furi_hal_otp_write_usb_white_label(device->target, device->body, device->connect);
@@ -634,7 +668,21 @@ bool furi_hal_otp_mac_read(FuriHalOtpMacs* macs) {
     return furi_hal_otp_block_read(FURI_HAL_OTP_MAC_ROW, FURI_HAL_OTP_MAC_MAGIC, (uint8_t*)macs->mac);
 }
 
-FuriHalOtpError furi_hal_otp_mac_write(const FuriHalOtpMacs* macs) {
+static FuriHalOtpError furi_hal_otp_mac_write_locked(const FuriHalOtpMacs* macs) {
     furi_check(macs);
     return furi_hal_otp_block_write(FURI_HAL_OTP_MAC_ROW, FURI_HAL_OTP_MAC_MAGIC, (const uint8_t*)macs->mac);
+}
+
+FuriHalOtpError furi_hal_otp_device_write(const FuriHalOtpDevice* device) {
+    furi_check(furi_mutex_acquire(furi_hal_otp_write_mutex, FuriWaitForever) == FuriStatusOk);
+    FuriHalOtpError error = furi_hal_otp_device_write_locked(device);
+    furi_mutex_release(furi_hal_otp_write_mutex);
+    return error;
+}
+
+FuriHalOtpError furi_hal_otp_mac_write(const FuriHalOtpMacs* macs) {
+    furi_check(furi_mutex_acquire(furi_hal_otp_write_mutex, FuriWaitForever) == FuriStatusOk);
+    FuriHalOtpError error = furi_hal_otp_mac_write_locked(macs);
+    furi_mutex_release(furi_hal_otp_write_mutex);
+    return error;
 }

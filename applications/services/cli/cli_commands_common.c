@@ -436,8 +436,6 @@ static void cli_command_otp_device(FuriString* args) {
         }
 
         FuriHalOtpError error = furi_hal_otp_device_write(&device);
-        // furi_hal_version reads OTP_DEVICE once at start
-        if(error == FuriHalOtpErrorNone) furi_hal_version_init();
         printf("Device: %s\r\n", error == FuriHalOtpErrorNone ? "written and locked, USB white label too" : furi_hal_otp_error_to_string(error));
     } while(0);
 
