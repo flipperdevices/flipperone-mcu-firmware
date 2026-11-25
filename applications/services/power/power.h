@@ -55,6 +55,48 @@ bool power_bq2579x_set_otg_params(Power* instance, uint16_t voltage_mv, uint16_t
 bool power_bq2579x_otg_enable(Power* instance, bool enable);
 bool power_bq2579x_usb_is_connected(Power* instance, bool* usb_connected);
 
+/**
+ * One reading of the charge situation, the way the UI and the power meter
+ * agree on it. The charger is the authority: it is charging while it pushes
+ * current (the gauge may already say 100 % then), and the battery is full
+ * when it has terminated the charge. The cable is the charger's VBUS.
+ */
+typedef enum {
+    PowerChargeStateIdle, /**< no input, or input but the charger is neither charging nor done */
+    PowerChargeStateCharging, /**< input present and the charger charging (trickle to top-off) */
+    PowerChargeStateFull, /**< input present and the charger reports charge termination */
+} PowerChargeState;
+
+typedef struct {
+    PowerChargeState state;
+    bool input_present;
+    bool charger_charging;
+    bool charger_fault;
+    uint8_t soc;
+    uint16_t vbus_mv;
+    int16_t ibus_ma;
+    uint32_t input_mw; /**< VBUS x IBUS, 0 without input */
+    int16_t battery_ma; /**< battery current by the charger's ADC, negative on discharge (what Linux shows) */
+    float battery_v; /**< battery voltage by the charger's ADC */
+    uint32_t discharge_mw; /**< what the battery gives, 0 while it takes */
+} PowerChargeInfo;
+
+/** The charger, the gauge and the INA219 sit on a bus the Linux host also
+ *  drives while it is powered. Every read of ours can then collide with its
+ *  own, and enough of them make it lose its readings, so periodic readers
+ *  check this: screens the host covers anyway skip the read, the power meter
+ *  thins its reads out to one every few seconds. */
+bool power_host_shares_bus(Power* instance);
+
+/** Whether a gauge current/voltage pair can be real; a collision on the
+ *  shared bus can return garbage that reads as a successful transfer. */
+bool power_battery_reading_plausible(int16_t battery_ma, float battery_v);
+
+/** Read the charger and the gauge; false if either is unreachable or the
+ *  sample is implausible. Callers do their other power reads only after this
+ *  one answered. */
+bool power_read_charge_info(Power* instance, PowerChargeInfo* info);
+
 /** OTG overcurrent (IINDPM/IOTG) callback. Runs in the BQ2579X IRQ worker thread — keep it short. */
 void power_bq2579x_set_otg_overcurrent_callback(Power* instance, FuriCallback callback, void* context);
 

@@ -88,34 +88,16 @@ typedef struct {
 static void desktop_update_scene_speed(Scene* scene) {
     View* view = scene_get_view(scene);
 
-    Bq2579xChargerStatusReg status = {0};
-    uint16_t vbus_mv = 0;
-    int16_t ibus_ma = 0;
+    PowerChargeInfo charge = {0};
     Power* power = furi_record_open(RECORD_POWER);
-    bool status_ok = power_bq2579x_get_charger_status(power, &status);
-    bool input_ok = power_bq2579x_get_vbus_mv(power, &vbus_mv) && power_bq2579x_get_ibus_ma(power, &ibus_ma);
+    /* Under a running host the scene is not on screen: stay off its bus. */
+    bool ok = !power_host_shares_bus(power) && power_read_charge_info(power, &charge);
     furi_record_close(RECORD_POWER);
-    if(!status_ok) return;
-
-    bool charging = false;
-    if(status.stat0.vbus_present_stat) {
-        switch(status.stat1.chg_stat) {
-        case Bq2579xChargerStatus1ChargeTrickle:
-        case Bq2579xChargerStatus1ChargePre:
-        case Bq2579xChargerStatus1ChargeFast:
-        case Bq2579xChargerStatus1ChargeTaper:
-        case Bq2579xChargerStatus1ChargeTopOff:
-            charging = true;
-            break;
-        default:
-            break;
-        }
-    }
+    if(!ok) return;
 
     float speed = 0.f;
-    if(charging) {
-        float input_w = input_ok ? (float)vbus_mv / 1000.f * (float)ibus_ma / 1000.f : 0.f;
-        speed = desktop_scene_speed_from_charging(input_w);
+    if(charge.state == PowerChargeStateCharging) {
+        speed = desktop_scene_speed_from_charging((float)charge.input_mw / 1000.f);
     }
     with_view_model(view, DesktopViewModel * model, { parallax_set_speed(model->scene, speed); }, true);
 }

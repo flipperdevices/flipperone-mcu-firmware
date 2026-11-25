@@ -1,4 +1,5 @@
 #include "power.h"
+#include <host/host.h>
 
 #include <furi_power_config.h>
 #include <furi_bsp_expander.h>
@@ -34,6 +35,12 @@ struct Power {
     PowerDevice devices;
     FuriEventLoopTimer* otg_watchdog_timer;
     volatile bool otg_enabled;
+    /* The Linux host arms the charger's watchdog and kicks it while it runs;
+     * once its rails go off nobody does, and every expiry resets the charger
+     * to defaults (VAC_OVP back to 7 V, ADC off). So on each host power-off
+     * the charger is reset and configured again, which disables the watchdog. */
+    FuriEventLoopTimer* host_subscribe_timer;
+    FuriPubSubSubscription* host_subscription;
     FuriCallbackWithContext otg_overcurrent;
 };
 
@@ -341,6 +348,33 @@ static void power_send_message(Power* instance, const PowerMessage* message) {
     }
 }
 
+static void power_host_state_callback(const void* message, void* context) {
+    furi_check(message);
+    furi_check(context);
+    const HostState* state = message;
+    Power* instance = context;
+    if(*state == HostStateOff) {
+        FURI_LOG_I(TAG, "Host rails off: resetting the charger config");
+        if(!power_bq2579x_reset_config(instance)) {
+            FURI_LOG_E(TAG, "Charger config reset failed");
+        }
+    }
+}
+
+/* The host service may come up after this one, so the subscription is
+ * retried from a timer until the record exists. */
+static void power_host_subscribe_timer_callback(void* context) {
+    furi_check(context);
+    Power* instance = context;
+    if(!furi_record_exists(RECORD_HOST)) {
+        furi_event_loop_timer_start(instance->host_subscribe_timer, 1000);
+        return;
+    }
+    Host* host = furi_record_open(RECORD_HOST);
+    instance->host_subscription = furi_pubsub_subscribe(host_get_pubsub(host), power_host_state_callback, instance);
+    furi_record_close(RECORD_HOST);
+}
+
 static Power* power_alloc(void) {
     Power* instance = (Power*)malloc(sizeof(Power));
     instance->event_loop = furi_event_loop_alloc();
@@ -384,6 +418,10 @@ static Power* power_alloc(void) {
 
     instance->event_pubsub = furi_pubsub_alloc();
     furi_record_create(RECORD_POWER, instance);
+
+    instance->host_subscribe_timer =
+        furi_event_loop_timer_alloc(instance->event_loop, power_host_subscribe_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    furi_event_loop_timer_start(instance->host_subscribe_timer, 1000);
 
     return instance;
 }
@@ -841,4 +879,87 @@ bool power_bq28z620_get_design_capacity(Power* instance, uint16_t* design_capaci
     Bq28z620Status result;
     POWER_API_CALL_PARAM(PowerDeviceBq28z620, bq28z620_get_design_capacity, instance->bq28z620_header, design_capacity, result);
     return result == Bq28z620StatusOk;
+}
+
+bool power_host_shares_bus(Power* instance) {
+    furi_check(instance);
+    Host* host = furi_record_open(RECORD_HOST);
+    bool host_powered = host_get_state(host) != HostStateOff;
+    furi_record_close(RECORD_HOST);
+    return host_powered;
+}
+
+/* A read that collides with the host on the shared bus can come back "fine"
+ * with garbage in it (an all-ones register, 0 V, tens of amps). Such a sample
+ * is dropped as a whole so no reader acts on it. */
+bool power_battery_reading_plausible(int16_t battery_ma, float battery_v) {
+    return battery_v > 4.f && battery_v < 10.f && battery_ma > -6000 && battery_ma < 6000;
+}
+
+bool power_read_charge_info(Power* instance, PowerChargeInfo* info) {
+    furi_check(instance);
+    furi_check(info);
+
+    Bq2579xChargerStatusReg status = {0};
+    Bq2579xFaultStatusReg fault = {0};
+    uint8_t soc = 0;
+    uint16_t vbus_mv = 0;
+    int16_t ibus_ma = 0;
+
+    if(!power_bq2579x_get_charger_status(instance, &status)) return false;
+    if(!power_bq28z620_get_relative_state_of_charge(instance, &soc)) return false;
+    bool input_ok = power_bq2579x_get_vbus_mv(instance, &vbus_mv) && power_bq2579x_get_ibus_ma(instance, &ibus_ma);
+    bool fault_ok = power_bq2579x_get_charger_fault(instance, &fault);
+    /* The battery current as the charger's own ADC sees it: that is what the
+     * Linux screen shows as its power flow, so both sides read the same figure
+     * (the gauge's shunt reads some 50 mA more at idle; that ADC also drops
+     * to nearly zero for a few seconds after the cable goes, see the meter). */
+    int16_t battery_ma = 0;
+    uint16_t vbat_mv = 0;
+    bool battery_ok = power_bq2579x_get_ibat_ma(instance, &battery_ma) && power_bq2579x_get_vbat_mv(instance, &vbat_mv);
+    float battery_v = (float)vbat_mv / 1000.f;
+
+    if(status.data[0] == 0xFF && status.data[1] == 0xFF) return false;
+    if(soc > 100) return false;
+    if(input_ok && (vbus_mv > 25000 || ibus_ma < -6000 || ibus_ma > 6000)) return false;
+    if(battery_ok && !power_battery_reading_plausible(battery_ma, battery_v)) return false;
+
+    memset(info, 0, sizeof(*info));
+    if(battery_ok) {
+        info->battery_ma = battery_ma;
+        info->battery_v = battery_v;
+        if(battery_ma < 0) info->discharge_mw = (uint32_t)((float)-battery_ma * battery_v);
+    }
+    info->soc = MIN(soc, 100);
+    info->input_present = status.stat0.vbus_present_stat;
+    info->charger_fault = fault_ok && (fault.data[0] != 0 || fault.data[1] != 0);
+    bool charge_done = false;
+    switch(status.stat1.chg_stat) {
+    case Bq2579xChargerStatus1ChargeTrickle:
+    case Bq2579xChargerStatus1ChargePre:
+    case Bq2579xChargerStatus1ChargeFast:
+    case Bq2579xChargerStatus1ChargeTaper:
+    case Bq2579xChargerStatus1ChargeTopOff:
+        info->charger_charging = info->input_present;
+        break;
+    case Bq2579xChargerStatus1ChargeTermination:
+        charge_done = info->input_present;
+        break;
+    default:
+        break;
+    }
+    if(input_ok && info->input_present) {
+        info->vbus_mv = vbus_mv;
+        info->ibus_ma = ibus_ma;
+        if(ibus_ma > 0) info->input_mw = (uint32_t)vbus_mv * (uint32_t)ibus_ma / 1000;
+    }
+
+    if(charge_done) {
+        info->state = PowerChargeStateFull;
+    } else if(info->charger_charging) {
+        info->state = PowerChargeStateCharging;
+    } else {
+        info->state = PowerChargeStateIdle;
+    }
+    return true;
 }

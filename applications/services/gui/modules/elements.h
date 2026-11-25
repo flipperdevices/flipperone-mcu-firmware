@@ -12,6 +12,8 @@ typedef enum {
     /** On a black background: white outline and fill, a charging bolt in the
      *  middle instead of the number. */
     ElementsBatteryLookDark,
+    /** The dark look with nothing over the fill (fully charged). */
+    ElementsBatteryLookDarkStill,
 } ElementsBatteryLook;
 
 /** Battery gauge, 41x17: an outline with a fill growing from the left.

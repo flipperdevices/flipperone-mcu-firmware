@@ -23,6 +23,13 @@
 #define HEADER_BATTERY_X 212
 #define HEADER_BATTERY_Y 3
 
+/* "Discharge: 0.03W" while not charging: right-aligned 3 px before the
+ * battery, glyphs on rows 8..14. It rides off to the right while the
+ * charging plates slide in. */
+#define HEADER_DISCHARGE_X 210 /* right edge of the text box */
+#define HEADER_DISCHARGE_Y 8
+#define HEADER_SLIDE_DISTANCE 84
+
 /* Charging plates (spec "Battery UI: Charging"): the light plate and its two
  * lines sit further left when the watts have a fraction. Text positions are
  * the box's top-left; the glyphs start one pixel higher. */
@@ -33,6 +40,12 @@
 #define HEADER_CHARGING_LINE2_X_WHOLE 83
 #define HEADER_CHARGING_LINE1_X_FRACTION 67
 #define HEADER_CHARGING_LINE2_X_FRACTION 72
+/* Fully charged: the black plate sits 18 px further right, the light plate
+ * carries one line, "Fully charged!", and the big percentage reads "100". */
+#define HEADER_FULL_BG_X 171
+#define HEADER_FULL_GRAY_BG_X 84
+#define HEADER_FULL_LINE_X 103
+#define HEADER_FULL_LINE_Y 8
 #define HEADER_CHARGING_LINE1_Y 3
 #define HEADER_CHARGING_LINE2_Y 14
 /* "64.43" in the big font, then the design's own percent sign: the sign's
@@ -52,13 +65,14 @@ static const uint8_t header_slide_shift[] = {84, 77, 71, 63, 56, 50, 42, 35, 29,
 typedef enum {
     HeaderPowerStateIdle,
     HeaderPowerStateCharging,
+    HeaderPowerStateFull,
 } HeaderPowerState;
 
 typedef struct {
     Desktop* desktop;
     ElementsBattery battery;
     HeaderPowerState power_state;
-    /* Tick the current charging session started at, for the slide-in. */
+    /* Tick the plates came up at (charging or full after idle), for the slide-in. */
     uint32_t charging_since_ms;
     /* The input watts print without a fraction ("18W"). */
     bool watts_whole;
@@ -69,6 +83,7 @@ typedef struct {
     FuriString* percent_text; /* "64.43%" (charging) */
     FuriString* line1; /* "Charging: 12V 2.93W" */
     FuriString* line2; /* "Full in: 4h 33m" */
+    FuriString* discharge_text; /* "Discharge: 0.03W" */
 } HeaderViewModel;
 
 static Clay_FloatingElementConfig header_float_at(int16_t x, int16_t y, Clay_FloatingAttachPointType element_point) {
@@ -136,12 +151,14 @@ static void header_layout_compact(HeaderViewModel* model) {
 }
 
 static void header_layout_home(HeaderViewModel* model) {
+    const bool full = (model->power_state == HeaderPowerStateFull);
     const bool charging = (model->power_state == HeaderPowerStateCharging);
+    const bool plates = charging || full;
 
-    /* Slide-in progress: frame index at 60 fps since charging began. */
+    /* Slide-in progress: frame index at 60 fps since the plates came up. */
     int32_t shift = 0;
     bool sliding = false;
-    if(charging) {
+    if(plates) {
         uint32_t frame = (furi_get_tick() - model->charging_since_ms) / HEADER_SLIDE_FRAME_MS;
         if(frame < COUNT_OF(header_slide_shift) - 1) {
             shift = header_slide_shift[frame];
@@ -158,10 +175,29 @@ static void header_layout_home(HeaderViewModel* model) {
                     .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_FIXED(HEADER_HOME_HEIGHT)},
                 },
         }) {
-        if(charging) {
-            const int16_t gray_x = model->watts_whole ? HEADER_CHARGING_GRAY_BG_X_WHOLE : HEADER_CHARGING_GRAY_BG_X_FRACTION;
-            const int16_t line1_x = model->watts_whole ? HEADER_CHARGING_LINE1_X_WHOLE : HEADER_CHARGING_LINE1_X_FRACTION;
-            const int16_t line2_x = model->watts_whole ? HEADER_CHARGING_LINE2_X_WHOLE : HEADER_CHARGING_LINE2_X_FRACTION;
+        if(!plates || sliding) {
+            /* Idle line; during the slide-in it leaves through the right edge. */
+            int16_t slide_out = sliding ? (HEADER_SLIDE_DISTANCE - shift) : 0;
+            CLAY(
+                CLAY_APP_ID("Discharge"),
+                {
+                    .floating = header_float_at(HEADER_DISCHARGE_X + slide_out, HEADER_DISCHARGE_Y, CLAY_ATTACH_POINT_RIGHT_TOP),
+                }) {
+                CLAY_TEXT(
+                    clay_helper_string_from(model->discharge_text), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+            }
+        }
+        if(plates) {
+            int16_t gray_x = HEADER_FULL_GRAY_BG_X;
+            int16_t black_x = HEADER_FULL_BG_X;
+            int16_t line1_x = HEADER_FULL_LINE_X;
+            int16_t line2_x = 0;
+            if(charging) {
+                gray_x = model->watts_whole ? HEADER_CHARGING_GRAY_BG_X_WHOLE : HEADER_CHARGING_GRAY_BG_X_FRACTION;
+                black_x = HEADER_CHARGING_BG_X;
+                line1_x = model->watts_whole ? HEADER_CHARGING_LINE1_X_WHOLE : HEADER_CHARGING_LINE1_X_FRACTION;
+                line2_x = model->watts_whole ? HEADER_CHARGING_LINE2_X_WHOLE : HEADER_CHARGING_LINE2_X_FRACTION;
+            }
 
             CLAY(
                 CLAY_APP_ID("ChargingGrayBackdrop"),
@@ -173,23 +209,26 @@ static void header_layout_home(HeaderViewModel* model) {
             CLAY(
                 CLAY_APP_ID("ChargingBackdrop"),
                 {
-                    .floating = header_float_at(HEADER_CHARGING_BG_X + shift, 0, CLAY_ATTACH_POINT_LEFT_TOP),
+                    .floating = header_float_at(black_x + shift, 0, CLAY_ATTACH_POINT_LEFT_TOP),
                 }) {
                 clay_fixed_image(CLAY_ID_LOCAL("Image"), &header_battery_black_bg);
             }
             CLAY(
                 CLAY_APP_ID("ChargingLine1"),
                 {
-                    .floating = header_float_at(line1_x + shift, HEADER_CHARGING_LINE1_Y, CLAY_ATTACH_POINT_LEFT_TOP),
+                    .floating = header_float_at(line1_x + shift, full ? HEADER_FULL_LINE_Y : HEADER_CHARGING_LINE1_Y, CLAY_ATTACH_POINT_LEFT_TOP),
                 }) {
                 CLAY_TEXT(clay_helper_string_from(model->line1), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK, .wrapMode = CLAY_TEXT_WRAP_NONE}));
             }
-            CLAY(
-                CLAY_APP_ID("ChargingLine2"),
-                {
-                    .floating = header_float_at(line2_x + shift, HEADER_CHARGING_LINE2_Y, CLAY_ATTACH_POINT_LEFT_TOP),
-                }) {
-                CLAY_TEXT(clay_helper_string_from(model->line2), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+            if(charging) {
+                CLAY(
+                    CLAY_APP_ID("ChargingLine2"),
+                    {
+                        .floating = header_float_at(line2_x + shift, HEADER_CHARGING_LINE2_Y, CLAY_ATTACH_POINT_LEFT_TOP),
+                    }) {
+                    CLAY_TEXT(
+                        clay_helper_string_from(model->line2), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+                }
             }
             if(sliding) {
                 clay_request_redraw(CLAY_APP_ID("ChargingSlide"), HEADER_SLIDE_FRAME_MS);
@@ -212,12 +251,15 @@ static void header_layout_home(HeaderViewModel* model) {
                 }
             }
         }
+        ElementsBatteryLook look = ElementsBatteryLookLight;
+        if(charging) look = ElementsBatteryLookDark;
+        if(full) look = ElementsBatteryLookDarkStill;
         CLAY(
             CLAY_APP_ID("BatteryWrapper"),
             {
                 .floating = header_float_at(HEADER_BATTERY_X, HEADER_BATTERY_Y, CLAY_ATTACH_POINT_LEFT_TOP),
             }) {
-            elements_battery_element(CLAY_APP_ID("Battery"), &model->battery, model->percent, charging ? ElementsBatteryLookDark : ElementsBatteryLookLight);
+            elements_battery_element(CLAY_APP_ID("Battery"), &model->battery, model->percent, look);
         }
     }
 }
@@ -237,41 +279,35 @@ static bool header_layout(void* _model) {
 static void header_update_battery_state(Scene* scene) {
     View* view = scene_get_view(scene);
 
-    uint8_t soc = 0;
     uint16_t remaining_mah = 0;
     uint16_t full_mah = 0;
     uint16_t time_to_full_min = 0;
-    uint16_t vbus_mv = 0;
-    int16_t ibus_ma = 0;
-    Bq2579xChargerStatusReg status = {0};
+    PowerChargeInfo charge = {0};
 
     Power* power = furi_record_open(RECORD_POWER);
-    bool soc_ok = power_bq28z620_get_relative_state_of_charge(power, &soc);
-    bool capacity_ok = power_bq28z620_get_remaining_capacity(power, &remaining_mah) && power_bq28z620_get_full_charge_capacity(power, &full_mah) && full_mah > 0;
-    bool time_ok = power_bq28z620_get_average_time_to_full(power, &time_to_full_min);
-    bool status_ok = power_bq2579x_get_charger_status(power, &status);
-    bool input_ok = power_bq2579x_get_vbus_mv(power, &vbus_mv) && power_bq2579x_get_ibus_ma(power, &ibus_ma);
+    /* Under a running host this bar is not on screen: stay off its bus. */
+    bool charge_ok = !power_host_shares_bus(power) && power_read_charge_info(power, &charge);
+    bool capacity_ok = false;
+    bool time_ok = false;
+    if(charge_ok) {
+        capacity_ok = power_bq28z620_get_remaining_capacity(power, &remaining_mah) && power_bq28z620_get_full_charge_capacity(power, &full_mah) && full_mah > 0;
+        time_ok = power_bq28z620_get_average_time_to_full(power, &time_to_full_min);
+    }
     furi_record_close(RECORD_POWER);
 
-    if(!soc_ok) return;
-    if(soc > 100) soc = 100;
+    if(!charge_ok) return;
+    uint8_t soc = charge.soc;
     float percent = capacity_ok ? (float)remaining_mah * 100.f / (float)full_mah : (float)soc;
     if(percent > 100.f) percent = 100.f;
 
-    bool charging = false;
-    if(status_ok && status.stat0.vbus_present_stat) {
-        switch(status.stat1.chg_stat) {
-        case Bq2579xChargerStatus1ChargeTrickle:
-        case Bq2579xChargerStatus1ChargePre:
-        case Bq2579xChargerStatus1ChargeFast:
-        case Bq2579xChargerStatus1ChargeTaper:
-        case Bq2579xChargerStatus1ChargeTopOff:
-            charging = true;
-            break;
-        default:
-            break;
-        }
-    }
+    HeaderPowerState power_state = HeaderPowerStateIdle;
+    if(charge.state == PowerChargeStateCharging) power_state = HeaderPowerStateCharging;
+    if(charge.state == PowerChargeStateFull) power_state = HeaderPowerStateFull;
+    const bool charging = (power_state == HeaderPowerStateCharging);
+    const bool full = (power_state == HeaderPowerStateFull);
+    const bool input_ok = charge.input_present;
+    const uint16_t vbus_mv = charge.vbus_mv;
+    const int16_t ibus_ma = charge.ibus_ma;
 
     with_view_model(
         view,
@@ -279,12 +315,23 @@ static void header_update_battery_state(Scene* scene) {
         {
             model->soc = soc;
             model->percent = percent;
-            if(charging && model->power_state != HeaderPowerStateCharging) {
+            if(power_state != HeaderPowerStateIdle && model->power_state == HeaderPowerStateIdle) {
                 model->charging_since_ms = furi_get_tick();
             }
-            model->power_state = charging ? HeaderPowerStateCharging : HeaderPowerStateIdle;
+            model->power_state = power_state;
+            if(full) percent = 100.f;
+            model->percent = percent;
             furi_string_printf(model->charge_text, "%u%%", soc);
-            furi_string_printf(model->percent_text, "%.2f", (double)percent);
+            if(full) {
+                furi_string_set(model->percent_text, "100");
+                furi_string_set(model->line1, "Fully charged!");
+            } else {
+                furi_string_printf(model->percent_text, "%.2f", (double)percent);
+            }
+            /* What the battery gives (its instantaneous current and voltage: the
+             * gauge's AveragePower() lags by a minute after the cable goes). */
+            float discharge_w = (float)charge.discharge_mw / 1000.f;
+            furi_string_printf(model->discharge_text, "Discharge: %.2fW", (double)discharge_w);
 
             if(charging) {
                 if(input_ok) {
@@ -327,6 +374,7 @@ static void header_on_alloc(Scene* scene, void* context) {
             model->percent_text = furi_string_alloc();
             model->line1 = furi_string_alloc();
             model->line2 = furi_string_alloc();
+            model->discharge_text = furi_string_alloc();
         },
         false);
 }

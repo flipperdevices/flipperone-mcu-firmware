@@ -28,13 +28,13 @@ typedef struct {
     }
 
 typedef struct {
-    const FuriBspLedType type;
-    const LedColor color;
+    FuriBspLedType type;
+    LedColor color;
 } LedItem;
 
 typedef struct {
-    const LedItem* items;
-    const size_t count;
+    LedItem* items;
+    size_t count;
 } LedBatch;
 
 typedef enum {

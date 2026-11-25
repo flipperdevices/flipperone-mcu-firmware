@@ -32,6 +32,9 @@ typedef struct {
         Bq2579xChargerStatusReg charger_status;
         Bq2579xFaultStatusReg charger_fault;
     } debug;
+    float voltage_sys; /**< INA219, V */
+    float current_sys; /**< INA219, A */
+    float power_sys; /**< INA219, W */
 } PowerInfo;
 
 typedef struct {
@@ -154,6 +157,10 @@ static void power_get_info(Power* power, PowerInfo* info) {
     power_bq2579x_get_charge_current_limit_ma(power, (uint16_t*)&info->charge_ilim_battery);
 
     power_bq2579x_get_charger_temperature(power, &info->temperature_charger);
+
+    info->voltage_sys = power_ina219_get_voltage_v(power);
+    info->current_sys = power_ina219_get_current_a(power);
+    info->power_sys = power_ina219_get_power_w(power);
 }
 
 static bool power_cli_info(PipeSide* pipe, FuriString* args) {
@@ -189,6 +196,11 @@ static bool power_cli_info(PipeSide* pipe, FuriString* args) {
     property_value_out(&prop_ctx, "%.0f mV", 2, "USB", "voltage", info.voltage_usb * 1000.0f);
     property_value_out(&prop_ctx, "%u mA", 2, "USB", "current", info.current_usb);
     property_value_out(&prop_ctx, "%u mA", 2, "USB", "current_limit", info.charge_ilim_usb);
+
+    /* The system rail as the INA219 sees it: the load, apart from the battery. */
+    property_value_out(&prop_ctx, "%.0f mV", 2, "SYS", "voltage", (double)info.voltage_sys * 1000.0f);
+    property_value_out(&prop_ctx, "%.1f mA", 2, "SYS", "current", (double)info.current_sys * 1000.0f);
+    property_value_out(&prop_ctx, "%.1f mW", 2, "SYS", "power", (double)info.power_sys * 1000.0f);
 
     property_value_out(&prop_ctx, "%u", 2, "charger", "enabled", info.charge_enabled);
     property_value_out(&prop_ctx, "%lu%%", 2, "charger", "level_limit", info.charge_level_limit);

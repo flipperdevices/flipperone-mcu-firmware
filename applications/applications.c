@@ -14,6 +14,7 @@ extern int32_t i2c_negotiator_srv(void* p);
 extern int32_t gui_srv(void* p);
 extern int32_t desktop_srv(void* p);
 extern int32_t led_srv(void* p);
+extern int32_t power_meter_srv(void* p);
 extern int32_t usb_srv(void* p);
 extern int32_t power_srv(void* p);
 extern int32_t pd_srv(void* p);
@@ -173,6 +174,13 @@ const FlipperInternalApplication FLIPPER_SERVICES[] = {
         .app = host_srv,
         .name = "HostSrv",
         .appid = "host_srv",
+        .stack_size = 1024 * 2,
+        .flags = FlipperInternalApplicationFlagDefault,
+    },
+    {
+        .app = power_meter_srv,
+        .name = "PowerMeterSrv",
+        .appid = "power_meter_srv",
         .stack_size = 1024 * 2,
         .flags = FlipperInternalApplicationFlagDefault,
     },

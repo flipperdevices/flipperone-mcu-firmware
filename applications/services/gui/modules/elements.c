@@ -25,7 +25,7 @@ static void elements_battery_render(Canvas* canvas, const Clay_BoundingBox* bb, 
     ElementsBattery* battery = context;
     int32_t x = bb->x;
     int32_t y = bb->y;
-    const bool dark = (battery->look == ElementsBatteryLookDark);
+    const bool dark = (battery->look != ElementsBatteryLookLight);
     const ColorA ink = {.color = dark ? 0xFF : 0x00, .alpha = 255};
     const ColorA paper = {.color = dark ? 0x00 : 0xFF, .alpha = 255};
 
@@ -42,7 +42,9 @@ static void elements_battery_render(Canvas* canvas, const Clay_BoundingBox* bb, 
     }
 
     if(dark) {
-        canvas_draw_image(canvas, x + BATTERY_BOLT_X, y + BATTERY_BOLT_Y, &battery_charging_bolt, false);
+        if(battery->look == ElementsBatteryLookDark) {
+            canvas_draw_image(canvas, x + BATTERY_BOLT_X, y + BATTERY_BOLT_Y, &battery_charging_bolt, false);
+        }
         return;
     }
 
@@ -75,7 +77,7 @@ void elements_battery_element(Clay_ElementId id, ElementsBattery* battery, float
     battery->look = look;
     snprintf(battery->text, sizeof(battery->text), "%u", (unsigned)(battery->percent + 0.5f));
 
-    const Image* image = (look == ElementsBatteryLookDark) ? &header_battery_black : &header_battery_idle;
+    const Image* image = (look != ElementsBatteryLookLight) ? &header_battery_black : &header_battery_idle;
     CLAY(
         id,
         {
