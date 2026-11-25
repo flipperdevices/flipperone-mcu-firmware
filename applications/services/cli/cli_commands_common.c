@@ -11,7 +11,6 @@
 #include <furi_hal_clock.h>
 #include <furi_hal_otp.h>
 #include <toolbox/strint.h>
-#include <ctype.h>
 #include <furi_hal_nvm.h>
 
 void cli_command_uptime(PipeSide* pipe, FuriString* args, void* context) {
@@ -358,124 +357,126 @@ void cli_command_clock_out(PipeSide* pipe, FuriString* args, void* context) {
 
 static void cli_command_otp_help(void) {
     printf(
-        "otp info\r\n"
-        "otp device <NAME> <VERSION> <TARGET> <BODY> <CONNECT> <DATE>\r\n"
-        "\tNAME: up to %u chars of [A-Za-z0-9._-]; TARGET: the board's FW_TARGET number (f2 is 2);\r\n"
-        "\tDATE: seconds since the epoch.\r\n"
-        "\tAlso writes the USB white label (board id F<TARGET>B<BODY>C<CONNECT>) if it is not there.\r\n"
-        "otp mac <ETH0> <ETH1> <USB> <WIFI_2G4_STA> <WIFI_5G_STA> <WIFI_2G4_AP> <WIFI_5G_AP> <BT>\r\n"
-        "\teach as aa:bb:cc:dd:ee:ff\r\n"
-        "device and mac write OTP once and lock it: this cannot be undone.\r\n",
-        FURI_HAL_OTP_DEVICE_NAME_SIZE - 1);
+        "otp info               - the blocks, decoded\r\n"
+        "otp chipid             - this chip's id, for scripts/otp.py create-1\r\n"
+        "otp dump <1|2|3>       - a block's rows as hex, written or not\r\n"
+        "otp program <1|2|3> <hex>\r\n"
+        "                       - write a block built by scripts/otp.py and lock it: cannot be undone\r\n");
+}
+
+static void cli_command_otp_print_hex(const uint8_t* data, size_t size) {
+    for(size_t i = 0; i < size; i++) {
+        printf("%02x", data[i]);
+    }
+    printf("\r\n");
+}
+
+static void cli_command_otp_print_str(const char* name, const char* str, size_t size) {
+    printf("  %-12s %.*s\r\n", name, (int)strnlen(str, size), str);
 }
 
 static void cli_command_otp_info(void) {
-    printf("USB white label: %s\r\n", furi_hal_otp_usb_white_label_valid() ? "written" : "not written");
+    static const char* const mac_names[FuriHalOtpMacCount] = {"eth0", "eth1", "usb", "wifi_2g4_sta", "wifi_5g_sta", "wifi_2g4_ap", "wifi_5g_ap", "bt"};
 
-    FuriHalOtpDevice device;
-    if(furi_hal_otp_device_read(&device)) {
-        printf(
-            "Device: %s, version %u, F%uB%uC%u, date %llu\r\n",
-            device.name,
-            device.version,
-            device.target,
-            device.body,
-            device.connect,
-            (unsigned long long)device.timestamp);
+    FuriHalOtpBlock1Data b1;
+    if(furi_hal_otp_block_read(FuriHalOtpBlock1, &b1, sizeof(b1))) {
+        printf("Block 1: written %llu\r\n", (unsigned long long)b1.header.timestamp);
+        printf("  hw_version   %u\r\n  board        F%uB%uC%u\r\n  chip_id      ", b1.hw_version, b1.target, b1.body, b1.connect);
+        cli_command_otp_print_hex(b1.chip_id, sizeof(b1.chip_id));
     } else {
-        printf("Device: not written\r\n");
+        printf("Block 1: not written\r\n");
     }
 
-    FuriHalOtpMacs macs;
-    if(furi_hal_otp_mac_read(&macs)) {
+    FuriHalOtpBlock2Data b2;
+    if(furi_hal_otp_block_read(FuriHalOtpBlock2, &b2, sizeof(b2))) {
+        printf("Block 2: written %llu\r\n", (unsigned long long)b2.header.timestamp);
         for(size_t i = 0; i < FuriHalOtpMacCount; i++) {
-            const uint8_t* m = macs.mac[i];
-            printf("MAC %-12s %02x:%02x:%02x:%02x:%02x:%02x\r\n", furi_hal_otp_mac_name(i), m[0], m[1], m[2], m[3], m[4], m[5]);
+            const uint8_t* m = b2.mac[i];
+            printf("  %-12s %02x:%02x:%02x:%02x:%02x:%02x\r\n", mac_names[i], m[0], m[1], m[2], m[3], m[4], m[5]);
         }
+        cli_command_otp_print_str("name", b2.name, sizeof(b2.name));
+        cli_command_otp_print_str("model", b2.model, sizeof(b2.model));
+        cli_command_otp_print_str("region", b2.region, sizeof(b2.region));
+        printf("  color        %u\r\n  display      %u\r\n", b2.color, b2.display);
+        printf("  ram          %lu GB\r\n  ufs          %lu GB\r\n  cpu_id       ", b2.ram_gb, b2.ufs_gb);
+        cli_command_otp_print_hex(b2.cpu_id, sizeof(b2.cpu_id));
     } else {
-        printf("MAC: not written\r\n");
+        printf("Block 2: not written\r\n");
     }
+
+    FuriHalOtpBlock3Data b3;
+    if(furi_hal_otp_block_read(FuriHalOtpBlock3, &b3, sizeof(b3))) {
+        printf("Block 3: written %llu, key id %u\r\n", (unsigned long long)b3.header.timestamp, b3.key_id);
+    } else {
+        printf("Block 3: not written\r\n");
+    }
+
+    printf("OTP valid (signatures verify): %s\r\n", furi_hal_otp_valid() ? "yes" : "no");
+    printf("USB white label: %s\r\n", furi_hal_otp_usb_white_label_valid() ? "written" : "not written");
 }
 
-static bool cli_command_otp_read_u16(FuriString* args, FuriString* word, uint16_t* value) {
+static bool cli_command_otp_read_block(FuriString* args, FuriString* word, FuriHalOtpBlock* block) {
     const char* end = NULL;
-    return args_read_string_and_trim(args, word) && strint_to_uint16(furi_string_get_cstr(word), &end, value, 10) == StrintParseNoError && *end == '\0';
-}
-
-static bool cli_command_otp_name_ok(FuriString* name) {
-    size_t len = furi_string_size(name);
-    if(len == 0 || len >= FURI_HAL_OTP_DEVICE_NAME_SIZE) return false;
-    for(size_t i = 0; i < len; i++) {
-        char c = furi_string_get_char(name, i);
-        if(!isalnum((unsigned char)c) && c != '.' && c != '_' && c != '-') return false;
+    uint8_t value = 0;
+    if(!args_read_string_and_trim(args, word) || strint_to_uint8(furi_string_get_cstr(word), &end, &value, 10) != StrintParseNoError || *end != '\0' ||
+       !furi_hal_otp_block_size(value)) {
+        printf("Block is 1, 2 or 3\r\n");
+        return false;
     }
+    *block = value;
     return true;
 }
 
-static void cli_command_otp_device(FuriString* args) {
+static void cli_command_otp_dump(FuriString* args) {
     FuriString* word = furi_string_alloc();
-    FuriHalOtpDevice device = {0};
-
-    do {
-        if(!args_read_string_and_trim(args, word) || !cli_command_otp_name_ok(word)) {
-            printf("Invalid NAME\r\n");
-            break;
+    FuriHalOtpBlock block;
+    uint8_t data[FURI_HAL_OTP_BLOCK_MAX_SIZE];
+    if(cli_command_otp_read_block(args, word, &block)) {
+        const size_t size = furi_hal_otp_block_size(block);
+        if(furi_hal_otp_block_dump(block, data, size)) {
+            cli_command_otp_print_hex(data, size);
+        } else {
+            printf("Read failed\r\n");
         }
-        strlcpy(device.name, furi_string_get_cstr(word), sizeof(device.name));
-
-        if(!cli_command_otp_read_u16(args, word, &device.version) || !cli_command_otp_read_u16(args, word, &device.target) ||
-           !cli_command_otp_read_u16(args, word, &device.body) || !cli_command_otp_read_u16(args, word, &device.connect)) {
-            printf("VERSION, TARGET, BODY and CONNECT are numbers 0..65535\r\n");
-            break;
-        }
-        const char* end = NULL;
-        if(!args_read_string_and_trim(args, word) || strint_to_uint64(furi_string_get_cstr(word), &end, &device.timestamp, 10) != StrintParseNoError ||
-           *end != '\0') {
-            printf("Invalid DATE\r\n");
-            break;
-        }
-        if(furi_string_size(args)) {
-            printf("Too many arguments\r\n");
-            break;
-        }
-
-        FuriHalOtpError error = furi_hal_otp_device_write(&device);
-        printf("Device: %s\r\n", error == FuriHalOtpErrorNone ? "written and locked, USB white label too" : furi_hal_otp_error_to_string(error));
-    } while(0);
-
+    }
     furi_string_free(word);
 }
 
-static bool cli_command_otp_parse_mac(const char* str, uint8_t mac[FURI_HAL_OTP_MAC_SIZE]) {
-    // aa:bb:cc:dd:ee:ff
-    if(strlen(str) != FURI_HAL_OTP_MAC_SIZE * 3 - 1) return false;
-    bool zero = true;
-    for(size_t i = 0; i < FURI_HAL_OTP_MAC_SIZE; i++) {
-        if(i > 0 && str[i * 3 - 1] != ':') return false;
-        if(!args_char_to_hex(str[i * 3], str[i * 3 + 1], &mac[i])) return false;
-        if(mac[i]) zero = false;
-    }
-    // An interface address: not all zero, not multicast
-    return !zero && !(mac[0] & 0x01);
-}
-
-static void cli_command_otp_mac(FuriString* args) {
+static void cli_command_otp_program(FuriString* args) {
     FuriString* word = furi_string_alloc();
-    FuriHalOtpMacs macs = {0};
-    bool ok = true;
+    FuriHalOtpBlock block;
+    uint8_t data[FURI_HAL_OTP_BLOCK_MAX_SIZE];
 
-    for(size_t i = 0; i < FuriHalOtpMacCount && ok; i++) {
-        ok = args_read_string_and_trim(args, word) && cli_command_otp_parse_mac(furi_string_get_cstr(word), macs.mac[i]);
-        if(!ok) printf("Invalid MAC for %s\r\n", furi_hal_otp_mac_name(i));
-    }
-    if(ok && furi_string_size(args)) {
-        printf("Too many arguments\r\n");
-        ok = false;
-    }
-    if(ok) {
-        FuriHalOtpError error = furi_hal_otp_mac_write(&macs);
-        printf("MAC: %s\r\n", error == FuriHalOtpErrorNone ? "written and locked" : furi_hal_otp_error_to_string(error));
-    }
+    do {
+        if(!cli_command_otp_read_block(args, word, &block)) break;
+        const size_t size = furi_hal_otp_block_size(block);
+        if(!args_read_string_and_trim(args, word) || furi_string_size(word) != size * 2) {
+            printf("Block %u is %u bytes: %u hex chars\r\n", block, size, size * 2);
+            break;
+        }
+        const char* hex = furi_string_get_cstr(word);
+        bool hex_ok = true;
+        for(size_t i = 0; i < size && hex_ok; i++) {
+            hex_ok = args_char_to_hex(hex[i * 2], hex[i * 2 + 1], &data[i]);
+        }
+        if(!hex_ok) {
+            printf("Not hex\r\n");
+            break;
+        }
+
+        printf("Block %u is written to OTP and locked. This cannot be undone. Program it? (y/n)\r\n", block);
+        const char answer = getchar();
+        if(answer != 'y' && answer != 'Y') {
+            printf("Cancelled\r\n");
+            break;
+        }
+        FuriHalOtpError error = furi_hal_otp_block_program(block, data, size);
+        if(error == FuriHalOtpErrorNone) {
+            printf("Block %u: written and locked%s\r\n", block, block == FuriHalOtpBlock1 ? ", USB white label too" : "");
+        } else {
+            printf("Block %u: %s\r\n", block, furi_hal_otp_error_to_string(error));
+        }
+    } while(0);
 
     furi_string_free(word);
 }
@@ -489,10 +490,14 @@ void cli_command_otp(PipeSide* pipe, FuriString* args, void* context) {
         cli_command_otp_help();
     } else if(furi_string_cmp(action, "info") == 0) {
         cli_command_otp_info();
-    } else if(furi_string_cmp(action, "device") == 0) {
-        cli_command_otp_device(args);
-    } else if(furi_string_cmp(action, "mac") == 0) {
-        cli_command_otp_mac(args);
+    } else if(furi_string_cmp(action, "chipid") == 0) {
+        uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE];
+        furi_hal_otp_chip_id(chip_id);
+        cli_command_otp_print_hex(chip_id, sizeof(chip_id));
+    } else if(furi_string_cmp(action, "dump") == 0) {
+        cli_command_otp_dump(args);
+    } else if(furi_string_cmp(action, "program") == 0) {
+        cli_command_otp_program(args);
     } else {
         cli_command_otp_help();
     }

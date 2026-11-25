@@ -31,66 +31,84 @@ const uint8_t* furi_hal_version_get_ble_mac(void) {
     return ble_mac;
 }
 
-// OTP_DEVICE. Written once, so a copy stays true once it is there; until then
-// every call looks again, so a block written while running shows at once.
-static FuriHalOtpDevice furi_hal_version_otp;
-static volatile bool furi_hal_version_otp_valid;
+// OTP blocks 1 and 2. Written once, so a copy stays true once it is there;
+// until then every call looks again, so a block written while running shows
+// at once.
+static FuriHalOtpBlock1Data furi_hal_version_board;
+static volatile bool furi_hal_version_board_valid;
+static FuriHalOtpBlock2Data furi_hal_version_device;
+static volatile bool furi_hal_version_device_valid;
 
-static const FuriHalOtpDevice* furi_hal_version_get_otp(void) {
-    if(!furi_hal_version_otp_valid) {
-        FuriHalOtpDevice device;
-        if(furi_hal_otp_device_read(&device)) {
+static const FuriHalOtpBlock1Data* furi_hal_version_get_board(void) {
+    if(!furi_hal_version_board_valid) {
+        FuriHalOtpBlock1Data board;
+        if(furi_hal_otp_block_read(FuriHalOtpBlock1, &board, sizeof(board))) {
             // Published whole: readers see the flag only after the copy
-            furi_hal_version_otp = device;
+            furi_hal_version_board = board;
             __DMB();
-            furi_hal_version_otp_valid = true;
+            furi_hal_version_board_valid = true;
         }
     }
-    return furi_hal_version_otp_valid ? &furi_hal_version_otp : NULL;
+    return furi_hal_version_board_valid ? &furi_hal_version_board : NULL;
+}
+
+static const FuriHalOtpBlock2Data* furi_hal_version_get_device(void) {
+    if(!furi_hal_version_device_valid) {
+        FuriHalOtpBlock2Data device;
+        if(furi_hal_otp_block_read(FuriHalOtpBlock2, &device, sizeof(device))) {
+            furi_hal_version_device = device;
+            __DMB();
+            furi_hal_version_device_valid = true;
+        }
+    }
+    return furi_hal_version_device_valid ? &furi_hal_version_device : NULL;
 }
 
 void furi_hal_version_init(void) {
-    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
-    if(otp) {
-        FURI_LOG_I(TAG, "%s: version %u, F%uB%uC%u", otp->name, otp->version, otp->target, otp->body, otp->connect);
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    if(board) {
+        FURI_LOG_I(TAG, "Board: version %u, F%uB%uC%u", board->hw_version, board->target, board->body, board->connect);
+        // Two ECDSA checks, about 110 ms; cached for furi_hal_otp_valid() callers
+        FURI_LOG_I(TAG, "OTP signatures: %s", furi_hal_otp_valid() ? "valid" : "not valid");
     } else {
-        FURI_LOG_W(TAG, "No device info in OTP");
+        FURI_LOG_W(TAG, "No board info in OTP");
     }
 }
 
 FuriHalVersionOtpVersion furi_hal_version_get_otp_version(void) {
-    // OTP_DEVICE has a single layout so far, its version 1
-    return furi_hal_version_get_otp() ? FuriHalVersionOtpVersion1 : FuriHalVersionOtpVersionEmpty;
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    return board ? (FuriHalVersionOtpVersion)board->header.version : FuriHalVersionOtpVersionEmpty;
 }
 
 uint16_t furi_hal_version_get_hw_version(void) {
-    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
-    return otp ? otp->version : 0;
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    return board ? board->hw_version : 0;
 }
 
 uint16_t furi_hal_version_get_hw_target(void) {
-    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
-    return otp ? otp->target : 0;
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    return board ? board->target : 0;
 }
 
 uint16_t furi_hal_version_get_hw_body(void) {
-    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
-    return otp ? otp->body : 0;
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    return board ? board->body : 0;
 }
 
 uint16_t furi_hal_version_get_hw_connect(void) {
-    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
-    return otp ? otp->connect : 0;
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    return board ? board->connect : 0;
 }
 
 uint64_t furi_hal_version_get_hw_timestamp(void) {
-    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
-    return otp ? otp->timestamp : 0;
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    return board ? board->header.timestamp : 0;
 }
 
 const char* furi_hal_version_get_name_ptr(void) {
-    const FuriHalOtpDevice* otp = furi_hal_version_get_otp();
-    return otp ? otp->name : NULL;
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    // NUL terminated: scripts/otp.py keeps it to 31 chars, and the CRC holds
+    return device && memchr(device->name, '\0', sizeof(device->name)) ? device->name : NULL;
 }
 
 size_t furi_hal_version_uid_size(void) {

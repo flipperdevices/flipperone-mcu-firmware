@@ -122,7 +122,14 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_common.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_encode.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_decode.c
+    # micro-ecc as pico-sdk's btstack ships it, set there to secp256r1: the
+    # OTP block signatures (furi_hal_otp.c)
+    ${PICO_SDK_PATH}/lib/btstack/3rd-party/micro-ecc/uECC.c
 )
+target_include_directories(${PROJECT_NAME} PRIVATE ${PICO_SDK_PATH}/lib/btstack/3rd-party/micro-ecc)
+# ECDSA is off there; btstack's copy spells it twice ways, MICO for the bodies
+set_source_files_properties(${PICO_SDK_PATH}/lib/btstack/3rd-party/micro-ecc/uECC.c PROPERTIES
+    COMPILE_DEFINITIONS "ENABLE_MICRO_ECC_ECDSA;ENABLE_MICO_ECC_ECDSA")
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE 
     PICO_DEFAULT_UART_TX_PIN=0
@@ -212,6 +219,7 @@ target_link_libraries(${PROJECT_NAME}
     hardware_watchdog
     hardware_clocks
     pico_unique_id
+    pico_sha256
     uart_pio
     tinyusb_device
     cli

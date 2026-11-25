@@ -4,6 +4,9 @@
 #include <hardware/structs/otp.h>
 #include <hardware/regs/otp_data.h>
 #include <string.h>
+#include <pico/unique_id.h>
+#include <pico/sha256.h>
+#include <uECC.h>
 
 #define TAG "FuriHalOtp"
 
@@ -591,20 +594,58 @@ static bool furi_hal_otp_usb_white_label_board_id_differs(uint32_t target, uint3
     return rows.other || (furi_hal_otp_usb_white_label_valid() && !rows.done);
 }
 
-// OTP_DEVICE and OTP_MAC blocks
+// Blocks 1..3
 
-#define OTP_BLOCK_HEADER_ROWS  2
-#define OTP_BLOCK_PAYLOAD_SIZE 48
-#define OTP_BLOCK_CRC_ROW      (OTP_BLOCK_HEADER_ROWS + OTP_BLOCK_PAYLOAD_SIZE / 2)
-#define OTP_BLOCK_ROWS         (OTP_BLOCK_CRC_ROW + 1)
+typedef struct {
+    uint16_t base_row;
+    uint16_t version;
+    size_t size;
+} FuriHalOtpBlockLayout;
 
-// CRC-16/CCITT-FALSE of the layout version and the payload. ECC reads do not
-// report a row they cannot correct; this does.
-static uint16_t furi_hal_otp_block_crc(const uint16_t rows[OTP_BLOCK_ROWS]) {
+static const FuriHalOtpBlockLayout furi_hal_otp_blocks[FuriHalOtpBlockCount + 1] = {
+    [FuriHalOtpBlock1] = {0x0C0, 1, sizeof(FuriHalOtpBlock1Data)},
+    [FuriHalOtpBlock2] = {0x100, 1, sizeof(FuriHalOtpBlock2Data)},
+    [FuriHalOtpBlock3] = {0x180, 1, sizeof(FuriHalOtpBlock3Data)},
+};
+
+static_assert(sizeof(FuriHalOtpHeader) == 16, "OTP header size");
+static_assert(sizeof(FuriHalOtpBlock1Data) == 34, "OTP block 1 size");
+static_assert(sizeof(FuriHalOtpBlock2Data) == 160, "OTP block 2 size");
+static_assert(sizeof(FuriHalOtpBlock3Data) == 148, "OTP block 3 size");
+static_assert(0x0C0 + sizeof(FuriHalOtpBlock1Data) / 2 <= 0x100, "OTP block 1 outgrows page 3");
+static_assert(0x100 + sizeof(FuriHalOtpBlock2Data) / 2 <= 0x180, "OTP block 2 outgrows pages 4..5");
+static_assert(0x180 + sizeof(FuriHalOtpBlock3Data) / 2 <= 0x200, "OTP block 3 outgrows pages 6..7");
+static_assert(PICO_UNIQUE_BOARD_ID_SIZE_BYTES == FURI_HAL_OTP_CHIP_ID_SIZE, "chip id size");
+
+// Public halves of the production keys that sign block 3, by key id
+static const uint8_t furi_hal_otp_keys[][FURI_HAL_OTP_SIGN_SIZE] = {
+    // 0: a TEST key for development. Its private half is not kept secret:
+    // a device must not trust it once production keys are here.
+    {
+        0xb3, 0xcb, 0x67, 0x31, 0x91, 0x32, 0xf9, 0x16, 0x3f, 0x1e, 0x9e, 0x1c, 0x7d, 0x84, 0x47, 0xc1, 0x47, 0x8d, 0x17, 0xe4, 0x99, 0x3a,
+        0x34, 0xa1, 0x56, 0x51, 0xe4, 0x2c, 0x9d, 0x8a, 0x48, 0x17, 0x2d, 0xe4, 0x3d, 0x6f, 0xcf, 0x7a, 0x3b, 0x0d, 0xa7, 0x6a, 0xa3, 0x52,
+        0xb5, 0x2a, 0x01, 0xf5, 0x8a, 0x69, 0xe7, 0xf7, 0xd9, 0x0e, 0xa3, 0xb6, 0x3c, 0x38, 0x6d, 0x55, 0xd0, 0xb2, 0x5e, 0x76,
+    },
+};
+
+// Bumped by every block written, so that furi_hal_otp_valid() looks again
+static uint32_t furi_hal_otp_generation;
+
+static const FuriHalOtpBlockLayout* furi_hal_otp_block_layout(FuriHalOtpBlock block) {
+    furi_check(block >= FuriHalOtpBlock1 && block <= FuriHalOtpBlockCount);
+    return &furi_hal_otp_blocks[block];
+}
+
+size_t furi_hal_otp_block_size(FuriHalOtpBlock block) {
+    return block >= FuriHalOtpBlock1 && block <= FuriHalOtpBlockCount ? furi_hal_otp_blocks[block].size : 0;
+}
+
+// CRC-16/CCITT-FALSE of a block but its magic and the CRC itself. ECC reads
+// do not report a row they cannot correct; this does.
+static uint16_t furi_hal_otp_block_crc(const uint8_t* data, size_t size) {
     uint16_t crc = 0xFFFF;
-    const uint8_t* p = (const uint8_t*)&rows[1];
-    for(size_t i = 0; i < (OTP_BLOCK_CRC_ROW - 1) * sizeof(uint16_t); i++) {
-        crc ^= (uint16_t)p[i] << 8;
+    for(size_t i = sizeof(uint32_t); i < size - sizeof(uint16_t); i++) {
+        crc ^= (uint16_t)data[i] << 8;
         for(int bit = 0; bit < 8; bit++) {
             crc = (crc & 0x8000) ? (crc << 1) ^ 0x1021 : crc << 1;
         }
@@ -612,64 +653,67 @@ static uint16_t furi_hal_otp_block_crc(const uint16_t rows[OTP_BLOCK_ROWS]) {
     return crc;
 }
 
-static_assert(FURI_HAL_OTP_DEVICE_NAME_SIZE + 4 * 2 + 8 == OTP_BLOCK_PAYLOAD_SIZE, "OTP_DEVICE payload size");
-static_assert(FuriHalOtpMacCount * FURI_HAL_OTP_MAC_SIZE == OTP_BLOCK_PAYLOAD_SIZE, "OTP_MAC payload size");
-static_assert(FURI_HAL_OTP_DEVICE_ROW / OTP_PAGE_ROWS != FURI_HAL_OTP_MAC_ROW / OTP_PAGE_ROWS, "OTP blocks share a page");
-static_assert(FURI_HAL_OTP_DEVICE_ROW % OTP_PAGE_ROWS + OTP_BLOCK_ROWS <= OTP_PAGE_ROWS, "OTP_DEVICE spans pages");
-static_assert(FURI_HAL_OTP_MAC_ROW % OTP_PAGE_ROWS + OTP_BLOCK_ROWS <= OTP_PAGE_ROWS, "OTP_MAC spans pages");
+// Magic, index, version and CRC of a block's bytes
+static bool furi_hal_otp_block_check(FuriHalOtpBlock block, const uint8_t* data) {
+    const FuriHalOtpBlockLayout* layout = furi_hal_otp_block_layout(block);
+    FuriHalOtpHeader header;
+    uint16_t crc;
+    memcpy(&header, data, sizeof(header));
+    memcpy(&crc, data + layout->size - sizeof(crc), sizeof(crc));
+    return header.magic == FURI_HAL_OTP_MAGIC && header.index == block && header.version == layout->version &&
+           crc == furi_hal_otp_block_crc(data, layout->size);
+}
 
-static bool furi_hal_otp_block_read_rows(uint16_t base_row, uint16_t rows[OTP_BLOCK_ROWS]) {
-    otp_cmd_t cmd = {.flags = base_row | OTP_CMD_ECC_BITS};
-    int rc = furi_hal_otp_access((uint8_t*)rows, OTP_BLOCK_ROWS * sizeof(uint16_t), cmd);
+static bool furi_hal_otp_block_read_rows(FuriHalOtpBlock block, void* data) {
+    const FuriHalOtpBlockLayout* layout = furi_hal_otp_block_layout(block);
+    otp_cmd_t cmd = {.flags = layout->base_row | OTP_CMD_ECC_BITS};
+    int rc = furi_hal_otp_access(data, layout->size, cmd);
     if(rc != BOOTROM_OK) {
-        FURI_LOG_E(TAG, "OTP block read at 0x%04x failed: %d", base_row, rc);
+        FURI_LOG_E(TAG, "OTP block %u read failed: %d", block, rc);
         return false;
     }
     return true;
 }
 
-// Payload of a block of a known layout, or false
-static bool furi_hal_otp_block_read(uint16_t base_row, uint16_t magic, uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE]) {
-    uint16_t rows[OTP_BLOCK_ROWS];
-    memset(payload, 0, OTP_BLOCK_PAYLOAD_SIZE);
-    // The magic is written last, after the rest read back right: only then
+bool furi_hal_otp_block_dump(FuriHalOtpBlock block, void* data, size_t size) {
+    furi_check(size == furi_hal_otp_block_layout(block)->size);
+    return furi_hal_otp_block_read_rows(block, data);
+}
+
+bool furi_hal_otp_block_read(FuriHalOtpBlock block, void* data, size_t size) {
+    const FuriHalOtpBlockLayout* layout = furi_hal_otp_block_layout(block);
+    furi_check(size == layout->size);
+    memset(data, 0, size);
+    // The magic is written last, after the rest reads back right: only then
     // are the rows read through ECC
-    FuriHalOtpRowState magic_state;
-    if(!furi_hal_otp_row_state(base_row, magic, &magic_state) || magic_state != FuriHalOtpRowDone) return false;
-    if(!furi_hal_otp_block_read_rows(base_row, rows)) return false;
-    if(rows[0] != magic) return false;
-    if(rows[1] != FURI_HAL_OTP_LAYOUT_VERSION) {
-        FURI_LOG_E(TAG, "OTP block at 0x%04x: unknown layout %u", base_row, rows[1]);
+    const uint16_t magic[2] = {FURI_HAL_OTP_MAGIC & 0xFFFF, FURI_HAL_OTP_MAGIC >> 16};
+    if(!furi_hal_otp_rows_done(layout->base_row, magic, 2)) return false;
+    if(!furi_hal_otp_block_read_rows(block, data) || !furi_hal_otp_block_check(block, data)) {
+        FURI_LOG_E(TAG, "OTP block %u is damaged", block);
+        memset(data, 0, size);
         return false;
     }
-    if(rows[OTP_BLOCK_CRC_ROW] != furi_hal_otp_block_crc(rows)) {
-        FURI_LOG_E(TAG, "OTP block at 0x%04x: CRC mismatch", base_row);
-        return false;
-    }
-    memcpy(payload, &rows[OTP_BLOCK_HEADER_ROWS], OTP_BLOCK_PAYLOAD_SIZE);
     return true;
 }
 
-// Make the block hold this payload and lock its page. The rest is written
-// and read back first, the magic last. A write cut short, even inside a row,
-// is finished by the same call with the same data; a row holding other data
-// refuses the call before any write.
-static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, uint16_t magic, const uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE]) {
-    uint16_t want[OTP_BLOCK_ROWS] = {magic, FURI_HAL_OTP_LAYOUT_VERSION};
-    memcpy(&want[OTP_BLOCK_HEADER_ROWS], payload, OTP_BLOCK_PAYLOAD_SIZE);
-    want[OTP_BLOCK_CRC_ROW] = furi_hal_otp_block_crc(want);
+static bool furi_hal_otp_block_valid(FuriHalOtpBlock block) {
+    uint8_t data[FURI_HAL_OTP_BLOCK_MAX_SIZE];
+    return furi_hal_otp_block_read(block, data, furi_hal_otp_block_layout(block)->size);
+}
 
+// Make the rows hold the block and lock its pages. The rest is written and
+// read back first, the magic (rows 0..1) last. A write cut short, even inside
+// a row, is finished by the same call with the same block; a row holding
+// other data refuses the call before any write.
+static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, const uint16_t* want, size_t count) {
     FuriHalOtpRows rows = {.done = true};
-    FuriHalOtpRowState magic_state;
-    if(!furi_hal_otp_rows_scan(&rows, base_row, want, OTP_BLOCK_ROWS) || !furi_hal_otp_row_state(base_row, magic, &magic_state)) {
-        return FuriHalOtpErrorWriteFailed;
-    }
+    if(!furi_hal_otp_rows_scan(&rows, base_row, want, count)) return FuriHalOtpErrorWriteFailed;
 
     if(!rows.done) {
-        if(magic_state == FuriHalOtpRowDone) return FuriHalOtpErrorAlreadyWritten;
+        if(furi_hal_otp_rows_done(base_row, want, 2)) return FuriHalOtpErrorAlreadyWritten;
         if(rows.other) return FuriHalOtpErrorNotBlank;
 
-        for(size_t i = 1; i < OTP_BLOCK_ROWS; i++) {
+        for(size_t i = 2; i < count; i++) {
             int rc = furi_hal_otp_write_ecc_rc(base_row + i, want[i]);
             if(rc != BOOTROM_OK) {
                 FURI_LOG_E(TAG, "OTP ECC write row 0x%04x failed: %d", base_row + i, rc);
@@ -678,96 +722,120 @@ static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, uint16_t magi
         }
         // The bootrom does not check what it wrote: the magic only on a block
         // that reads back right, so a bad row can still be written again
-        if(!furi_hal_otp_rows_done(base_row + 1, &want[1], OTP_BLOCK_ROWS - 1) || !furi_hal_otp_write_ecc(base_row, magic) ||
-           !furi_hal_otp_rows_done(base_row, want, 1)) {
+        if(!furi_hal_otp_rows_done(base_row + 2, want + 2, count - 2) || !furi_hal_otp_write_ecc(base_row + 1, want[1]) ||
+           !furi_hal_otp_write_ecc(base_row, want[0]) || !furi_hal_otp_rows_done(base_row, want, 2)) {
             FURI_LOG_E(TAG, "OTP block at 0x%04x reads back wrong", base_row);
             return FuriHalOtpErrorWriteFailed;
         }
     }
 
-    if(!furi_hal_otp_lock_rows(base_row, OTP_BLOCK_ROWS)) return FuriHalOtpErrorLockFailed;
+    if(!furi_hal_otp_lock_rows(base_row, count)) return FuriHalOtpErrorLockFailed;
     return FuriHalOtpErrorNone;
 }
 
-const char* furi_hal_otp_error_to_string(FuriHalOtpError error) {
-    switch(error) {
-    case FuriHalOtpErrorNone:
-        return "None";
-    case FuriHalOtpErrorInvalidArg:
-        return "Invalid value";
-    case FuriHalOtpErrorAlreadyWritten:
-        return "Already written with other data";
-    case FuriHalOtpErrorNotBlank:
-        return "Holds other data from a write cut short";
-    case FuriHalOtpErrorWriteFailed:
-        return "Write failed";
-    case FuriHalOtpErrorLockFailed:
-        return "Written, but locking its page failed";
-    case FuriHalOtpErrorWhiteLabelFailed:
-        return "Device written, USB white label failed";
-    case FuriHalOtpErrorWhiteLabelMismatch:
-        return "The USB white label holds another board id";
-    }
-    return "Unknown error";
+// Signatures
+
+static bool furi_hal_otp_signature_ok(
+    const uint8_t key[FURI_HAL_OTP_SIGN_SIZE],
+    const uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE],
+    FuriHalOtpBlock block,
+    const void* data,
+    size_t size,
+    const uint8_t signature[FURI_HAL_OTP_SIGN_SIZE]) {
+    // chip id || "-otp<n>-" || block
+    char label[8];
+    const int label_len = snprintf(label, sizeof(label), "-otp%u-", block);
+    pico_sha256_state_t state;
+    sha256_result_t hash;
+    if(pico_sha256_start_blocking(&state, SHA256_BIG_ENDIAN, false) != PICO_OK) return false;
+    pico_sha256_update_blocking(&state, chip_id, FURI_HAL_OTP_CHIP_ID_SIZE);
+    pico_sha256_update_blocking(&state, (const uint8_t*)label, label_len);
+    pico_sha256_update_blocking(&state, data, size);
+    pico_sha256_finish(&state, &hash);
+    return uECC_verify(key, hash.bytes, signature);
 }
 
-// OTP_DEVICE
-
-bool furi_hal_otp_device_valid(void) {
-    uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE];
-    return furi_hal_otp_block_read(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload);
+static bool furi_hal_otp_signatures_ok(const FuriHalOtpBlock1Data* b1, const FuriHalOtpBlock2Data* b2, const FuriHalOtpBlock3Data* b3) {
+    if(b3->key_id >= COUNT_OF(furi_hal_otp_keys)) {
+        FURI_LOG_E(TAG, "OTP block 3: unknown key id %u", b3->key_id);
+        return false;
+    }
+    const uint8_t* key = furi_hal_otp_keys[b3->key_id];
+    return furi_hal_otp_signature_ok(key, b1->chip_id, FuriHalOtpBlock1, b1, sizeof(*b1), b3->block1_signature) &&
+           furi_hal_otp_signature_ok(key, b1->chip_id, FuriHalOtpBlock2, b2, sizeof(*b2), b3->block2_signature);
 }
 
-bool furi_hal_otp_device_read(FuriHalOtpDevice* device) {
-    furi_check(device);
-    uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE];
-    memset(device, 0, sizeof(*device));
-    if(!furi_hal_otp_block_read(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload)) return false;
-
-    const uint8_t* p = payload;
-    memcpy(device->name, p, FURI_HAL_OTP_DEVICE_NAME_SIZE);
-    device->name[FURI_HAL_OTP_DEVICE_NAME_SIZE - 1] = '\0';
-    p += FURI_HAL_OTP_DEVICE_NAME_SIZE;
-    memcpy(&device->version, p, 2);
-    memcpy(&device->target, p + 2, 2);
-    memcpy(&device->body, p + 4, 2);
-    memcpy(&device->connect, p + 6, 2);
-    memcpy(&device->timestamp, p + 8, 8);
-    return true;
+void furi_hal_otp_chip_id(uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE]) {
+    pico_unique_board_id_t id;
+    pico_get_unique_board_id(&id);
+    memcpy(chip_id, id.id, FURI_HAL_OTP_CHIP_ID_SIZE);
 }
 
-static FuriHalOtpError furi_hal_otp_device_write_locked(const FuriHalOtpDevice* device) {
-    furi_check(device);
-    if(strnlen(device->name, FURI_HAL_OTP_DEVICE_NAME_SIZE) >= FURI_HAL_OTP_DEVICE_NAME_SIZE) {
-        return FuriHalOtpErrorInvalidArg;
+bool furi_hal_otp_valid(void) {
+    static uint32_t checked_generation = UINT32_MAX;
+    static bool valid = false;
+
+    furi_hal_otp_acquire();
+    if(checked_generation != furi_hal_otp_generation) {
+        FuriHalOtpBlock1Data b1;
+        FuriHalOtpBlock2Data b2;
+        FuriHalOtpBlock3Data b3;
+        valid = furi_hal_otp_block_read(FuriHalOtpBlock1, &b1, sizeof(b1)) && furi_hal_otp_block_read(FuriHalOtpBlock2, &b2, sizeof(b2)) &&
+                furi_hal_otp_block_read(FuriHalOtpBlock3, &b3, sizeof(b3)) && furi_hal_otp_signatures_ok(&b1, &b2, &b3);
+        checked_generation = furi_hal_otp_generation;
+    }
+    const bool result = valid;
+    furi_hal_otp_release();
+    return result;
+}
+
+// Writing a block
+
+static FuriHalOtpError furi_hal_otp_block_program_locked(FuriHalOtpBlock block, const void* data, size_t size) {
+    const FuriHalOtpBlockLayout* layout = furi_hal_otp_block_layout(block);
+    uint16_t want[FURI_HAL_OTP_BLOCK_MAX_SIZE / 2];
+    if(size != layout->size) return FuriHalOtpErrorInvalidBlock;
+    memcpy(want, data, size);
+    if(!furi_hal_otp_block_check(block, (const uint8_t*)want)) return FuriHalOtpErrorInvalidBlock;
+
+    for(FuriHalOtpBlock before = FuriHalOtpBlock1; before < block; before++) {
+        if(!furi_hal_otp_block_valid(before)) return FuriHalOtpErrorOrder;
     }
 
-    uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE] = {0};
-    uint8_t* p = payload;
-    memcpy(p, device->name, strlen(device->name)); // the rest stays 0
-    p += FURI_HAL_OTP_DEVICE_NAME_SIZE;
-    memcpy(p, &device->version, 2);
-    memcpy(p + 2, &device->target, 2);
-    memcpy(p + 4, &device->body, 2);
-    memcpy(p + 6, &device->connect, 2);
-    memcpy(p + 8, &device->timestamp, 8);
-
-    // The white label carries the same board id: one with another, finished
-    // or cut short, is refused before anything is written
-    if(furi_hal_otp_usb_white_label_board_id_differs(device->target, device->body, device->connect)) {
-        return FuriHalOtpErrorWhiteLabelMismatch;
+    char board_id[34];
+    if(block == FuriHalOtpBlock1) {
+        FuriHalOtpBlock1Data b1;
+        uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE];
+        memcpy(&b1, want, sizeof(b1));
+        furi_hal_otp_chip_id(chip_id);
+        if(memcmp(b1.chip_id, chip_id, sizeof(chip_id))) return FuriHalOtpErrorChipId;
+        // The white label carries the same board id: one with another,
+        // finished or cut short, is refused before anything is written
+        if(furi_hal_otp_usb_white_label_board_id_differs(b1.target, b1.body, b1.connect)) return FuriHalOtpErrorWhiteLabelMismatch;
+        snprintf(board_id, sizeof(board_id), OTP_BOARD_ID_FORMAT, (uint32_t)b1.target, (uint32_t)b1.body, (uint32_t)b1.connect);
+    } else if(block == FuriHalOtpBlock3) {
+        // Locked for good: only signatures that verify
+        FuriHalOtpBlock1Data b1;
+        FuriHalOtpBlock2Data b2;
+        FuriHalOtpBlock3Data b3;
+        memcpy(&b3, want, sizeof(b3));
+        if(!furi_hal_otp_block_read(FuriHalOtpBlock1, &b1, sizeof(b1)) || !furi_hal_otp_block_read(FuriHalOtpBlock2, &b2, sizeof(b2)) ||
+           !furi_hal_otp_signatures_ok(&b1, &b2, &b3)) {
+            return FuriHalOtpErrorSignature;
+        }
     }
 
-    FuriHalOtpError error = furi_hal_otp_block_write(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload);
-    if(error != FuriHalOtpErrorNone) return error;
+    FuriHalOtpError error = furi_hal_otp_block_write(layout->base_row, want, size / 2);
+    furi_hal_otp_generation++;
+    if(error != FuriHalOtpErrorNone || block != FuriHalOtpBlock1) return error;
 
     // A white label written before the locks existed is locked now
-    char board_id[34];
-    snprintf(board_id, sizeof(board_id), OTP_BOARD_ID_FORMAT, (uint32_t)device->target, (uint32_t)device->body, (uint32_t)device->connect);
     if(furi_hal_otp_usb_white_label_reads_back(board_id)) {
         return furi_hal_otp_usb_white_label_lock() ? FuriHalOtpErrorNone : FuriHalOtpErrorWhiteLabelFailed;
     }
-    FuriHalOtpUsbWhiteLabelError wl_error = furi_hal_otp_write_usb_white_label(device->target, device->body, device->connect);
+    FuriHalOtpBlock1Data b1;
+    memcpy(&b1, want, sizeof(b1));
+    FuriHalOtpUsbWhiteLabelError wl_error = furi_hal_otp_write_usb_white_label(b1.target, b1.body, b1.connect);
     if(wl_error != FuriHalOtpUsbWhiteLabelErrorNone) {
         FURI_LOG_E(TAG, "USB white label: %s", furi_hal_otp_usb_white_label_error_to_string(wl_error));
         return FuriHalOtpErrorWhiteLabelFailed;
@@ -775,49 +843,38 @@ static FuriHalOtpError furi_hal_otp_device_write_locked(const FuriHalOtpDevice* 
     return FuriHalOtpErrorNone;
 }
 
-// OTP_MAC
-
-const char* furi_hal_otp_mac_name(FuriHalOtpMac mac) {
-    static const char* const names[FuriHalOtpMacCount] = {
-        [FuriHalOtpMacEth0] = "eth0",
-        [FuriHalOtpMacEth1] = "eth1",
-        [FuriHalOtpMacUsb] = "usb",
-        [FuriHalOtpMacWifi24Sta] = "wifi_2g4_sta",
-        [FuriHalOtpMacWifi5Sta] = "wifi_5g_sta",
-        [FuriHalOtpMacWifi24Ap] = "wifi_2g4_ap",
-        [FuriHalOtpMacWifi5Ap] = "wifi_5g_ap",
-        [FuriHalOtpMacBt] = "bt",
-    };
-    furi_check(mac < FuriHalOtpMacCount);
-    return names[mac];
-}
-
-bool furi_hal_otp_mac_valid(void) {
-    uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE];
-    return furi_hal_otp_block_read(FURI_HAL_OTP_MAC_ROW, FURI_HAL_OTP_MAC_MAGIC, payload);
-}
-
-bool furi_hal_otp_mac_read(FuriHalOtpMacs* macs) {
-    furi_check(macs);
-    static_assert(sizeof(macs->mac) == OTP_BLOCK_PAYLOAD_SIZE, "OTP_MAC payload size");
-    return furi_hal_otp_block_read(FURI_HAL_OTP_MAC_ROW, FURI_HAL_OTP_MAC_MAGIC, (uint8_t*)macs->mac);
-}
-
-static FuriHalOtpError furi_hal_otp_mac_write_locked(const FuriHalOtpMacs* macs) {
-    furi_check(macs);
-    return furi_hal_otp_block_write(FURI_HAL_OTP_MAC_ROW, FURI_HAL_OTP_MAC_MAGIC, (const uint8_t*)macs->mac);
-}
-
-FuriHalOtpError furi_hal_otp_device_write(const FuriHalOtpDevice* device) {
+FuriHalOtpError furi_hal_otp_block_program(FuriHalOtpBlock block, const void* data, size_t size) {
+    if(block < FuriHalOtpBlock1 || block > FuriHalOtpBlockCount) return FuriHalOtpErrorInvalidBlock;
     furi_hal_otp_acquire();
-    FuriHalOtpError error = furi_hal_otp_device_write_locked(device);
+    FuriHalOtpError error = furi_hal_otp_block_program_locked(block, data, size);
     furi_hal_otp_release();
     return error;
 }
 
-FuriHalOtpError furi_hal_otp_mac_write(const FuriHalOtpMacs* macs) {
-    furi_hal_otp_acquire();
-    FuriHalOtpError error = furi_hal_otp_mac_write_locked(macs);
-    furi_hal_otp_release();
-    return error;
+const char* furi_hal_otp_error_to_string(FuriHalOtpError error) {
+    switch(error) {
+    case FuriHalOtpErrorNone:
+        return "None";
+    case FuriHalOtpErrorInvalidBlock:
+        return "Not a valid block: size, magic, index, version or CRC";
+    case FuriHalOtpErrorOrder:
+        return "An earlier block is not written";
+    case FuriHalOtpErrorChipId:
+        return "Block 1 is made for another chip";
+    case FuriHalOtpErrorSignature:
+        return "Unknown key, or a signature that does not verify";
+    case FuriHalOtpErrorAlreadyWritten:
+        return "Already written with other data";
+    case FuriHalOtpErrorNotBlank:
+        return "Holds other data from a write cut short";
+    case FuriHalOtpErrorWriteFailed:
+        return "Write failed";
+    case FuriHalOtpErrorLockFailed:
+        return "Written, but locking its pages failed";
+    case FuriHalOtpErrorWhiteLabelFailed:
+        return "Block 1 written, USB white label failed";
+    case FuriHalOtpErrorWhiteLabelMismatch:
+        return "The USB white label holds another board id";
+    }
+    return "Unknown error";
 }
