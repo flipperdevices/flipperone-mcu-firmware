@@ -398,7 +398,8 @@ static void cli_command_otp_info(void) {
 }
 
 static bool cli_command_otp_read_u16(FuriString* args, FuriString* word, uint16_t* value) {
-    return args_read_string_and_trim(args, word) && strint_to_uint16(furi_string_get_cstr(word), NULL, value, 10) == StrintParseNoError;
+    const char* end = NULL;
+    return args_read_string_and_trim(args, word) && strint_to_uint16(furi_string_get_cstr(word), &end, value, 10) == StrintParseNoError && *end == '\0';
 }
 
 static bool cli_command_otp_name_ok(FuriString* name) {
@@ -427,7 +428,9 @@ static void cli_command_otp_device(FuriString* args) {
             printf("VERSION, TARGET, BODY and CONNECT are numbers 0..65535\r\n");
             break;
         }
-        if(!args_read_string_and_trim(args, word) || strint_to_uint64(furi_string_get_cstr(word), NULL, &device.timestamp, 10) != StrintParseNoError) {
+        const char* end = NULL;
+        if(!args_read_string_and_trim(args, word) || strint_to_uint64(furi_string_get_cstr(word), &end, &device.timestamp, 10) != StrintParseNoError ||
+           *end != '\0') {
             printf("Invalid DATE\r\n");
             break;
         }
