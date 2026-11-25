@@ -3,19 +3,19 @@
     "configurations": [
         {
             "name": "Debug",
-            "cwd": "${userHome}/.flipperone-mcu-toolchain/v1/tools/openocd/scripts",
+            "cwd": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/scripts",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/openocd/openocd",
-            "armToolchainPath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/arm-none-eabi-gcc/bin",
+            "serverpath": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/openocd",
+            "armToolchainPath": "${userHome}/.flipperone-mcu-toolchain/current/tools/arm-none-eabi-gcc/bin",
             "device": "RP2350",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
                 "${workspaceFolder}/scripts/agent_tools/openocd/flipperone-mcu.cfg"
             ],
-            "svdFile": "${userHome}/.flipperone-mcu-toolchain/v1/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
+            "svdFile": "${userHome}/.flipperone-mcu-toolchain/current/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
             "runToEntryPoint": "main",
             "overrideLaunchCommands": [
                 "monitor reset halt",
@@ -47,19 +47,19 @@
         },
         {
             "name": "Debug Attach",
-            "cwd": "${userHome}/.flipperone-mcu-toolchain/v1/tools/openocd/scripts",
+            "cwd": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/scripts",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/openocd/openocd",
-            "armToolchainPath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/arm-none-eabi-gcc/bin",
+            "serverpath": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/openocd",
+            "armToolchainPath": "${userHome}/.flipperone-mcu-toolchain/current/tools/arm-none-eabi-gcc/bin",
             "device": "RP2350",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
                 "target/rp2350.cfg"
             ],
-            "svdFile": "${userHome}/.flipperone-mcu-toolchain/v1/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
+            "svdFile": "${userHome}/.flipperone-mcu-toolchain/current/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
             "openOCDLaunchCommands": [
                 "adapter speed 5000",
                 "rp2350.cm0 configure -event gdb-detach { resume }",
@@ -83,19 +83,19 @@
         },
         {
             "name": "Debug (FreeRTOS)",
-            "cwd": "${userHome}/.flipperone-mcu-toolchain/v1/tools/openocd/scripts",
+            "cwd": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/scripts",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/openocd/openocd",
-            "armToolchainPath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/arm-none-eabi-gcc/bin",
+            "serverpath": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/openocd",
+            "armToolchainPath": "${userHome}/.flipperone-mcu-toolchain/current/tools/arm-none-eabi-gcc/bin",
             "device": "RP2350",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
                 "${workspaceFolder}/scripts/agent_tools/openocd/flipperone-mcu.cfg"
             ],
-            "svdFile": "${userHome}/.flipperone-mcu-toolchain/v1/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
+            "svdFile": "${userHome}/.flipperone-mcu-toolchain/current/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
             "rtos": "FreeRTOS",
             "runToEntryPoint": "main",
             "overrideLaunchCommands": [
@@ -128,19 +128,19 @@
         },
         {
             "name": "Debug Attach (FreeRTOS)",
-            "cwd": "${userHome}/.flipperone-mcu-toolchain/v1/tools/openocd/scripts",
+            "cwd": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/scripts",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/openocd/openocd",
-            "armToolchainPath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/arm-none-eabi-gcc/bin",
+            "serverpath": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/openocd",
+            "armToolchainPath": "${userHome}/.flipperone-mcu-toolchain/current/tools/arm-none-eabi-gcc/bin",
             "device": "RP2350",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
                 "target/rp2350.cfg"
             ],
-            "svdFile": "${userHome}/.flipperone-mcu-toolchain/v1/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
+            "svdFile": "${userHome}/.flipperone-mcu-toolchain/current/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
             "rtos": "FreeRTOS",
             "openOCDLaunchCommands": [
                 "adapter speed 5000",

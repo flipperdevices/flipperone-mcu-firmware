@@ -9,8 +9,8 @@
 # against toolchain.json and unpacks it into
 # $env:FLIPPERONE_TOOLCHAIN_HOME (default ~\.flipperone-mcu-toolchain)\<tag>\.
 # Then, and on every later run, it dot-sources that bundle's own fbtenv.ps1, which
-# puts the tools first on PATH and sets PICO_SDK_PATH and the rest. Running it again
-# is harmless.
+# puts the tools first on PATH and sets PICO_SDK_PATH and the rest, and points the
+# `current` junction beside it at <tag> for IDE configs. Running it again is harmless.
 #
 # Offline: set $env:FLIPPERONE_TOOLCHAIN_ARCHIVE to an already downloaded archive. It
 # is checked against toolchain.json all the same.
@@ -82,6 +82,20 @@ $_foBundle = & {
             # Moved into a copy installed meanwhile
             Remove-Item -LiteralPath (Join-Path $dir (Split-Path -Leaf $partial)) -Recurse -Force -ErrorAction SilentlyContinue
         }
+    }
+
+    # A junction needs no admin rights or developer mode, unlike a symlink
+    $current = Join-Path $home_ 'current'
+    try {
+        $link = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
+        if ($link -and -not ($link.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            Write-Warning "fbtenv.ps1: $current is not a link, left alone"
+        } elseif (-not $link -or @($link.Target)[0] -ne $dir) {
+            if ($link) { [IO.Directory]::Delete($current) }  # the link only, not its target
+            New-Item -ItemType Junction -Path $current -Target $dir | Out-Null
+        }
+    } catch {
+        Write-Warning "fbtenv.ps1: cannot point $current at ${dir}: $_"
     }
     $dir
 }

@@ -1,6 +1,6 @@
 {
     "cmake.useCMakePresets": "always",
-    "cmake.cmakePath": "${userHome}/.flipperone-mcu-toolchain/v1/tools/cmake/bin/cmake",
+    "cmake.cmakePath": "${userHome}/.flipperone-mcu-toolchain/current/tools/cmake/bin/cmake",
     "cmake.configureOnEdit": false,
     "cmake.automaticReconfigure": false,
     "cmake.configureOnOpen": false,

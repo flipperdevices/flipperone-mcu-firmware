@@ -92,11 +92,9 @@ def test_a_later_arm_release_of_the_same_gcc_is_kept():
     assert toolchain.update_copies(pin, cmakelists) == cmakelists
 
 
-def test_template_paths_follow_the_pin():
-    pin = toolchain.pin_from_release(release('v7'))
-    templates = {'a.json': '~/.flipperone-mcu-toolchain/v6/x ~/.flipperone-mcu-toolchain/v7/y', 'b.json': '{}'}
-    assert toolchain.template_problems(pin, templates) == ['vscode_template/a.json: toolchain v6, toolchain.json says v7']
-    assert toolchain.template_problems(pin, toolchain.update_templates(pin, templates)) == []
+def test_templates_use_the_current_link():
+    templates = {'a.json': '~/.flipperone-mcu-toolchain/v7/x', 'b.json': '~/.flipperone-mcu-toolchain/current/x'}
+    assert [p.split(':')[0] for p in toolchain.template_problems(templates)] == ['vscode_template/a.json']
 
 
 @pytest.fixture
@@ -104,10 +102,8 @@ def repo(tmp_path, monkeypatch):
     """A scratch tree with the pin files, for update."""
     monkeypatch.setattr(toolchain, 'PIN', tmp_path / 'toolchain.json')
     monkeypatch.setattr(toolchain, 'CMAKELISTS', tmp_path / 'CMakeLists.txt')
-    monkeypatch.setattr(toolchain, 'VSCODE_TEMPLATE', tmp_path)
     toolchain.PIN.write_text(toolchain.render(toolchain.pin_from_release(release('v7'))))
     toolchain.CMAKELISTS.write_text(CMAKELISTS)
-    (tmp_path / 'launch.json').write_text('"${userHome}/.flipperone-mcu-toolchain/v7/tools"')
     return tmp_path
 
 
@@ -118,7 +114,6 @@ def test_update_writes_the_pin_and_its_copies(repo, monkeypatch, capsys):
     assert json.loads(toolchain.PIN.read_text())['toolchain'] == 'v8'
     assert json.loads(toolchain.PIN.read_text())['image'].endswith('e' * 64)
     assert 'v7 -> v8' in capsys.readouterr().out
-    assert (repo / 'launch.json').read_text() == '"${userHome}/.flipperone-mcu-toolchain/v8/tools"'
     assert toolchain.main(['update']) == 0
     assert 'already at v8' in capsys.readouterr().out
 
@@ -179,7 +174,8 @@ def test_bootstrap_installs_once_then_reuses(shell, checkout, tmp_path):
     assert 'unpacking' in first.stderr
     installed = tmp_path / 'tc' / 'v7'
     assert (installed / 'fbtenv.sh').is_file()
-    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['v7']  # no partial left over
+    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['current', 'v7']  # no partial left over
+    assert (tmp_path / 'tc' / 'current').readlink() == Path('v7')
 
     archive.unlink()  # a second run needs no archive
     again = source(shell, tree, archive, tmp_path, '; type _fo_bootstrap >/dev/null 2>&1 && echo leaked')
@@ -193,7 +189,24 @@ def test_bootstrap_replaces_an_unfinished_install(shell, checkout, tmp_path):
     (tmp_path / 'tc' / 'v7' / 'leftover').mkdir(parents=True)
     assert 'rc=0 v7' in source(shell, tree, archive, tmp_path).stdout
     assert sorted(p.name for p in (tmp_path / 'tc' / 'v7').iterdir()) == ['.archive-sha256', 'fbtenv.sh']
-    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['v7']
+    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['current', 'v7']
+
+
+@pytest.mark.parametrize('shell', SHELLS)
+def test_bootstrap_moves_the_current_link(shell, checkout, tmp_path):
+    tree, archive = checkout
+    (tmp_path / 'tc').mkdir()
+    (tmp_path / 'tc' / 'current').symlink_to('v6')
+    assert 'rc=0 v7' in source(shell, tree, archive, tmp_path).stdout
+    assert (tmp_path / 'tc' / 'current').readlink() == Path('v7')
+
+
+def test_bootstrap_leaves_a_real_current_directory_alone(checkout, tmp_path):
+    tree, archive = checkout
+    (tmp_path / 'tc' / 'current').mkdir(parents=True)
+    result = source('bash', tree, archive, tmp_path)
+    assert 'rc=0 v7' in result.stdout and 'not a link' in result.stderr
+    assert list((tmp_path / 'tc' / 'current').iterdir()) == []
 
 
 @pytest.mark.parametrize('shell', SHELLS)
