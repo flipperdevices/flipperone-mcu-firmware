@@ -604,8 +604,6 @@ static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderD
         break;
     }
     case ImageFormatMono1: {
-        const Color ink = image_data->backgroundColor.a ? render_color(image_data->backgroundColor).color : 0x00;
-        const Color paper = 0xFF;
         const uint8_t* src = (const uint8_t*)image->data + src_y0 * mono1_stride;
         const uint8_t* mask = image->mask ? image->mask + src_y0 * mono1_stride : NULL;
         Color* dst = &canvas->data[y0 * canvas->width + x0];
@@ -614,7 +612,7 @@ static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderD
             for(int32_t i = 0, sx = src_x0; i < x1 - x0; i++, sx++) {
                 const uint8_t bit = 0x80 >> (sx & 7);
                 if(mask && !(mask[sx >> 3] & bit)) continue;
-                dst[i] = (src[sx >> 3] & bit) ? ink : paper;
+                dst[i] = (src[sx >> 3] & bit) ? 0x00 : 0xFF;
             }
             src += mono1_stride;
             if(mask) mask += mono1_stride;
@@ -795,7 +793,6 @@ Image canvas_to_image(Canvas* canvas) {
         .height = canvas->height,
         .format = ImageFormatRawGray8,
         .data = (uint8_t*)canvas->data,
-        .mask = NULL,
     };
     return image;
 }

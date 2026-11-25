@@ -6,9 +6,7 @@ typedef enum {
     /** 1 byte per pixel, 0x00 black .. 0xFF white */
     ImageFormatRawGray8,
     /** 1 bit per pixel, a set bit is black (ink), a clear bit is white.
-     * Rows are packed most significant bit first and padded to a whole byte.
-     * Drawn with a tint (the image element's backgroundColor with a non-zero
-     * alpha), the ink takes the tint's color instead of black. */
+     * Rows are packed most significant bit first and padded to a whole byte. */
     ImageFormatMono1,
 } ImageFormat;
 

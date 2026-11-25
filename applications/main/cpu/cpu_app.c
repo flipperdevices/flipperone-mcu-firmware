@@ -127,18 +127,13 @@ static bool cpu_app_model_placeholder(CpuAppModel* model, void* context) {
  * keeping the model in sync ensures a Clay redraw always uses the latest
  * frame, e.g. when the menu is opened over it. */
 static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
-    with_view_model(
-        instance->display_view,
-        CpuAppModel * model,
-        {
-            // A placeholder may have been 1 bit or masked
-            model->frame.format = ImageFormatRawGray8;
-            model->frame.mask = NULL;
-            model->frame.data = data;
-            model->frame.width = JD9853_WIDTH;
-            model->frame.height = JD9853_HEIGHT;
-        },
-        false);
+    const Image frame = {
+        .format = ImageFormatRawGray8,
+        .width = JD9853_WIDTH,
+        .height = JD9853_HEIGHT,
+        .data = data,
+    };
+    with_view_model(instance->display_view, CpuAppModel * model, { model->frame = frame; }, false);
 }
 
 static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* model, void* context), void* context) {
