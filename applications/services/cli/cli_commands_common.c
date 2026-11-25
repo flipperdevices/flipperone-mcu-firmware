@@ -436,6 +436,8 @@ static void cli_command_otp_device(FuriString* args) {
         }
 
         FuriHalOtpError error = furi_hal_otp_device_write(&device);
+        // furi_hal_version reads OTP_DEVICE once at start
+        if(error == FuriHalOtpErrorNone) furi_hal_version_init();
         printf("Device: %s\r\n", error == FuriHalOtpErrorNone ? "written and locked, USB white label too" : furi_hal_otp_error_to_string(error));
     } while(0);
 
@@ -445,11 +447,14 @@ static void cli_command_otp_device(FuriString* args) {
 static bool cli_command_otp_parse_mac(const char* str, uint8_t mac[FURI_HAL_OTP_MAC_SIZE]) {
     // aa:bb:cc:dd:ee:ff
     if(strlen(str) != FURI_HAL_OTP_MAC_SIZE * 3 - 1) return false;
+    bool zero = true;
     for(size_t i = 0; i < FURI_HAL_OTP_MAC_SIZE; i++) {
         if(i > 0 && str[i * 3 - 1] != ':') return false;
         if(!args_char_to_hex(str[i * 3], str[i * 3 + 1], &mac[i])) return false;
+        if(mac[i]) zero = false;
     }
-    return true;
+    // An interface address: not all zero, not multicast
+    return !zero && !(mac[0] & 0x01);
 }
 
 static void cli_command_otp_mac(FuriString* args) {

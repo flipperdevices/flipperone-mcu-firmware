@@ -48,11 +48,12 @@ void furi_hal_otp_init(void);
 typedef enum {
     FuriHalOtpErrorNone,
     FuriHalOtpErrorInvalidArg, /* A value does not fit the block */
-    FuriHalOtpErrorAlreadyWritten, /* The block is written: OTP is written once */
-    FuriHalOtpErrorNotBlank, /* The block holds data but no magic: a write was cut short */
+    FuriHalOtpErrorAlreadyWritten, /* The block is written with other data */
+    FuriHalOtpErrorNotBlank, /* No magic, and rows hold other data than this write's */
     FuriHalOtpErrorWriteFailed,
     FuriHalOtpErrorLockFailed, /* Written, but its page is not locked */
     FuriHalOtpErrorWhiteLabelFailed, /* OTP_DEVICE written, the USB white label not */
+    FuriHalOtpErrorWhiteLabelMismatch, /* The white label has another board id: nothing written */
 } FuriHalOtpError;
 
 const char* furi_hal_otp_error_to_string(FuriHalOtpError error);
@@ -76,9 +77,10 @@ bool furi_hal_otp_device_valid(void);
  */
 bool furi_hal_otp_device_read(FuriHalOtpDevice* device);
 
-/** Write OTP_DEVICE once and lock its page, then the USB white label with the
- * same board id "F<target>B<body>C<connect>" unless it is there, and lock its
- * pages. Irreversible. */
+/** Write OTP_DEVICE and lock its page, then the USB white label with the same
+ * board id "F<target>B<body>C<connect>" unless it is there, and lock its pages.
+ * Irreversible. A call cut short is finished by calling again with the same
+ * values. */
 FuriHalOtpError furi_hal_otp_device_write(const FuriHalOtpDevice* device);
 
 /* OTP_MAC */
@@ -110,7 +112,8 @@ bool furi_hal_otp_mac_valid(void);
  */
 bool furi_hal_otp_mac_read(FuriHalOtpMacs* macs);
 
-/** Write OTP_MAC once and lock its page. Irreversible. */
+/** Write OTP_MAC and lock its page. Irreversible. A call cut short is finished
+ * by calling again with the same values. */
 FuriHalOtpError furi_hal_otp_mac_write(const FuriHalOtpMacs* macs);
 
 /* USB white label */
