@@ -138,8 +138,8 @@ bool furi_hal_otp_usb_white_label_valid(void) {
     return (buf & OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS) != 0;
 }
 
-FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t firmware_id, uint32_t body_id, uint32_t connectivity_id) {
-    FuriString* board_id_str = furi_string_alloc_printf(OTP_BOARD_ID_FORMAT, firmware_id, body_id, connectivity_id);
+FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t target, uint32_t body, uint32_t connect) {
+    FuriString* board_id_str = furi_string_alloc_printf(OTP_BOARD_ID_FORMAT, target, body, connect);
     FuriHalOtpUsbWhiteLabelError error = FuriHalOtpUsbWhiteLabelErrorNone;
 
     do {
@@ -263,6 +263,11 @@ FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t firmwar
             error = FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR2Failed;
             break;
         }
+
+        if(!furi_hal_otp_usb_white_label_lock()) {
+            error = FuriHalOtpUsbWhiteLabelErrorLockFailed;
+            break;
+        }
     } while(false);
 
     furi_string_free(board_id_str);
@@ -342,6 +347,205 @@ const char* furi_hal_otp_usb_white_label_error_to_string(FuriHalOtpUsbWhiteLabel
         return "Write USB boot flags R1 failed";
     case FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR2Failed:
         return "Write USB boot flags R2 failed";
+    case FuriHalOtpUsbWhiteLabelErrorLockFailed:
+        return "Lock white label pages failed";
     }
     return "Unknown error";
+}
+
+// Page locks
+
+#define OTP_PAGE_ROWS NUM_OTP_PAGE_ROWS
+
+// PAGEn_LOCK1: read only for Secure, Non-secure and bootloader access, in each
+// of the row's three majority-vote copies
+#define OTP_PAGE_LOCK1_READ_ONLY                                                          \
+    ((OTP_DATA_PAGE0_LOCK1_LOCK_S_VALUE_READ_ONLY << OTP_DATA_PAGE0_LOCK1_LOCK_S_LSB) |   \
+     (OTP_DATA_PAGE0_LOCK1_LOCK_NS_VALUE_READ_ONLY << OTP_DATA_PAGE0_LOCK1_LOCK_NS_LSB) | \
+     (OTP_DATA_PAGE0_LOCK1_LOCK_BL_VALUE_READ_ONLY << OTP_DATA_PAGE0_LOCK1_LOCK_BL_LSB))
+#define OTP_PAGE_LOCK1_ROW_VALUE (OTP_PAGE_LOCK1_READ_ONLY * 0x010101u)
+
+static bool furi_hal_otp_lock_page(uint32_t page) {
+    furi_check(page < NUM_OTP_PAGES);
+    // Permanent from the next reset. Lock bits only go one way, so locking a
+    // locked page again writes the same bits and succeeds.
+    const uint16_t row = OTP_DATA_PAGE0_LOCK1_ROW + page * (OTP_DATA_PAGE1_LOCK1_ROW - OTP_DATA_PAGE0_LOCK1_ROW);
+    if(!furi_hal_otp_write_raw(row, OTP_PAGE_LOCK1_ROW_VALUE)) {
+        return false;
+    }
+    // And for this boot
+    otp_hw->sw_lock[page] = (OTP_SW_LOCK0_SEC_VALUE_READ_ONLY << OTP_SW_LOCK0_SEC_LSB) | (OTP_SW_LOCK0_NSEC_VALUE_READ_ONLY << OTP_SW_LOCK0_NSEC_LSB);
+    return true;
+}
+
+static bool furi_hal_otp_lock_rows(uint32_t first_row, uint32_t row_count) {
+    for(uint32_t page = first_row / OTP_PAGE_ROWS; page <= (first_row + row_count - 1) / OTP_PAGE_ROWS; page++) {
+        if(!furi_hal_otp_lock_page(page)) {
+            FURI_LOG_E(TAG, "Locking OTP page %lu failed", page);
+            return false;
+        }
+    }
+    return true;
+}
+
+// The white label and the longest board id OTP_BOARD_ID_FORMAT makes:
+// "F%luB%luC%lu" with 10 digits each is 33 chars, 17 rows
+#define WL_ROWS (WL_OFF_BOARD_ID + 17)
+static_assert(WL_BASE_ROW % OTP_PAGE_ROWS + WL_ROWS <= 2 * OTP_PAGE_ROWS, "USB white label outgrows pages 16..17");
+
+bool furi_hal_otp_usb_white_label_lock(void) {
+    return furi_hal_otp_lock_rows(WL_BASE_ROW, WL_ROWS);
+}
+
+// OTP_DEVICE and OTP_MAC blocks
+
+#define OTP_BLOCK_HEADER_ROWS  2
+#define OTP_BLOCK_PAYLOAD_SIZE 48
+#define OTP_BLOCK_ROWS         (OTP_BLOCK_HEADER_ROWS + OTP_BLOCK_PAYLOAD_SIZE / 2)
+
+static_assert(FURI_HAL_OTP_DEVICE_NAME_SIZE + 4 * 2 + 8 == OTP_BLOCK_PAYLOAD_SIZE, "OTP_DEVICE payload size");
+static_assert(FuriHalOtpMacCount * FURI_HAL_OTP_MAC_SIZE == OTP_BLOCK_PAYLOAD_SIZE, "OTP_MAC payload size");
+static_assert(FURI_HAL_OTP_DEVICE_ROW / OTP_PAGE_ROWS != FURI_HAL_OTP_MAC_ROW / OTP_PAGE_ROWS, "OTP blocks share a page");
+static_assert(FURI_HAL_OTP_DEVICE_ROW % OTP_PAGE_ROWS + OTP_BLOCK_ROWS <= OTP_PAGE_ROWS, "OTP_DEVICE spans pages");
+static_assert(FURI_HAL_OTP_MAC_ROW % OTP_PAGE_ROWS + OTP_BLOCK_ROWS <= OTP_PAGE_ROWS, "OTP_MAC spans pages");
+
+static bool furi_hal_otp_block_read_rows(uint16_t base_row, uint16_t rows[OTP_BLOCK_ROWS]) {
+    otp_cmd_t cmd = {.flags = base_row | OTP_CMD_ECC_BITS};
+    int rc = rom_func_otp_access((uint8_t*)rows, OTP_BLOCK_ROWS * sizeof(uint16_t), cmd);
+    if(rc != BOOTROM_OK) {
+        FURI_LOG_E(TAG, "OTP block read at 0x%04x failed: %d", base_row, rc);
+        return false;
+    }
+    return true;
+}
+
+// Payload of a block of a known layout, or false
+static bool furi_hal_otp_block_read(uint16_t base_row, uint16_t magic, uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE]) {
+    uint16_t rows[OTP_BLOCK_ROWS];
+    memset(payload, 0, OTP_BLOCK_PAYLOAD_SIZE);
+    if(!furi_hal_otp_block_read_rows(base_row, rows)) return false;
+    if(rows[0] != magic) return false;
+    if(rows[1] != FURI_HAL_OTP_LAYOUT_VERSION) {
+        FURI_LOG_E(TAG, "OTP block at 0x%04x: unknown layout %u", base_row, rows[1]);
+        return false;
+    }
+    memcpy(payload, &rows[OTP_BLOCK_HEADER_ROWS], OTP_BLOCK_PAYLOAD_SIZE);
+    return true;
+}
+
+static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, uint16_t magic, const uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE]) {
+    uint16_t rows[OTP_BLOCK_ROWS];
+    if(!furi_hal_otp_block_read_rows(base_row, rows)) return FuriHalOtpErrorWriteFailed;
+    if(rows[0] == magic) return FuriHalOtpErrorAlreadyWritten;
+    for(size_t i = 0; i < OTP_BLOCK_ROWS; i++) {
+        if(rows[i]) return FuriHalOtpErrorNotBlank;
+    }
+
+    // Layout version and payload first, the magic last
+    rows[1] = FURI_HAL_OTP_LAYOUT_VERSION;
+    memcpy(&rows[OTP_BLOCK_HEADER_ROWS], payload, OTP_BLOCK_PAYLOAD_SIZE);
+    otp_cmd_t cmd = {.flags = (base_row + 1) | OTP_CMD_ECC_BITS | OTP_CMD_WRITE_BITS};
+    int rc = rom_func_otp_access((uint8_t*)&rows[1], (OTP_BLOCK_ROWS - 1) * sizeof(uint16_t), cmd);
+    if(rc != BOOTROM_OK) {
+        FURI_LOG_E(TAG, "OTP block write at 0x%04x failed: %d", base_row, rc);
+        return FuriHalOtpErrorWriteFailed;
+    }
+    if(!furi_hal_otp_write_ecc(base_row, magic)) return FuriHalOtpErrorWriteFailed;
+
+    if(!furi_hal_otp_lock_rows(base_row, OTP_BLOCK_ROWS)) return FuriHalOtpErrorLockFailed;
+    return FuriHalOtpErrorNone;
+}
+
+const char* furi_hal_otp_error_to_string(FuriHalOtpError error) {
+    switch(error) {
+    case FuriHalOtpErrorNone:
+        return "None";
+    case FuriHalOtpErrorInvalidArg:
+        return "Invalid value";
+    case FuriHalOtpErrorAlreadyWritten:
+        return "Already written";
+    case FuriHalOtpErrorNotBlank:
+        return "Not blank: an earlier write was cut short";
+    case FuriHalOtpErrorWriteFailed:
+        return "Write failed";
+    case FuriHalOtpErrorLockFailed:
+        return "Written, but locking its page failed";
+    }
+    return "Unknown error";
+}
+
+// OTP_DEVICE: name, version, target, body, connect, timestamp
+
+bool furi_hal_otp_device_valid(void) {
+    uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE];
+    return furi_hal_otp_block_read(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload);
+}
+
+bool furi_hal_otp_device_read(FuriHalOtpDevice* device) {
+    furi_check(device);
+    uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE];
+    memset(device, 0, sizeof(*device));
+    if(!furi_hal_otp_block_read(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload)) return false;
+
+    const uint8_t* p = payload;
+    memcpy(device->name, p, FURI_HAL_OTP_DEVICE_NAME_SIZE);
+    device->name[FURI_HAL_OTP_DEVICE_NAME_SIZE - 1] = '\0';
+    p += FURI_HAL_OTP_DEVICE_NAME_SIZE;
+    memcpy(&device->version, p, 2);
+    memcpy(&device->target, p + 2, 2);
+    memcpy(&device->body, p + 4, 2);
+    memcpy(&device->connect, p + 6, 2);
+    memcpy(&device->timestamp, p + 8, 8);
+    return true;
+}
+
+FuriHalOtpError furi_hal_otp_device_write(const FuriHalOtpDevice* device) {
+    furi_check(device);
+    if(strnlen(device->name, FURI_HAL_OTP_DEVICE_NAME_SIZE) >= FURI_HAL_OTP_DEVICE_NAME_SIZE) {
+        return FuriHalOtpErrorInvalidArg;
+    }
+
+    uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE] = {0};
+    uint8_t* p = payload;
+    memcpy(p, device->name, strlen(device->name)); // the rest stays 0
+    p += FURI_HAL_OTP_DEVICE_NAME_SIZE;
+    memcpy(p, &device->version, 2);
+    memcpy(p + 2, &device->target, 2);
+    memcpy(p + 4, &device->body, 2);
+    memcpy(p + 6, &device->connect, 2);
+    memcpy(p + 8, &device->timestamp, 8);
+    return furi_hal_otp_block_write(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload);
+}
+
+// OTP_MAC
+
+const char* furi_hal_otp_mac_name(FuriHalOtpMac mac) {
+    static const char* const names[FuriHalOtpMacCount] = {
+        [FuriHalOtpMacEth0] = "eth0",
+        [FuriHalOtpMacEth1] = "eth1",
+        [FuriHalOtpMacUsb] = "usb",
+        [FuriHalOtpMacWifi24Sta] = "wifi_2g4_sta",
+        [FuriHalOtpMacWifi5Sta] = "wifi_5g_sta",
+        [FuriHalOtpMacWifi24Ap] = "wifi_2g4_ap",
+        [FuriHalOtpMacWifi5Ap] = "wifi_5g_ap",
+        [FuriHalOtpMacBt] = "bt",
+    };
+    furi_check(mac < FuriHalOtpMacCount);
+    return names[mac];
+}
+
+bool furi_hal_otp_mac_valid(void) {
+    uint8_t payload[OTP_BLOCK_PAYLOAD_SIZE];
+    return furi_hal_otp_block_read(FURI_HAL_OTP_MAC_ROW, FURI_HAL_OTP_MAC_MAGIC, payload);
+}
+
+bool furi_hal_otp_mac_read(FuriHalOtpMacs* macs) {
+    furi_check(macs);
+    static_assert(sizeof(macs->mac) == OTP_BLOCK_PAYLOAD_SIZE, "OTP_MAC payload size");
+    return furi_hal_otp_block_read(FURI_HAL_OTP_MAC_ROW, FURI_HAL_OTP_MAC_MAGIC, (uint8_t*)macs->mac);
+}
+
+FuriHalOtpError furi_hal_otp_mac_write(const FuriHalOtpMacs* macs) {
+    furi_check(macs);
+    return furi_hal_otp_block_write(FURI_HAL_OTP_MAC_ROW, FURI_HAL_OTP_MAC_MAGIC, (const uint8_t*)macs->mac);
 }

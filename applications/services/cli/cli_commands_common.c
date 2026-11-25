@@ -10,6 +10,8 @@
 #include <led/led.h>
 #include <furi_hal_clock.h>
 #include <furi_hal_otp.h>
+#include <toolbox/strint.h>
+#include <ctype.h>
 #include <furi_hal_nvm.h>
 
 void cli_command_uptime(PipeSide* pipe, FuriString* args, void* context) {
@@ -354,55 +356,154 @@ void cli_command_clock_out(PipeSide* pipe, FuriString* args, void* context) {
     furi_hal_clock_out_to_gpio13(cli_clock_sources[source], (float)div);
 }
 
-static void cli_command_otp_help(PipeSide* pipe, FuriString* args, void* context) {
-    UNUSED(pipe);
-    UNUSED(args);
-    UNUSED(context);
+static void cli_command_otp_help(void) {
     printf(
-        "otp <OTP_ACTION>\r\n"
-        "Where <OTP_ACTION> is:\r\n"
-        "\twhitelabel <FIRMWARE_ID> <BODY_ID> <CONNECTIVITY_ID>\r\n"
-        "");
+        "otp info\r\n"
+        "otp device <NAME> <VERSION> <TARGET> <BODY> <CONNECT> <DATE>\r\n"
+        "\tNAME: up to %u chars of [A-Za-z0-9._-]; DATE: seconds since the epoch.\r\n"
+        "\tAlso writes the USB white label (board id F<TARGET>B<BODY>C<CONNECT>) if it is not there.\r\n"
+        "otp mac <ETH0> <ETH1> <USB> <WIFI_2G4_STA> <WIFI_5G_STA> <WIFI_2G4_AP> <WIFI_5G_AP> <BT>\r\n"
+        "\teach as aa:bb:cc:dd:ee:ff\r\n"
+        "device and mac write OTP once and lock it: this cannot be undone.\r\n",
+        FURI_HAL_OTP_DEVICE_NAME_SIZE - 1);
+}
+
+static void cli_command_otp_info(void) {
+    printf("USB white label: %s\r\n", furi_hal_otp_usb_white_label_valid() ? "written" : "not written");
+
+    FuriHalOtpDevice device;
+    if(furi_hal_otp_device_read(&device)) {
+        printf(
+            "Device: %s, version %u, F%uB%uC%u, date %llu\r\n",
+            device.name,
+            device.version,
+            device.target,
+            device.body,
+            device.connect,
+            (unsigned long long)device.timestamp);
+    } else {
+        printf("Device: not written\r\n");
+    }
+
+    FuriHalOtpMacs macs;
+    if(furi_hal_otp_mac_read(&macs)) {
+        for(size_t i = 0; i < FuriHalOtpMacCount; i++) {
+            const uint8_t* m = macs.mac[i];
+            printf("MAC %-12s %02x:%02x:%02x:%02x:%02x:%02x\r\n", furi_hal_otp_mac_name(i), m[0], m[1], m[2], m[3], m[4], m[5]);
+        }
+    } else {
+        printf("MAC: not written\r\n");
+    }
+}
+
+static bool cli_command_otp_read_u16(FuriString* args, FuriString* word, uint16_t* value) {
+    return args_read_string_and_trim(args, word) && strint_to_uint16(furi_string_get_cstr(word), NULL, value, 10) == StrintParseNoError;
+}
+
+static bool cli_command_otp_name_ok(FuriString* name) {
+    size_t len = furi_string_size(name);
+    if(len == 0 || len >= FURI_HAL_OTP_DEVICE_NAME_SIZE) return false;
+    for(size_t i = 0; i < len; i++) {
+        char c = furi_string_get_char(name, i);
+        if(!isalnum((unsigned char)c) && c != '.' && c != '_' && c != '-') return false;
+    }
+    return true;
+}
+
+static void cli_command_otp_device(FuriString* args) {
+    FuriString* word = furi_string_alloc();
+    FuriHalOtpDevice device = {0};
+
+    do {
+        if(!args_read_string_and_trim(args, word) || !cli_command_otp_name_ok(word)) {
+            printf("Invalid NAME\r\n");
+            break;
+        }
+        strlcpy(device.name, furi_string_get_cstr(word), sizeof(device.name));
+
+        if(!cli_command_otp_read_u16(args, word, &device.version) || !cli_command_otp_read_u16(args, word, &device.target) ||
+           !cli_command_otp_read_u16(args, word, &device.body) || !cli_command_otp_read_u16(args, word, &device.connect)) {
+            printf("VERSION, TARGET, BODY and CONNECT are numbers 0..65535\r\n");
+            break;
+        }
+        if(!args_read_string_and_trim(args, word) || strint_to_uint64(furi_string_get_cstr(word), NULL, &device.timestamp, 10) != StrintParseNoError) {
+            printf("Invalid DATE\r\n");
+            break;
+        }
+        if(furi_string_size(args)) {
+            printf("Too many arguments\r\n");
+            break;
+        }
+
+        FuriHalOtpError error = furi_hal_otp_device_write(&device);
+        if(error != FuriHalOtpErrorNone) {
+            printf("Device: %s\r\n", furi_hal_otp_error_to_string(error));
+            break;
+        }
+        printf("Device written and locked\r\n");
+
+        // The white label carries the same board id: write it from these values
+        if(furi_hal_otp_usb_white_label_valid()) {
+            printf("USB white label: already written, %s\r\n", furi_hal_otp_usb_white_label_lock() ? "locked" : "locking failed");
+        } else {
+            FuriHalOtpUsbWhiteLabelError wl_error = furi_hal_otp_write_usb_white_label(device.target, device.body, device.connect);
+            printf(
+                "USB white label: %s\r\n",
+                wl_error == FuriHalOtpUsbWhiteLabelErrorNone ? "written and locked" : furi_hal_otp_usb_white_label_error_to_string(wl_error));
+        }
+    } while(0);
+
+    furi_string_free(word);
+}
+
+static bool cli_command_otp_parse_mac(const char* str, uint8_t mac[FURI_HAL_OTP_MAC_SIZE]) {
+    // aa:bb:cc:dd:ee:ff
+    if(strlen(str) != FURI_HAL_OTP_MAC_SIZE * 3 - 1) return false;
+    for(size_t i = 0; i < FURI_HAL_OTP_MAC_SIZE; i++) {
+        if(i > 0 && str[i * 3 - 1] != ':') return false;
+        if(!args_char_to_hex(str[i * 3], str[i * 3 + 1], &mac[i])) return false;
+    }
+    return true;
+}
+
+static void cli_command_otp_mac(FuriString* args) {
+    FuriString* word = furi_string_alloc();
+    FuriHalOtpMacs macs = {0};
+    bool ok = true;
+
+    for(size_t i = 0; i < FuriHalOtpMacCount && ok; i++) {
+        ok = args_read_string_and_trim(args, word) && cli_command_otp_parse_mac(furi_string_get_cstr(word), macs.mac[i]);
+        if(!ok) printf("Invalid MAC for %s\r\n", furi_hal_otp_mac_name(i));
+    }
+    if(ok && furi_string_size(args)) {
+        printf("Too many arguments\r\n");
+        ok = false;
+    }
+    if(ok) {
+        FuriHalOtpError error = furi_hal_otp_mac_write(&macs);
+        printf("MAC: %s\r\n", error == FuriHalOtpErrorNone ? "written and locked" : furi_hal_otp_error_to_string(error));
+    }
+
+    furi_string_free(word);
 }
 
 void cli_command_otp(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(pipe);
+    UNUSED(context);
     FuriString* action = furi_string_alloc();
-    do {
-        if(!args_read_string_and_trim(args, action)) {
-            cli_command_otp_help(pipe, args, context);
-            break;
-        }
 
-        if(furi_string_cmp(action, "whitelabel") != 0) {
-            cli_command_otp_help(pipe, args, context);
-            break;
-        }
+    if(!args_read_string_and_trim(args, action)) {
+        cli_command_otp_help();
+    } else if(furi_string_cmp(action, "info") == 0) {
+        cli_command_otp_info();
+    } else if(furi_string_cmp(action, "device") == 0) {
+        cli_command_otp_device(args);
+    } else if(furi_string_cmp(action, "mac") == 0) {
+        cli_command_otp_mac(args);
+    } else {
+        cli_command_otp_help();
+    }
 
-        int firmware_id, body_id, connectivity_id;
-        if(!args_read_int_and_trim(args, &firmware_id) || !args_read_int_and_trim(args, &body_id) || !args_read_int_and_trim(args, &connectivity_id)) {
-            cli_command_otp_help(pipe, args, context);
-            break;
-        }
-
-        if(firmware_id < 0 || body_id < 0 || connectivity_id < 0) {
-            cli_command_otp_help(pipe, args, context);
-            break;
-        }
-
-        printf("Programming USB white label in OTP with F%dB%dC%d\r\n", firmware_id, body_id, connectivity_id);
-
-        if(furi_hal_otp_usb_white_label_valid()) {
-            printf("USB white label is already programmed in OTP, it cannot be programmed again\r\n");
-            break;
-        }
-
-        FuriHalOtpUsbWhiteLabelError error = furi_hal_otp_write_usb_white_label(firmware_id, body_id, connectivity_id);
-        if(error == FuriHalOtpUsbWhiteLabelErrorNone) {
-            printf("USB white label written to OTP successfully\r\n");
-        } else {
-            printf("Failed to write USB white label to OTP: %d\r\n", error);
-        }
-    } while(0);
     furi_string_free(action);
 }
 

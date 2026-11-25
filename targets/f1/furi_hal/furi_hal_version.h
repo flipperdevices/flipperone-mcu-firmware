@@ -115,19 +115,19 @@ FuriHalVersionOtpVersion furi_hal_version_get_otp_version(void);
  *
  * @return     Hardware Version
  */
-uint8_t furi_hal_version_get_hw_version(void);
+uint16_t furi_hal_version_get_hw_version(void);
 
 /** Get hardware target
  *
  * @return     Hardware Target
  */
-uint8_t furi_hal_version_get_hw_target(void);
+uint16_t furi_hal_version_get_hw_target(void);
 
 /** Get hardware body
  *
  * @return     Hardware Body
  */
-uint8_t furi_hal_version_get_hw_body(void);
+uint16_t furi_hal_version_get_hw_body(void);
 
 /** Get hardware body color
  *
@@ -139,7 +139,7 @@ FuriHalVersionColor furi_hal_version_get_hw_color(void);
  *
  * @return     Hardware Interconnect
  */
-uint8_t furi_hal_version_get_hw_connect(void);
+uint16_t furi_hal_version_get_hw_connect(void);
 
 /** Get hardware region
  *
@@ -163,7 +163,7 @@ FuriHalVersionDisplay furi_hal_version_get_hw_display(void);
  *
  * @return     Hardware Manufacture timestamp
  */
-uint32_t furi_hal_version_get_hw_timestamp(void);
+uint64_t furi_hal_version_get_hw_timestamp(void);
 
 /** Get pointer to target name
  *

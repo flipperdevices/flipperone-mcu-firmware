@@ -1,4 +1,5 @@
 #include <furi_hal_version.h>
+#include <furi_hal_otp.h>
 
 #include <furi.h>
 #include <pico/unique_id.h>
@@ -30,8 +31,53 @@ const uint8_t* furi_hal_version_get_ble_mac(void) {
     return ble_mac;
 }
 
-uint8_t furi_hal_version_get_hw_target(void) {
-    return version_get_target(version_get());
+// OTP_DEVICE, read once at start; all zero when the device has none
+static FuriHalOtpDevice furi_hal_version_otp;
+static bool furi_hal_version_otp_valid;
+
+void furi_hal_version_init(void) {
+    furi_hal_version_otp_valid = furi_hal_otp_device_read(&furi_hal_version_otp);
+    if(furi_hal_version_otp_valid) {
+        FURI_LOG_I(
+            TAG,
+            "%s: version %u, F%uB%uC%u",
+            furi_hal_version_otp.name,
+            furi_hal_version_otp.version,
+            furi_hal_version_otp.target,
+            furi_hal_version_otp.body,
+            furi_hal_version_otp.connect);
+    } else {
+        FURI_LOG_W(TAG, "No device info in OTP");
+    }
+}
+
+FuriHalVersionOtpVersion furi_hal_version_get_otp_version(void) {
+    // OTP_DEVICE has a single layout so far, its version 1
+    return furi_hal_version_otp_valid ? FuriHalVersionOtpVersion1 : FuriHalVersionOtpVersionEmpty;
+}
+
+uint16_t furi_hal_version_get_hw_version(void) {
+    return furi_hal_version_otp.version;
+}
+
+uint16_t furi_hal_version_get_hw_target(void) {
+    return furi_hal_version_otp.target;
+}
+
+uint16_t furi_hal_version_get_hw_body(void) {
+    return furi_hal_version_otp.body;
+}
+
+uint16_t furi_hal_version_get_hw_connect(void) {
+    return furi_hal_version_otp.connect;
+}
+
+uint64_t furi_hal_version_get_hw_timestamp(void) {
+    return furi_hal_version_otp.timestamp;
+}
+
+const char* furi_hal_version_get_name_ptr(void) {
+    return furi_hal_version_otp_valid ? furi_hal_version_otp.name : NULL;
 }
 
 size_t furi_hal_version_uid_size(void) {
