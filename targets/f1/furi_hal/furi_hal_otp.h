@@ -29,9 +29,9 @@
  * (2 bytes each), date (8 bytes, seconds since the epoch).
  * OTP_MAC payload: 8 MAC addresses of 6 bytes, in FuriHalOtpMac order.
  *
- * A page is locked by its PAGEn_LOCK1 row: read only for Secure, Non-secure
- * and bootloader access. The hardware applies it from the next reset; until
- * then SW_LOCKn holds its Secure and Non-secure part.
+ * A page is locked by its PAGEn_LOCK1 row: read only for Secure and
+ * Non-secure access, which the hardware applies from the next reset (until
+ * then SW_LOCKn holds it), and for the USB bootloader, which honours LOCK_BL.
  */
 
 #define FURI_HAL_OTP_DEVICE_ROW     0x0C0
