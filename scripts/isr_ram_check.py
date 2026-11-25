@@ -44,8 +44,8 @@ When it fails:
 Runs as a POST_BUILD step of the firmware (CMakeLists.txt), which passes the
 toolchain's nm and objdump. By hand:
   python3 scripts/isr_ram_check.py [--nm PATH] [--objdump PATH] [path/to/firmware.elf]
-Without --nm/--objdump the tools are taken from ARM_TOOLCHAIN_BIN (set by fbtenv),
-PATH or the Pico SDK toolchain in ~/.pico-sdk.
+Without --nm/--objdump the tools are taken from ARM_TOOLCHAIN_BIN, PATH (where
+fbtenv puts the toolchain) or the Pico SDK toolchain in ~/.pico-sdk.
 
 Exit code 0 when the path is clean, 1 otherwise.
 """

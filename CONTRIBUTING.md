@@ -71,7 +71,7 @@ release pinned in `toolchain.json`; the README shows how to set it up.
 - To pin a new release: `python3 scripts/toolchain/toolchain.py update --tag v<N>`
   (the newest without `--tag`). It reads the release's `release.json` and also rewrites
   the version lines the Pico VS Code extension reads at the top of `CMakeLists.txt`,
-  and the toolchain paths in `vscode_template/`.
+  and the toolchain paths in `vscode_template/`; copy them into your own `.vscode/`.
 - A change to the build's Python packages (`assets/python/requirements.txt`) needs a
   toolchain release with them first. Pin that release in the same pull request as the
   change. Otherwise the build ignores the toolchain's Python packages and installs its

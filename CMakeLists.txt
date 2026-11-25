@@ -1,9 +1,9 @@
-# 3.28: CMakePresets.json, string(JSON) in cmake/toolchain_check.cmake
 cmake_minimum_required(VERSION 3.28)
 
 # Every find_package(Python3), the SDK's too, takes the first python3 on PATH: the
-# toolchain bundle's once its environment is set up. By default FindPython prefers
-# the newest version, and macOS frameworks and Windows registry entries over PATH.
+# toolchain bundle's once its environment is set up. Under the SDK's older policies
+# FindPython prefers the newest version, and by default macOS frameworks and Windows
+# registry entries come before PATH.
 set(Python3_FIND_STRATEGY LOCATION)
 set(Python3_FIND_FRAMEWORK LAST)
 set(Python3_FIND_REGISTRY LAST)

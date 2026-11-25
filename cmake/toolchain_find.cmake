@@ -23,7 +23,10 @@ if(NOT DEFINED ENV{FLIPPERONE_TOOLCHAIN_ROOT} AND NOT PICO_SDK_PATH AND NOT DEFI
     message(STATUS "Toolchain environment not set up, using ${_fw_root}")
     include("${_fw_root}/cmake/initial-cache.cmake")
     if(CMAKE_GENERATOR MATCHES "Ninja" AND NOT CMAKE_MAKE_PROGRAM)
-        set(CMAKE_MAKE_PROGRAM "${_fw_root}/tools/ninja/bin/ninja${CMAKE_HOST_EXECUTABLE_SUFFIX}"
-            CACHE FILEPATH "")
+        set(_fw_ninja "${_fw_root}/tools/ninja/bin/ninja")
+        if(CMAKE_HOST_WIN32)
+            string(APPEND _fw_ninja ".exe")
+        endif()
+        set(CMAKE_MAKE_PROGRAM "${_fw_ninja}" CACHE FILEPATH "")
     endif()
 endif()

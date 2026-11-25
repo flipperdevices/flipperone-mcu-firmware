@@ -19,12 +19,6 @@
       "cacheVariables": {"FW_TARGET": "f2"}
     },
     {
-      "name": "f2-debug",
-      "displayName": "f2, debug",
-      "inherits": "base",
-      "cacheVariables": {"FW_TARGET": "f2", "CMAKE_BUILD_TYPE": "Debug"}
-    },
-    {
       "name": "f2-recovery",
       "displayName": "f2, recovery.uf2",
       "inherits": "base",
@@ -39,7 +33,6 @@
   ],
   "buildPresets": [
     {"name": "f2-release", "configurePreset": "f2-release"},
-    {"name": "f2-debug", "configurePreset": "f2-debug"},
     {"name": "f2-recovery", "configurePreset": "f2-recovery"},
     {"name": "f1-release", "configurePreset": "f1-release"}
   ]
