@@ -24,8 +24,12 @@ typedef enum {
     CpuMenuItemReboot,
 } CpuMenuItem;
 
+/* The model is lock free and Clay keeps the image pointer from layout until
+ * render, so an Image the renderer can see is never rewritten: frame is swapped
+ * whole, to a placeholder or to host_frame, whose only changing field is data. */
 typedef struct {
-    Image frame;
+    const Image* frame;
+    Image host_frame;
 } CpuAppModel;
 
 typedef enum {
@@ -86,15 +90,12 @@ static bool cpu_app_layout(void* _model) {
                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_CENTER},
                     },
             }) {
-            if(model->frame.data) {
-                Image* image = &model->frame;
-                CLAY(
-                    CLAY_APP_ID("FrameImage"),
-                    {
-                        .layout = {.sizing = layout_screen},
-                        .image = {.imageData = image},
-                    }) {
-                }
+            CLAY(
+                CLAY_APP_ID("FrameImage"),
+                {
+                    .layout = {.sizing = layout_screen},
+                    .image = {.imageData = (void*)model->frame},
+                }) {
             }
         }
     }
@@ -108,17 +109,18 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
 }
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
-    model->frame = display_starting;
+    model->frame = &display_starting;
+    model->host_frame.format = ImageFormatRawGray8;
+    model->host_frame.width = JD9853_WIDTH;
+    model->host_frame.height = JD9853_HEIGHT;
     return true;
 }
 
 // Swap one placeholder for another, never a frame from the host.
 static bool cpu_app_model_placeholder(CpuAppModel* model, void* context) {
     const Image* image = context;
-    bool placeholder = model->frame.data == display_starting.data || model->frame.data == display_waiting.data ||
-                       model->frame.data == display_not_responding.data;
-    if(!placeholder || model->frame.data == image->data) return false;
-    model->frame = *image;
+    if(model->frame == &model->host_frame || model->frame == image) return false;
+    model->frame = image;
     return true;
 }
 
@@ -131,9 +133,9 @@ static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
         instance->display_view,
         CpuAppModel * model,
         {
-            model->frame.data = data;
-            model->frame.width = JD9853_WIDTH;
-            model->frame.height = JD9853_HEIGHT;
+            model->host_frame.data = data;
+            // Not before data: the first host frame has none yet
+            __atomic_store_n(&model->frame, &model->host_frame, __ATOMIC_RELEASE);
         },
         false);
 }
