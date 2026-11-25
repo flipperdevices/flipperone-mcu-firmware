@@ -46,7 +46,8 @@ def png_to_c_array(input_png, output_c, var_name):
         )
 
     opaque = [a == 255 for a in alpha]
-    mono = all(g in (0, 255) for g, o in zip(gray, opaque) if o)
+    shades = sum(1 for g, o in zip(gray, opaque) if o and g not in (0, 255))
+    mono = shades == 0
     stride = (width + 7) // 8
 
     with open(output_c, "w") as f:
@@ -73,6 +74,10 @@ def png_to_c_array(input_png, output_c, var_name):
         f.write(f"    .data = {var_name}_data,\n")
         f.write(f"    .mask = {mask},\n")
         f.write("};\n")
+
+    # The format follows from the pixels, so say which one was picked and why
+    why = "" if mono else f", {shades} pixel(s) neither black nor white"
+    print(f"{var_name}: {image_format} {width}x{height}{', masked' if mask != 'NULL' else ''}{why}")
 
 
 if __name__ == "__main__":
