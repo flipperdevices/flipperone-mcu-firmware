@@ -40,6 +40,27 @@ def test_console_command_timeout():
         console.command("uptime", timeout=0.05)
 
 
+def question_responder(port, data):
+    if data == b"otp program 1 aa\r":
+        port.feed(b"otp program 1 aa\r\nProgram it? (y/n)\r\n")
+    elif data == b"y":
+        port.feed(b"Block 1: written\r\ncontrol>: ")
+
+
+def test_console_command_answers_a_question():
+    port = FakePort(question_responder)
+    reply = McuConsole(port).command("otp program 1 aa", timeout=1, answer="y")
+    assert port.written[-1] == b"y"
+    assert reply.endswith("Block 1: written")
+
+
+def test_console_command_question_without_answer_times_out():
+    port = FakePort(question_responder)
+    with pytest.raises(TimeoutError, match="did not finish"):
+        McuConsole(port).command("otp program 1 aa", timeout=0.05)
+    assert b"y" not in port.written
+
+
 def test_console_sync_failure():
     with pytest.raises(RuntimeError, match="does not show a prompt"):
         McuConsole(FakePort()).sync()

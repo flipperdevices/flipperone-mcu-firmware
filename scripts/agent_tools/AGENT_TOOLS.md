@@ -49,7 +49,7 @@ python3 scripts/agent_tools/f1.py status
 | `press BUTTON --hold S --repeats N` | Long press: `press`, `long` after `S` seconds, then `N` `repeat` events 50 ms apart (default 0), then `release`. With several buttons each is held in turn; two buttons cannot be down at once |
 | `press BUTTON --action press` | One raw event (`press`, `release`, `short`, `long`, `repeat`) |
 | `touch X Y [--to X Y]` | Tap or swipe on the touchpad: x 0..1023 left to right, y 0..767 top to bottom, `--pressure` 0..16383 (default 8000). A swipe is 10 moves 20 ms apart; `--steps` changes the count. Takes `--shot OUT.png` like `press` |
-| `cli "CMD"...` | MCU console commands, e.g. `cli uptime "power info"` |
+| `cli "CMD"...` | MCU console commands, e.g. `cli uptime "power info"`. `--answer y` answers a `(y/n)` question a command asks, as `otp program` does |
 | `probe "CMD"...` | Console commands of the debug probe itself, e.g. `probe device_info` |
 | `probe flash FILE.uf2 --yes` | Reflash the debug probe and wait until it is back |
 | `log --seconds N` | MCU log with this machine's time on every line. `--out FILE` appends to a file, flushed line by line; without `--seconds` it runs until killed, and killing it is the way to stop it |
