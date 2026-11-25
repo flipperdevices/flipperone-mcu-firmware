@@ -51,6 +51,13 @@ Clay_String clay_helper_string_from_chars(const char* chars);
  */
 void clay_fixed_image(Clay_ElementId id, const Image* image);
 
+/**
+ * @brief Ask for another frame in delay_ms from a layout callback, e.g. to
+ *        drive an animation whose state is computed from the clock at layout.
+ *        Emits an empty element; the shortest request of a frame wins.
+ */
+void clay_request_redraw(Clay_ElementId id, uint32_t delay_ms);
+
 #ifdef __cplusplus
 }
 #endif

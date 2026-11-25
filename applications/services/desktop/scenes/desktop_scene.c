@@ -58,26 +58,16 @@ static const ParallaxLayer home_scene_layers[] = {
     {.frames = home_foliage_frames, .frame_count = 2, .fps = 2, .x = 0, .y = 84, .speed_mult = 1.0f, .wrap = ParallaxWrapTile, .wrap_width = 256},
 };
 
-/* Scene speed from the battery power: charging drags the scene left, up to
- * -100 px/s at 36 W; discharging drags it right, up to +100 px/s at 60 W.
- * Anything that moves goes at least 30 px/s; below HOME_SCENE_IDLE_W the
- * scene stands still. */
-#define HOME_SCENE_CHARGE_FULL_W    36.f
-#define HOME_SCENE_DISCHARGE_FULL_W 60.f
-#define HOME_SCENE_FULL_SPEED       100.f
-#define HOME_SCENE_MIN_SPEED        30.f
-#define HOME_SCENE_IDLE_W           0.5f
+/* Scene speed: while the charger is charging, the scene drifts left, faster
+ * the more power the input delivers: -100 px/s at 36 W, at least 30 px/s.
+ * Otherwise it stands still. */
+#define HOME_SCENE_CHARGE_FULL_W 36.f
+#define HOME_SCENE_FULL_SPEED    100.f
+#define HOME_SCENE_MIN_SPEED     30.f
 
-static float desktop_scene_speed_from_power(float watts) {
-    float speed;
-    if(watts > HOME_SCENE_IDLE_W) {
-        speed = -HOME_SCENE_FULL_SPEED * watts / HOME_SCENE_CHARGE_FULL_W;
-    } else if(watts < -HOME_SCENE_IDLE_W) {
-        speed = HOME_SCENE_FULL_SPEED * -watts / HOME_SCENE_DISCHARGE_FULL_W;
-    } else {
-        return 0.f;
-    }
-    return copysignf(fmaxf(fabsf(speed), HOME_SCENE_MIN_SPEED), speed);
+static float desktop_scene_speed_from_charging(float input_watts) {
+    float speed = HOME_SCENE_FULL_SPEED * input_watts / HOME_SCENE_CHARGE_FULL_W;
+    return -fmaxf(speed, HOME_SCENE_MIN_SPEED);
 }
 
 /* Firmware version over the scene: top-left corner of the glyphs at
@@ -98,14 +88,35 @@ typedef struct {
 static void desktop_update_scene_speed(Scene* scene) {
     View* view = scene_get_view(scene);
 
-    /* AveragePower() of the gauge: mW, positive while charging. */
-    int16_t power_mw = 0;
+    Bq2579xChargerStatusReg status = {0};
+    uint16_t vbus_mv = 0;
+    int16_t ibus_ma = 0;
     Power* power = furi_record_open(RECORD_POWER);
-    bool ok = power_bq28z620_get_average_power(power, &power_mw);
+    bool status_ok = power_bq2579x_get_charger_status(power, &status);
+    bool input_ok = power_bq2579x_get_vbus_mv(power, &vbus_mv) && power_bq2579x_get_ibus_ma(power, &ibus_ma);
     furi_record_close(RECORD_POWER);
-    if(!ok) return;
+    if(!status_ok) return;
 
-    float speed = desktop_scene_speed_from_power((float)power_mw / 1000.f);
+    bool charging = false;
+    if(status.stat0.vbus_present_stat) {
+        switch(status.stat1.chg_stat) {
+        case Bq2579xChargerStatus1ChargeTrickle:
+        case Bq2579xChargerStatus1ChargePre:
+        case Bq2579xChargerStatus1ChargeFast:
+        case Bq2579xChargerStatus1ChargeTaper:
+        case Bq2579xChargerStatus1ChargeTopOff:
+            charging = true;
+            break;
+        default:
+            break;
+        }
+    }
+
+    float speed = 0.f;
+    if(charging) {
+        float input_w = input_ok ? (float)vbus_mv / 1000.f * (float)ibus_ma / 1000.f : 0.f;
+        speed = desktop_scene_speed_from_charging(input_w);
+    }
     with_view_model(view, DesktopViewModel * model, { parallax_set_speed(model->scene, speed); }, true);
 }
 

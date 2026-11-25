@@ -109,3 +109,24 @@ void clay_fixed_image(Clay_ElementId id, const Image* image) {
         }) {
     }
 }
+
+/* Layout runs before render on the same thread, so one slot collects the
+ * shortest delay of a frame and the render pass consumes it. */
+static uint32_t clay_redraw_delay_ms = UINT32_MAX;
+
+static void clay_request_redraw_render(Canvas* canvas, const Clay_BoundingBox* bounding_box, void* context) {
+    UNUSED(bounding_box);
+    UNUSED(context);
+    if(clay_redraw_delay_ms != UINT32_MAX) {
+        canvas_request_redraw(canvas, clay_redraw_delay_ms);
+        clay_redraw_delay_ms = UINT32_MAX;
+    }
+}
+
+static const ClayCustomElement clay_request_redraw_element = {.render = clay_request_redraw_render, .context = NULL};
+
+void clay_request_redraw(Clay_ElementId id, uint32_t delay_ms) {
+    if(delay_ms < clay_redraw_delay_ms) clay_redraw_delay_ms = delay_ms;
+    CLAY(id, {.custom = {.customData = (void*)&clay_request_redraw_element}}) {
+    }
+}

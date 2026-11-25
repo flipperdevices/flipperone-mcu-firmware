@@ -257,13 +257,6 @@ const FlipperInternalApplication FLIPPER_AUTORUN_APPS[] = {
         .flags = FlipperInternalApplicationFlagDefault,
     },
     {
-        .app = self_check_app,
-        .name = "Self Check",
-        .appid = "self_check",
-        .stack_size = 2048,
-        .flags = FlipperInternalApplicationFlagDefault,
-    },
-    {
         .app = cli_on_system_start,
         .name = "CliOnSystemStart",
         .appid = "cli_on_system_start",

@@ -11,7 +11,7 @@
 #define DESKTOP_APP_MESSAGE_QUEUE_SIZE         4
 #define DESKTOP_SCENE_EVENT_MESSAGE_QUEUE_SIZE 16
 
-#define DESKTOP_POWER_UPDATE_PERIOD_MS 5000
+#define DESKTOP_POWER_UPDATE_PERIOD_MS 1000
 
 #define TAG "DesktopSrv"
 
@@ -451,6 +451,11 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
     if(!consumed) {
         consumed = scene_event(desktop->header_scene, message.event, message.data);
     }
+}
+
+bool desktop_is_home_shown(Desktop* desktop) {
+    furi_check(desktop);
+    return view_is_enabled(scene_get_view(desktop->main_scene));
 }
 
 static void desktop_power_update_timer_callback(void* context) {

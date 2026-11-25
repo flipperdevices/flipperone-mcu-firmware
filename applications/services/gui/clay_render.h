@@ -49,6 +49,22 @@ Image canvas_to_image(Canvas* canvas);
  *  mirror_x flips it horizontally within the same rectangle. */
 void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image, bool mirror_x);
 
+/** Draw a text with the top-left of its box at (x, y), as a Clay text element
+ *  would; the glyphs start one pixel below the box top. */
+void canvas_draw_text(Canvas* canvas, int32_t x, int32_t y, Font font_id, ColorA color, const char* text);
+
+size_t canvas_text_width(Font font_id, const char* text);
+
+typedef struct {
+    int32_t x0, y0, x1, y1;
+} CanvasScissor;
+
+/** Narrow the clip rectangle to its intersection with the given box; `saved`
+ *  gets the previous clip for canvas_scissor_restore(). */
+void canvas_scissor_intersect(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, CanvasScissor* saved);
+
+void canvas_scissor_restore(Canvas* canvas, const CanvasScissor* saved);
+
 /** The clock (furi_get_tick(), ms) the current render pass is drawn at. Every
  *  time-dependent element samples this one value, so one pass is consistent. */
 uint32_t canvas_get_render_time(Canvas* canvas);

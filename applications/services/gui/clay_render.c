@@ -645,6 +645,33 @@ void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image,
     }
 }
 
+void canvas_draw_text(Canvas* canvas, int32_t x, int32_t y, Font font_id, ColorA color, const char* text) {
+    furi_check(font_id < FontMax);
+    if(color.alpha == 0) return;
+    RenderTextContext ctx = {.canvas = canvas, .color = color};
+    u8g2_font_render_print_multiline(&render_font_renderers[font_id], x, y, text, strlen(text), &ctx);
+}
+
+size_t canvas_text_width(Font font_id, const char* text) {
+    furi_check(font_id < FontMax);
+    return u8g2_font_render_get_string_width_multiline(&render_font_renderers[font_id], text, strlen(text));
+}
+
+void canvas_scissor_intersect(Canvas* canvas, int32_t x, int32_t y, int32_t width, int32_t height, CanvasScissor* saved) {
+    *saved = (CanvasScissor){canvas->scissors_x0, canvas->scissors_y0, canvas->scissors_x1, canvas->scissors_y1};
+    canvas->scissors_x0 = MAX(canvas->scissors_x0, x);
+    canvas->scissors_y0 = MAX(canvas->scissors_y0, y);
+    canvas->scissors_x1 = MIN(canvas->scissors_x1, x + width);
+    canvas->scissors_y1 = MIN(canvas->scissors_y1, y + height);
+}
+
+void canvas_scissor_restore(Canvas* canvas, const CanvasScissor* saved) {
+    canvas->scissors_x0 = saved->x0;
+    canvas->scissors_y0 = saved->y0;
+    canvas->scissors_x1 = saved->x1;
+    canvas->scissors_y1 = saved->y1;
+}
+
 uint32_t canvas_get_render_time(Canvas* canvas) {
     return canvas->render_time_ms;
 }

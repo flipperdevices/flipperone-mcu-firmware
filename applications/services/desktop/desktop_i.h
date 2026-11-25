@@ -35,6 +35,10 @@ typedef enum {
 
 void desktop_send_scene_event(Desktop* desktop, uint32_t event, void* data);
 
+/** Whether the home screen scene is shown (possibly under an overlay such as
+ *  the power menu), as opposed to a settings or debug scene. */
+bool desktop_is_home_shown(Desktop* desktop);
+
 void desktop_power_off(void);
 
 #ifdef __cplusplus
