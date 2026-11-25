@@ -52,6 +52,7 @@ typedef enum {
     FuriHalOtpErrorNotBlank, /* The block holds data but no magic: a write was cut short */
     FuriHalOtpErrorWriteFailed,
     FuriHalOtpErrorLockFailed, /* Written, but its page is not locked */
+    FuriHalOtpErrorWhiteLabelFailed, /* OTP_DEVICE written, the USB white label not */
 } FuriHalOtpError;
 
 const char* furi_hal_otp_error_to_string(FuriHalOtpError error);
@@ -75,7 +76,9 @@ bool furi_hal_otp_device_valid(void);
  */
 bool furi_hal_otp_device_read(FuriHalOtpDevice* device);
 
-/** Write OTP_DEVICE once and lock its page. Irreversible. */
+/** Write OTP_DEVICE once and lock its page, then the USB white label with the
+ * same board id "F<target>B<body>C<connect>" unless it is there, and lock its
+ * pages. Irreversible. */
 FuriHalOtpError furi_hal_otp_device_write(const FuriHalOtpDevice* device);
 
 /* OTP_MAC */
@@ -112,37 +115,8 @@ FuriHalOtpError furi_hal_otp_mac_write(const FuriHalOtpMacs* macs);
 
 /* USB white label */
 
-typedef enum {
-    FuriHalOtpUsbWhiteLabelErrorNone,
-    FuriHalOtpUsbWhiteLabelErrorBoardIdTooLong,
-    FuriHalOtpUsbWhiteLabelErrorWriteTableFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteManufacturerFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteProductFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteVolumeLabelFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteScsiVendorFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteScsiProductFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteScsiVersionFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteRedirectUrlFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteRedirectNameFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteModelFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteBoardIdFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteAddrFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsFailed,
-    FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR1Failed,
-    FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR2Failed,
-    FuriHalOtpUsbWhiteLabelErrorLockFailed,
-} FuriHalOtpUsbWhiteLabelError;
-
+/** Whether the USB white label is written. furi_hal_otp_device_write() writes it. */
 bool furi_hal_otp_usb_white_label_valid(void);
-
-/** Write the USB white label once, its board id "F<target>B<body>C<connect>",
- * and lock its pages. Irreversible. */
-FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t target, uint32_t body, uint32_t connect);
-
-/** Lock the pages of a white label written before the lock existed. */
-bool furi_hal_otp_usb_white_label_lock(void);
-
-const char* furi_hal_otp_usb_white_label_error_to_string(FuriHalOtpUsbWhiteLabelError error);
 
 /** Check if BOOTSEL LED is enabled in OTP (BOOT_FLAGS0.ENABLE_BOOTSEL_LED)
  *

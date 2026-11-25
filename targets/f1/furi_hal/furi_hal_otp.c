@@ -7,6 +7,29 @@
 
 #define TAG "FuriHalOtp"
 
+typedef enum {
+    FuriHalOtpUsbWhiteLabelErrorNone,
+    FuriHalOtpUsbWhiteLabelErrorBoardIdTooLong,
+    FuriHalOtpUsbWhiteLabelErrorWriteTableFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteManufacturerFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteProductFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteVolumeLabelFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteScsiVendorFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteScsiProductFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteScsiVersionFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteRedirectUrlFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteRedirectNameFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteModelFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteBoardIdFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteAddrFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsFailed,
+    FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR1Failed,
+    FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsR2Failed,
+    FuriHalOtpUsbWhiteLabelErrorLockFailed,
+} FuriHalOtpUsbWhiteLabelError;
+
+static bool furi_hal_otp_usb_white_label_lock(void);
+
 // Row in OTP where the USB white label table starts (must be page-aligned recommended)
 #define WL_BASE_ROW 0x0400
 
@@ -138,7 +161,7 @@ bool furi_hal_otp_usb_white_label_valid(void) {
     return (buf & OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS) != 0;
 }
 
-FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t target, uint32_t body, uint32_t connect) {
+static FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t target, uint32_t body, uint32_t connect) {
     FuriString* board_id_str = furi_string_alloc_printf(OTP_BOARD_ID_FORMAT, target, body, connect);
     FuriHalOtpUsbWhiteLabelError error = FuriHalOtpUsbWhiteLabelErrorNone;
 
@@ -311,7 +334,7 @@ bool furi_hal_otp_write_bootsel_led(void) {
     return true;
 }
 
-const char* furi_hal_otp_usb_white_label_error_to_string(FuriHalOtpUsbWhiteLabelError error) {
+static const char* furi_hal_otp_usb_white_label_error_to_string(FuriHalOtpUsbWhiteLabelError error) {
     switch(error) {
     case FuriHalOtpUsbWhiteLabelErrorNone:
         return "None";
@@ -393,7 +416,7 @@ static bool furi_hal_otp_lock_rows(uint32_t first_row, uint32_t row_count) {
 #define WL_ROWS (WL_OFF_BOARD_ID + 17)
 static_assert(WL_BASE_ROW % OTP_PAGE_ROWS + WL_ROWS <= 2 * OTP_PAGE_ROWS, "USB white label outgrows pages 16..17");
 
-bool furi_hal_otp_usb_white_label_lock(void) {
+static bool furi_hal_otp_usb_white_label_lock(void) {
     return furi_hal_otp_lock_rows(WL_BASE_ROW, WL_ROWS);
 }
 
@@ -470,6 +493,8 @@ const char* furi_hal_otp_error_to_string(FuriHalOtpError error) {
         return "Write failed";
     case FuriHalOtpErrorLockFailed:
         return "Written, but locking its page failed";
+    case FuriHalOtpErrorWhiteLabelFailed:
+        return "Device written, USB white label failed";
     }
     return "Unknown error";
 }
@@ -514,7 +539,20 @@ FuriHalOtpError furi_hal_otp_device_write(const FuriHalOtpDevice* device) {
     memcpy(p + 4, &device->body, 2);
     memcpy(p + 6, &device->connect, 2);
     memcpy(p + 8, &device->timestamp, 8);
-    return furi_hal_otp_block_write(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload);
+    FuriHalOtpError error = furi_hal_otp_block_write(FURI_HAL_OTP_DEVICE_ROW, FURI_HAL_OTP_DEVICE_MAGIC, payload);
+    if(error != FuriHalOtpErrorNone) return error;
+
+    // The white label carries the same board id. One written before the
+    // locks existed is locked now.
+    if(furi_hal_otp_usb_white_label_valid()) {
+        return furi_hal_otp_usb_white_label_lock() ? FuriHalOtpErrorNone : FuriHalOtpErrorLockFailed;
+    }
+    FuriHalOtpUsbWhiteLabelError wl_error = furi_hal_otp_write_usb_white_label(device->target, device->body, device->connect);
+    if(wl_error != FuriHalOtpUsbWhiteLabelErrorNone) {
+        FURI_LOG_E(TAG, "USB white label: %s", furi_hal_otp_usb_white_label_error_to_string(wl_error));
+        return FuriHalOtpErrorWhiteLabelFailed;
+    }
+    return FuriHalOtpErrorNone;
 }
 
 // OTP_MAC

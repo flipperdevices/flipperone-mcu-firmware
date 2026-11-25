@@ -436,21 +436,7 @@ static void cli_command_otp_device(FuriString* args) {
         }
 
         FuriHalOtpError error = furi_hal_otp_device_write(&device);
-        if(error != FuriHalOtpErrorNone) {
-            printf("Device: %s\r\n", furi_hal_otp_error_to_string(error));
-            break;
-        }
-        printf("Device written and locked\r\n");
-
-        // The white label carries the same board id: write it from these values
-        if(furi_hal_otp_usb_white_label_valid()) {
-            printf("USB white label: already written, %s\r\n", furi_hal_otp_usb_white_label_lock() ? "locked" : "locking failed");
-        } else {
-            FuriHalOtpUsbWhiteLabelError wl_error = furi_hal_otp_write_usb_white_label(device.target, device.body, device.connect);
-            printf(
-                "USB white label: %s\r\n",
-                wl_error == FuriHalOtpUsbWhiteLabelErrorNone ? "written and locked" : furi_hal_otp_usb_white_label_error_to_string(wl_error));
-        }
+        printf("Device: %s\r\n", error == FuriHalOtpErrorNone ? "written and locked, USB white label too" : furi_hal_otp_error_to_string(error));
     } while(0);
 
     furi_string_free(word);
