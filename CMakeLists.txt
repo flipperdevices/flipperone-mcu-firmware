@@ -126,8 +126,7 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c
 )
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc)
-# secp256r1 only, in plain C: with the Thumb-2 assembly the UART CLI lost the
-# tail of long replies on the test device, a layout effect not understood yet
+# secp256r1 only, in plain C: its Thumb-2 assembly is not used
 set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c PROPERTIES COMPILE_DEFINITIONS
     "uECC_SUPPORTS_secp160r1=0;uECC_SUPPORTS_secp192r1=0;uECC_SUPPORTS_secp224r1=0;uECC_SUPPORTS_secp256k1=0;uECC_PLATFORM=uECC_arch_other")
 set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c PROPERTIES COMPILE_OPTIONS -Wno-maybe-uninitialized)
