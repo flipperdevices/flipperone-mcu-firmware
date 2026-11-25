@@ -1,0 +1,35 @@
+name: MCU tests
+
+on:
+  workflow_call:
+    inputs:
+      images:
+        description: Published f2 firmware and partition table names, sizes and SHA256
+        required: true
+        type: string
+    secrets:
+      MCU_PR_TEST_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  system-smoke:
+    if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
+    name: MCU tests (units + system)
+    runs-on: ubuntu-latest
+    timeout-minutes: 185
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Dispatch system qualification and return its result
+        env:
+          MCU_PR_TEST_TOKEN: ${{ secrets.MCU_PR_TEST_TOKEN }}
+          MCU_IMAGES: ${{ inputs.images }}
+          FONE_SYSTEM_TESTS_REF: ${{ vars.FONE_SYSTEM_TESTS_REF || 'main' }}
+          FONE_SYSTEM_TESTS_WORKFLOW: ${{ vars.FONE_SYSTEM_TESTS_WORKFLOW || 'pr-mcu-smoke.yml' }}
+          FONE_MCU_LINUX_BUILD: ${{ vars.FONE_MCU_LINUX_BUILD }}
+          FONE_MCU_LINUX_CHANNEL: ${{ vars.FONE_MCU_LINUX_CHANNEL || 'nightly' }}
+        run: exec python3 scripts/system_smoke.py

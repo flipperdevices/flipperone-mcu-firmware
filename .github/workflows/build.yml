@@ -203,18 +203,20 @@ jobs:
         path: artifacts/*
         if-no-files-found: error
 
-  unit-tests:
-    needs: firmware
-    if: ${{ !github.event.pull_request.head.repo.fork }}
-    uses: ./.github/workflows/unit-test.yml
+  mcu-system-smoke:
+    needs: [firmware, publish]
+    if: github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork
+    permissions:
+      contents: read
+    uses: ./.github/workflows/mcu-system-smoke.yml
     with:
-      commit_sha: ${{ github.sha }}
-      firmware_commit: ${{ github.event.pull_request.head.sha || github.sha }}
-      artifact_name: firmware-f2
-      artifact_suffix: ${{ needs.firmware.outputs.suffix }}
-      target: f2
+      images: ${{ needs.publish.outputs.mcu_images }}
+    secrets:
+      MCU_PR_TEST_TOKEN: ${{ secrets.MCU_PR_TEST_TOKEN }}
 
   publish:
+    outputs:
+      mcu_images: ${{ steps.upload.outputs.json }}
     runs-on: ubuntu-latest
     needs: firmware
     if: ${{ !github.event.pull_request.head.repo.fork }}
@@ -231,12 +233,27 @@ jobs:
     # one target at a time would leave only whichever went up last. All of them
     # have to go in a single call.
     - name: 'Upload artifacts to update server'
+      id: upload
+      env:
+        SUFFIX: ${{ needs.firmware.outputs.suffix }}
       run: |
         FILES=$(for CUR in $(ls artifacts/); do echo "-F files=@artifacts/$CUR"; done)
         curl --fail -L -H "Token: ${{ secrets.INDEXER_TOKEN }}" \
             -F "branch=${{ needs.firmware.outputs.branch_name }}" \
             ${FILES[@]} \
             "${{ secrets.INDEXER_URL }}"/flipper-one-mcu/uploadfiles
+        python3 - <<'PYTHON'
+        import hashlib, json, os
+        from pathlib import Path
+        images = {}
+        for field, prefix in (('uf2', 'flipper-one-mcu-f2-firmware-'), ('table', 'flipper-one-mcu-partition-table-')):
+            path = Path('artifacts', prefix + os.environ['SUFFIX'] + '.uf2')
+            images[field + '_name'] = path.name
+            images[field + '_sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+            images[field + '_size'] = path.stat().st_size
+        with open(os.environ['GITHUB_OUTPUT'], 'a') as stream:
+            stream.write('json=' + json.dumps(images) + '\n')
+        PYTHON
 
   # Posting from inside the matrix would have every target fight over the same
   # comment, so the links for all of them are collected here instead.
@@ -309,17 +326,24 @@ jobs:
   # is added — so the required check is this fixed-name job instead.
   build:
     runs-on: ubuntu-latest
-    needs: [firmware, publish, unit-tests]
+    needs: [firmware, publish, mcu-system-smoke]
     if: always()
 
     steps:
     # A job skipped because something it needed failed still counts as success
     # for a required check, so the results are inspected explicitly.
     - name: 'Check the jobs above'
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INTERNAL_PR: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
       run: |
         echo "firmware: ${{ needs.firmware.result }}"
         echo "publish:  ${{ needs.publish.result }}"
-        echo "unit-tests: ${{ needs.unit-tests.result }}"
+        echo "mcu-system-smoke: ${{ needs.mcu-system-smoke.result }}"
         [ "${{ needs.firmware.result }}" = "success" ] || exit 1
         case "${{ needs.publish.result }}" in success|skipped) ;; *) exit 1 ;; esac
-        case "${{ needs.unit-tests.result }}" in success|skipped) ;; *) exit 1 ;; esac
+        if [ "$EVENT_NAME" = pull_request ] && [ "$INTERNAL_PR" = true ]; then
+          [ "${{ needs.mcu-system-smoke.result }}" = success ] || exit 1
+        else
+          case "${{ needs.mcu-system-smoke.result }}" in success|skipped) ;; *) exit 1 ;; esac
+        fi
