@@ -4,7 +4,7 @@
 The layout is targets/f1/furi_hal/furi_hal_otp.h. Blocks are built here,
 saved to files, and written on the device with `otp program <n> <hex>`:
 
-    otp.py create-1 --target 2 --body 1 --connect 1 --chip-id <otp chipid> -o b1.bin
+    otp.py create-1 --target 2 --body 1 --connect 1 --chip-id <rp2350_hardware_uid> -o b1.bin
     otp.py create-2 --eth0 ... --name ... -o b2.bin
     otp.py sign --key key.pem --key-id 0 --otp1 b1.bin --otp2 b2.bin -o b3.bin
     otp.py hex b1.bin        # the argument for `otp program 1`
@@ -218,7 +218,7 @@ def main():
     s.add_argument("--target", type=int, required=True, help="FW_TARGET number: f2 is 2")
     s.add_argument("--body", type=int, required=True)
     s.add_argument("--connect", type=int, required=True)
-    s.add_argument("--chip-id", type=parse_hex(8), required=True, help="as `otp chipid` prints it")
+    s.add_argument("--chip-id", type=parse_hex(8), required=True, help="rp2350_hardware_uid, as `device_info` prints it")
     s.add_argument("--timestamp", type=int, default=int(time.time()))
     s.add_argument("-o", "--output", required=True)
     s.set_defaults(func=cmd_create_1)

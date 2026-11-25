@@ -358,7 +358,6 @@ void cli_command_clock_out(PipeSide* pipe, FuriString* args, void* context) {
 static void cli_command_otp_help(void) {
     printf(
         "otp info               - the blocks, decoded\r\n"
-        "otp chipid             - this chip's id, for scripts/otp.py create-1\r\n"
         "otp dump <1|2|3>       - a block's rows as hex, written or not\r\n"
         "otp program <1|2|3> <hex>\r\n"
         "                       - write a block built by scripts/otp.py and lock it: cannot be undone\r\n");
@@ -490,10 +489,6 @@ void cli_command_otp(PipeSide* pipe, FuriString* args, void* context) {
         cli_command_otp_help();
     } else if(furi_string_cmp(action, "info") == 0) {
         cli_command_otp_info();
-    } else if(furi_string_cmp(action, "chipid") == 0) {
-        uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE];
-        furi_hal_otp_chip_id(chip_id);
-        cli_command_otp_print_hex(chip_id, sizeof(chip_id));
     } else if(furi_string_cmp(action, "dump") == 0) {
         cli_command_otp_dump(args);
     } else if(furi_string_cmp(action, "program") == 0) {
