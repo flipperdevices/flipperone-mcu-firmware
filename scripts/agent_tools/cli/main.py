@@ -152,13 +152,16 @@ def cmd_status(args):
 
 
 def cmd_cli(args):
+    # Decode every argument first, so that a bad escape fails before anything is sent
+    raw = [codecs.escape_decode(line.encode())[0] for line in args.command] if args.raw else None
     with DeviceSession(args.console) as session:
-        for line in args.command:
-            if args.raw:
-                output = session.send_raw(codecs.escape_decode(line.encode())[0], args.timeout)
+        if raw:
+            for data in raw:
+                output = session.send_raw(data, args.timeout)
                 if output:
                     print(output)
-                continue
+            return
+        for line in args.command:
             if len(args.command) > 1:
                 print(f"> {line}")
             print(session.command(line, args.timeout))

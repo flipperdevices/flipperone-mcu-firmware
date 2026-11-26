@@ -87,3 +87,10 @@ def test_cli_raw_decodes_escapes_and_skips_the_prompt(monkeypatch, capsys):
     monkeypatch.setattr(main_module, "DeviceSession", Session)
     assert run(monkeypatch, ["cli", "--raw", "log\\r", "\\x03"]) == 0
     assert sent == [b"log\r", b"\x03"]
+
+
+def test_cli_raw_bad_escape_sends_nothing(monkeypatch, capsys):
+    opened = []
+    monkeypatch.setattr(main_module, "DeviceSession", lambda role: opened.append(role))
+    assert run(monkeypatch, ["cli", "--raw", "log\\r", "oops\\"]) == 1
+    assert opened == []
