@@ -32,6 +32,11 @@ class McuConsole:
                 f"check 'f1.py swd status'. Got: {clean(reply)[-200:]!r}"
             )
 
+    def send_raw(self, data, timeout=5.0):
+        """Write bytes as they are, wait for no prompt; return what came back until 0.5 s of silence."""
+        self.port.write(data)
+        return clean(self.port.read_until_quiet(timeout, quiet=0.5, wait_for_data=False)).strip("\n")
+
     def command(self, line, timeout=5.0):
         """Run one CLI command and return its output without the echo and the prompt."""
         self.port.write(line.encode() + b"\r")

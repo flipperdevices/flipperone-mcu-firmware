@@ -6,6 +6,7 @@ non-zero with a one-line reason on failure. See AGENT_TOOLS.md next to this file
 """
 
 import argparse
+import codecs
 import contextlib
 import json
 import os
@@ -153,6 +154,11 @@ def cmd_status(args):
 def cmd_cli(args):
     with DeviceSession(args.console) as session:
         for line in args.command:
+            if args.raw:
+                output = session.send_raw(codecs.escape_decode(line.encode())[0], args.timeout)
+                if output:
+                    print(output)
+                continue
             if len(args.command) > 1:
                 print(f"> {line}")
             print(session.command(line, args.timeout))
@@ -521,6 +527,11 @@ def build_parser():
     p = sub.add_parser("cli", help="run MCU console commands")
     p.add_argument("command", nargs="+", help="one CLI command per argument, e.g. 'uptime' 'power show'")
     p.add_argument("--timeout", type=float, default=5.0)
+    p.add_argument(
+        "--raw",
+        action="store_true",
+        help="send each argument as bytes, with escapes such as \\r and \\x03, without Enter and without waiting for a prompt",
+    )
     add_console_option(p)
     p.set_defaults(func=cmd_cli)
 

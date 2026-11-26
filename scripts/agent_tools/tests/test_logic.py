@@ -327,3 +327,11 @@ def test_freeze_host_reports_a_failed_release_and_keeps_the_write_failure(monkey
             raise ValueError("the write failed")
     assert "releasing cpu_reset also failed" in str(caught.value)
     assert isinstance(caught.value.__cause__, ValueError)
+
+
+def test_console_send_raw_writes_bytes_as_they_are():
+    port = FakePort(lambda p, data: p.feed(b"echo\r\n") if data == b"log\r" else None)
+    console = McuConsole(port)
+    assert console.send_raw(b"log\r") == "echo"
+    assert console.send_raw(b"x" * 3) == ""
+    assert port.written == [b"log\r", b"xxx"]
