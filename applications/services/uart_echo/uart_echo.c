@@ -25,12 +25,11 @@ typedef enum {
     WorkerEventRxFramingError = (1 << 5),
     WorkerEventRxBreakError = (1 << 6),
     WorkerEventRxParityError = (1 << 7),
-    WorkerEventTxComplete = (1 << 8),
 } WorkerEventFlags;
 
 #define WORKER_EVENTS_MASK                                                                                                                       \
     (WorkerEventStop | WorkerEventRxData | WorkerEventRxIdle | WorkerEventRxOverrunError | WorkerEventRxFramingError | WorkerEventRxBreakError | \
-     WorkerEventRxParityError | WorkerEventTxComplete)
+     WorkerEventRxParityError)
 
 static int32_t uart_echo_worker(void* context) {
     furi_assert(context);
@@ -41,10 +40,6 @@ static int32_t uart_echo_worker(void* context) {
         furi_check((events & FuriFlagError) == 0);
 
         if(events & WorkerEventStop) break;
-
-        if(events & WorkerEventTxComplete) {
-            FURI_LOG_I(TAG, "Transmit complete");
-        }
 
         if(events & WorkerEventRxData) {
             size_t length = 0;
@@ -128,16 +123,6 @@ static void uart_echo_on_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialRxEven
     furi_thread_flags_set(furi_thread_get_id(app->worker_thread), flag);
 }
 
-static void uart_echo_tx_complete_irq_cb(FuriHalSerialHandle* handle, FuriHalSerialTxEvent event, void* context) {
-    UNUSED(handle);
-    WorkerEventFlags flag = 0;
-    UartEchoApp* app = context;
-    if(event & FuriHalSerialTxEventComplete) {
-        flag |= WorkerEventTxComplete;
-    }
-    furi_thread_flags_set(furi_thread_get_id(app->worker_thread), flag);
-}
-
 static UartEchoApp*
     uart_echo_app_alloc(uint32_t baudrate, FuriHalSerialConfigDataBits data_bits, FuriHalSerialConfigParity parity, FuriHalSerialConfigStopBits stop_bits) {
     UartEchoApp* app = malloc(sizeof(UartEchoApp));
@@ -152,7 +137,7 @@ static UartEchoApp*
     furi_hal_serial_init(app->serial_handle, baudrate);
     furi_hal_serial_set_config(app->serial_handle, data_bits, parity, stop_bits);
 
-    furi_hal_serial_set_callback(app->serial_handle, uart_echo_tx_complete_irq_cb, uart_echo_on_irq_cb, app);
+    furi_hal_serial_set_callback(app->serial_handle, NULL, uart_echo_on_irq_cb, app);
     furi_hal_serial_async_rx_start(app->serial_handle, true);
 
     return app;
