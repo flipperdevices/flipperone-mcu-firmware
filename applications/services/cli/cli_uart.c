@@ -56,9 +56,8 @@ static void cli_uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEve
     UNUSED(handle);
     CliUart* cli_uart = context;
 
-    // Always empty the FIFO: bytes left in it keep the RX interrupt asserted, and the handler would run again and
-    // again without letting the shell free the pipe. What the pipe has no room for is dropped, as there is no flow
-    // control to hold the sender back. Before the console is enabled there is no pipe, and everything is dropped.
+    // What the pipe has no room for is dropped: there is no flow control to hold the sender back.
+    // Before the console is enabled there is no pipe.
     uint8_t data[TRANSFER_BATCH_SIZE];
     size_t length;
     if(event & (FuriHalSerialRxEventData | FuriHalSerialRxEventIdle)) {

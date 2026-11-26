@@ -544,7 +544,7 @@ def build_parser():
     p.add_argument(
         "--raw",
         action="store_true",
-        help="send each argument as bytes, with escapes such as \\r and \\x03, without Enter and without waiting for a prompt",
+        help="send each argument as bytes, with escapes such as \\r and \\x03, without Enter, after the usual sync; no prompt is awaited afterwards",
     )
     add_console_option(p)
     p.set_defaults(func=cmd_cli)

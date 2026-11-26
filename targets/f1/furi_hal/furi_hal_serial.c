@@ -394,7 +394,6 @@ void furi_hal_serial_set_callback(FuriHalSerialHandle* handle, FuriHalSerialTxCa
     const FuriHalSerialResources* resources = &furi_hal_serial_resources[handle->id];
 
     FURI_CRITICAL_ENTER();
-    // Interrupts stop with the old callbacks: the async start functions enable them again
     serial->tx_active = false;
     uart_get_hw(resources->periph)->imsc = 0;
     if(serial->is_isr_set) {
