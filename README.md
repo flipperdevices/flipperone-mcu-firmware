@@ -75,7 +75,7 @@ Copy the `vscode_template` folder contents to `.vscode` and install the recommen
 
 Configuring checks the tools against `toolchain.json`: with the toolchain, that it is the pinned release; without it, that the Pico SDK and GCC versions match. A mismatch stops the configuration with a hint, and `-DFW_TOOLCHAIN_CHECK=WARN` builds anyway. Only the toolchain release reproduces CI's binaries exactly.
 
-The [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico) installs its own Pico SDK and Arm GCC, at the versions on the `sdkVersion`, `toolchainVersion` and `picotoolVersion` lines of `CMakeLists.txt`, which match `toolchain.json`. A new build directory uses them only when the pinned toolchain is neither set up with `fbtenv` nor installed; an existing one keeps the SDK it was configured with.
+The [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico) installs its own Pico SDK and Arm GCC, at the versions on the `sdkVersion`, `toolchainVersion` and `picotoolVersion` lines of `CMakeLists.txt`, which match `toolchain.json`. A new build directory uses them only when the pinned toolchain is neither set up with `fbtenv` nor installed; an existing one keeps the SDK it was configured with. An installed toolchain also wins over a global `PICO_SDK_PATH`; pass `-DPICO_SDK_PATH=<SDK>` to use another SDK.
 
 ## How to update MCU firmware
 

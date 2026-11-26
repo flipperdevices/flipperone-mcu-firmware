@@ -234,7 +234,7 @@ If the MCU console was left in a bad state (a command still running, or a crashe
 
 ## Firmware slots and SWD
 
-SWD goes through the RP2350-capable OpenOCD this repository needs anyway: the binary named in `F1_OPENOCD`, else the toolchain's when `scripts/toolchain/fbtenv.sh` has set up its environment, else the Pico extension's (`~/.pico-sdk/openocd/<version>/openocd`); a stock OpenOCD without RP2350 support will not do. To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f scripts/agent_tools/openocd/flipperone-mcu.cfg`. That board config sources `target/rp2350.cfg`, sets the adapter speed and holds all the board knowledge, so a debug session can reuse it too:
+SWD goes through the RP2350-capable OpenOCD this repository needs anyway: the binary named in `F1_OPENOCD`, else the toolchain's (the one `scripts/toolchain/fbtenv.sh` set up in this shell, or the tree's `.toolchain` link once fbtenv has run here), else the Pico extension's (`~/.pico-sdk/openocd/<version>/openocd`); a stock OpenOCD without RP2350 support will not do. To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f scripts/agent_tools/openocd/flipperone-mcu.cfg`. That board config sources `target/rp2350.cfg`, sets the adapter speed and holds all the board knowledge, so a debug session can reuse it too:
 
 | Proc | Use |
 |---|---|

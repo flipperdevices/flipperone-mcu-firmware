@@ -35,6 +35,7 @@ jobs:
 
       - name: Tests
         run: |
+          sudo apt-get update -q
           sudo apt-get install -y --no-install-recommends zsh
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check pytest==9.2.0

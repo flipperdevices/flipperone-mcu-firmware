@@ -341,6 +341,7 @@ def test_openocd_of_the_toolchain_bundle_comes_before_the_pico_sdk_one(tmp_path,
     bundle = fake_openocd(tmp_path / "bundle" / "tools" / "openocd")
     pico = fake_openocd(tmp_path / "home" / ".pico-sdk" / "openocd" / "0.12.0+dev")
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(swd, "REPO", str(tmp_path))
     monkeypatch.delenv("F1_OPENOCD", raising=False)
     monkeypatch.delenv("FLIPPERONE_TOOLCHAIN_ROOT", raising=False)
     assert swd.find_openocd()[0] == pico
