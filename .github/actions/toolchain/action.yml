@@ -1,0 +1,57 @@
+name: Set up the toolchain
+description: >
+  Sets up the flipperone-mcu-toolchain release pinned in toolchain.json the way a
+  developer does: scripts/toolchain/fbtenv.sh (fbtenv.ps1 on Windows) downloads it,
+  checks its sha256 and unpacks it. The bundle's environment (PATH, PICO_SDK_PATH and
+  the rest) is then exported to the steps after this one.
+
+inputs:
+  firmware_dir:
+    description: Checkout of this repository, where toolchain.json is read from
+    required: false
+    default: ${{ github.workspace }}
+  install_dir:
+    description: >
+      Where the bundle is unpacked (FLIPPERONE_TOOLCHAIN_HOME). Pick a place that
+      survives whatever the job does to the checkout.
+    required: false
+    default: ${{ runner.temp }}/flipperone-mcu-toolchain
+
+runs:
+  using: composite
+  steps:
+    # GITHUB_PATH prepends every line it is given, so the bundle's directories go in
+    # last first. The variables are the bundle's own exports, read from its script.
+    - name: Set up the pinned toolchain
+      if: runner.os != 'Windows'
+      shell: bash
+      env:
+        FIRMWARE_DIR: ${{ inputs.firmware_dir }}
+        FLIPPERONE_TOOLCHAIN_HOME: ${{ inputs.install_dir }}
+      run: |
+        . "$FIRMWARE_DIR/scripts/toolchain/fbtenv.sh"
+        tr ':' '\n' <<<"$_FLIPPERONE_TOOLCHAIN_PATH" | awk '{ d[NR] = $0 } END { for (i = NR; i > 0; i--) print d[i] }' >>"$GITHUB_PATH"
+        for name in $(sed -n 's/^export \([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$FLIPPERONE_TOOLCHAIN_ROOT/fbtenv.sh"); do
+          [ "$name" = PATH ] || echo "$name=${!name}" >>"$GITHUB_ENV"
+        done
+        echo "Toolchain $FLIPPERONE_TOOLCHAIN in $FLIPPERONE_TOOLCHAIN_ROOT"
+
+    - name: Set up the pinned toolchain
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        FIRMWARE_DIR: ${{ inputs.firmware_dir }}
+        FLIPPERONE_TOOLCHAIN_HOME: ${{ inputs.install_dir }}
+      run: |
+        . (Join-Path $env:FIRMWARE_DIR 'scripts\toolchain\fbtenv.ps1')
+        $dirs = $env:_FLIPPERONE_TOOLCHAIN_PATH.Split(';')
+        [array]::Reverse($dirs)
+        $dirs | Add-Content -LiteralPath $env:GITHUB_PATH
+        $script = Join-Path $env:FLIPPERONE_TOOLCHAIN_ROOT 'fbtenv.ps1'
+        foreach ($m in Select-String -LiteralPath $script -Pattern '^\$env:([A-Za-z_][A-Za-z0-9_]*) = ') {
+          $name = $m.Matches[0].Groups[1].Value
+          if ($name -ne 'PATH') {
+            Add-Content -LiteralPath $env:GITHUB_ENV -Value "$name=$([Environment]::GetEnvironmentVariable($name))"
+          }
+        }
+        Write-Output "Toolchain $env:FLIPPERONE_TOOLCHAIN in $env:FLIPPERONE_TOOLCHAIN_ROOT"

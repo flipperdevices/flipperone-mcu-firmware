@@ -26,18 +26,26 @@ files and in the build workflow; read them there when a version matters for a re
 | `lib/` | First-party `toolbox`, `cli`, `containers`, `drivers`, `uart_pio`, `tusb`; submodules `corelibs`, `freertos`, `nanopb`, `pico-kvstore`, `rtt` |
 | `targets/` | Board descriptors (`f1` base, `f2` derived) and generated flash layout |
 | `assets/` | PNG/UI sources, protobuf (`assets/proto` submodule), generation scripts |
-| `scripts/` | `get_env.py` (CI naming), `testops.py` (on-device test runner), `partition_table_update.py` |
+| `scripts/` | `toolchain/` (toolchain bootstrap and pin), `get_env.py` (CI naming), `testops.py` (on-device test runner), `partition_table_update.py` |
+| `toolchain.json` | The pinned flipperone-mcu-toolchain release, written by `scripts/toolchain/toolchain.py` |
 
 ## Build
 
 ```shell
-mkdir -p build && cd build
-PICO_SDK_PATH=../../pico-sdk cmake .. -DCMAKE_BUILD_TYPE=Release -DFW_TARGET=f2
-cmake --build . --config Release --parallel
+source scripts/toolchain/fbtenv.sh
+cmake --preset f2-release
+cmake --build --preset f2-release
 ```
 
-`FW_TARGET` defaults to `f1`; `f2` is the other board. One build directory, so switching
-targets forces a full rebuild. Output is `build/flipperone-mcu-firmware.uf2`.
+`fbtenv.sh` (`fbtenv.ps1` on Windows) sets up the flipperone-mcu-toolchain release
+pinned in `toolchain.json`, downloading it the first time; source it in every new shell.
+`FW_TARGET` defaults to `f2`; `f1` is the other board. Presets are in
+`CMakePresets.json`, each with its own `build/<preset>/`. Output is
+`build/f2-release/flipperone-mcu-firmware.uf2`.
+
+Configure checks the tools against `toolchain.json` (`cmake/toolchain_check.cmake`). Do
+not edit `toolchain.json` or the `sdkVersion`/`toolchainVersion`/`picotoolVersion` lines
+of `CMakeLists.txt` by hand: `scripts/toolchain/toolchain.py` writes them.
 
 ## Test
 
@@ -58,8 +66,9 @@ The agent tools have host unit tests, with no device and no firmware build:
 python3 -m pytest scripts/agent_tools/tests -q
 ```
 
-They need the pinned packages of `assets/python/requirements.txt`; CI runs them in
-`.github/workflows/agent-tools-tests.yml`.
+They need the packages of `scripts/requirements-test.txt`; CI runs them in
+`.github/workflows/agent-tools-tests.yml`. The tests of `scripts/toolchain` need only
+pytest: `python3 -m pytest scripts/toolchain/tests -q`.
 
 ## Agent Tools
 

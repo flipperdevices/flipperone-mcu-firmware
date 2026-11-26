@@ -1,0 +1,42 @@
+# The pinned toolchain: fbtenv's environment, else the installed release (e.g. an IDE).
+# Either wins over the Pico VS Code extension's paths, set above as plain variables, and
+# over a global PICO_SDK_PATH. -DPICO_SDK_PATH=<another SDK> opts out.
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../toolchain.json" _fw_pin)
+string(JSON _fw_tag GET "${_fw_pin}" toolchain)
+if(DEFINED ENV{FLIPPERONE_TOOLCHAIN_HOME})
+    set(_fw_home "$ENV{FLIPPERONE_TOOLCHAIN_HOME}")
+elseif(CMAKE_HOST_WIN32)
+    set(_fw_home "$ENV{USERPROFILE}/.flipper/flipperone-mcu-toolchain")
+else()
+    set(_fw_home "$ENV{HOME}/.flipper/flipperone-mcu-toolchain")
+endif()
+# The tree's .toolchain link finds a release under a home the IDE does not know about
+set(_fw_root "")
+foreach(_fw_dir "${_fw_home}/${_fw_tag}" "${CMAKE_CURRENT_LIST_DIR}/../.toolchain")
+    if(NOT _fw_root AND EXISTS "${_fw_dir}/cmake/initial-cache.cmake")
+        file(REAL_PATH "${_fw_dir}" _fw_root)
+    endif()
+endforeach()
+
+if(DEFINED ENV{FLIPPERONE_TOOLCHAIN_ROOT})
+    unset(PICO_SDK_PATH)
+    unset(PICO_TOOLCHAIN_PATH)
+    unset(picotool_DIR)
+    unset(pioasm_DIR)
+# Unless the cache already holds another SDK than a toolchain release's
+elseif(_fw_root AND (NOT DEFINED CACHE{PICO_SDK_PATH}
+       OR EXISTS "$CACHE{PICO_SDK_PATH}/../cmake/initial-cache.cmake"))
+    unset(PICO_SDK_PATH)
+    unset(PICO_TOOLCHAIN_PATH)
+    unset(picotool_DIR)
+    unset(pioasm_DIR)
+    message(STATUS "Toolchain environment not set up, using ${_fw_root}")
+    include("${_fw_root}/cmake/initial-cache.cmake")
+    if(CMAKE_GENERATOR MATCHES "Ninja" AND NOT CMAKE_MAKE_PROGRAM)
+        set(_fw_ninja "${_fw_root}/tools/ninja/bin/ninja")
+        if(CMAKE_HOST_WIN32)
+            string(APPEND _fw_ninja ".exe")
+        endif()
+        set(CMAKE_MAKE_PROGRAM "${_fw_ninja}" CACHE FILEPATH "")
+    endif()
+endif()

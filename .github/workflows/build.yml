@@ -25,8 +25,8 @@ permissions:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
-  # Tool versions are not configured here: .github/actions/setup-toolchain reads
-  # them from the header of CMakeLists.txt.
+  # Tools are not configured here: .github/actions/toolchain sets up the
+  # flipperone-mcu-toolchain release pinned in toolchain.json.
 
 jobs:
   # The list of hardware targets: every directory under targets/ with a
@@ -99,38 +99,24 @@ jobs:
         python3 firmware/scripts/get_env.py "--event_file=${{ github.event_path }}" "--type=$TYPE"
         echo "event_type=$TYPE" >> $GITHUB_OUTPUT
 
-    # Arm GCC, pico-sdk, picotool, cmake — versions come from CMakeLists.txt
+    # The toolchain release pinned in toolchain.json, as developers get it
     - name: Set up toolchain
-      id: toolchain
-      uses: ./firmware/.github/actions/setup-toolchain
+      uses: ./firmware/.github/actions/toolchain
       with:
         firmware_dir: ${{ github.workspace }}/firmware
 
-    - name: Create Build Environment
-      # Some projects don't allow in-source building, so create a separate build directory
-      # We'll use this as our working directory for all subsequent commands
-      working-directory: ${{github.workspace}}/firmware
-      run:  cmake -E make_directory ${{github.workspace}}/firmware/build
-
     - name: Configure CMake
-      # Use a bash shell so we can use the same syntax for environment variable
-      # access regardless of the host operating system
-      shell: bash
-      working-directory: ${{github.workspace}}/firmware/build
-      # Note the current convention is to use the -S and -B options here to specify source 
-      # and build directories, but this is only available with CMake 3.13 and higher.  
-      # The CMake binaries on the Github Actions machines are (as of this writing) 3.12
-      run: PICO_SDK_PATH=${{ steps.toolchain.outputs.pico_sdk_path }} cmake .. -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DFW_TARGET=${{ matrix.target }} -DFW_RECOVERY=${{ matrix.variant == 'recovery' && 'ON' || 'OFF' }} -Dpicotool_DIR=${{ steps.toolchain.outputs.picotool_dir }} -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf.map"
-
-    - name: Get core count
-      id: core_count
-      run : cat /proc/cpuinfo  | grep processor | wc -l
+      working-directory: ${{github.workspace}}/firmware
+      run: >
+        cmake -S . -B build -G Ninja
+        -DCMAKE_BUILD_TYPE=$BUILD_TYPE
+        -DFW_TARGET=${{ matrix.target }}
+        -DFW_RECOVERY=${{ matrix.variant == 'recovery' && 'ON' || 'OFF' }}
+        -DCMAKE_EXE_LINKER_FLAGS="-Wl,-Map=${{github.workspace}}/firmware/build/flipperone-mcu-firmware.elf.map"
 
     - name: Build
-      working-directory: ${{github.workspace}}/firmware/build
-      shell: bash
-      # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: cmake --build . --config $BUILD_TYPE --parallel $(nproc)
+      working-directory: ${{github.workspace}}/firmware
+      run: cmake --build build
 
     - name: Fail if the build modified tracked files
       working-directory: ${{github.workspace}}/firmware
@@ -150,7 +136,7 @@ jobs:
         ${{github.workspace}}/firmware/scripts/membrowse_ldscripts.sh
         ${{github.workspace}}/firmware
         ${{github.workspace}}/firmware/build
-        ${{ steps.toolchain.outputs.pico_sdk_path }}
+        "$PICO_SDK_PATH"
 
     # One MemBrowse target per board, named after the firmware artifact
     - name: Run MemBrowse analysis
