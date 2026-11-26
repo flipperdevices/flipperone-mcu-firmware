@@ -205,7 +205,7 @@ const char* furi_hal_version_get_hw_version_code(void) {
 
 const char* furi_hal_version_get_name_ptr(void) {
     const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
-    return device && memchr(device->name, '\0', sizeof(device->name)) ? device->name : NULL;
+    return device && memchr(device->name, '\0', sizeof(device->name)) ? device->name : "Unknown";
 }
 
 size_t furi_hal_version_uid_size(void) {

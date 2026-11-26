@@ -188,9 +188,9 @@ const char* furi_hal_version_get_hw_version_code(void);
  */
 const char* furi_hal_version_get_model_ptr(void);
 
-/** Get pointer to target name
+/** Get device name OTP block 2 holds, or "Unknown"
  *
- * @return     Hardware Name C-string
+ * @return     Device name C-string
  */
 const char* furi_hal_version_get_name_ptr(void);
 

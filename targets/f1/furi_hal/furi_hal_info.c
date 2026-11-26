@@ -69,8 +69,7 @@ static void furi_hal_info_get_otp(PropertyValueContext* ctx, FuriString* temp) {
     for(size_t i = 0; i < FuriHalOtpMacCount; i++) {
         property_out_mac(ctx, temp, mac_names[i], furi_hal_version_get_mac(i));
     }
-    const char* name = furi_hal_version_get_name_ptr();
-    property_out_str(ctx, "otp2", "name", name ? name : "Unknown");
+    property_out_str(ctx, "otp2", "name", furi_hal_version_get_name_ptr());
     property_out_str(ctx, "otp2", "model", furi_hal_version_get_model_ptr());
     property_out_uint(ctx, "otp2", "color", furi_hal_version_get_hw_color());
     property_out_str(ctx, "otp2", "region", furi_hal_version_get_hw_region_name());

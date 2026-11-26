@@ -14,7 +14,7 @@ Keep the files: a write cut short is finished by sending the same block
 again, byte for byte. A block made anew differs (its timestamp at least) and
 the device refuses it, so -o never overwrites a file.
 
-Keys and signatures need the `cryptography` package: pip install -r scripts/requirements-otp.txt
+Keys and signatures need the `cryptography` package, which the toolchain's Python has.
 """
 
 import argparse

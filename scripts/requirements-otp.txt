@@ -1,2 +1,0 @@
-# scripts/otp.py: keys and signatures of the OTP blocks. Not part of the build.
-cryptography==50.0.2
