@@ -5,6 +5,7 @@ import sys
 
 import pytest
 
+from agent_tools.cli import main as main_module
 from agent_tools.cli.main import build_parser, envelope, main
 
 
@@ -61,3 +62,36 @@ def test_unknown_command_exits_through_argparse(monkeypatch):
     with pytest.raises(SystemExit) as exit_info:
         build_parser().parse_args()
     assert exit_info.value.code == 2
+
+
+def test_cli_raw_decodes_escapes_and_skips_the_prompt(monkeypatch, capsys):
+    sent = []
+
+    class Session:
+        def __init__(self, role):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            pass
+
+        def send_raw(self, data, timeout):
+            sent.append(data)
+            return ""
+
+        def command(self, line, timeout):
+            raise AssertionError("--raw must not run commands")
+
+    monkeypatch.setattr(main_module, "DeviceSession", Session)
+    assert run(monkeypatch, ["cli", "--raw", "log\\r", "\\x03"]) == 0
+    assert sent == [b"log\r", b"\x03"]
+
+
+def test_cli_raw_bad_escape_sends_nothing(monkeypatch, capsys):
+    opened = []
+    monkeypatch.setattr(main_module, "DeviceSession", lambda role: opened.append(role))
+    assert run(monkeypatch, ["cli", "--raw", "log\\r", "oops\\"]) == 1
+    assert run(monkeypatch, ["cli", "--raw", "log\\r", "\\q"]) == 1
+    assert opened == []

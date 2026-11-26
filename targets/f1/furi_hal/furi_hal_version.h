@@ -10,12 +10,13 @@
 #include <string.h>
 #include <version/version.h>
 #include <furi.h>
+#include <furi_hal_otp.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define FURI_HAL_VERSION_NAME_LENGTH        8
+#define FURI_HAL_VERSION_NAME_LENGTH        (FURI_HAL_OTP_STR_SIZE - 1)
 #define FURI_HAL_VERSION_ARRAY_NAME_LENGTH  (FURI_HAL_VERSION_NAME_LENGTH + 1)
 /** BLE symbol + "Flipper " + name */
 #define FURI_HAL_VERSION_DEVICE_NAME_LENGTH (1 + 8 + FURI_HAL_VERSION_ARRAY_NAME_LENGTH)
@@ -28,30 +29,6 @@ typedef enum {
     FuriHalVersionOtpVersionEmpty = 0xFFFFFFFE,
     FuriHalVersionOtpVersionUnknown = 0xFFFFFFFF,
 } FuriHalVersionOtpVersion;
-
-/** Device Colors */
-typedef enum {
-    FuriHalVersionColorUnknown = 0x00,
-    FuriHalVersionColorBlack = 0x01,
-    FuriHalVersionColorWhite = 0x02,
-    FuriHalVersionColorTransparent = 0x03,
-} FuriHalVersionColor;
-
-/** Device Regions */
-typedef enum {
-    FuriHalVersionRegionUnknown = 0x00,
-    FuriHalVersionRegionEuRu = 0x01,
-    FuriHalVersionRegionUsCaAu = 0x02,
-    FuriHalVersionRegionJp = 0x03,
-    FuriHalVersionRegionWorld = 0x04,
-} FuriHalVersionRegion;
-
-/** Device Display */
-typedef enum {
-    FuriHalVersionDisplayUnknown = 0x00,
-    FuriHalVersionDisplayErc = 0x01,
-    FuriHalVersionDisplayMgg = 0x02,
-} FuriHalVersionDisplay;
 
 /** Init flipper version
  */
@@ -115,59 +92,105 @@ FuriHalVersionOtpVersion furi_hal_version_get_otp_version(void);
  *
  * @return     Hardware Version
  */
-uint8_t furi_hal_version_get_hw_version(void);
+uint16_t furi_hal_version_get_hw_version(void);
 
 /** Get hardware target
  *
  * @return     Hardware Target
  */
-uint8_t furi_hal_version_get_hw_target(void);
+uint16_t furi_hal_version_get_hw_target(void);
 
 /** Get hardware body
  *
  * @return     Hardware Body
  */
-uint8_t furi_hal_version_get_hw_body(void);
+uint16_t furi_hal_version_get_hw_body(void);
 
-/** Get hardware body color
+/** Get hardware body color, as OTP block 2 holds it
  *
- * @return     Hardware Color
+ * @return     Hardware Color, 0 if unknown
  */
-FuriHalVersionColor furi_hal_version_get_hw_color(void);
+uint16_t furi_hal_version_get_hw_color(void);
 
 /** Get hardware connect
  *
  * @return     Hardware Interconnect
  */
-uint8_t furi_hal_version_get_hw_connect(void);
+uint16_t furi_hal_version_get_hw_connect(void);
 
-/** Get hardware region
+/** Get hardware region name, two letters as OTP block 2 holds them
  *
- * @return     Hardware Region
- */
-FuriHalVersionRegion furi_hal_version_get_hw_region(void);
-
-/** Get hardware region name
- *
- * @return     Hardware Region name
+ * @return     Hardware Region name, "Unknown" if unknown
  */
 const char* furi_hal_version_get_hw_region_name(void);
 
-/** Get hardware display id
+/** Get hardware display id, as OTP block 2 holds it
  *
- * @return     Display id
+ * @return     Display id, 0 if unknown
  */
-FuriHalVersionDisplay furi_hal_version_get_hw_display(void);
+uint16_t furi_hal_version_get_hw_display(void);
+
+/** Whether an OTP block is written whole, of a known version, with a right CRC */
+bool furi_hal_version_is_otp_valid(FuriHalOtpBlock block);
+
+/** Whether the bootrom takes the USB white label OTP block 1 writes as written */
+bool furi_hal_version_is_usb_white_label_valid(void);
+
+/** Whether all OTP blocks are written and their signatures verify */
+bool furi_hal_version_is_otp_signed(void);
+
+/** When an OTP block was made, seconds since the epoch, 0 if not written */
+uint64_t furi_hal_version_get_otp_timestamp(FuriHalOtpBlock block);
+
+/** Chip id OTP block 1 holds, NULL if not written */
+const uint8_t* furi_hal_version_get_otp_chip_id(void);
+
+/** A MAC address OTP block 2 holds, NULL if not written */
+const uint8_t* furi_hal_version_get_mac(FuriHalOtpMac mac);
+
+/** CPU id OTP block 2 holds, NULL if not written */
+const uint8_t* furi_hal_version_get_cpu_id(void);
+
+/** RAM size OTP block 2 holds, in GB, 0 if not written */
+uint32_t furi_hal_version_get_ram_gb(void);
+
+/** UFS size OTP block 2 holds, in GB, 0 if not written */
+uint32_t furi_hal_version_get_ufs_gb(void);
+
+/** Key id OTP block 3 holds, 0 if not written */
+uint16_t furi_hal_version_get_sign_key_id(void);
+
+/** Curve OTP block 3 holds (FuriHalOtpCurve), 0 if not written */
+uint16_t furi_hal_version_get_sign_curve(void);
+
+/** Public key OTP block 3 holds, X || Y, NULL if not written */
+const uint8_t* furi_hal_version_get_sign_public_key(void);
+
+/** Signature OTP block 3 holds of block 1 or 2, NULL if not written */
+const uint8_t* furi_hal_version_get_otp_signature(FuriHalOtpBlock block);
 
 /** Get hardware timestamp
  *
  * @return     Hardware Manufacture timestamp
  */
-uint32_t furi_hal_version_get_hw_timestamp(void);
+uint64_t furi_hal_version_get_hw_timestamp(void);
 
-/** Get pointer to target name
+/** Get hardware version code "<version>.F<target>.B<body>.C<connect>", as
+ * OTP block 1 holds it, or "Unknown"
  *
- * @return     Hardware Name C-string
+ * @return     Hardware version code C-string
+ */
+const char* furi_hal_version_get_hw_version_code(void);
+
+/** Get model name OTP block 2 holds, or "Unknown"
+ *
+ * @return     Model name C-string
+ */
+const char* furi_hal_version_get_model_ptr(void);
+
+/** Get device name OTP block 2 holds, or "Unknown"
+ *
+ * @return     Device name C-string
  */
 const char* furi_hal_version_get_name_ptr(void);
 

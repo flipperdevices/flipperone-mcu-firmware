@@ -40,6 +40,27 @@ def test_console_command_timeout():
         console.command("uptime", timeout=0.05)
 
 
+def question_responder(port, data):
+    if data == b"otp program 1 aa\r":
+        port.feed(b"otp program 1 aa\r\nWarning! This operation is irreversible! Are you sure? y/n\r\n")
+    elif data == b"y":
+        port.feed(b"Block 1: written\r\ncontrol>: ")
+
+
+def test_console_command_answers_a_question():
+    port = FakePort(question_responder)
+    reply = McuConsole(port).command("otp program 1 aa", timeout=1, answer="y")
+    assert port.written[-1] == b"y"
+    assert reply.endswith("Block 1: written")
+
+
+def test_console_command_question_without_answer_times_out():
+    port = FakePort(question_responder)
+    with pytest.raises(TimeoutError, match="did not finish"):
+        McuConsole(port).command("otp program 1 aa", timeout=0.05)
+    assert b"y" not in port.written
+
+
 def test_console_sync_failure():
     with pytest.raises(RuntimeError, match="does not show a prompt"):
         McuConsole(FakePort()).sync()
@@ -327,3 +348,47 @@ def test_freeze_host_reports_a_failed_release_and_keeps_the_write_failure(monkey
             raise ValueError("the write failed")
     assert "releasing cpu_reset also failed" in str(caught.value)
     assert isinstance(caught.value.__cause__, ValueError)
+
+
+def test_console_send_raw_writes_bytes_as_they_are():
+    port = FakePort(lambda p, data: p.feed(b"echo\r\n") if data == b"log\r" else None)
+    console = McuConsole(port)
+    assert console.send_raw(b"log\r") == "echo"
+    assert console.send_raw(b"x" * 3) == ""
+    assert port.written == [b"log\r", b"xxx"]
+
+
+def test_openocd_of_the_toolchain_bundle_comes_before_the_pico_sdk_one(tmp_path, monkeypatch):
+    from agent_tools.logic import swd
+
+    def fake_openocd(base):
+        (base / "scripts" / "target").mkdir(parents=True)
+        (base / "scripts" / "target" / "rp2350.cfg").write_text("")
+        (base / "openocd").write_text("")
+        return str(base / "openocd")
+
+    bundle = fake_openocd(tmp_path / "bundle" / "tools" / "openocd")
+    pico = fake_openocd(tmp_path / "home" / ".pico-sdk" / "openocd" / "0.12.0+dev")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(swd, "REPO", str(tmp_path))
+    monkeypatch.delenv("F1_OPENOCD", raising=False)
+    monkeypatch.delenv("FLIPPERONE_TOOLCHAIN_ROOT", raising=False)
+    assert swd.find_openocd()[0] == pico
+    monkeypatch.setenv("FLIPPERONE_TOOLCHAIN_ROOT", str(tmp_path / "bundle"))
+    assert swd.find_openocd() == (bundle, str(tmp_path / "bundle" / "tools" / "openocd" / "scripts"))
+
+
+def test_symbols_come_from_the_newest_elf_of_any_build_directory(tmp_path, monkeypatch):
+    import os
+
+    from agent_tools.logic import swd
+
+    monkeypatch.setattr(swd, "REPO", str(tmp_path))
+    assert swd.find_elf() is None
+    old = tmp_path / "build" / "flipperone-mcu-firmware.elf"
+    new = tmp_path / "build" / "f2-release" / "flipperone-mcu-firmware.elf"
+    new.parent.mkdir(parents=True)
+    old.write_text("")
+    new.write_text("")
+    os.utime(old, (1, 1))
+    assert swd.find_elf() == str(new)

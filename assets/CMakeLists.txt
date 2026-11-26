@@ -5,6 +5,8 @@ set(PYTHON_DIR    "${CMAKE_CURRENT_SOURCE_DIR}/python")
 set(NANOPB_GENERATOR "${CMAKE_CURRENT_SOURCE_DIR}/../lib/nanopb/generator/nanopb_generator.py")
 set(NANOPB_PROTO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/proto")
 set(NANOPB_OUTPUT_DIR "${CMAKE_BINARY_DIR}/generated/proto")
+# Parallel generators must not share nanopb_pb2.py: each builds its own in here
+set(NANOPB_PB2_DIR "${CMAKE_CURRENT_BINARY_DIR}/nanopb_pb2")
 set(ASSETS_SCRIPT "${CMAKE_SOURCE_DIR}/scripts/image_convert.py")
 set(IMAGES_HEADER "${CMAKE_CURRENT_BINARY_DIR}/assets.h")
 
@@ -13,35 +15,54 @@ set(IMAGES_HEADER "${CMAKE_CURRENT_BINARY_DIR}/assets.h")
 # in PATH when the build happens to run. 3.10 is the floor of the pinned packages.
 find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 
-# The venv lives in the build tree: a clean build starts from a clean venv and
-# the source tree stays untouched.
-set(VENV_DIR "${CMAKE_CURRENT_BINARY_DIR}/.venv")
-if(CMAKE_HOST_WIN32)
-    set(VENV_PYTHON "${VENV_DIR}/Scripts/python.exe")
-else()
-    set(VENV_PYTHON "${VENV_DIR}/bin/python")
-endif()
-set(ASSETS_COMMAND "${VENV_PYTHON}")
-
-# Prepare the venv in a single prerequisite step. It is rebuilt from scratch
-# when requirements.txt changes or another interpreter is configured (the marker
-# below is only rewritten when its content changes). The stamp lives inside the
-# venv, so deleting the venv by hand also triggers a rebuild.
 set(VENV_REQUIREMENTS "${PYTHON_DIR}/requirements.txt")
-set(VENV_STAMP "${VENV_DIR}/venv.stamp")
-set(VENV_INTERPRETER "${CMAKE_CURRENT_BINARY_DIR}/venv_interpreter.txt")
-file(GENERATE OUTPUT ${VENV_INTERPRETER} CONTENT "${Python3_EXECUTABLE}\n")
-add_custom_command(
-    OUTPUT  ${VENV_STAMP}
-    # --clear: a venv left over from another interpreter is not reusable;
-    # --copies: a symlinked venv breaks on macOS once the interpreter is updated
-    COMMAND ${Python3_EXECUTABLE} -m venv --clear --copies ${VENV_DIR}
-    COMMAND ${VENV_PYTHON} -m pip install --disable-pip-version-check -r ${VENV_REQUIREMENTS}
-    COMMAND ${CMAKE_COMMAND} -E touch ${VENV_STAMP}
-    DEPENDS ${VENV_REQUIREMENTS} ${VENV_INTERPRETER}
-    COMMENT "Preparing Python virtual environment in ${VENV_DIR}"
-    VERBATIM
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${VENV_REQUIREMENTS})
+
+# The toolchain bundle's Python already has the pinned packages: run the generators
+# with it as is. Any other interpreter gets a venv with them.
+execute_process(
+    COMMAND ${Python3_EXECUTABLE} ${PYTHON_DIR}/check_requirements.py ${VENV_REQUIREMENTS}
+    OUTPUT_VARIABLE PYTHON_MISSING
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE PYTHON_HAS_REQUIREMENTS
 )
+if(PYTHON_HAS_REQUIREMENTS EQUAL 0)
+    message(STATUS "Generators run with ${Python3_EXECUTABLE}, which has the pinned packages")
+    set(ASSETS_COMMAND "${Python3_EXECUTABLE}")
+    set(ASSETS_DEPENDS "${VENV_REQUIREMENTS}")
+else()
+    message(STATUS "Generators get a venv: ${PYTHON_MISSING} in ${Python3_EXECUTABLE}")
+
+    # The venv lives in the build tree: a clean build starts from a clean venv and
+    # the source tree stays untouched.
+    set(VENV_DIR "${CMAKE_CURRENT_BINARY_DIR}/.venv")
+    if(CMAKE_HOST_WIN32)
+        set(VENV_PYTHON "${VENV_DIR}/Scripts/python.exe")
+    else()
+        set(VENV_PYTHON "${VENV_DIR}/bin/python")
+    endif()
+    set(ASSETS_COMMAND "${VENV_PYTHON}")
+
+    # Prepare the venv in a single prerequisite step. It is rebuilt from scratch
+    # when requirements.txt changes or another interpreter is configured (the marker
+    # below is only rewritten when its content changes). The stamp lives inside the
+    # venv, so deleting the venv by hand also triggers a rebuild.
+    set(VENV_STAMP "${VENV_DIR}/venv.stamp")
+    set(ASSETS_DEPENDS "${VENV_STAMP}")
+    set(VENV_INTERPRETER "${CMAKE_CURRENT_BINARY_DIR}/venv_interpreter.txt")
+    file(GENERATE OUTPUT ${VENV_INTERPRETER} CONTENT "${Python3_EXECUTABLE}\n")
+    add_custom_command(
+        OUTPUT  ${VENV_STAMP}
+        # --clear: a venv left over from another interpreter is not reusable;
+        # --copies: a symlinked venv breaks on macOS once the interpreter is updated
+        COMMAND ${Python3_EXECUTABLE} -m venv --clear --copies ${VENV_DIR}
+        COMMAND ${VENV_PYTHON} -m pip install --disable-pip-version-check -r ${VENV_REQUIREMENTS}
+        COMMAND ${CMAKE_COMMAND} -E touch ${VENV_STAMP}
+        DEPENDS ${VENV_REQUIREMENTS} ${VENV_INTERPRETER}
+        COMMENT "Preparing Python virtual environment in ${VENV_DIR}"
+        VERBATIM
+    )
+endif()
 
 # Nanopb .proto → .pb.h/.pb.c generation
 file(GLOB PROTO_SOURCES CONFIGURE_DEPENDS "${NANOPB_PROTO_DIR}/*.proto")
@@ -52,10 +73,11 @@ foreach(PROTO_FILE ${PROTO_SOURCES})
 
     add_custom_command(
         OUTPUT  ${PB_HEADER} ${PB_SOURCE}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${NANOPB_OUTPUT_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${NANOPB_OUTPUT_DIR} ${NANOPB_PB2_DIR}
         # -q drops the "Writing to ..." chatter; it would also silence the warning
         # about .options patterns that match nothing, so make those an error instead.
-        COMMAND ${ASSETS_COMMAND} ${NANOPB_GENERATOR}
+        COMMAND ${CMAKE_COMMAND} -E env NANOPB_PB2_TEMP_DIR=${NANOPB_PB2_DIR}
+            ${ASSETS_COMMAND} ${NANOPB_GENERATOR}
             --quiet --error-on-unmatched
             -D ${NANOPB_OUTPUT_DIR}
             -I ${NANOPB_PROTO_DIR}
@@ -63,7 +85,7 @@ foreach(PROTO_FILE ${PROTO_SOURCES})
         DEPENDS
             ${PROTO_FILE}
             ${NANOPB_GENERATOR}
-            ${VENV_STAMP}
+            ${ASSETS_DEPENDS}
         COMMENT "Generating ${PROTO_NAME}.pb.h/.pb.c from proto"
     )
 
@@ -83,7 +105,7 @@ foreach(IMAGE_SOURCE ${IMAGE_SOURCES})
         DEPENDS
             ${IMAGE_SOURCE}
             ${ASSETS_SCRIPT}
-            ${VENV_STAMP}
+            ${ASSETS_DEPENDS}
         COMMENT "Generating ${IMAGE_NAME}.c"
     )
 

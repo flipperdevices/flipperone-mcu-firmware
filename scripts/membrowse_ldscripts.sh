@@ -7,9 +7,6 @@
 # to end up in one directory. Order matters: SDK defaults first, then generated
 # fragments, then our restricted FLASH region on top.
 #
-# Shared by build.yml and membrowse-onboard.yml. The onboard workflow runs it
-# against historical commits, so it must not assume the current repository layout.
-#
 # Usage: membrowse_ldscripts.sh <repo dir> <build dir> <pico-sdk dir>
 set -euo pipefail
 

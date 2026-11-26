@@ -1,0 +1,4 @@
+# The Python tests under scripts/: the build's pinned packages plus pytest.
+# .github/workflows/agent-tools-tests.yml installs this file.
+-r ../assets/python/requirements.txt
+pytest==9.2.0

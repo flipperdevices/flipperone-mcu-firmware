@@ -131,6 +131,12 @@ void furi_hal_interrupt_set_isr(FuriHalInterruptId index, FuriHalInterruptISR is
  */
 void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPriority priority, FuriHalInterruptISR isr, void* context);
 
+/** Make an interrupt pending, so that its ISR runs as if the peripheral had raised it
+ *
+ * @param      index    - interrupt ID
+ */
+void furi_hal_interrupt_set_pending(FuriHalInterruptId index);
+
 /** Get interrupt name by exception number.
  * Exception number can be obtained from IPSR register.
  * 

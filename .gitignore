@@ -1,5 +1,7 @@
 .DS_Store
 build
+# fbtenv: link to the toolchain this tree pins
+/.toolchain
 .cache
 .vscode
 *.code-workspace

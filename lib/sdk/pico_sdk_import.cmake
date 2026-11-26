@@ -1,4 +1,5 @@
-# This is a copy of <PICO_SDK_PATH>/external/pico_sdk_import.cmake
+# This is a copy of <PICO_SDK_PATH>/external/pico_sdk_import.cmake, with one change
+# marked below
 
 # This can be dropped into an external project to help locate this SDK
 # It should be include()ed prior to project()
@@ -45,9 +46,11 @@ if (DEFINED ENV{PICO_SDK_FETCH_FROM_GIT_TAG} AND (NOT PICO_SDK_FETCH_FROM_GIT_TA
     message("Using PICO_SDK_FETCH_FROM_GIT_TAG from environment ('${PICO_SDK_FETCH_FROM_GIT_TAG}')")
 endif ()
 
+# Changed from the SDK's copy: fetch the pinned release (sdkVersion, set in
+# CMakeLists.txt from toolchain.json) instead of master.
 if (PICO_SDK_FETCH_FROM_GIT AND NOT PICO_SDK_FETCH_FROM_GIT_TAG)
-  set(PICO_SDK_FETCH_FROM_GIT_TAG "master")
-  message("Using master as default value for PICO_SDK_FETCH_FROM_GIT_TAG")
+  set(PICO_SDK_FETCH_FROM_GIT_TAG "${sdkVersion}")
+  message("Using the pinned ${sdkVersion} as default value for PICO_SDK_FETCH_FROM_GIT_TAG")
 endif()
 
 set(PICO_SDK_PATH "${PICO_SDK_PATH}" CACHE PATH "Path to the Raspberry Pi Pico SDK")

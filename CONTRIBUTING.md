@@ -63,6 +63,21 @@ for open tasks. Leave a comment on the issue before starting work to avoid dupli
 3. Make your changes and verify the build.
 4. Flash and test on hardware.
 
+## Toolchain
+
+The build tools are the [flipperone-mcu-toolchain](https://github.com/flipperdevices/flipperone-mcu-toolchain)
+release pinned in `toolchain.json`; the README shows how to set it up.
+
+- To pin a new release: `python3 scripts/toolchain/toolchain.py update --tag v<N>`
+  (the newest without `--tag`). It reads the release's `release.json` and also rewrites
+  the version lines the Pico VS Code extension reads at the top of `CMakeLists.txt`.
+- A change to the build's Python packages (`assets/python/requirements.txt`) needs a
+  toolchain release with them first. Pin that release in the same pull request as the
+  change. Otherwise the build ignores the toolchain's Python packages and installs its
+  own from PyPI.
+- On Windows, `.toolchain` is a junction into `~/.flipper`. `git clean -x` can delete
+  the installed release through it; sourcing `fbtenv` reinstalls it.
+
 ## Commit your update
 
 - Keep commits focused and atomic.

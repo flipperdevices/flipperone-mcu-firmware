@@ -1,13 +1,14 @@
 name: Agent tools tests
 
 # Unit tests for scripts/agent_tools and the get_port.py shim: no hardware, no
-# firmware build, fake ports. Installs the pinned requirements file, the same one
-# assets/CMakeLists.txt builds build/assets/.venv from.
+# firmware build, fake ports. Installs scripts/requirements-test.txt: the build's
+# pinned packages (assets/python/requirements.txt) plus pytest.
 on:
   pull_request:
     paths:
       - '.github/workflows/agent-tools-tests.yml'
       - 'assets/python/requirements.txt'
+      - 'scripts/requirements-test.txt'
       - 'scripts/agent_tools/**'
       - 'scripts/get_port.py'
   push:
@@ -15,6 +16,7 @@ on:
     paths:
       - '.github/workflows/agent-tools-tests.yml'
       - 'assets/python/requirements.txt'
+      - 'scripts/requirements-test.txt'
       - 'scripts/agent_tools/**'
       - 'scripts/get_port.py'
   workflow_dispatch:
@@ -31,7 +33,7 @@ jobs:
       - name: Install the pinned Python environment
         run: |
           python3 -m venv .venv
-          .venv/bin/pip install --disable-pip-version-check -r assets/python/requirements.txt
+          .venv/bin/pip install --disable-pip-version-check -r scripts/requirements-test.txt
 
       - name: Run the tests
         run: .venv/bin/python -m pytest scripts/agent_tools/tests -q

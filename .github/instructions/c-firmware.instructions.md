@@ -4,7 +4,7 @@ applyTo: "applications/**/*.c,applications/**/*.h,lib/toolbox/**/*.c,lib/toolbox
 
 # C/C++ firmware review checks
 
-`AGENTS.md` is the source of truth for layout, build and test commands; `TARGETS.md` covers board descriptors; `.clang-format` defines formatting. Refer to them instead of assuming a path or a name from this file. The rules below are the ones that recur most often and are meant to outlive any single file.
+`AGENTS.md` is the source of truth for layout, build and test commands; `docs/TARGETS.md` covers board descriptors; `.clang-format` defines formatting. Refer to them instead of assuming a path or a name from this file. The rules below are the ones that recur most often and are meant to outlive any single file.
 
 ## Naming and structure
 

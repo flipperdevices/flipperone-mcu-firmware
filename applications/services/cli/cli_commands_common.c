@@ -10,6 +10,7 @@
 #include <led/led.h>
 #include <furi_hal_clock.h>
 #include <furi_hal_otp.h>
+#include <toolbox/strint.h>
 #include <furi_hal_nvm.h>
 
 void cli_command_uptime(PipeSide* pipe, FuriString* args, void* context) {
@@ -354,55 +355,107 @@ void cli_command_clock_out(PipeSide* pipe, FuriString* args, void* context) {
     furi_hal_clock_out_to_gpio13(cli_clock_sources[source], (float)div);
 }
 
-static void cli_command_otp_help(PipeSide* pipe, FuriString* args, void* context) {
-    UNUSED(pipe);
-    UNUSED(args);
-    UNUSED(context);
-    printf(
-        "otp <OTP_ACTION>\r\n"
-        "Where <OTP_ACTION> is:\r\n"
-        "\twhitelabel <FIRMWARE_ID> <BODY_ID> <CONNECTIVITY_ID>\r\n"
-        "");
+static void cli_command_otp_help(void) {
+    printf("Usage:\r\n");
+    printf("otp program <OTP1/OTP2/OTP3> <data>\r\n");
+    printf("otp dump <OTP1/OTP2/OTP3>\r\n");
+    printf("The blocks, decoded, are in device_info. Blocks are built by scripts/otp.py.\r\n");
+}
+
+static bool cli_command_otp_read_block(FuriString* args, FuriString* word, FuriHalOtpBlock* block) {
+    static const char* const names[] = {[FuriHalOtpBlock1] = "OTP1", [FuriHalOtpBlock2] = "OTP2", [FuriHalOtpBlock3] = "OTP3"};
+    if(args_read_string_and_trim(args, word)) {
+        for(FuriHalOtpBlock b = FuriHalOtpBlock1; b <= FuriHalOtpBlockCount; b++) {
+            if(furi_string_cmpi_str(word, names[b]) == 0) {
+                *block = b;
+                return true;
+            }
+        }
+    }
+    cli_command_otp_help();
+    return false;
+}
+
+static void cli_command_otp_dump(FuriString* args) {
+    FuriString* word = furi_string_alloc();
+    FuriHalOtpBlock block;
+    uint8_t data[FURI_HAL_OTP_BLOCK_MAX_SIZE];
+    if(cli_command_otp_read_block(args, word, &block)) {
+        const size_t size = furi_hal_otp_block_size(block);
+        if(furi_hal_otp_block_dump(block, data, size)) {
+            for(size_t i = 0; i < size; i++) {
+                printf("%02x", data[i]);
+            }
+            printf("\r\n");
+        } else {
+            printf("Read error\r\n");
+        }
+    }
+    furi_string_free(word);
+}
+
+static void cli_command_otp_program(PipeSide* pipe, FuriString* args) {
+    FuriString* word = furi_string_alloc();
+    FuriHalOtpBlock block;
+    uint8_t data[FURI_HAL_OTP_BLOCK_MAX_SIZE];
+
+    do {
+        if(!cli_command_otp_read_block(args, word, &block)) break;
+        const size_t size = furi_hal_otp_block_size(block);
+        if(!args_read_string_and_trim(args, word) || furi_string_size(word) != size * 2) {
+            printf("Error: OTP%u is %u bytes, %u hex chars\r\n", block, size, size * 2);
+            break;
+        }
+        const char* hex = furi_string_get_cstr(word);
+        bool hex_ok = true;
+        for(size_t i = 0; i < size && hex_ok; i++) {
+            hex_ok = args_char_to_hex(hex[i * 2], hex[i * 2 + 1], &data[i]);
+        }
+        if(!hex_ok) {
+            printf("Error: not hex\r\n");
+            break;
+        }
+
+        FuriHalOtpHeader header;
+        memcpy(&header, data, sizeof(header));
+        printf("OTP header: magic=0x%08lX, index=%u, version=%u\r\n", header.magic, header.index, header.version);
+        printf("Warning! This operation is irreversible! Are you sure? y/n\r\n");
+        while(true) {
+            char answer;
+            if(pipe_receive(pipe, &answer, sizeof(answer)) != sizeof(answer)) break;
+            if(answer == 'n' || answer == 'N' || answer == CliKeyETX) {
+                printf("Cancelled\r\n");
+                break;
+            } else if(answer == 'y' || answer == 'Y') {
+                printf("Programming OTP...\r\n");
+                FuriHalOtpError error = furi_hal_otp_block_program(block, data, size);
+                if(error == FuriHalOtpErrorNone) {
+                    printf("Done%s\r\n", block == FuriHalOtpBlock1 ? ", USB white label too" : "");
+                } else {
+                    printf("Programming error: %s\r\n", furi_hal_otp_error_to_string(error));
+                }
+                break;
+            }
+        }
+    } while(0);
+
+    furi_string_free(word);
 }
 
 void cli_command_otp(PipeSide* pipe, FuriString* args, void* context) {
+    UNUSED(context);
     FuriString* action = furi_string_alloc();
-    do {
-        if(!args_read_string_and_trim(args, action)) {
-            cli_command_otp_help(pipe, args, context);
-            break;
-        }
 
-        if(furi_string_cmp(action, "whitelabel") != 0) {
-            cli_command_otp_help(pipe, args, context);
-            break;
-        }
+    if(!args_read_string_and_trim(args, action)) {
+        cli_command_otp_help();
+    } else if(furi_string_cmp(action, "dump") == 0) {
+        cli_command_otp_dump(args);
+    } else if(furi_string_cmp(action, "program") == 0) {
+        cli_command_otp_program(pipe, args);
+    } else {
+        cli_command_otp_help();
+    }
 
-        int firmware_id, body_id, connectivity_id;
-        if(!args_read_int_and_trim(args, &firmware_id) || !args_read_int_and_trim(args, &body_id) || !args_read_int_and_trim(args, &connectivity_id)) {
-            cli_command_otp_help(pipe, args, context);
-            break;
-        }
-
-        if(firmware_id < 0 || body_id < 0 || connectivity_id < 0) {
-            cli_command_otp_help(pipe, args, context);
-            break;
-        }
-
-        printf("Programming USB white label in OTP with F%dB%dC%d\r\n", firmware_id, body_id, connectivity_id);
-
-        if(furi_hal_otp_usb_white_label_valid()) {
-            printf("USB white label is already programmed in OTP, it cannot be programmed again\r\n");
-            break;
-        }
-
-        FuriHalOtpUsbWhiteLabelError error = furi_hal_otp_write_usb_white_label(firmware_id, body_id, connectivity_id);
-        if(error == FuriHalOtpUsbWhiteLabelErrorNone) {
-            printf("USB white label written to OTP successfully\r\n");
-        } else {
-            printf("Failed to write USB white label to OTP: %d\r\n", error);
-        }
-    } while(0);
     furi_string_free(action);
 }
 
