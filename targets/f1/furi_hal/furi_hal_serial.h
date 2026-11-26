@@ -34,7 +34,8 @@ typedef enum {
 } FuriHalSerialRxEvent;
 
 /**
- * Receive callback function type.
+ * Receive callback function type. Called from the interrupt; it must read the RX FIFO empty, or the interrupt
+ * stays raised and the callback runs again and again.
  *
  * @param handle Pointer to the serial handle.
  * @param event Bitmask of occurred events.
@@ -210,7 +211,7 @@ uint8_t furi_hal_serial_rx(FuriHalSerialHandle* handle);
 size_t furi_hal_serial_rx_data_non_blocking(FuriHalSerialHandle* handle, uint8_t* data, size_t data_size);
 
 /**
- * Start receiving in interrupt-driven mode.
+ * Start receiving in interrupt-driven mode. Needs a receive callback from furi_hal_serial_set_callback().
  *
  * @param handle Pointer to the serial handle.
  * @param report_errors Enable error events if set to true, do not enable otherwise.
@@ -218,7 +219,7 @@ size_t furi_hal_serial_rx_data_non_blocking(FuriHalSerialHandle* handle, uint8_t
 void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_errors);
 
 /**
- * Stop receiving in interrupt-driven mode.
+ * Stop receiving in interrupt-driven mode. Transmission and the interrupt handler stay as they are.
  *
  * @param handle Pointer to the serial handle.
  */
@@ -227,7 +228,8 @@ void furi_hal_serial_async_rx_stop(FuriHalSerialHandle* handle);
 /**
  * Start transmitting in interrupt-driven mode: the transmit callback is called from the interrupt for one byte
  * after another until it returns false. Call it whenever there is new data to send; calling it while
- * transmitting is harmless. Can be called from a thread or from an interrupt that may use FreeRTOS.
+ * transmitting is harmless. Can be called from a thread, or from an interrupt of a priority not above the UART
+ * one: a higher one could start transmission just before the UART interrupt stops it, and the start would be lost.
  *
  * @param handle Pointer to the serial handle.
  */

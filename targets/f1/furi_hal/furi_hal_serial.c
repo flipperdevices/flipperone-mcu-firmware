@@ -118,7 +118,7 @@ static void furi_hal_serial_irq_callback(void* context) {
     uart_hw_t* hw = uart_get_hw(periph);
     uint32_t mis = hw->mis;
 
-    if(mis & UART_UARTMIS_TXMIS_BITS) {
+    if(mis & UART_UARTRIS_TXRIS_BITS) {
         hw_write_masked(&hw->icr, UART_UARTICR_TXIC_BITS, UART_UARTICR_TXIC_BITS);
     }
 
@@ -546,12 +546,14 @@ void furi_hal_serial_async_tx_start(FuriHalSerialHandle* handle) {
 
     // Together, so that the interrupt never sees one without the other
     FURI_CRITICAL_ENTER();
+    const bool was_active = serial->tx_active;
     serial->tx_active = true;
     hw_set_bits(&uart_get_hw(resources->periph)->imsc, UART_UARTIMSC_TXIM_BITS);
     FURI_CRITICAL_EXIT();
 
-    // The FIFO raises its interrupt only when its level falls through the threshold, which an idle FIFO never does
-    furi_hal_interrupt_set_pending(resources->irq);
+    // The FIFO raises its interrupt only when its level falls through the threshold, which an idle FIFO never does.
+    // While active, the FIFO is full or a pend is already waiting, and either brings the next interrupt.
+    if(!was_active) furi_hal_interrupt_set_pending(resources->irq);
 }
 
 void furi_hal_serial_dma_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, size_t buffer_size) {
