@@ -283,11 +283,11 @@ Current builds are written with `PICO_CRT0_IMAGE_TYPE_TBYB`, which makes the boo
 
 - `status` showing `HALTED` has two causes: a debugger detached and left the cores halted, or the firmware crashed and halted itself (see [When the firmware crashes or hangs](#when-the-firmware-crashes-or-hangs)). A `[CRASH]` report in the MCU log means the second. Without a log, `swd where` tells: after a crash core 0 sits in `__furi_crash_implementation`.
 - Cores left halted by a debugger are fixed with `swd resume`.
-- For a cortex-debug `launch.json`, these lines in `openOCDLaunchCommands` make the debugger resume the cores when it detaches:
+- For a cortex-debug `launch.json`, these lines in `openOCDLaunchCommands` make the debugger resume the cores when it detaches (`vscode_template/launch.json` has them):
 
 ```json
-"rp2350.dap.core0 configure -event gdb-detach { resume }",
-"rp2350.dap.core1 configure -event gdb-detach { resume }"
+"rp2350.cm0 configure -event gdb-detach { resume }",
+"rp2350.cm1 configure -event gdb-detach { resume }"
 ```
 
 ### When the firmware crashes or hangs
