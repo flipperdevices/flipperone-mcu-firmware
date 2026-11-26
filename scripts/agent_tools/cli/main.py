@@ -6,6 +6,7 @@ non-zero with a one-line reason on failure. See AGENT_TOOLS.md next to this file
 """
 
 import argparse
+import codecs
 import contextlib
 import json
 import os
@@ -13,6 +14,7 @@ import re
 import subprocess
 import sys
 import time
+import warnings
 
 from .. import constants
 from ..logic import flash, swd
@@ -150,8 +152,26 @@ def cmd_status(args):
         render_swd(swd.status())
 
 
+def decode_escapes(text):
+    """Bytes of `text` with its backslash escapes; an unknown escape is an error, not a warning."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        try:
+            return codecs.escape_decode(text.encode())[0]
+        except (DeprecationWarning, ValueError) as error:
+            raise ValueError(f"bad escape in {text!r}: {error}") from None
+
+
 def cmd_cli(args):
+    # Decode every argument first, so that a bad escape fails before anything is sent
+    raw = [decode_escapes(line) for line in args.command] if args.raw else None
     with DeviceSession(args.console) as session:
+        if raw:
+            for data in raw:
+                output = session.send_raw(data, args.timeout)
+                if output:
+                    print(output)
+            return
         for line in args.command:
             if len(args.command) > 1:
                 print(f"> {line}")
@@ -522,6 +542,11 @@ def build_parser():
     p.add_argument("command", nargs="+", help="one CLI command per argument, e.g. 'uptime' 'power show'")
     p.add_argument("--timeout", type=float, default=5.0)
     p.add_argument("--answer", help="answer to a y/n question a command asks, e.g. y for 'otp program'")
+    p.add_argument(
+        "--raw",
+        action="store_true",
+        help="send each argument as bytes, with escapes such as \\r and \\x03, without Enter, after the usual sync; no prompt is awaited afterwards",
+    )
     add_console_option(p)
     p.set_defaults(func=cmd_cli)
 

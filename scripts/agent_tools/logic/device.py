@@ -45,6 +45,9 @@ class DeviceSession:
     def command(self, line, timeout=5.0, answer=None):
         return self.console().command(line, timeout, answer)
 
+    def send_raw(self, data, timeout=5.0):
+        return self.console().send_raw(data, timeout)
+
     def app(self):
         """App id running on the MCU desktop, or None."""
         reply = self.command("desktop get_run_app")
