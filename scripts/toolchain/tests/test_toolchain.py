@@ -159,11 +159,12 @@ def checkout(tmp_path):
 SHELLS = [shell for shell in ('bash', 'zsh') if shutil.which(shell)]
 
 
-def source(shell, tree, archive, home, extra=''):
+def source(shell, tree, archive, home, extra='', toolchain_home=None):
     script = f'. "{tree}/scripts/toolchain/fbtenv.sh"; echo "rc=$? $FLIPPERONE_TOOLCHAIN"{extra}'
     env = {'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'HOME': str(home),
-           'FLIPPERONE_TOOLCHAIN_HOME': str(home / 'tc'), 'FLIPPERONE_TOOLCHAIN_ARCHIVE': str(archive)}
-    return subprocess.run([shell, '-c', script], env=env, capture_output=True, text=True, timeout=60)
+           'FLIPPERONE_TOOLCHAIN_HOME': toolchain_home or str(home / 'tc'),
+           'FLIPPERONE_TOOLCHAIN_ARCHIVE': str(archive)}
+    return subprocess.run([shell, '-c', script], env=env, capture_output=True, text=True, timeout=60, cwd=home)
 
 
 @pytest.mark.parametrize('shell', SHELLS)
@@ -200,6 +201,15 @@ def test_bootstrap_moves_the_tree_link(shell, checkout, tmp_path):
     assert 'rc=0 v7' in source(shell, tree, archive, tmp_path).stdout
     assert (tree / '.toolchain').readlink() == tmp_path / 'tc' / 'v7'
     assert (tmp_path / 'tc' / 'v6').is_dir()  # only the link moves
+
+
+@pytest.mark.parametrize('shell', SHELLS)
+def test_bootstrap_takes_a_relative_home_from_the_working_directory(shell, checkout, tmp_path):
+    tree, archive = checkout
+    result = source(shell, tree, archive, tmp_path, '; echo "root=$FLIPPERONE_TOOLCHAIN_ROOT"', toolchain_home='tc')
+    assert 'rc=0 v7' in result.stdout, result.stderr
+    assert f'root={tmp_path / "tc" / "v7"}' in result.stdout
+    assert (tree / '.toolchain').readlink() == tmp_path / 'tc' / 'v7'
 
 
 def test_bootstrap_leaves_a_real_toolchain_directory_alone(checkout, tmp_path):

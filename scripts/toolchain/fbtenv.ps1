@@ -31,6 +31,8 @@ $_foBundle = & {
 
     $home_ = if ($env:FLIPPERONE_TOOLCHAIN_HOME) { $env:FLIPPERONE_TOOLCHAIN_HOME }
              else { Join-Path $HOME '.flipper\flipperone-mcu-toolchain' }
+    # The tree link, .NET calls and the environment need an absolute path
+    $home_ = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($home_)
     $dir = Join-Path $home_ $tag
     $marker = Join-Path $dir '.archive-sha256'
     $installed = if (Test-Path -LiteralPath $marker) { (Get-Content -LiteralPath $marker -TotalCount 1).Trim() }

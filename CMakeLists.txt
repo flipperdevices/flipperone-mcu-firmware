@@ -116,9 +116,10 @@ include("${CMAKE_CURRENT_LIST_DIR}/cmake/toolchain_check.cmake")
 set(FW_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
 set(FW_BUILD_DIR "${CMAKE_BINARY_DIR}")
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/build_link.cmake")
-add_custom_target(build_link ALL
+add_custom_target(build_link
     COMMAND ${CMAKE_COMMAND} -DFW_SOURCE_DIR=${FW_SOURCE_DIR} -DFW_BUILD_DIR=${FW_BUILD_DIR}
         -P "${CMAKE_CURRENT_LIST_DIR}/cmake/build_link.cmake"
+    COMMENT "Linking build/current"
     VERBATIM)
 
 # Enable warnings and treat as errors
@@ -148,6 +149,8 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_encode.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_decode.c
 )
+# Also for a build of only this target
+add_dependencies(${PROJECT_NAME} build_link)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE 
     PICO_DEFAULT_UART_TX_PIN=0

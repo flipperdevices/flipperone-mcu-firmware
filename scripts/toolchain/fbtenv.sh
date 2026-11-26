@@ -57,6 +57,8 @@ _fo_bootstrap() {
     fi
 
     home="${FLIPPERONE_TOOLCHAIN_HOME:-$HOME/.flipper/flipperone-mcu-toolchain}"
+    # The tree link and the environment need an absolute path
+    case "$home" in /*) ;; *) home="$PWD/$home" ;; esac
     dir="$home/$tag"
     if [ "$(cat "$dir/.archive-sha256" 2>/dev/null)" != "$sha256" ]; then
         mkdir -p "$home" || return 1
