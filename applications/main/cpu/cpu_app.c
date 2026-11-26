@@ -11,6 +11,7 @@
 #include <host/host.h>
 #include <i2c_negotiator/i2c_negotiator.h>
 #include <main/self_check/self_check_screen.h>
+#include "starting_linux.h"
 
 #define TAG "CpuApp"
 
@@ -24,14 +25,21 @@ typedef enum {
     CpuMenuItemReboot,
 } CpuMenuItem;
 
+typedef enum {
+    CpuAppScreenFrame, // a placeholder or the host's frame
+    CpuAppScreenSelfCheck,
+    CpuAppScreenStartingLinux,
+} CpuAppScreen;
+
 /* The model is lock free and Clay keeps the image pointer from layout until
  * render, so an Image the renderer can see is never rewritten: frame is swapped
- * whole, to a placeholder or to host_frame, whose only changing field is data.
- * NULL is the self check screen. */
+ * whole, to a placeholder or to host_frame, whose only changing field is data. */
 typedef struct {
+    CpuAppScreen screen;
     const Image* frame;
     Image host_frame;
     const SelfCheckScreen* self_check;
+    uint32_t starting_linux_tick; // when its animation started
 } CpuAppModel;
 
 typedef enum {
@@ -66,12 +74,13 @@ typedef struct {
     FuriPubSubSubscription* host_subscription;
     HostEvent host_event; // the last one handled
     SelfCheckScreen* self_check;
-    // The self check screen is shown: until the host draws something, its
+    // One of our own screens is shown: until the host draws something, its
     // frames that are entirely black do not replace it
-    bool self_check_shown;
-    // The host restarts: the old kernel can still send frames after it went
-    // down, so frames wait until the host reports being up again
-    bool host_restarting;
+    bool own_screen;
+    FuriEventLoopTimer* animation_timer;
+    // The kernel went down: it can still send frames after that, so frames
+    // wait until a kernel reports being up
+    bool host_frames_stale;
 } CpuApp;
 
 static bool cpu_app_layout(void* _model) {
@@ -100,17 +109,22 @@ static bool cpu_app_layout(void* _model) {
                         .childAlignment = {.y = CLAY_ALIGN_Y_CENTER, .x = CLAY_ALIGN_X_CENTER},
                     },
             }) {
-            const Image* frame = model->frame;
-            if(frame) {
+            switch(__atomic_load_n(&model->screen, __ATOMIC_ACQUIRE)) {
+            case CpuAppScreenSelfCheck:
+                self_check_screen_layout(model->self_check);
+                break;
+            case CpuAppScreenStartingLinux:
+                starting_linux_layout(furi_get_tick() - model->starting_linux_tick);
+                break;
+            default:
                 CLAY(
                     CLAY_APP_ID("FrameImage"),
                     {
                         .layout = {.sizing = layout_screen},
-                        .image = {.imageData = (void*)frame},
+                        .image = {.imageData = (void*)model->frame},
                     }) {
                 }
-            } else {
-                self_check_screen_layout(model->self_check);
+                break;
             }
         }
     }
@@ -124,6 +138,7 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
 }
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
+    model->screen = CpuAppScreenFrame;
     model->frame = &display_starting;
     model->host_frame.format = ImageFormatRawGray8;
     model->host_frame.width = JD9853_WIDTH;
@@ -132,18 +147,25 @@ static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     return true;
 }
 
-static bool cpu_app_model_self_check(CpuAppModel* model, void* context) {
-    UNUSED(context);
-    if(model->frame == NULL) return false;
-    model->frame = NULL;
+static bool cpu_app_model_own_screen(CpuAppModel* model, void* context) {
+    const CpuAppScreen screen = (CpuAppScreen)(uintptr_t)context;
+    if(model->screen == screen) return false;
+    model->starting_linux_tick = furi_get_tick();
+    model->screen = screen;
     return true;
+}
+
+static bool cpu_app_model_animate(CpuAppModel* model, void* context) {
+    UNUSED(context);
+    return model->screen == CpuAppScreenStartingLinux;
 }
 
 // Swap one placeholder for another, never a frame from the host.
 static bool cpu_app_model_placeholder(CpuAppModel* model, void* context) {
     const Image* image = context;
-    if(model->frame == &model->host_frame || model->frame == image) return false;
+    if(model->screen == CpuAppScreenFrame && (model->frame == &model->host_frame || model->frame == image)) return false;
     model->frame = image;
+    model->screen = CpuAppScreenFrame;
     return true;
 }
 
@@ -159,6 +181,7 @@ static void cpu_app_model_set_frame(CpuApp* instance, uint8_t* data) {
             model->host_frame.data = data;
             // Not before data: the first host frame has none yet
             __atomic_store_n(&model->frame, &model->host_frame, __ATOMIC_RELEASE);
+            __atomic_store_n(&model->screen, CpuAppScreenFrame, __ATOMIC_RELEASE);
         },
         false);
 }
@@ -168,12 +191,27 @@ static void cpu_app_model_apply(CpuApp* instance, bool (*callback)(CpuAppModel* 
     with_view_model(instance->display_view, CpuAppModel * model, { update = callback(model, context); }, update);
 }
 
-/* The self check screen, over whatever is on screen, until the host draws
+static void cpu_app_own_screen_done(CpuApp* instance) {
+    instance->own_screen = false;
+    furi_event_loop_timer_stop(instance->animation_timer);
+}
+
+/* One of our screens, over whatever is on screen, until the host draws
  * something. The host's own frame is dropped first, or the GUI would blit it. */
-static void cpu_app_show_self_check(CpuApp* instance) {
-    instance->self_check_shown = true;
+static void cpu_app_show_own_screen(CpuApp* instance, CpuAppScreen screen) {
+    instance->own_screen = true;
+    if(screen == CpuAppScreenStartingLinux) {
+        furi_event_loop_timer_start(instance->animation_timer, STARTING_LINUX_FRAME_MS);
+    } else {
+        furi_event_loop_timer_stop(instance->animation_timer);
+    }
     gui_clear_frame(instance->gui);
-    cpu_app_model_apply(instance, cpu_app_model_self_check, NULL);
+    cpu_app_model_apply(instance, cpu_app_model_own_screen, (void*)(uintptr_t)screen);
+}
+
+static void cpu_app_animation_timer_callback(void* context) {
+    CpuApp* instance = context;
+    cpu_app_model_apply(instance, cpu_app_model_animate, NULL);
 }
 
 // Until the host sends a frame, show what state it is in.
@@ -189,24 +227,29 @@ static void cpu_app_show_host_state(CpuApp* instance) {
     default:
         return;
     }
-    instance->self_check_shown = false;
+    cpu_app_own_screen_done(instance);
     cpu_app_model_apply(instance, cpu_app_model_placeholder, (void*)image);
 }
 
 /* The self check screen goes up when the MCU powers the host and when the host
- * restarts by itself; not for a host found running after an MCU reset. */
+ * restarts by itself; not for a host found running after an MCU reset.
+ * Starting Linux goes up when the boot loader's kernel hands over to the
+ * profile's one: shutting down right after its start, with no request. */
 static void cpu_app_host_event(CpuApp* instance, const HostEvent* event) {
     const HostEvent last = instance->host_event;
     instance->host_event = *event;
     // Up again: its frames count from now on
     if(event->cpu_state == CpuStateBootloader || event->cpu_state == CpuStateKernelInit || event->cpu_state == CpuStateOnline) {
-        instance->host_restarting = false;
+        instance->host_frames_stale = false;
     }
     if(event->state == HostStateStarting && last.state != HostStateStarting) {
-        cpu_app_show_self_check(instance);
+        cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
     } else if(event->cpu_state == CpuStateRestarting && last.cpu_state != CpuStateRestarting) {
-        instance->host_restarting = true;
-        cpu_app_show_self_check(instance);
+        instance->host_frames_stale = true;
+        cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
+    } else if(event->cpu_state == CpuStateShuttingDown && last.cpu_state == CpuStateKernelInit) {
+        instance->host_frames_stale = true;
+        cpu_app_show_own_screen(instance, CpuAppScreenStartingLinux);
     } else if(event->state != last.state) {
         cpu_app_show_host_state(instance);
     }
@@ -221,7 +264,7 @@ static void cpu_app_host_event_callback(const void* message, void* context) {
     }
 }
 
-// Only while the self check screen is up, so it is cheap enough
+// Only while one of our screens is up, so it is cheap enough
 static bool cpu_app_frame_is_black(const uint8_t* data, size_t size) {
     for(size_t i = 0; i < size; i++) {
         if(data[i]) return false;
@@ -268,10 +311,10 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             break;
         }
         case CpuAppMessageTypeReset:
-            instance->host_restarting = true;
+            instance->host_frames_stale = true;
             host_power_restart(instance->host);
             // The host stays Starting across a restart: no event brings it up
-            cpu_app_show_self_check(instance);
+            cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
             break;
         case CpuAppMessageTypeHostEvent:
             cpu_app_host_event(instance, &message.as.host_event);
@@ -286,12 +329,12 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             host_power_maskrom(instance->host);
             break;
         case CpuAppMessageTypeNewFrame:
-            if(instance->host_restarting) {
+            if(instance->host_frames_stale) {
                 // A frame of the kernel that went down
-            } else if(instance->self_check_shown && cpu_app_frame_is_black(message.as.new_frame.data, message.as.new_frame.size)) {
-                // Not drawn yet: keep the self check screen
+            } else if(instance->own_screen && cpu_app_frame_is_black(message.as.new_frame.data, message.as.new_frame.size)) {
+                // Not drawn yet: keep our screen
             } else {
-                instance->self_check_shown = false;
+                if(instance->own_screen) cpu_app_own_screen_done(instance);
                 /* Always keep the model in sync (no redraw) and hand the frame
                  * to the GUI: it decides internally whether to blit it directly
                  * to the display (menu hidden) or composite it via Clay (menu
@@ -338,6 +381,8 @@ static CpuApp* cpu_app_alloc(void) {
     pio_get_frame_set_callback_rx(instance->pio_get_frame, cpu_app_pio_get_frame_isr, instance);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->app_queue, FuriEventLoopEventIn, cpu_app_message_logic, instance);
+    instance->animation_timer =
+        furi_event_loop_timer_alloc(instance->event_loop, cpu_app_animation_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
     instance->host_event = (HostEvent){.state = HostStateOff, .cpu_state = CpuStateUnknown};
     instance->host_subscription = furi_pubsub_subscribe(host_get_pubsub(instance->host), cpu_app_host_event_callback, instance);
 
@@ -375,6 +420,7 @@ static void cpu_app_free(CpuApp* instance) {
 
     furi_pubsub_unsubscribe(host_get_pubsub(instance->host), instance->host_subscription);
     furi_record_close(RECORD_HOST);
+    furi_event_loop_timer_free(instance->animation_timer);
     furi_event_loop_unsubscribe(instance->event_loop, instance->app_queue);
     furi_event_loop_free(instance->event_loop);
     furi_message_queue_free(instance->app_queue);
