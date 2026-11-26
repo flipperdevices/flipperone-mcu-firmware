@@ -516,8 +516,7 @@ void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_err
             (bool_to_bit(report_errors) << UART_UARTIMSC_PEIM_LSB) | (bool_to_bit(report_errors) << UART_UARTIMSC_FEIM_LSB),
         (UART_UARTIMSC_OEIM_BITS | UART_UARTIMSC_BEIM_BITS | UART_UARTIMSC_PEIM_BITS | UART_UARTIMSC_FEIM_BITS));
 
-    // Set minimum threshold
-    uint32_t rx_threshold = 0b010; // Trigger interrupt when 1/2 rx fifo is full (32 bytes)
+    uint32_t rx_threshold = 0b010; // Interrupt when the RX FIFO is half full, 16 of its 32 bytes
     hw_write_masked(&uart_get_hw(periph)->ifls, (rx_threshold) << UART_UARTIFLS_RXIFLSEL_LSB, UART_UARTIFLS_RXIFLSEL_BITS);
     FURI_CRITICAL_EXIT();
 }
