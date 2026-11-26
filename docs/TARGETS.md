@@ -26,13 +26,13 @@ what `version.c` reports as `TARGET`.
 The default is `f2`. To build another one:
 
 * **Command line** — a preset per board, e.g. `cmake --preset f1-release` (see
-  [CMakePresets.json](CMakePresets.json)), or `-DFW_TARGET=f1` without one. Each
+  [CMakePresets.json](../CMakePresets.json)), or `-DFW_TARGET=f1` without one. Each
   preset has its own build directory, `build/<preset>/`.
 * **VSCode** — pick the preset in CMake Tools. The executable is always named after
   `project()`, so the tasks and debug entries never mention a target.
 
 CI builds
-every target of the matrix in [.github/workflows/build.yml](.github/workflows/build.yml)
+every target of the matrix in [.github/workflows/build.yml](../.github/workflows/build.yml)
 and publishes them as `flipper-one-mcu-<target>-firmware-<suffix>.uf2`.
 
 ## What a descriptor is
@@ -42,7 +42,7 @@ include directories make up the firmware. It must not create CMake targets. That
 what keeps inheritance a matter of editing lists.
 
 Everything that does not vary between boards stays in the top-level
-[CMakeLists.txt](CMakeLists.txt): the Pico board, compile definitions, linked
+[CMakeLists.txt](../CMakeLists.txt): the Pico board, compile definitions, linked
 libraries, flash layout, NVM bank size. Move a knob into the API only once a board
 actually needs a different value for it.
 
@@ -110,9 +110,9 @@ The top-level CMakeLists consumes all of this through three commands:
 1. Create `targets/f<number>/target.cmake`. Start with `fw_base(<existing target>)` if
    the board is close to one that already exists, and add nothing else — it should
    build identically to its base before you start changing anything.
-2. Add the name to the `target` matrix in [.github/workflows/build.yml](.github/workflows/build.yml),
+2. Add the name to the `target` matrix in [.github/workflows/build.yml](../.github/workflows/build.yml),
    and a link line to the body of the `comment` job right below it.
-3. Add presets for it to [CMakePresets.json](CMakePresets.json).
+3. Add presets for it to [CMakePresets.json](../CMakePresets.json).
 
 ## Configure errors
 

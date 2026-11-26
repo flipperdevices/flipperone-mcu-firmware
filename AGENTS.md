@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Orientation for AI agents working in this repository. Keep it short and factual —
-`TARGETS.md`, `CONTRIBUTING.md` and `.github/copilot-instructions.md` own the details.
+`docs/TARGETS.md`, `CONTRIBUTING.md` and `.github/copilot-instructions.md` own the details.
 
 ## What this is
 
