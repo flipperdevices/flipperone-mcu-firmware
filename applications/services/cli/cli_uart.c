@@ -104,15 +104,16 @@ static void cli_uart_rx_callback(FuriHalSerialHandle* handle, FuriHalSerialRxEve
     UNUSED(handle);
     CliUart* cli_uart = context;
 
+    // Always empty the FIFO: bytes left in it keep the RX interrupt asserted, and the handler would run again and
+    // again without letting the shell free the pipe. What the pipe has no room for is dropped, as there is no flow
+    // control to hold the sender back. Before the console is enabled there is no pipe, and everything is dropped.
     uint8_t data[TRANSFER_BATCH_SIZE];
-    size_t length = 0;
-    size_t to_transfer = 0;
+    size_t length;
     if(event & (FuriHalSerialRxEventData | FuriHalSerialRxEventIdle)) {
-        length = pipe_spaces_available(cli_uart->own_pipe);
-        to_transfer = MIN(length, TRANSFER_BATCH_SIZE);
-        length = furi_hal_serial_rx_data_non_blocking(cli_uart->uart_handle, data, to_transfer);
-        if(length > 0) {
-            furi_check(pipe_send(cli_uart->own_pipe, data, length) == length);
+        while((length = furi_hal_serial_rx_data_non_blocking(cli_uart->uart_handle, data, sizeof(data))) > 0) {
+            PipeSide* pipe = cli_uart->own_pipe;
+            size_t to_send = pipe ? MIN(length, pipe_spaces_available(pipe)) : 0;
+            if(to_send > 0) furi_check(pipe_send(pipe, data, to_send) == to_send);
         }
     }
 
