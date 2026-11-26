@@ -102,11 +102,12 @@ static void cli_uart_message_received(FuriEventLoopObject* object, void* context
         cli_uart->is_enabled = true;
 
         PipeSideBundle pipes = pipe_alloc(PIPE_SZ_PER_DIRECTION, 1);
-        cli_uart->own_pipe = pipes.alices_side;
-        pipe_attach_to_event_loop(cli_uart->own_pipe, cli_uart->event_loop);
-        pipe_set_callback_context(cli_uart->own_pipe, cli_uart);
-        pipe_set_data_arrived_callback(cli_uart->own_pipe, cli_uart_data_from_pipe, FuriEventLoopEventFlagEdge);
+        pipe_attach_to_event_loop(pipes.alices_side, cli_uart->event_loop);
+        pipe_set_callback_context(pipes.alices_side, cli_uart);
+        pipe_set_data_arrived_callback(pipes.alices_side, cli_uart_data_from_pipe, FuriEventLoopEventFlagEdge);
+        cli_uart->own_pipe = pipes.alices_side; // the UART interrupt sees the pipe once it is set up
 
+        cli_uart->registry = furi_record_open(RECORD_CLI);
         cli_uart->cli_shell = cli_shell_alloc(cli_main_motd, NULL, pipes.bobs_side, cli_uart->registry, NULL);
         cli_shell_free_pipe_on_exit(cli_uart->cli_shell);
         cli_shell_set_prompt(cli_uart->cli_shell, CLI_UART_SHELL_PROMPT);
@@ -118,10 +119,11 @@ static void cli_uart_message_received(FuriEventLoopObject* object, void* context
         FURI_LOG_D(TAG, "Disabling");
         cli_uart->is_enabled = false;
 
-        // disconnect our side of the pipe
-        pipe_detach_from_event_loop(cli_uart->own_pipe);
-        pipe_free(cli_uart->own_pipe);
+        // disconnect our side of the pipe; the UART interrupt must stop seeing it before it is freed
+        PipeSide* pipe = cli_uart->own_pipe;
         cli_uart->own_pipe = NULL;
+        pipe_detach_from_event_loop(pipe);
+        pipe_free(pipe);
 
         // wait for shell to stop
         cli_shell_join(cli_uart->cli_shell);
@@ -142,8 +144,6 @@ static void cli_uart_message_received(FuriEventLoopObject* object, void* context
 
 static CliUart* cli_uart_alloc(void) {
     CliUart* cli_uart = malloc(sizeof(CliUart));
-
-    cli_uart->registry = furi_record_open(RECORD_CLI);
 
     cli_uart->event_loop = furi_event_loop_alloc();
     cli_uart->is_enabled = false;
