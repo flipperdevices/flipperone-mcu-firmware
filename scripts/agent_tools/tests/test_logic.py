@@ -42,7 +42,7 @@ def test_console_command_timeout():
 
 def question_responder(port, data):
     if data == b"otp program 1 aa\r":
-        port.feed(b"otp program 1 aa\r\nProgram it? (y/n)\r\n")
+        port.feed(b"otp program 1 aa\r\nWarning! This operation is irreversible! Are you sure? y/n\r\n")
     elif data == b"y":
         port.feed(b"Block 1: written\r\ncontrol>: ")
 

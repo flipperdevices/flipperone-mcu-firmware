@@ -7,8 +7,8 @@ from ..packets import rpc
 from ..packets.mcu_console import PROMPT, at_prompt, clean
 
 
-# A command waiting for the user: its output ends with a (y/n) question
-QUESTION = re.compile(rb"\(y/n\)\s*$")
+# A command waiting for the user: its output ends with a y/n question
+QUESTION = re.compile(rb"y/n\)?\s*$")
 
 
 class McuConsole:
@@ -40,7 +40,7 @@ class McuConsole:
     def command(self, line, timeout=5.0, answer=None):
         """Run one CLI command and return its output without the echo and the prompt.
 
-        With answer, a (y/n) question the command asks is answered with it.
+        With answer, a y/n question the command asks is answered with it.
         """
         self.port.write(line.encode() + b"\r")
         done = lambda d: at_prompt(d) and line.encode() in d  # noqa: E731

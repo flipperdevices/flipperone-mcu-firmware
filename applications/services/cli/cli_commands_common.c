@@ -356,74 +356,25 @@ void cli_command_clock_out(PipeSide* pipe, FuriString* args, void* context) {
 }
 
 static void cli_command_otp_help(void) {
-    printf(
-        "otp info               - the blocks, decoded\r\n"
-        "otp dump <1|2|3>       - a block's rows as hex, written or not\r\n"
-        "otp program <1|2|3> <hex>\r\n"
-        "                       - write a block built by scripts/otp.py and lock it: cannot be undone\r\n");
+    printf("Usage:\r\n");
+    printf("otp program <OTP1/OTP2/OTP3> <data>\r\n");
+    printf("otp dump <OTP1/OTP2/OTP3>\r\n");
+    printf("The blocks, decoded, are in device_info. Blocks are built by scripts/otp.py.\r\n");
 }
 
-static void cli_command_otp_print_hex(const uint8_t* data, size_t size) {
-    for(size_t i = 0; i < size; i++) {
-        printf("%02x", data[i]);
-    }
-    printf("\r\n");
-}
-
-static void cli_command_otp_print_str(const char* name, const char* str, size_t size) {
-    printf("  %-12s %.*s\r\n", name, (int)strnlen(str, size), str);
-}
-
-static void cli_command_otp_info(void) {
-    static const char* const mac_names[FuriHalOtpMacCount] = {"eth0", "eth1", "usb", "wifi_2g4_sta", "wifi_5g_sta", "wifi_2g4_ap", "wifi_5g_ap", "bt"};
-
-    FuriHalOtpBlock1Data b1;
-    if(furi_hal_otp_block_read(FuriHalOtpBlock1, &b1, sizeof(b1))) {
-        printf("Block 1: written %llu\r\n", (unsigned long long)b1.header.timestamp);
-        printf("  hw_version   %u\r\n  board        F%uB%uC%u\r\n  chip_id      ", b1.hw_version, b1.target, b1.body, b1.connect);
-        cli_command_otp_print_hex(b1.chip_id, sizeof(b1.chip_id));
-    } else {
-        printf("Block 1: not written\r\n");
-    }
-
-    FuriHalOtpBlock2Data b2;
-    if(furi_hal_otp_block_read(FuriHalOtpBlock2, &b2, sizeof(b2))) {
-        printf("Block 2: written %llu\r\n", (unsigned long long)b2.header.timestamp);
-        for(size_t i = 0; i < FuriHalOtpMacCount; i++) {
-            const uint8_t* m = b2.mac[i];
-            printf("  %-12s %02x:%02x:%02x:%02x:%02x:%02x\r\n", mac_names[i], m[0], m[1], m[2], m[3], m[4], m[5]);
-        }
-        cli_command_otp_print_str("name", b2.name, sizeof(b2.name));
-        cli_command_otp_print_str("model", b2.model, sizeof(b2.model));
-        cli_command_otp_print_str("region", b2.region, sizeof(b2.region));
-        printf("  color        %u\r\n  display      %u\r\n", b2.color, b2.display);
-        printf("  ram          %lu GB\r\n  ufs          %lu GB\r\n  cpu_id       ", b2.ram_gb, b2.ufs_gb);
-        cli_command_otp_print_hex(b2.cpu_id, sizeof(b2.cpu_id));
-    } else {
-        printf("Block 2: not written\r\n");
-    }
-
-    FuriHalOtpBlock3Data b3;
-    if(furi_hal_otp_block_read(FuriHalOtpBlock3, &b3, sizeof(b3))) {
-        printf("Block 3: written %llu, key id %u\r\n", (unsigned long long)b3.header.timestamp, b3.key_id);
-    } else {
-        printf("Block 3: not written\r\n");
-    }
-
-    printf("OTP valid (signatures verify): %s\r\n", furi_hal_otp_valid() ? "yes" : "no");
-    printf("USB white label: %s\r\n", furi_hal_otp_usb_white_label_valid() ? "written" : "not written");
-}
-
+// OTP1..OTP3, as BusyBar's CLI names its blocks
 static bool cli_command_otp_read_block(FuriString* args, FuriString* word, FuriHalOtpBlock* block) {
-    const char* end = NULL;
-    uint8_t value = 0;
-    if(!args_read_string_and_trim(args, word) || strint_to_uint8(furi_string_get_cstr(word), &end, &value, 10) != StrintParseNoError || *end != '\0' ||
-       !furi_hal_otp_block_size(value)) {
-        printf("Block is 1, 2 or 3\r\n");
-        return false;
+    static const char* const names[] = {[FuriHalOtpBlock1] = "OTP1", [FuriHalOtpBlock2] = "OTP2", [FuriHalOtpBlock3] = "OTP3"};
+    if(args_read_string_and_trim(args, word)) {
+        for(FuriHalOtpBlock b = FuriHalOtpBlock1; b <= FuriHalOtpBlockCount; b++) {
+            if(furi_string_cmpi_str(word, names[b]) == 0) {
+                *block = b;
+                return true;
+            }
+        }
     }
-    *block = value;
-    return true;
+    cli_command_otp_help();
+    return false;
 }
 
 static void cli_command_otp_dump(FuriString* args) {
@@ -433,15 +384,18 @@ static void cli_command_otp_dump(FuriString* args) {
     if(cli_command_otp_read_block(args, word, &block)) {
         const size_t size = furi_hal_otp_block_size(block);
         if(furi_hal_otp_block_dump(block, data, size)) {
-            cli_command_otp_print_hex(data, size);
+            for(size_t i = 0; i < size; i++) {
+                printf("%02x", data[i]);
+            }
+            printf("\r\n");
         } else {
-            printf("Read failed\r\n");
+            printf("Read error\r\n");
         }
     }
     furi_string_free(word);
 }
 
-static void cli_command_otp_program(FuriString* args) {
+static void cli_command_otp_program(PipeSide* pipe, FuriString* args) {
     FuriString* word = furi_string_alloc();
     FuriHalOtpBlock block;
     uint8_t data[FURI_HAL_OTP_BLOCK_MAX_SIZE];
@@ -450,7 +404,7 @@ static void cli_command_otp_program(FuriString* args) {
         if(!cli_command_otp_read_block(args, word, &block)) break;
         const size_t size = furi_hal_otp_block_size(block);
         if(!args_read_string_and_trim(args, word) || furi_string_size(word) != size * 2) {
-            printf("Block %u is %u bytes: %u hex chars\r\n", block, size, size * 2);
+            printf("Error: OTP%u is %u bytes, %u hex chars\r\n", block, size, size * 2);
             break;
         }
         const char* hex = furi_string_get_cstr(word);
@@ -459,21 +413,30 @@ static void cli_command_otp_program(FuriString* args) {
             hex_ok = args_char_to_hex(hex[i * 2], hex[i * 2 + 1], &data[i]);
         }
         if(!hex_ok) {
-            printf("Not hex\r\n");
+            printf("Error: not hex\r\n");
             break;
         }
 
-        printf("Block %u is written to OTP and locked. This cannot be undone. Program it? (y/n)\r\n", block);
-        const char answer = getchar();
-        if(answer != 'y' && answer != 'Y') {
-            printf("Cancelled\r\n");
-            break;
-        }
-        FuriHalOtpError error = furi_hal_otp_block_program(block, data, size);
-        if(error == FuriHalOtpErrorNone) {
-            printf("Block %u: written and locked%s\r\n", block, block == FuriHalOtpBlock1 ? ", USB white label too" : "");
-        } else {
-            printf("Block %u: %s\r\n", block, furi_hal_otp_error_to_string(error));
+        FuriHalOtpHeader header;
+        memcpy(&header, data, sizeof(header));
+        printf("OTP header: magic=0x%08lX, index=%u, version=%u\r\n", header.magic, header.index, header.version);
+        printf("Warning! This operation is irreversible! Are you sure? y/n\r\n");
+        while(true) {
+            char answer;
+            if(pipe_receive(pipe, &answer, sizeof(answer)) != sizeof(answer)) break;
+            if(answer == 'n' || answer == 'N') {
+                printf("Cancelled\r\n");
+                break;
+            } else if(answer == 'y' || answer == 'Y') {
+                printf("Programming OTP...\r\n");
+                FuriHalOtpError error = furi_hal_otp_block_program(block, data, size);
+                if(error == FuriHalOtpErrorNone) {
+                    printf("Done%s\r\n", block == FuriHalOtpBlock1 ? ", USB white label too" : "");
+                } else {
+                    printf("Programming error: %s\r\n", furi_hal_otp_error_to_string(error));
+                }
+                break;
+            }
         }
     } while(0);
 
@@ -481,18 +444,15 @@ static void cli_command_otp_program(FuriString* args) {
 }
 
 void cli_command_otp(PipeSide* pipe, FuriString* args, void* context) {
-    UNUSED(pipe);
     UNUSED(context);
     FuriString* action = furi_string_alloc();
 
     if(!args_read_string_and_trim(args, action)) {
         cli_command_otp_help();
-    } else if(furi_string_cmp(action, "info") == 0) {
-        cli_command_otp_info();
     } else if(furi_string_cmp(action, "dump") == 0) {
         cli_command_otp_dump(args);
     } else if(furi_string_cmp(action, "program") == 0) {
-        cli_command_otp_program(args);
+        cli_command_otp_program(pipe, args);
     } else {
         cli_command_otp_help();
     }

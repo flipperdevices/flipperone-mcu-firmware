@@ -166,6 +166,13 @@ FuriHalVersionDisplay furi_hal_version_get_hw_display(void);
  */
 uint64_t furi_hal_version_get_hw_timestamp(void);
 
+/** Get hardware version code "<version>.F<target>.B<body>.C<connect>", as
+ * OTP block 1 holds it, or "Unknown"
+ *
+ * @return     Hardware version code C-string
+ */
+const char* furi_hal_version_get_hw_version_code(void);
+
 /** Get pointer to target name
  *
  * @return     Hardware Name C-string

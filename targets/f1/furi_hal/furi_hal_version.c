@@ -105,6 +105,14 @@ uint64_t furi_hal_version_get_hw_timestamp(void) {
     return board ? board->header.timestamp : 0;
 }
 
+const char* furi_hal_version_get_hw_version_code(void) {
+    static char code[32];
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    if(!board) return "Unknown";
+    snprintf(code, sizeof(code), "%u.F%u.B%u.C%u", board->hw_version, board->target, board->body, board->connect);
+    return code;
+}
+
 const char* furi_hal_version_get_name_ptr(void) {
     const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
     // NUL terminated: scripts/otp.py keeps it to 31 chars, and the CRC holds
