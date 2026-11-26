@@ -109,7 +109,7 @@ SelfCheckScreen* self_check_screen_alloc(void) {
     self_check_screen_run(found);
     instance->ok = true;
     for(size_t i = 0; i < SelfCheckCount; i++) {
-        instance->checks[i] = furi_string_alloc_printf("%s: %s", self_check_names[i], found[i] ? "OK" : "X");
+        instance->checks[i] = furi_string_alloc_printf("%s: %s", self_check_names[i], found[i] ? "OK" : "FAIL");
         if(!found[i]) instance->ok = false;
     }
 
