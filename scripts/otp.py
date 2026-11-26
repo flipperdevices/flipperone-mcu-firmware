@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build, sign and check the Flipper One MCU OTP blocks (see OTP.md).
+"""Build, sign and check the Flipper One MCU OTP blocks (see docs/OTP.md).
 
 A block is printed with its raw hex, or saved to a file with -o, and written
 on the device with `otp program OTP<n> <hex>`:

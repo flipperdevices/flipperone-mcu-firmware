@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* OTP blocks 1..3, the USB white label and the page locks: see OTP.md */
+/* OTP blocks 1..3, the USB white label and the page locks: see docs/OTP.md */
 
 #define FURI_HAL_OTP_MAGIC 0x544F3146 /* "F1OT" */
 
