@@ -235,14 +235,23 @@ static bool furi_hal_otp_write_ecc(uint16_t first_row, const uint16_t* values, s
 }
 
 // A row a bit short reads right through ECC, which then has no correction
-// left: write it again while the page is open
-static void furi_hal_otp_rows_finish(uint16_t first_row, const uint16_t* want, size_t count) {
+// left: write it again while the page is open. False if a row stays short,
+// which only its raw bits show.
+static bool furi_hal_otp_rows_finish(uint16_t first_row, const uint16_t* want, size_t count) {
+    bool finished = true;
     for(size_t i = 0; i < count; i++) {
         FuriHalOtpRowState state;
-        if(furi_hal_otp_row_state(first_row + i, want[i], &state) && state == FuriHalOtpRowToWrite) {
+        if(!furi_hal_otp_row_state(first_row + i, want[i], &state)) {
+            finished = false;
+        } else if(state == FuriHalOtpRowToWrite) {
             furi_hal_otp_write_ecc(first_row + i, &want[i], 1);
+            if(!furi_hal_otp_row_state(first_row + i, want[i], &state) || state != FuriHalOtpRowDone) {
+                FURI_LOG_W(TAG, "OTP row 0x%04x stays a bit short", first_row + i);
+                finished = false;
+            }
         }
     }
+    return finished;
 }
 
 static bool furi_hal_otp_write_raw(uint16_t row, uint32_t value) {
@@ -355,7 +364,7 @@ typedef enum {
     FuriHalOtpWlScan, // find rows holding other data
     FuriHalOtpWlCheck, // all rows read right
     FuriHalOtpWlWrite,
-    FuriHalOtpWlFinish, // write again rows a bit short
+    FuriHalOtpWlFinish, // write again rows a bit short; other: one stays short
 } FuriHalOtpWlOp;
 
 static bool furi_hal_otp_wl_rows(FuriHalOtpWlOp op, uint16_t row, const uint16_t* want, size_t count, bool* other) {
@@ -365,7 +374,8 @@ static bool furi_hal_otp_wl_rows(FuriHalOtpWlOp op, uint16_t row, const uint16_t
     case FuriHalOtpWlCheck:
         return furi_hal_otp_rows_done(row, want, count);
     case FuriHalOtpWlFinish:
-        furi_hal_otp_rows_finish(row, want, count);
+        // Goes on through all rows
+        if(!furi_hal_otp_rows_finish(row, want, count)) *other = true;
         return true;
     default:
         return furi_hal_otp_write_ecc(row, want, count);
@@ -410,7 +420,11 @@ static bool furi_hal_otp_wl_write(const char* board_id) {
        (!furi_hal_otp_wl_each(board_id, FuriHalOtpWlWrite, NULL) || !furi_hal_otp_write_raw_copies(OTP_DATA_USB_BOOT_FLAGS_ROW, WL_USB_BOOT_FLAGS))) {
         return false;
     }
-    furi_hal_otp_wl_each(board_id, FuriHalOtpWlFinish, NULL);
+    // Locked all the same: a bit that does not program never will, and an open
+    // page is worse than a row without ECC margin
+    bool short_row = false;
+    furi_hal_otp_wl_each(board_id, FuriHalOtpWlFinish, &short_row);
+    if(short_row) FURI_LOG_W(TAG, "USB white label: locked with a row a bit short");
     // The bootrom does not check what it wrote
     if(!furi_hal_otp_wl_reads_back(board_id)) {
         FURI_LOG_E(TAG, "USB white label reads back wrong");
@@ -423,7 +437,7 @@ static bool furi_hal_otp_wl_write(const char* board_id) {
 
 bool furi_hal_otp_bootsel_led_valid(void) {
     uint32_t flags = 0;
-    return furi_hal_otp_read_raw(OTP_DATA_BOOT_FLAGS0_ROW, &flags) && (flags & OTP_DATA_BOOT_FLAGS0_ENABLE_BOOTSEL_LED_BITS);
+    return furi_hal_otp_read_vote(OTP_DATA_BOOT_FLAGS0_ROW, &flags) && (flags & OTP_DATA_BOOT_FLAGS0_ENABLE_BOOTSEL_LED_BITS);
 }
 
 bool furi_hal_otp_write_bootsel_led(void) {
@@ -543,6 +557,7 @@ static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, const uint16_
         if(other) return FuriHalOtpErrorNotBlank;
 
         if(!furi_hal_otp_write_ecc(base_row + 2, want + 2, count - 2)) return FuriHalOtpErrorWriteFailed;
+        // Checked again before the lock
         furi_hal_otp_rows_finish(base_row + 2, want + 2, count - 2);
         // The bootrom does not check what it wrote: no magic on a block that
         // reads back wrong, so a bad row can still be written again
@@ -553,7 +568,9 @@ static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, const uint16_
         }
     }
 
-    furi_hal_otp_rows_finish(base_row, want, count);
+    // Locked all the same: a bit that does not program never will, and an open
+    // page is worse than a row without ECC margin
+    if(!furi_hal_otp_rows_finish(base_row, want, count)) FURI_LOG_W(TAG, "OTP block at 0x%04x: locked with a row a bit short", base_row);
     if(!furi_hal_otp_lock_rows(base_row, count)) return FuriHalOtpErrorLockFailed;
     return FuriHalOtpErrorNone;
 }
