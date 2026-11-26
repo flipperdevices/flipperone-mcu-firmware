@@ -1,34 +1,25 @@
 # Flipper One hardware tools for LLM agents
 
-You have shell access to a development machine with a Flipper One and a Flipper One Debug Probe attached. With `scripts/agent_tools/f1.py` you can see the device screen, press its buttons, read its logs, run commands on its MCU and on its Linux host, and reflash it. This file tells you how, and where the limits are.
+`scripts/agent_tools/f1.py` lets you see the screen of an attached Flipper One, press its buttons, read its logs, run commands on its MCU and its Linux host, and reflash it, through a Flipper One Debug Probe. This file covers how, and where the limits are.
 
 ```shell
 python3 scripts/agent_tools/f1.py <command> --help
 ```
 
-Paths in this file are relative to the repository root. `f1.py` itself works from any directory; file arguments (`OUT.png`, `FILE.bin`, `--out FILE`) are relative to the directory you run it from.
+- **Terms:** the **MCU** is the RP2350 running this firmware. The **host** is the Linux processor inside the Flipper, powered by the MCU; `cpu_app_start` and `cpu_reset` refer to it. **This machine** is the computer you run commands on.
+- **Paths** here are relative to the repository root. `f1.py` runs from any directory; file arguments (`OUT.png`, `FILE.bin`, `--out FILE`) are relative to your working directory.
+- **Behaviour:** every command is non-interactive, has a timeout (except `log` without `--seconds`), prints plain text, and on failure exits non-zero with a one-line `error:`.
+- **Requirements:** Python standard library on macOS and Linux; Windows needs `pyserial` and is untested. Everything here was exercised from macOS on a Flipper One rev. F0B1C2.
 
-Words: the **MCU** is the RP2350 that runs this firmware. The **host** is the Linux processor inside the Flipper, which the MCU powers; names such as `cpu_app_start` and `cpu_reset` mean the same processor. The computer you run commands on is **this machine**.
+**Probe firmware 0.7.0 or newer** is required ([releases](https://github.com/flipperdevices/flipperone-debug-probe)). Update a 0.7.0+ probe with `f1.py probe flash FILE.uf2 --yes`. An older probe shows the serial `flip_one_debug` instead of `f1_debug_xxxx_` in `python3 scripts/get_port.py`, and every device command fails saying so. To update it, ask the user to hold the probe's `MCU RESET & PROBE BOOT` button while plugging in its USB cable, then copy the `.uf2` onto the `RP2350` drive.
 
-Every command is non-interactive, has a timeout (except `log` without `--seconds`), prints plain text, and exits non-zero with a one-line `error:` on failure. Python standard library only on macOS and Linux; Windows needs `pyserial` and is untested.
+**Not done or not verified** — treat as unknown, not working:
 
-Everything below was exercised from macOS against a Flipper One rev. F0B1C2.
-
-The debug probe needs firmware 0.7.0 or newer:
-
-- Probe firmware is published in the releases of https://github.com/flipperdevices/flipperone-debug-probe.
-- A probe on 0.7.0 or newer is updated with `f1.py probe flash FILE.uf2 --yes`.
-- An older probe shows up in `python3 scripts/get_port.py` with the serial `flip_one_debug` instead of `f1_debug_xxxx_`, and every command that talks to the device is meant to fail with a message that says so. It has to be put into BOOTSEL by hand: ask the user to hold the probe's `MCU RESET & PROBE BOOT` button while plugging its USB cable in, then copy the `.uf2` onto the `RP2350` drive that appears.
-
-## TODO
-
-Not done or not verified yet. Treat these as unknown, not as working:
-
-- Port lookup on Linux and Windows. It follows how those systems name CDC ports and has not been run there.
-- Probe selection on Windows is not implemented: `F1_PROBE` has no effect there, set `F1_PORT_<ROLE>` instead.
-- Flashing the Linux host through maskrom. Entering maskrom works; the flashing itself was not tried.
+- Port lookup on Linux and Windows (follows those systems' CDC port naming, never run there).
+- Probe selection on Windows: `F1_PROBE` has no effect, set `F1_PORT_<ROLE>` instead.
+- Flashing the host through maskrom (entering maskrom works).
 - The `Maskrom` item in the MCU Settings menu.
-- The refusal of a probe with firmware older than 0.7.0 was not exercised: no such probe was left to try.
+- Refusing a probe older than 0.7.0 (no such probe was left to try).
 
 ## Start of session
 
@@ -36,315 +27,299 @@ Not done or not verified yet. Treat these as unknown, not as working:
 python3 scripts/agent_tools/f1.py status
 ```
 
-`status` shows the probe and its firmware version, which ports are connected, whether the MCU is running or halted, which firmware slot is active and what is in each slot. For the state of Linux run `f1.py linux state`.
+Shows the probe and its firmware, connected ports, whether the MCU runs or is halted, the active slot and each slot's contents. For Linux, run `f1.py linux state`.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
-| `status` | Probe firmware, ports, MCU state with its uptime, firmware slots. `--no-swd` leaves out MCU state and slots, which are read over SWD; without it and with the probe held by a debugger, the serial part is printed and the command then fails. Its `linux` line is only a guess from the `mcu-usb` port; use `linux state` |
+| `status` | Probe firmware, ports, MCU state and uptime, firmware slots. MCU state and slots come over SWD; `--no-swd` skips them. If a debugger holds the probe, the serial part is printed and the command fails. Its `linux` line only guesses from the `mcu-usb` port; use `linux state` |
 | `ports` | Serial ports by role |
 | `screenshot OUT.png` | Device screen, 258x144 grayscale, saved 3x enlarged |
-| `press BUTTON...` | Click buttons in order, 0.15 s apart. `--shot OUT.png` takes a screenshot afterwards in the same session |
-| `press BUTTON --hold S --repeats N` | Long press: `press`, `long` after `S` seconds, then `N` `repeat` events 50 ms apart (default 0), then `release`. With several buttons each is held in turn; two buttons cannot be down at once |
-| `press BUTTON --action press` | One raw event (`press`, `release`, `short`, `long`, `repeat`) |
-| `touch X Y [--to X Y]` | Tap or swipe on the touchpad: x 0..1023 left to right, y 0..767 top to bottom, `--pressure` 0..16383 (default 8000). A swipe is 10 moves 20 ms apart; `--steps` changes the count. Takes `--shot OUT.png` like `press` |
-| `cli "CMD"...` | MCU console commands, e.g. `cli uptime "power info"`. `--raw` sends each argument as bytes instead, after the usual sync to a prompt: escapes such as `\r` and `\x03` work, no Enter is added, no prompt is awaited afterwards, and what the console sends back until 0.5 s of silence, or `--timeout` at most, is printed. `--answer y` answers a `y/n` question a command asks, as `otp program` does |
-| `probe "CMD"...` | Console commands of the debug probe itself, e.g. `probe device_info` |
-| `probe flash FILE.uf2 --yes` | Reflash the debug probe and wait until it is back |
-| `log --seconds N` | MCU log with this machine's time on every line. `--out FILE` appends to a file, flushed line by line; without `--seconds` it runs until killed, and killing it is the way to stop it |
-| `linux state` / `start` / `stop [--hard]` | Query, boot or shut down the Linux host |
-| `host "CMD"` | One shell command line on the Linux host over its serial console (join several with `;` or `&&`; nothing interactive); prints output and exit code. `--wait S` first waits up to `S` seconds for a shell prompt, for a host that is still booting |
-| `swd status` / `reset` / `resume` / `read ADDR [N]` | SWD through OpenOCD, without halting unless stated. `read` prints `N` 32-bit words |
-| `swd where` | Halt for a moment and print where both cores are (function, file, line), then run on |
-| `swd symbol ADDR...` | Function, file and line for addresses from a crash log; uses the newest ELF under `build/`, no probe needed |
-| `swd flash a\|b FILE.bin --yes` | Write a firmware image to a slot, verify it, reset |
-| `swd flash a\|b FILE.uf2 --activate --yes` | Same for a try-before-you-buy image, and boot it once so that the bootrom stages and commits it |
-| `swd erase-header a\|b --yes` | Make a slot unbootable, so that the other one boots, and reset. Only flashing the slot again brings it back |
+| `press BUTTON...` | Click buttons in order, 0.15 s apart. `--shot OUT.png` adds a screenshot in the same session |
+| `press BUTTON --hold S --repeats N` | Long press: `press`, `long` after `S` s, `N` `repeat` events 50 ms apart (default 0), `release`. Several buttons are held one after another, never together |
+| `press BUTTON --action press` | One raw event: `press`, `release`, `short`, `long` or `repeat` |
+| `touch X Y [--to X Y]` | Tap or swipe: x 0..1023 left to right, y 0..767 top to bottom, `--pressure` 0..16383 (default 8000). A swipe is 10 moves 20 ms apart (`--steps`). Takes `--shot` |
+| `cli "CMD"...` | MCU console commands, e.g. `cli uptime "power info"`. `--answer y` answers a `y/n` question (as `otp program` asks). `--raw`: after syncing to a prompt, send each argument as bytes (escapes like `\r`, `\x03` work), add no Enter, await no prompt, and print the reply until 0.5 s of silence or `--timeout` |
+| `probe "CMD"...` | Commands of the debug probe's own console, e.g. `probe device_info` |
+| `probe flash FILE.uf2 --yes` | Reflash the probe and wait until it is back |
+| `log --seconds N` | MCU log, each line stamped with this machine's time. `--out FILE` appends, flushed per line. Without `--seconds` it runs until killed |
+| `linux state` / `start` / `stop [--hard]` | Query, boot or shut down the host |
+| `host "CMD"` | One shell command line on the host's serial console (chain with `;` or `&&`; nothing interactive); prints output and exit code. `--wait S` first waits up to `S` s for a prompt |
+| `swd status` / `reset` / `resume` / `read ADDR [N]` | SWD through OpenOCD; no halt unless stated. `read` prints `N` 32-bit words |
+| `swd where` | Halt briefly, print where both cores are (function, file, line), run on |
+| `swd symbol ADDR...` | Function, file and line for crash-log addresses, from the newest ELF under `build/`; no probe needed |
+| `swd flash a\|b FILE.bin --yes` | Write an image to a slot, verify, reset |
+| `swd flash a\|b FILE --activate --yes` | Same, then boot the try-before-you-buy image once so the bootrom stages and commits it |
+| `swd erase-header a\|b --yes` | Make a slot unbootable so the other boots, and reset. Only reflashing the slot restores it |
 
-Buttons: `ok back up down left right key1 key2 key4 key5 power sw ptt`. `power` is the key that would be `key3`. What a button does depends on the app on screen; `sw`, for one, opens the app switcher in Linux.
-
-Timeouts: `cli` and `probe` wait 5 seconds per command, `host` 30, `linux start` 120, `linux stop` 90. `--timeout SECONDS` changes it for these commands, which a long `host` command needs. Under `cli` and `probe` it applies to each command separately; under `host` it counts from the moment the command starts, after any `--wait`, and a command that ran out of time keeps running until the next `host` call interrupts it. The RPC commands (`screenshot`, `press`, `touch`) give up after a few seconds, `swd` commands after 2 minutes (`swd flash` 5).
-
-Exit codes: 0 on success, 1 on a tool error. `host` exits with the exit code of the command it ran and prints `[exit code N]` on stdout when that is not 0; a failure of the tool itself prints a line starting with `error:` on stderr instead, which is how to tell a tool error from a command that returned 1.
-
-Commands that need `--yes` refuse without it and change nothing. Write addresses with `0x`.
+- **Buttons:** `ok back up down left right key1 key2 key4 key5 power sw ptt`. `power` is the key in `key3`'s place. What a button does depends on the app on screen; `sw` opens the app switcher in Linux.
+- **Timeouts:** `cli` and `probe` 5 s per command, `host` 30 s, `linux start` 120 s, `linux stop` 90 s; `--timeout SECONDS` changes them. For `host` it counts from the command's start (after `--wait`), and a command that timed out keeps running until the next `host` call interrupts it. `screenshot`, `press` and `touch` give up after a few seconds; `swd` after 2 minutes, `swd flash` after 5.
+- **Exit codes:** 0 on success, 1 on a tool error. `host` exits with the command's code and prints `[exit code N]` when it is not 0; a tool failure prints `error:` on stderr instead, which tells the two apart.
+- Commands that need `--yes` refuse without it and change nothing. Write addresses with `0x`.
 
 ### Machine-readable output
 
-`ports`, `status`, `swd status`, `swd read` and `linux state` take `--json` and print one JSON object instead of text:
+`ports`, `status`, `swd status`, `swd read` and `linux state` take `--json` and print one object:
 
 ```json
 {"tool": "f1.py", "command": "linux state", "ok": true, "data": {"state": "up", "app": "cpu_app_start"}}
 ```
 
-`ok` is false on failure, the object then has `error` instead of `data` and goes to stderr; the exit code is still 1. The other commands print text only and reject `--json`.
+On failure `ok` is false, `error` replaces `data`, the object goes to stderr, and the exit code is 1. Other commands reject `--json`.
 
 ## Rules
 
-- **An unchanged screenshot is not proof that a press was ignored.** Some actions take seconds to show. Check another signal (`linux state`, `log`, `host`) before repeating a press that powers something off, confirms, or deletes.
-- **Use the cheapest signal that answers the question.** `linux state`, `cli "desktop get_run_app"`, `status` and `log` are text and cost little; a screenshot costs an image. Take one when the answer is on the screen and nowhere else: before you press buttons on a screen you have not seen, and when the screen itself is what you are checking.
-- **Use these tools for SWD, never `probe-rs`.** One-shot `probe-rs` reads left the device frozen until a debugger attach and detach. The cause is unknown.
-- **The probe accepts one SWD client.** Only the `swd` commands and `status` without `--no-swd` use SWD; everything else goes over serial ports and works during a debug session. While a debugger holds the probe, an SWD command fails within a few seconds with `The probe is probably held by another debugger` (OpenOCD: `CMSIS-DAP command CMD_INFO failed`). That is not a fault: ask the user, or do without SWD.
-- **Run `host sync` before anything that cuts host power**: `cli "desktop stop_app"` while the host app runs, `Stop` or `Reboot` in the MCU power menu, `cli "power off"` / `cli "power ship"` / `cli "power reboot"`. `linux stop --hard` runs the sync for you; it is `desktop stop_app` with a `sync` in front. A reset of the MCU (`swd reset`, `swd flash` with or without `--activate`) does not cut it, but see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
-- **Check each step before the next.** Read state back after every action and stop if it is not what you expected.
-- **Ask before destructive actions** unless the user said the device is free to use: `swd flash`, `swd erase-header`, `probe flash`, `linux stop --hard`, whatever else cuts host power under a running Linux (the list in the rule above), and what switches the device off or sends the MCU to its bootloader: `cli "power off"`, `cli "power ship"`, `cli "power boot"`, `Power Off` in the MCU power menu. `--yes` is how you tell the tool that they agreed. No need to ask before `linux stop`, `swd reset`, a reset of the MCU through the probe, `probe "power reboot"`, or starting and leaving maskrom mode with the host off.
-- **Measure time from `log` timestamps**, which are this machine's time. The MCU's own timestamps lose time (see [Pitfalls](#pitfalls)).
-- **If what you observe contradicts what the user says about the device, the user is right.** They are looking at it.
-- **Report what you verified and what you did not**, and the state you leave the device in.
+- **An unchanged screenshot does not prove a press was ignored**: some actions take seconds to show. Before repeating a press that powers off, confirms or deletes, check another signal (`linux state`, `log`, `host`).
+- **Use the cheapest signal that answers the question.** `linux state`, `cli "desktop get_run_app"`, `status` and `log` are cheap text; a screenshot costs an image. Take one when the answer is only on screen: before pressing buttons on an unseen screen, or when the screen is what you check.
+- **Never use `probe-rs` for SWD.** One-shot `probe-rs` reads left the device frozen until a debugger attached and detached; cause unknown.
+- **The probe takes one SWD client.** Only `swd` commands and `status` without `--no-swd` use SWD; the rest uses serial ports and works during a debug session. While a debugger holds the probe, SWD commands fail within seconds with `The probe is probably held by another debugger` (OpenOCD: `CMSIS-DAP command CMD_INFO failed`). Not a fault: ask the user, or do without SWD.
+- **Run `host sync` before cutting host power**: `cli "desktop stop_app"` while the host app runs, `Stop` or `Reboot` in the MCU power menu, `cli "power off"`, `"power ship"`, `"power reboot"`. `linux stop --hard` syncs for you (it is `sync` plus `desktop stop_app`). An MCU reset (`swd reset`, `swd flash`) does not cut host power; see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
+- **Check each step before the next**: read the state back after every action, and stop if it is not what you expected.
+- **Ask before destructive actions**, unless the user said the device is free to use. `--yes` tells the tool they agreed. Destructive:
+  - `swd flash`, `swd erase-header`, `probe flash`;
+  - `linux stop --hard` and anything else in the previous rule that cuts power under a running Linux;
+  - switching the device off or sending the MCU to its bootloader: `cli "power off"`, `"power ship"`, `"power boot"`, `Power Off` in the MCU power menu.
+
+  No need to ask before `linux stop`, `swd reset`, an MCU reset through the probe, `probe "power reboot"`, or entering and leaving maskrom with the host off.
+- **Measure time with `log` timestamps** (this machine's clock). MCU timestamps lose time; see [Pitfalls](#pitfalls).
+- **If what you observe contradicts the user, the user is right**: they are looking at the device.
+- **Report what you verified, what you did not, and the state you leave the device in.**
 
 ## Seeing and pressing
 
-The screen and input go through the MCU's RPC protocol (`assets/proto/rpc.proto`), reached with the `rpc` command of the MCU console. Each `screenshot`, `press` or `touch` opens a session and closes it again.
+Screen and input go through the MCU's RPC protocol ([`assets/proto/rpc.proto`](../../assets/proto/rpc.proto)), opened with the MCU console's `rpc` command. Each `screenshot`, `press` or `touch` opens and closes its own session.
 
-- The screen is whatever the device display shows: the MCU desktop, the host's boot menu, or the host's panel UI once Linux is up.
-- A screenshot takes about a second. Starting the capture makes the MCU redraw, so you get the current screen even when nothing on it is changing.
-- A click sends `press`, `short`, `release`, the order the firmware itself uses. For a physical button the firmware produces `short`, `long` and `repeat` itself from how long it is held; for injected events it does not, so the tool sends each of them. Which event an app reacts to is up to the app; most of the MCU UI reacts to `press`. Firmware older than the `SHORT`/`LONG`/`REPEAT` protocol extension logs `Unknown action` for `short` and ignores it; clicks still work there because the UI reacts to `press`.
-- Menus scroll on `press` and `repeat`. To move several items, send the button several times: `press down down down`.
-- Some screens want a button held. The Keypad Test (Settings, Testing, Keypad) ignores a short Back and exits when Back is held for nine repeat events: `press back --hold 0.5 --repeats 9`. `cli "desktop stop_app"` closes any MCU app without buttons. Check `cli "desktop get_run_app"` first: if the app is `cpu_app_start`, closing it cuts host power.
+- The screen is whatever the display shows: the MCU desktop, the host's boot menu, or the host's panel UI once Linux is up.
+- A screenshot takes about a second. Starting a capture makes the MCU redraw, so you always get the current screen.
+- A click sends `press`, `short`, `release`, as the firmware does. For physical buttons the firmware derives `short`, `long` and `repeat` from the hold time; for injected events it does not, so the tool sends them. Apps choose which event they react to; most of the MCU UI uses `press`. Firmware older than the `SHORT`/`LONG`/`REPEAT` extension logs `Unknown action` for `short` and ignores it; clicks still work through `press`.
+- Menus scroll on `press` and `repeat`; to move several items, repeat the button: `press down down down`.
+- Some screens need a held button. The Keypad Test (Settings, Testing, Keypad) ignores a short Back and exits on Back held for nine repeats: `press back --hold 0.5 --repeats 9`.
+- Touch events are delivered as is; what a point means is up to the app. The Touchpad Test maps only the central 70% × 60% of the range onto its drawing area.
 
-Touch events are delivered as is, like button events. What a point means on screen is up to the app: the Touchpad Test, for example, maps only the central 70% by 60% of the range onto its drawing area.
+**MCU apps:** one runs at a time; the desktop is not an app. `cli "desktop get_run_app"` names it (`no app is running` on the desktop), `cli "desktop list_apps"` lists all, `cli "desktop start_app <appid>"` and `cli "desktop stop_app"` switch. `stop_app` closes any app without buttons, but if the app is `cpu_app_start`, it cuts host power.
 
-Only one MCU app runs at a time; the desktop itself is not an app. `cli "desktop get_run_app"` tells which (`no app is running` on the desktop), `cli "desktop start_app <appid>"` and `cli "desktop stop_app"` switch; `cli "desktop list_apps"` lists them.
+**MCU desktop:** `key2` Help, `power` the power menu, `key4` Settings. In menus `up`/`down` move, `ok` selects, `back` leaves. The `power` button always belongs to the MCU, even while Linux owns the rest of the screen and buttons. The power menu depends on the host:
 
-On the MCU desktop: `key2` is Help, `power` opens the power menu, `key4` is Settings. The power menu depends on the host. While Linux is off it has `Start Flipper OS` and `Power Off`; `Power Off` switches the whole device off (ship mode), and only the user can bring it back, by holding the power button. While Linux runs it has `Stop` and `Reboot`, which act on the host, not on the MCU. The `power` button always belongs to the MCU, also while Linux owns the rest of the screen and buttons. In menus `up`/`down` move, `ok` selects, `back` leaves.
+- Linux off: `Start Flipper OS` and `Power Off`. `Power Off` puts the whole device in ship mode; only the user brings it back, by holding the power button.
+- Linux running: `Stop` and `Reboot`, which act on the host, not the MCU.
 
-## Starting and stopping Linux
+## Linux host
 
-Linux does not start by itself after the MCU boots, after a shutdown, or after a host `reboot` (it then waits in the boot menu). Control it with:
+Linux does not start by itself after the MCU boots, after a shutdown, or after a host `reboot` (it then waits in the boot menu).
 
 | Command | What it does | Typical time |
 |---|---|---|
-| `linux state` | One of: `off`; `powered, no shell prompt`; `up: shell answers`; `up: shell answers, but the MCU host app is not running`; `powered in maskrom mode` | 1 s |
-| `linux start [--entry N\|NAME]` | Powers the host, lists the boot entries, picks one (default 1), waits for the shell | 30 to 45 s |
-| `linux stop` | `sync`, then `poweroff` inside Linux; waits until the MCU reports the host off | 7 to 20 s |
-| `linux stop --hard` | Tries `sync`, then the MCU cuts host power. Linux gets no warning | 3 s |
+| `linux state` | `off`; `powered, no shell prompt`; `up: shell answers`; `up: shell answers, but the MCU host app is not running`; `powered in maskrom mode` | 1 s |
+| `linux start [--entry N\|NAME]` | Powers the host, lists the boot entries, picks one (default 1), waits for the shell | 30–45 s |
+| `linux stop` | `sync`, then `poweroff` in Linux; waits until the MCU reports the host off | 7–20 s |
+| `linux stop --hard` | Tries `sync`, then the MCU cuts host power without warning Linux | 3 s |
 
-- Prefer `linux stop`. Use `--hard` when the test is about power loss or the host no longer answers.
-- None of this needs a screenshot: every step is confirmed from the consoles.
-- `linux start` fails if another MCU app is running. The usual one is the self-check (`self_check`), which runs at every MCU boot and stays on screen when one of its checks failed, a device not found for instance; `press back` or `press ok` closes it, and `press back` does nothing on the desktop. The first time it stays open in a session, take a screenshot, close it, carry on, and mention it to the user in your next message; after that do as they say.
-- `linux start` prints the boot entries it found, numbered as in the on-screen menu, for example `boot entry 7: Minimal-7.4.0-rc1-g6cd481aae87d`. `--entry` takes that number, or text that exactly one entry name contains, in any case: `--entry router-7`. Text that matches no entry or several fails with the list printed and the host powered off again, which is also the way to see the entries of an unknown image.
-- `powered, no shell prompt` covers a host that is still booting, one that waits in the boot menu (after a host `reboot`, for instance), one at the U-Boot prompt, and one at a login prompt. Give a booting host time with `host "true" --wait 60`. In the boot menu pick an entry with the buttons: `press down ... ok`. `linux start` only prints `host is already powered` while the MCU host app is running; if the host stays without a prompt, `linux stop --hard` and `linux start` is the way out.
-- `linux stop` also works on a Linux that runs without the MCU host app: it takes the kernel's `Power down` line as the end.
-- If `linux start` reports no sign of life from the host, the MCU has lost track of host power: reset the MCU (`swd reset`, then `press back` if the self-check stays open) and start again.
-- An entry can be present and still not boot. `linux start` then fails with U-Boot's message and leaves the host at the U-Boot prompt; `linux stop --hard` gets out of it.
+- Prefer `linux stop`; use `--hard` to test power loss or when the host no longer answers. None of these needs a screenshot: every step is confirmed on the consoles.
+- **Self-check:** `linux start` fails while another MCU app runs, usually `self_check`. It runs at every MCU boot and stays on screen when a check failed (a device not found, say). `press back` or `press ok` closes it; `press back` does nothing on the desktop. The first time it stays open in a session, take a screenshot, close it, carry on, and tell the user in your next message; after that, do as they say.
+- **Entries:** `linux start` prints the entries numbered as in the on-screen menu, e.g. `boot entry 7: Minimal-7.4.0-rc1-g6cd481aae87d`. `--entry` takes the number, or text that exactly one entry name contains, case-insensitive: `--entry router-7`. No match or several matches fail with the list printed and the host powered off again: a way to list an unknown image's entries.
+- **`powered, no shell prompt`** is a host still booting, waiting in the boot menu (after a host `reboot`), at the U-Boot prompt, or at a login prompt. Give a booting host time with `host "true" --wait 60`; in the boot menu, pick with `press down ... ok`. `linux start` says `host is already powered` only while the MCU host app runs. If the host stays without a prompt, `linux stop --hard` and `linux start`.
+- `linux stop` also works without the MCU host app: it takes the kernel's `Power down` line as the end.
+- If `linux start` sees no sign of life, the MCU lost track of host power: `swd reset` (then `press back` if the self-check stays open) and start again.
+- An entry that exists but does not boot makes `linux start` fail with U-Boot's message, leaving the host at the U-Boot prompt; `linux stop --hard` gets out.
 
-How it works, for when you need the pieces:
+**The host shell:** `host "CMD"` works without network. The console is logged in as `user`; `sudo` needs no password. At a login prompt `host` fails with `shows no shell prompt`; logging in is not automated. The image build is in `/etc/os-release` (`BUILD_GIT`, `BUILD_ID`), the kernel in `uname -r`. For files use SSH, `user@<address>`, password `user`; `host "hostname -I"` prints the address (nothing without network).
 
-- The MCU powers the host while its app `cpu_app_start` runs: `cli "desktop start_app cpu_app_start"` starts it, `cli "desktop stop_app"` cuts power, `cli "desktop get_run_app"` tells whether it runs. `cli "desktop list_apps"` shows the other MCU apps, including `cpu_app_maskrom`.
-- U-Boot scans for images for several seconds, prints `(N bootflows, N valid)` on the Linux console, then shows a menu on the device screen and waits; it did not time out in 70 seconds. The scan output on the Linux console lists the entries (`/boot/loader/entries/*.conf`) in menu order. It takes keys from the Linux console (arrow keys and Enter) and from the device buttons.
-- When Linux powers itself off, the MCU app exits by itself.
-- `linux stop` waits for the kernel's `reboot: Power down` line and types nothing meanwhile. Do the same if you shut down by hand: a Ctrl+C on the Linux console interrupts the pending `poweroff`.
-- systemd ignores a `poweroff` issued while the system is still starting up, which lasts some tens of seconds after the shell first answers. `linux stop` sends it again.
+### How start and stop work
+
+- The MCU powers the host while its app `cpu_app_start` runs: `cli "desktop start_app cpu_app_start"` starts it, `cli "desktop stop_app"` cuts power. When Linux powers itself off, the app exits by itself.
+- U-Boot scans for images for several seconds, prints `(N bootflows, N valid)` on the Linux console, lists the entries (`/boot/loader/entries/*.conf`) there in menu order, then shows the menu on screen and waits (no timeout within 70 s). It takes keys from the Linux console (arrows, Enter) and from the device buttons.
+- `linux stop` waits for the kernel's `reboot: Power down` and types nothing meanwhile. Do the same by hand: Ctrl+C on the Linux console interrupts the pending `poweroff`.
+- systemd ignores `poweroff` while still starting up, which lasts tens of seconds after the shell first answers; `linux stop` resends it.
 
 ### Maskrom mode
 
-`cli "desktop start_app cpu_app_maskrom"` powers the host with its maskrom line held for one second, so the SoC stays in its boot ROM and waits for a loader over its own USB port instead of booting. `cli "desktop stop_app"` powers the host off again; a normal `linux start` works afterwards.
+`cli "desktop start_app cpu_app_maskrom"` powers the host with its maskrom line held for a second, so the SoC stays in its boot ROM and waits for a loader on its own USB port. `cli "desktop stop_app"` powers it off; a normal `linux start` works afterwards.
 
-- What you can see of it: the MCU log has `CPU app started with arg: maskrom`, the Linux console stays silent (a normal start prints DDR training and U-Boot within a second), the device screen is black, `linux state` says `powered in maskrom mode`.
-- The MCU Settings menu has a `Maskrom` item as well; it was not tried.
-- Flashing the host through maskrom needs a USB cable from the host's port to this machine and Rockchip tooling. That part was not tried here.
+- Signs: `CPU app started with arg: maskrom` in the MCU log, a silent Linux console (a normal start prints DDR training and U-Boot within a second), a black screen, `linux state` = `powered in maskrom mode`.
+- Flashing the host this way needs a USB cable from the host's port to this machine and Rockchip tooling; not tried.
 
 ### MCU reset while Linux runs
 
-A reset of the MCU alone (`swd reset`, `swd flash`, the probe's `mcu_reset`, a firmware crash) leaves Linux running: the host power rails are held by an I/O expander that keeps its outputs. Afterwards:
+Resetting only the MCU (`swd reset`, `swd flash`, the probe's `mcu_reset`, a crash) leaves Linux running: an I/O expander that keeps its outputs holds the host power rails. Then:
 
-- The MCU sees on the expander that the host is powered and starts the host app by itself, about a second and a half after boot, and nothing restarts; the screen shows "Waiting for CPU screen..." until Linux sends its next frame; the self check is skipped for it. The MCU also raises its restart interrupt, and the Linux driver writes the CPU state and its other settings back (`MCU restarted, restoring its settings` in the kernel log).
-- `linux start` still works and attaches to the running Linux: the host app leaves a powered host alone and `--entry` is ignored. The tool runs `sync` on the host first and checks afterwards that the host uptime went on.
-- Rarely the MCU fails to initialise that expander when it boots, because the bus is shared with the running host (see [Pitfalls](#pitfalls)); the MCU log then has `Failed to initialize Main Expander` and the MCU's `cli dmesg` has `Not initialized Main Expander`. Until the next reset the MCU has no control over host power. `linux start` checks that and refuses; reset the MCU again and retry. Linux itself is not disturbed by that state.
-- Should the host restart anyway when the host app starts, `linux start` notices by the host uptime and says so.
-- By hand it is the same: `Start Flipper OS` in the power menu, or `cli "desktop start_app cpu_app_start"`.
+- About 1.5 s after boot the MCU sees the powered host on the expander and starts the host app; nothing restarts and the self-check is skipped. The screen shows "Waiting for CPU screen..." until Linux sends a frame. The MCU raises its restart interrupt and the Linux driver writes its settings back (`MCU restarted, restoring its settings` in the kernel log).
+- `linux start` attaches to the running Linux: the host app leaves a powered host alone and `--entry` is ignored. The tool runs `sync` first and checks that the host uptime went on; if the host restarted anyway, it says so.
+- Rarely the MCU fails to initialise the expander, as the bus is shared with the host (see [Pitfalls](#pitfalls)): `Failed to initialize Main Expander` in the log, `Not initialized Main Expander` in `cli dmesg`. Until the next reset the MCU cannot control host power; `linux start` detects it and refuses. Reset the MCU again and retry. Linux is not disturbed.
+- By hand: `Start Flipper OS` in the power menu, or `cli "desktop start_app cpu_app_start"`.
 
 ### By hand, through the screen
 
-The same can be done as a person would. Use it only when the screen, the buttons or the UI/UX are what you are testing; it needs screenshots and the commands above do not.
+Only when the screen, buttons or UI are under test; it needs screenshots, the commands above do not.
 
-- Start: `press power --shot s.png` shows `Start Flipper OS` selected, `press ok`; after about 10 seconds a screenshot shows the U-Boot menu; `press down ...` and `press ok`.
-- Clean stop: on the host panel `press key2` (Menu), select `Settings`, scroll to `Shutdown` (the last item, after `Reboot`), `press ok`. No confirmation dialog. The screen keeps showing the list, then goes black for several seconds; neither means the press failed.
-- Hard stop: with Linux running `press power` shows `Flipper OS` with `Stop` and `Reboot`; `press ok` on `Stop` cuts power within a second.
+- **Start:** `press power --shot s.png` shows `Start Flipper OS` selected; `press ok`; after about 10 s a screenshot shows the U-Boot menu; `press down ...`, `press ok`.
+- **Clean stop:** on the host panel `press key2` (Menu), `Settings`, scroll to `Shutdown` (last, after `Reboot`), `press ok`. There is no confirmation. The screen keeps the list, then goes black for several seconds; neither means the press failed.
+- **Hard stop:** with Linux running, `press power` shows `Flipper OS` with `Stop` and `Reboot`; `ok` on `Stop` cuts power within a second.
 
-### Hard stop side effects
-
-The MCU log shows `Bq2579x` errors (`Failed to write reg 0x01`, `Failed to set charge voltage limit!`) at the moment of a hard stop. The stop path resets the charger and USB PD controller; the errors look like the shared I2C bus described under [Pitfalls](#pitfalls), though that cause is not confirmed. They do not appear on every hard stop.
+A hard stop can log `Bq2579x` errors in the MCU log (`Failed to write reg 0x01`, `Failed to set charge voltage limit!`), not every time. The stop path resets the charger and the USB PD controller; the shared I²C bus ([Pitfalls](#pitfalls)) is a likely but unconfirmed cause.
 
 ## Ports
 
 | Role | What | Baud |
 |---|---|---|
-| `mcu` | MCU console through the probe's UART, always available; the tools use this one | 1500000 |
-| `mcu-usb` | Same console over the MCU's own USB; needs a cable from the Flipper's USB port to this machine and exists only while the host is off, because the Flipper's USB port is switched over to the host when it is powered | any |
+| `mcu` | MCU console through the probe's UART; always there, the tools use it | 1500000 |
+| `mcu-usb` | The same console on the MCU's own USB: needs a cable to the Flipper's USB port, and exists only while the host is off (the port switches to the host when it is powered) | any |
 | `mcu-log` | MCU log, output only | 1500000 |
 | `linux` | Linux serial console | 1500000 |
-| `probe` | Console of the debug probe itself | any |
+| `probe` | The debug probe's own console | any |
 
-- Tools that need the MCU console use `mcu`. `--console mcu-usb` (accepted by `cli`, `screenshot`, `press` and `touch`) selects the USB one, but it vanishes mid-command when Linux powers up.
-- The probe runs its UART bridges at a fixed 1500000 baud whatever rate this machine asks for, unless custom baud rates are enabled on the probe (`f1.py probe "settings set_custom_baudrate 1"`).
-- A present `mcu-usb` port means the host is off. An absent one means nothing: there may simply be no cable. Use `linux state`.
-- Port lookup lives in `scripts/agent_tools/transport/ports.py`; `scripts/get_port.py` is a thin wrapper that also works on its own: `python3 scripts/get_port.py mcu` prints the device path, without arguments it lists all roles.
-- Ports are found by USB identity and CDC interface: probe `37c1:f131` serial `f1_debug_xxxx_`, control interface 1 for `linux`, 3 for `mcu`, 5 for `mcu-log`, 7 for `probe`; MCU `37c1:f101` serial `flip_one_mcu`, interface 0. macOS names a port after the data interface, which is the next number: `..._2` is `linux`, `..._4` is `mcu`, `..._6` is `mcu-log`, `..._8` is `probe`. Override a port with `F1_PORT_<ROLE>`, for example `F1_PORT_MCU_LOG=/dev/ttyACM2`.
-- Which command holds which port: `cli`, `screenshot`, `press`, `touch` use `mcu`; `log` uses `mcu-log`; `host` uses `linux`; `linux` uses `mcu` and `linux`; `probe` uses `probe`; `status` uses `probe` and SWD; `swd` uses SWD only. So a background `log` gets in the way of nothing but another `log`.
-- The UART consoles (`mcu`, `linux`) have no notion of a client connecting, so they print nothing when a port is opened; a prompt appears only after you send something. The tools send Ctrl+C and Enter first.
+- `--console mcu-usb` (for `cli`, `screenshot`, `press`, `touch`) uses the USB console, which vanishes mid-command when Linux powers up.
+- A present `mcu-usb` means the host is off; an absent one means nothing (maybe no cable). Use `linux state`.
+- The probe's UART bridges run at 1500000 baud whatever this machine asks, unless custom rates are enabled: `f1.py probe "settings set_custom_baudrate 1"`.
+- The UART consoles print nothing when a port opens; a prompt appears only after input. The tools send Ctrl+C and Enter first.
+- **Who uses which port:** `cli`, `screenshot`, `press`, `touch` → `mcu`; `log` → `mcu-log`; `host` → `linux`; `linux` → `mcu` and `linux`; `probe` → `probe`; `status` → `probe` and SWD; `swd` → SWD only. A background `log` blocks only another `log`.
+- **Lookup** is in `scripts/agent_tools/transport/ports.py`; `python3 scripts/get_port.py mcu` prints a path, without arguments it lists all roles. Ports are matched by USB identity and CDC control interface: probe `37c1:f131`, serial `f1_debug_xxxx_`, interfaces 1 `linux`, 3 `mcu`, 5 `mcu-log`, 7 `probe`; MCU `37c1:f101`, serial `flip_one_mcu`, interface 0. macOS names a port after the data interface, one higher: `..._2` `linux`, `..._4` `mcu`, `..._6` `mcu-log`, `..._8` `probe`. Override with `F1_PORT_<ROLE>`, e.g. `F1_PORT_MCU_LOG=/dev/ttyACM2`.
 
 ### Several probes
 
-Each probe has its own USB serial number, `f1_debug_xxxx_`, where the four hex digits are folded from its chip ID. The full chip ID is at the end of the USB product string, for example `Flipper One Debug Probe 63E7482F2DB3DF2B`. On macOS the serial is part of the port name: `/dev/cu.usbmodemf1_debug_d950_4`.
+Each probe's serial `f1_debug_xxxx_` carries four hex digits folded from its chip ID; the full ID ends the USB product string (`Flipper One Debug Probe 63E7482F2DB3DF2B`). On macOS the serial is in the port name: `/dev/cu.usbmodemf1_debug_d950_4`.
 
-- `ports` lists the attached probes with their IDs and serial numbers.
-- With one probe attached nothing needs to be set. With several, every command stops and lists them until you choose: `F1_PROBE=d950 python3 scripts/agent_tools/f1.py status`. `F1_PROBE` takes the four digits of the serial, or the chip ID or its beginning.
-- The choice applies to everything: serial ports and SWD. For SWD the tools pass `adapter serial f1_debug_xxxx_` to OpenOCD.
-- The `mcu-usb` port is not tied to a probe. With more than one board on USB it is left out; set `F1_PORT_MCU_USB` if you need it.
-- If a cable may have moved, confirm the board behind the probe: `cli device_info` prints the MCU's hardware UID, and the Linux prompt shows the hostname.
+- `ports` lists attached probes with IDs and serials.
+- With several probes, every command stops and lists them until you choose: `F1_PROBE=d950 python3 scripts/agent_tools/f1.py status`. `F1_PROBE` takes the four digits, or the chip ID or its start. The choice covers serial ports and SWD (OpenOCD gets `adapter serial f1_debug_xxxx_`).
+- `mcu-usb` is not tied to a probe; with more than one board on USB it is left out unless `F1_PORT_MCU_USB` is set.
+- If a cable may have moved, confirm the board: `cli device_info` prints the MCU's hardware UID, the Linux prompt shows the hostname.
 
-### The probe's own console
+### The probe's console
 
-The `probe` port is the console of the debug probe itself; `f1.py probe "CMD"...` runs commands there.
+`f1.py probe "CMD"...` runs commands on the probe itself:
 
 | Command | Use |
 |---|---|
-| `device_info` | Probe firmware version, commit and chip ID, in the same format as the MCU's `device_info` |
-| `gpio mcu_reset 0`, then `gpio mcu_reset 1` | Hold the Flipper's MCU in reset, then release it |
-| `power boot` | Reboot the probe into its USB bootloader: a drive named `RP2350` appears within a few seconds, copying a `.uf2` onto it flashes the probe. `f1.py probe flash FILE.uf2 --yes` does all of that |
+| `device_info` | Probe firmware version, commit and chip ID, in the MCU's `device_info` format |
+| `gpio mcu_reset 0`, then `1` | Hold the MCU in reset, then release it |
+| `power boot` | Reboot the probe into its USB bootloader; an `RP2350` drive appears, a `.uf2` copied onto it flashes the probe. `f1.py probe flash` does all of it |
 | `power reboot` | Restart the probe |
 | `help` | All commands |
 
-- Resetting the MCU through the probe does not use SWD, so it works while a debugger holds the probe: `f1.py probe "gpio mcu_reset 0" "gpio mcu_reset 1"`. For Linux it is the same as `swd reset`: the host keeps running, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
-- `power boot` and `power reboot` have the same names as on the MCU. Neither disturbs the Flipper's MCU.
-- `gpio` also lists `cpu_reset` and a few general-purpose debug pins. The purpose of those pins changes between firmware versions; do not rely on them.
+- An MCU reset through the probe needs no SWD, so it works while a debugger holds the probe: `f1.py probe "gpio mcu_reset 0" "gpio mcu_reset 1"`. Linux keeps running, as with `swd reset`.
+- The probe's `power boot` and `power reboot` share names with the MCU's but leave the MCU alone.
+- `gpio` also lists `cpu_reset` and some debug pins whose purpose changes between firmware versions; do not rely on them.
 
 ## MCU console
 
 | Command | Use |
 |---|---|
-| `uptime` | Seconds since MCU boot; a quick "did it reset?" check |
+| `uptime` | Seconds since MCU boot: a quick "did it reset?" |
 | `device_info` | Firmware branch, commit and version actually running |
-| `dmesg` | The last 10 KB of the MCU log, kept in RAM. Recording starts when the MCU apps start (first line around `Starting self check autorun`), so the boot lines before that are never in it, and older lines are overwritten. Use it to look back when `f1.py log` was not running; use `f1.py log` to capture everything from now on |
+| `dmesg` | The last 10 KB of the MCU log, in RAM. Starts when the MCU apps start (around `Starting self check autorun`), so earlier boot lines are never in it; old lines are overwritten. For looking back; `f1.py log` captures from now on |
 | `power info` | Battery, USB and charger readings, once |
-| `power show` | The same in full detail, repeated until interrupted: under `cli` it ends in a timeout error with the readings printed |
+| `power show` | The same in detail, repeated until interrupted; under `cli` it ends in a timeout error after printing |
 | `help` | All commands |
 
-Do not run `power off`, `power ship`, `power reboot` or `power boot` unless that is the point of the test. `power reboot` cuts power to the whole device, the host included, and the device comes back by itself within seconds. `power off` and `power ship` both switch the whole device off: after `power ship` it comes back when the user holds the power button, after `power off` only when USB power is connected. `power boot` resets the charger and the USB PD controller and reboots the MCU into its USB bootloader (BOOTSEL): the firmware stops, the MCU console goes silent, `status` shows `active none`, and with a cable on the Flipper's USB port a drive named `RP2350` appears on this machine. `swd reset` or a reset through the probe brings the firmware back. A running Linux stays up through `power boot`.
+**Power commands**, only when they are the point of the test:
 
-If the MCU console was left in a bad state (a command still running, or a crashed RPC session), the tools recover it on the next call. If they report no prompt, the MCU itself is down: see [When the firmware crashes or hangs](#when-the-firmware-crashes-or-hangs).
+- `power reboot` cuts power to the whole device, host included; it comes back by itself within seconds.
+- `power off` and `power ship` switch the whole device off. After `ship` it returns when the user holds the power button; after `off`, only when USB power is connected.
+- `power boot` resets the charger and USB PD controller and reboots the MCU into BOOTSEL: the console goes silent, `status` shows `active none`, and with a cable on the Flipper's USB port an `RP2350` drive appears. `swd reset` or a probe reset brings the firmware back. A running Linux stays up.
 
-## Linux host
-
-- `host "CMD"` works without network. The console is already logged in as `user`; `sudo` needs no password. If the console sits at a login prompt instead, `host` fails with `shows no shell prompt`; logging in is not automated.
-- The image build is in `/etc/os-release` (`BUILD_GIT`, `BUILD_ID`), the kernel in `uname -r`.
-- For file transfer use SSH: `user@<address>`, password `user`. `host "hostname -I"` prints the address, or nothing when the host has no network.
+A console left in a bad state (a command still running, a crashed RPC session) is recovered by the tools on the next call. If they report no prompt, the MCU itself is down: see [When the firmware crashes or hangs](#when-the-firmware-crashes-or-hangs).
 
 ## Firmware slots and SWD
 
-SWD goes through the RP2350-capable OpenOCD this repository needs anyway: the binary named in `F1_OPENOCD`, else the toolchain's (the one `scripts/toolchain/fbtenv.sh` set up in this shell, or the tree's `.toolchain` link once fbtenv has run here), else the Pico extension's (`~/.pico-sdk/openocd/<version>/openocd`); a stock OpenOCD without RP2350 support will not do. To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f scripts/agent_tools/openocd/flipperone-mcu.cfg`. That board config sources `target/rp2350.cfg`, sets the adapter speed and holds all the board knowledge, so a debug session can reuse it too:
+**OpenOCD** must support the RP2350; the tools take `F1_OPENOCD`, else the toolchain's (set up by `fbtenv` in this shell, or the tree's `.toolchain` link), else the Pico extension's (`~/.pico-sdk/openocd/<version>/openocd`). To call it yourself: `-f interface/cmsis-dap.cfg -c "adapter serial f1_debug_xxxx_" -f scripts/agent_tools/openocd/flipperone-mcu.cfg`. The board config sources `target/rp2350.cfg`, sets the adapter speed and holds the board knowledge, so debug sessions can reuse it:
 
 | Proc | Use |
 |---|---|
-| `f1_where F1>` | PC and LR of both cores after a momentary halt, `F1> <core> <pc> <lr>` per core |
-| `f1_resume` | Halt both cores and run them again; the way out of cores a debugger left halted |
-| `f1_read ADDR COUNT F1>` | `COUNT` 32-bit words, `F1> <word> ...`, without halting the core |
-| `f1_halted` | 1 when the selected core is halted, 0 when it runs |
+| `f1_where F1>` | PC and LR of both cores after a brief halt: `F1> <core> <pc> <lr>` per core |
+| `f1_resume` | Halt both cores and run them again; frees cores a debugger left halted |
+| `f1_read ADDR COUNT F1>` | `COUNT` 32-bit words as `F1> <word> ...`, without halting |
+| `f1_halted` | 1 if the selected core is halted, else 0 |
 | `f1_stage_tbyb BASE` | Boot the try-before-you-buy image at `BASE` once, so the bootrom stages and commits it |
 
-`swd symbol` uses `arm-none-eabi-addr2line`: the toolchain's, else the first on `PATH`, else the Pico extension's.
+`swd symbol` uses the toolchain's `arm-none-eabi-addr2line`, else the first on `PATH`, else the Pico extension's.
 
-- There are two firmware slots, A and B. The bootrom boots the valid image with the higher version; with equal versions it boots A.
-- `build/<preset>/flipperone-mcu-firmware.bin` runs from either slot. `swd flash` takes the `.bin` and writes it at the slot's own address.
-- `swd flash` also takes a `.uf2`, but only one whose payload lies inside the slot being written, so a slot-relocated `.uf2` from the release flow rather than a plain picotool `.uf2` linked for slot A. Anything outside the slot is refused before the flash is touched, picotool's boot-info block at `0x10FFFF00` aside, which the bootrom ignores.
-- With Linux running, add `--quiesce`: the tool then holds the host CPU in reset through the probe while it writes. That is a reset, not a freeze: a host that runs loses its state, but the slot write cannot race the host reading flash.
-- Flash your builds to slot A, with `--activate`: local builds all carry the same version, and with equal versions A wins, so a build written to B does not start while A holds a valid image of the same or a higher version. If B holds a higher version than your build, write the build to both slots, or make B unbootable with `swd erase-header b`.
-- `status` reports per slot: `erased`, `no image header`, or `valid` with its version words. The first word packs `FW_IMAGE_MAJOR` (bits 15..12), `FW_IMAGE_MINOR` (11..4) and `FW_IMAGE_PATCH` (3..0) from `CMakeLists.txt`, so 0.1.0 is `0x0010`. The second word is reserved for a boot counter and is 0 in every build today. `DIST_SUFFIX` changes only the version string that `device_info` prints, not these words.
-- After flashing, confirm with `status` that the slot you wrote is the active one, and with `cli device_info` that the running build is yours. An image with a lower version than the other slot will not be chosen.
-- `active none` means the core sits in the bootrom: either no slot holds a bootable image (flash slot A over SWD to recover), or the MCU was sent to its USB bootloader with `power boot` (reset it).
-- `swd read` addresses worth knowing: `0x400d0034` active slot (low 12 bits = the slot's offset divided by `0x1000`: `0x002` for A, `0x782` for B, 0 when nothing booted), `0x400b0028` microseconds since MCU boot, `0xE000EDF0` debug status (bit 17 = halted), `0x1c000000 + offset` raw flash.
+**Slots:**
+
+- Two slots, A and B; the bootrom boots the valid image with the higher version, A on a tie. Slot layout and recovery: [docs/Flashing.md](../../docs/Flashing.md).
+- `build/<preset>/flipperone-mcu-firmware.bin` runs from either slot; `swd flash` writes it at the slot's address. A `.uf2` is accepted only if its payload lies inside that slot, i.e. a slot-relocated `.uf2` from the release flow, not a plain picotool `.uf2` linked for A. Anything outside is refused before flash is touched, except picotool's boot-info block at `0x10FFFF00`, which the bootrom ignores.
+- **Flash your builds to slot A with `--activate`.** Local builds share one version, so a build in B does not start while A holds a valid image of the same or a higher version. If B holds a higher version than your build, write both slots, or `swd erase-header b`.
+- With Linux running, add `--quiesce`: the probe holds the host CPU in reset during the write. That resets a running host (it loses its state), but the write cannot race the host reading flash.
+- `status` shows each slot as `erased`, `no image header`, or `valid` with two version words. The first packs `FW_IMAGE_MAJOR` (bits 15..12), `FW_IMAGE_MINOR` (11..4) and `FW_IMAGE_PATCH` (3..0) from `CMakeLists.txt`: 0.1.0 is `0x0010`. The second is reserved for a boot counter, 0 today. `DIST_SUFFIX` changes only the string `device_info` prints.
+- `active none`: the core is in the bootrom, because no slot is bootable (flash slot A over SWD) or `power boot` sent it to BOOTSEL (reset it).
+- Useful `swd read` addresses: `0x400d0034` active slot (low 12 bits = slot offset / `0x1000`: `0x002` A, `0x782` B, 0 if nothing booted); `0x400b0028` µs since MCU boot; `0xE000EDF0` debug status (bit 17 = halted); `0x1c000000 + offset` raw flash.
 
 ### Build, flash, check
 
 ```shell
-DIST_SUFFIX=my-test-1 cmake --preset f2-release && cmake --build --preset f2-release   # own version string, to tell builds apart
-python3 scripts/agent_tools/f1.py swd flash a build/f2-release/flipperone-mcu-firmware.bin --yes
-python3 scripts/agent_tools/f1.py status              # slot A is the active one
+DIST_SUFFIX=my-test-1 cmake --preset f2-release && cmake --build --preset f2-release   # own version string
+python3 scripts/agent_tools/f1.py swd flash a build/f2-release/flipperone-mcu-firmware.bin --activate --yes
+python3 scripts/agent_tools/f1.py status              # slot A is active
 python3 scripts/agent_tools/f1.py cli device_info     # the running build is yours
-python3 scripts/agent_tools/f1.py press back          # close the self-check, if the MCU opened it after booting
+python3 scripts/agent_tools/f1.py press back          # close the self-check, if it opened
 ```
 
-- `swd flash` takes about 8 seconds. The MCU console answers within a second after `swd flash`, `swd reset` and a reset through the probe; no waiting is needed before the next command.
-- With Linux running, a plain `swd flash` resets only the MCU, and the MCU shows the running Linux again by itself, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs). The same holds with `--activate`.
+- `swd flash` takes about 8 s. The console answers within a second after `swd flash`, `swd reset` or a probe reset; no wait is needed.
+- An image with a lower version than the other slot is not chosen: always confirm with `status` and `device_info`.
+- With Linux running, `swd flash` (with or without `--activate`) resets only the MCU, which shows the running Linux again by itself; see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
 
 ### Try-before-you-buy images
 
-Current builds are written with `PICO_CRT0_IMAGE_TYPE_TBYB`, which makes the bootrom treat them as an unbought purchase:
+Builds use `PICO_CRT0_IMAGE_TYPE_TBYB`: the bootrom treats a new image as an unbought purchase.
 
-- A normal reset skips such an image, so a slot that holds one stays inactive and `status` keeps reporting the other slot. This is also what the MCU finds when it boots on its own after `swd flash`.
-- `swd flash ... --activate` writes the slot, then resets into the bootrom's FLASH_UPDATE path, which runs the image so that the firmware's updater service buys it. The command then waits up to two minutes for the slot header to come back bought and fails if it does not, so a reported success means the slot really is bootable. Costs a few seconds more than a plain flash. The reboot vector is `f1_stage_tbyb` in the board config, so it can be run by hand in a debug session too.
-- That flash-update boot leaves a running Linux running: the new firmware finds the host powered and starts the host app (`Host is powered: starting CPU app` in the log). A real update differs: the host powers off or reboots, the old firmware cuts its power before switching, and the new one powers it again after a reboot (`Switched to a new image: starting the host`) and leaves it off after a power-off.
-- The bootrom invalidates the other slot's header when it commits the staged image, so after an `--activate` the previous slot reads `no image header` in `status`. That is expected; flash it again to get a second bootable slot back.
-- Without `--activate`, `swd flash` warns about a TBYB image: it wrote and verified it, but nothing boots it until a flash-update boot stages it.
+- A normal reset skips it: the slot stays inactive and `status` keeps showing the other one, as after a plain `swd flash`, which warns about it (written and verified, but not booted until staged).
+- `--activate` writes the slot, then resets into the bootrom's FLASH_UPDATE path, which runs the image so the firmware's updater service buys it. It waits up to two minutes for the header to come back bought and fails otherwise, so success means the slot really boots. It costs a few seconds more. The reboot goes through `f1_stage_tbyb`, usable by hand in a debug session.
+- That flash-update boot leaves a running Linux running: the new firmware finds the host powered and starts the host app (`Host is powered: starting CPU app`). A real update differs: the old firmware cuts host power before switching, and the new one powers the host again after a reboot (`Switched to a new image: starting the host`) or leaves it off after a power-off.
+- Committing the staged image invalidates the other slot's header, so after `--activate` the previous slot reads `no image header`. Expected; flash it again for a second bootable slot.
 
 ### When the user says the device froze after debugging
 
-- `status` showing `HALTED` has two causes: a debugger detached and left the cores halted, or the firmware crashed and halted itself (see [When the firmware crashes or hangs](#when-the-firmware-crashes-or-hangs)). A `[CRASH]` report in the MCU log means the second. Without a log, `swd where` tells: after a crash core 0 sits in `__furi_crash_implementation`.
-- Cores left halted by a debugger are fixed with `swd resume`.
-- For a cortex-debug `launch.json`, these lines in `openOCDLaunchCommands` make the debugger resume the cores when it detaches (`vscode_template/launch.json` has them):
-
-```json
-"rp2350.cm0 configure -event gdb-detach { resume }",
-"rp2350.cm1 configure -event gdb-detach { resume }"
-```
+- `HALTED` in `status` means a debugger left the cores halted, or the firmware crashed and halted itself. A `[CRASH]` report in the log means a crash; without a log, `swd where` tells: after a crash core 0 sits in `__furi_crash_implementation`.
+- Cores left halted by a debugger: `swd resume`. To prevent it, the debug configurations resume the cores on detach: [docs/Debugging.md](../../docs/Debugging.md#debugger).
 
 ### When the firmware crashes or hangs
 
-The firmware does not reboot after a crash at this stage of development: it prints a report to the MCU log and stops. The MCU console then shows no prompt, and `screenshot` and `press` fail with it. Nothing of the report survives a reset, and `dmesg` starts empty again, so **keep `f1.py log --out FILE` running in the background while you test something that may crash**; afterwards there is nothing to read.
+After a crash the firmware prints a report to the MCU log and stops; it does not reboot at this stage of development. The console shows no prompt, and `screenshot` and `press` fail. The report does not survive a reset and `dmesg` starts empty, so **keep `f1.py log --out FILE` running in the background while testing something that may crash**.
 
 | What happened | MCU log | `status` |
 |---|---|---|
-| `furi_check`, `furi_assert`, `furi_crash` | `[CRASH][<thread>] <message>`, registers `r0`..`r11` and `lr`, stack and heap watermarks, `System halted` | `HALTED` if an SWD command had been run before the crash and no reset through the probe pin came in between; otherwise `running` with the uptime still counting, however often you ask afterwards (see [Pitfalls](#pitfalls)) |
-| HardFault | `[E][FuriHalDebug] HardFault! lr=... pc=...`, registers, `CFSR`/`HFSR`/`MMFAR`/`BFAR`, free stack of every task (`*** LOW ***` marks the tight ones), then `[CRASH][ISR HardFault]` | same |
-| Hang (endless loop, interrupts off) | nothing | `running`, and the uptime in `status` keeps counting |
+| `furi_check`, `furi_assert`, `furi_crash` | `[CRASH][<thread>] <message>`, registers `r0`..`r11` and `lr`, stack and heap watermarks, `System halted` | `HALTED` if an SWD command ran before the crash with no probe-pin reset since; otherwise `running`, uptime still counting (see [Pitfalls](#pitfalls)) |
+| HardFault | `[E][FuriHalDebug] HardFault! lr=... pc=...`, registers, `CFSR`/`HFSR`/`MMFAR`/`BFAR`, free stack per task (`*** LOW ***` marks tight ones), then `[CRASH][ISR HardFault]` | same |
+| Hang (endless loop, interrupts off) | nothing | `running`, uptime counting |
 
-- `running` in `status` only means the core executes instructions. A dead console with `running` is a crash or a hang, and `status` cannot tell them apart; the log does.
-- Turn addresses from the report into source lines: `f1.py swd symbol 0x1000a133`. In a `[CRASH]` report `lr` points into the function that failed the check. A HardFault report has `pc`, where it faulted, and `lr_st`, the return address saved at that moment, which is the caller; its plain `lr` is an exception code, not an address.
-- For a hang, `f1.py swd where` shows the line it is stuck on. After a crash it only shows the crash handler; use the log.
-- The ELF has to be the build that is running, otherwise the lines are wrong. The tools take the newest `.elf` in `build/` or in a preset's `build/<preset>/`.
-- Fault registers can also be read without halting: `f1.py swd read 0xE000ED28 4` gives CFSR, HFSR, DFSR, MMFAR.
-- To get going again: `f1.py swd reset`, or the reset pin through the probe. `swd resume` does not help after a crash, the firmware halts again at once.
-- Linux keeps running when the MCU crashes, with nothing about it in the kernel log. The tools that need the MCU console fail meanwhile, `linux stop` among them. Reset the MCU first; it then shows the running Linux again by itself, see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
+- `running` only means the core executes. A dead console with `running` is a crash or a hang; only the log tells which.
+- Turn addresses into source lines with `f1.py swd symbol 0x1000a133`. In a `[CRASH]` report `lr` points into the function that failed the check. In a HardFault report `pc` is where it faulted and `lr_st` the saved return address (the caller); its plain `lr` is an exception code, not an address.
+- The ELF must be the running build, or the lines are wrong. The tools take the newest `.elf` in `build/` or `build/<preset>/`.
+- For a hang, `f1.py swd where` shows the stuck line; after a crash it shows only the crash handler.
+- Fault registers without halting: `f1.py swd read 0xE000ED28 4` gives CFSR, HFSR, DFSR, MMFAR.
+- Recover with `f1.py swd reset` or a probe-pin reset. `swd resume` does not help: the firmware halts again at once.
+- Linux keeps running through an MCU crash, with nothing in its kernel log, but tools needing the MCU console fail, `linux stop` included. Reset the MCU first; see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
 
 ## Pitfalls
 
-- **MCU timestamps stop during flash erase.** Each sector erase masks interrupts and OS ticks are lost. In one measurement the firmware erased 119 sectors in 5.8 s of wall time while the MCU log advanced 0.24 s.
-- **I2C device errors after an MCU reset with Linux running are expected.** PCAL6416, FUSB302, BQ2579x and INA219 sit on a bus shared with the host. If the MCU boots while Linux is up, their init can fail, a different device each time or none (`Failed to read reg`, `Failed to reset FUSB302!`, `Failed to initialize INA219`, `Failed to initialize Main Expander`). Linux can show the other side of it in its kernel log around an MCU reset (`pca953x ... failed reading register`, `SDA held low, recovering the bus`). This is a known architectural limitation; do not report it as a bug in the change you are testing.
-- **Attaching over SWD leaves debug enabled in the core**, also across `swd reset`; a reset through the probe pin clears it. While it is enabled, a breakpoint instruction in the firmware halts the core instead of faulting, which is how a crashed firmware ends up `HALTED`.
-- **A halted MCU stops everything it manages**: the screen, the buttons, reactions to the host. `swd flash` halts it for the 8 seconds of the write; a running Linux carries on through that.
-- **Two tools cannot share a port.** A command that finds its port taken fails at once with `is in use by another process`. Different ports are fine in parallel; see [Ports](#ports) for which command uses which.
+- **MCU timestamps stop during flash erase**: each sector erase masks interrupts and OS ticks are lost. Once, 119 sectors took 5.8 s of wall time while the MCU log advanced 0.24 s.
+- **I²C device errors after an MCU reset with Linux running are expected.** PCAL6416, FUSB302, BQ2579x and INA219 share a bus with the host, so their init can fail when the MCU boots under a running Linux, a different device each time or none (`Failed to read reg`, `Failed to reset FUSB302!`, `Failed to initialize INA219`, `Failed to initialize Main Expander`). Linux may log the other side (`pca953x ... failed reading register`, `SDA held low, recovering the bus`). A known architectural limitation; do not report it as a bug in your change.
+- **Attaching over SWD leaves debug enabled in the core**, across `swd reset` too; only a probe-pin reset clears it. Meanwhile a breakpoint instruction halts the core instead of faulting, which is how a crashed firmware ends up `HALTED`.
+- **A halted MCU stops everything it manages**: screen, buttons, reactions to the host. `swd flash` halts it for the 8 s of the write; a running Linux carries on.
+- **Two tools cannot share a port**: the second fails at once with `is in use by another process`. Different ports work in parallel; see [Ports](#ports).
+
+## What still needs the user
+
+- You need SWD while a debug session holds the probe.
+- The device needs a cable, a physical button not in the list above, or BOOTSEL on a board or probe whose firmware has no working `power boot`.
+- The device was switched off with `power off` or `power ship`.
+- You are about to erase or overwrite something and have not been told the device is free to use.
+- The tools report the MCU running, but the screenshot or the user says otherwise.
+
+## End of session
+
+- Stop any background `log`.
+- Tell the user the state you leave: the active slot and each slot's contents, whether Linux is up, files left on the host.
 
 ## Source layout and tests
 
 | Path | What |
 |---|---|
-| `f1.py` | Entry point: builds the parser and calls one command |
-| `cli/main.py` | The commands and their text output; nothing else |
+| `f1.py` | Entry point: builds the parser, calls one command |
+| `cli/main.py` | The commands and their text output, nothing else |
 | `logic/` | Device services: console, RPC session, Linux host, SWD, slot flashing |
 | `transport/` | Byte and line movers: serial port, OpenOCD process, port discovery |
 | `packets/` | Pure codecs: UF2, picobin, RPC protobuf subset, console text, U-Boot text, OpenOCD output |
-| `openocd/flipperone-mcu.cfg` | Board config: the SDK RP2350 target plus the core and flashing helpers listed under [Firmware slots and SWD](#firmware-slots-and-swd) |
+| `openocd/flipperone-mcu.cfg` | Board config: the SDK RP2350 target plus the helpers in [Firmware slots and SWD](#firmware-slots-and-swd) |
 | `tests/` | Unit tests with fake ports |
 
-Dependencies run one way, `cli` → `logic` → `transport` → `packets`; `tests/test_layers.py` fails the build on any import that points back up.
-
-```shell
-python3 -m pytest scripts/agent_tools/tests -q
-```
-
-The tests need the packages of `scripts/requirements-test.txt` and nothing else: no firmware build, no device, no probe. The logic tests pass in fake ports, so commands and timeouts run without hardware. `.github/workflows/agent-tools-tests.yml` runs the same command in CI.
-
-## What still needs the user
-
-- You need SWD and a debug session holds the probe.
-- The device needs a cable, a physical button that is not in the list above, or BOOTSEL on a board or probe whose firmware has no working `power boot`.
-- The device was switched off with `power off` or `power ship`: only the user can bring it back.
-- You are about to erase or overwrite something and have not been told the device is free to use.
-- The tools report the MCU as running but the screenshot or the user says otherwise.
-
-## End of session
-
-- Stop any background `log`.
-- Tell the user the state you leave: active slot and what is in each, whether Linux is up, files you left on the host.
+Imports run one way, `cli` → `logic` → `transport` → `packets`; `tests/test_layers.py` fails on any import pointing back up. The tests need only `scripts/requirements-test.txt`: no firmware build, device or probe. CI runs them in `.github/workflows/agent-tools-tests.yml`. Command: [docs/Testing.md](../../docs/Testing.md#host-tests).
