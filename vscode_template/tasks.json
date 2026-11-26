@@ -19,7 +19,7 @@
             "dependsOn": "Compile Project",
             "args": [
                 "load",
-                "${command:cmake.getLaunchTargetPath}",
+                "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
                 "-fx"
             ],
             "presentation": {
@@ -36,7 +36,7 @@
             "dependsOn": "Compile Project",
             "args": [
                 "load",
-                "${command:cmake.getLaunchTargetDirectory}/partition_table.uf2",
+                "${workspaceFolder}/build/current/partition_table.uf2",
                 "-fvx"
             ],
             "presentation": {
@@ -59,7 +59,7 @@
                 "-f",
                 "target/rp2350.cfg",
                 "-c",
-                "set BUILD_DIR {${command:cmake.getLaunchTargetDirectory}}",
+                "set BUILD_DIR {${workspaceFolder}/build/current}",
                 "-f",
                 "targets/flash.tcl"
             ],

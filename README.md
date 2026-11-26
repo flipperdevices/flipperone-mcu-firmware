@@ -57,7 +57,7 @@ The toolchain runs on Linux x86_64 and aarch64 with glibc 2.34 or newer, macOS o
 
 ### Hardware targets
 
-Each board is described by `targets/<name>/target.cmake`, and a target can be based on another one. The default is `f2`. Each preset builds in its own `build/<preset>/` directory, so switching boards needs no rebuild:
+Each board is described by `targets/<name>/target.cmake`, and a target can be based on another one. The default is `f2`. Each preset builds in its own `build/<preset>/` directory, so switching boards needs no rebuild. `build/current` links to the preset configured or built last (a junction on Windows); VSCode, clangd and `scripts/isr_ram_check.py` use it:
 
 | Preset | Builds |
 | --- | --- |
@@ -69,7 +69,7 @@ Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [TARGETS.md](TARGETS.m
 
 ### VSCode
 
-Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, clangd, Cortex-Debug). Code navigation and diagnostics come from the toolchain's clangd, which reads the selected preset's compile commands, so configure a preset first. On save, clangd formats the changed lines of C and C++ files with `.clang-format`. Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Run Project**, **Write partition table** and **Flash** tasks act on the selected preset's build.
+Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, clangd, Cortex-Debug). Code navigation and diagnostics come from the toolchain's clangd, which reads the compile commands in `build/current`, so configure a preset first. On save, clangd formats the changed lines of C and C++ files with `.clang-format`. Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Debug** launches, and the **Run Project**, **Write partition table** and **Flash** tasks, build the selected preset first and use its build through `build/current`. **Debug Attach** uses `build/current` without building.
 
 ### Other setups
 

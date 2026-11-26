@@ -4,10 +4,9 @@
     "cmake.configureOnEdit": false,
     "cmake.automaticReconfigure": false,
     "cmake.configureOnOpen": false,
-    "cmake.copyCompileCommands": "${workspaceFolder}/build/compile_commands.json",
     "clangd.path": "${workspaceFolder}/.toolchain/tools/clangd/bin/clangd",
     "clangd.arguments": [
-        "--compile-commands-dir=${workspaceFolder}/build",
+        "--compile-commands-dir=${workspaceFolder}/build/current",
         "--query-driver=**/arm-none-eabi-*",
         "--header-insertion=never"
     ],

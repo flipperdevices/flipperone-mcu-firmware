@@ -4,8 +4,9 @@
         {
             "name": "Debug",
             "cwd": "${workspaceFolder}/.toolchain/tools/openocd/scripts",
-            "executable": "${command:cmake.launchTargetPath}",
+            "executable": "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
             "request": "launch",
+            "preLaunchTask": "Compile Project",
             "type": "cortex-debug",
             "servertype": "openocd",
             "serverpath": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
@@ -19,7 +20,7 @@
             "runToEntryPoint": "main",
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "monitor program \"${command:cmake.getLaunchTargetPath}\" verify 0x2000",
+                "monitor program \"${workspaceFolder}/build/current/flipperone-mcu-firmware.elf\" verify 0x2000",
                 // Boot the try-before-you-buy image as after an update
                 "monitor f1_stage_tbyb 0x10002000",
                 "monitor reset halt"
@@ -48,7 +49,7 @@
         {
             "name": "Debug Attach",
             "cwd": "${workspaceFolder}/.toolchain/tools/openocd/scripts",
-            "executable": "${command:cmake.launchTargetPath}",
+            "executable": "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
@@ -84,8 +85,9 @@
         {
             "name": "Debug (FreeRTOS)",
             "cwd": "${workspaceFolder}/.toolchain/tools/openocd/scripts",
-            "executable": "${command:cmake.launchTargetPath}",
+            "executable": "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
             "request": "launch",
+            "preLaunchTask": "Compile Project",
             "type": "cortex-debug",
             "servertype": "openocd",
             "serverpath": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
@@ -100,7 +102,7 @@
             "runToEntryPoint": "main",
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "monitor program \"${command:cmake.getLaunchTargetPath}\" verify 0x2000",
+                "monitor program \"${workspaceFolder}/build/current/flipperone-mcu-firmware.elf\" verify 0x2000",
                 // Boot the try-before-you-buy image as after an update
                 "monitor f1_stage_tbyb 0x10002000",
                 "monitor reset halt"
@@ -129,7 +131,7 @@
         {
             "name": "Debug Attach (FreeRTOS)",
             "cwd": "${workspaceFolder}/.toolchain/tools/openocd/scripts",
-            "executable": "${command:cmake.launchTargetPath}",
+            "executable": "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",

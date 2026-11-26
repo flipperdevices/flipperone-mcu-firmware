@@ -112,6 +112,15 @@ pico_sdk_init()
 
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/toolchain_check.cmake")
 
+# build/current follows the preset configured or built last
+set(FW_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
+set(FW_BUILD_DIR "${CMAKE_BINARY_DIR}")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/build_link.cmake")
+add_custom_target(build_link ALL
+    COMMAND ${CMAKE_COMMAND} -DFW_SOURCE_DIR=${FW_SOURCE_DIR} -DFW_BUILD_DIR=${FW_BUILD_DIR}
+        -P "${CMAKE_CURRENT_LIST_DIR}/cmake/build_link.cmake"
+    VERBATIM)
+
 # Enable warnings and treat as errors
 add_compile_options(-fno-strict-aliasing)
 add_compile_options(-Werror -Wall)

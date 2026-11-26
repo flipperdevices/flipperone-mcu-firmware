@@ -59,7 +59,7 @@ import subprocess
 import sys
 from collections import defaultdict, deque
 
-DEFAULT_ELF = "build/f2-release/flipperone-mcu-firmware.elf"
+DEFAULT_ELF = "build/current/flipperone-mcu-firmware.elf"
 MARKER_PREFIX = "__i2c_isr_func_"
 
 # Reached through function pointers, so the call graph cannot find them: each
