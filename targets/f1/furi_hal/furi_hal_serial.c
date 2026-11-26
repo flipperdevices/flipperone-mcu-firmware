@@ -17,6 +17,7 @@ typedef struct {
     FuriHalSerialTxCallback tx_callback;
     void* callback_context;
     volatile bool tx_active;
+    bool is_isr_set;
     uint32_t dma_rx_channel;
     uint32_t dma_tx_channel;
     uint32_t baud_rate;
@@ -120,11 +121,6 @@ static void furi_hal_serial_irq_callback(void* context) {
     if(mis & UART_UARTMIS_TXMIS_BITS) {
         hw_write_masked(&hw->icr, UART_UARTICR_TXIC_BITS, UART_UARTICR_TXIC_BITS);
     }
-    // Any interrupt, or furi_hal_serial_async_tx_start() pending one by hand, tops the FIFO up
-    if(serial->tx_active) {
-        furi_hal_serial_async_tx_fill(handle, serial, hw);
-    }
-    if(!(mis & ~UART_UARTMIS_TXMIS_BITS)) return;
 
     if(mis & UART_UARTRIS_RXRIS_BITS) {
         events |= FuriHalSerialRxEventData;
@@ -154,8 +150,14 @@ static void furi_hal_serial_irq_callback(void* context) {
         hw_write_masked(&hw->icr, UART_UARTICR_PEIC_BITS, UART_UARTICR_PEIC_BITS);
     }
 
-    if(serial->rx_callback) {
+    if(events && serial->rx_callback) {
         serial->rx_callback(handle, events, serial->callback_context);
+    }
+
+    // After RX, whose FIFO has the tighter deadline. Any interrupt, or furi_hal_serial_async_tx_start() pending one
+    // by hand, tops the TX FIFO up.
+    if(serial->tx_active) {
+        furi_hal_serial_async_tx_fill(handle, serial, hw);
     }
 }
 
@@ -241,6 +243,7 @@ void furi_hal_serial_deinit(FuriHalSerialHandle* handle) {
         return;
     }
 
+    furi_hal_serial_set_callback(handle, NULL, NULL, NULL);
     furi_hal_serial_dma_rx_deinit(handle);
     furi_hal_serial_dma_tx_deinit(handle);
 
@@ -388,10 +391,26 @@ void furi_hal_serial_set_callback(FuriHalSerialHandle* handle, FuriHalSerialTxCa
 
     FuriHalSerial* serial = furi_hal_serial[handle->id];
     furi_check(serial);
+    const FuriHalSerialResources* resources = &furi_hal_serial_resources[handle->id];
+
+    FURI_CRITICAL_ENTER();
+    // Interrupts stop with the old callbacks: the async start functions enable them again
+    serial->tx_active = false;
+    uart_get_hw(resources->periph)->imsc = 0;
+    if(serial->is_isr_set) {
+        furi_hal_interrupt_set_isr(resources->irq, NULL, NULL);
+        serial->is_isr_set = false;
+    }
 
     serial->tx_callback = tx_callback;
     serial->rx_callback = rx_callback;
     serial->callback_context = context;
+
+    if(tx_callback || rx_callback) {
+        furi_hal_interrupt_set_isr(resources->irq, furi_hal_serial_irq_callback, handle);
+        serial->is_isr_set = true;
+    }
+    FURI_CRITICAL_EXIT();
 }
 
 size_t furi_hal_serial_tx(FuriHalSerialHandle* handle, const uint8_t* buffer, size_t buffer_size, uint32_t timeout) {
@@ -485,13 +504,10 @@ void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_err
 
     FuriHalSerial* serial = furi_hal_serial[handle->id];
     furi_check(serial);
-    furi_check(serial->rx_callback || serial->tx_callback);
+    furi_check(serial->rx_callback);
 
     FURI_CRITICAL_ENTER();
-    furi_hal_interrupt_set_isr(resources->irq, furi_hal_serial_irq_callback, handle);
-    // Transmit interrupts belong to furi_hal_serial_async_tx_start()
-    const uint32_t rx_irqs = UART_UARTIMSC_RXIM_BITS | UART_UARTIMSC_RTIM_BITS;
-    hw_write_masked(&uart_get_hw(periph)->imsc, serial->rx_callback ? rx_irqs : 0, rx_irqs);
+    hw_set_bits(&uart_get_hw(periph)->imsc, UART_UARTIMSC_RXIM_BITS | UART_UARTIMSC_RTIM_BITS);
 
     // Enable error interrupts if requested
     hw_write_masked(
@@ -500,11 +516,9 @@ void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_err
             (bool_to_bit(report_errors) << UART_UARTIMSC_PEIM_LSB) | (bool_to_bit(report_errors) << UART_UARTIMSC_FEIM_LSB),
         (UART_UARTIMSC_OEIM_BITS | UART_UARTIMSC_BEIM_BITS | UART_UARTIMSC_PEIM_BITS | UART_UARTIMSC_FEIM_BITS));
 
-    if(serial->rx_callback) {
-        // Set minimum threshold
-        uint32_t rx_threshold = 0b010; // Trigger interrupt when 1/2 rx fifo is full (32 bytes)
-        hw_write_masked(&uart_get_hw(periph)->ifls, (rx_threshold) << UART_UARTIFLS_RXIFLSEL_LSB, UART_UARTIFLS_RXIFLSEL_BITS);
-    }
+    // Set minimum threshold
+    uint32_t rx_threshold = 0b010; // Trigger interrupt when 1/2 rx fifo is full (32 bytes)
+    hw_write_masked(&uart_get_hw(periph)->ifls, (rx_threshold) << UART_UARTIFLS_RXIFLSEL_LSB, UART_UARTIFLS_RXIFLSEL_BITS);
     FURI_CRITICAL_EXIT();
 }
 
@@ -517,11 +531,10 @@ void furi_hal_serial_async_rx_stop(FuriHalSerialHandle* handle) {
     const FuriHalSerialResources* resources = &furi_hal_serial_resources[handle->id];
     uart_inst_t* periph = resources->periph;
 
-    FURI_CRITICAL_ENTER();
-    furi_hal_serial[handle->id]->tx_active = false;
-    uart_set_irq_enables(periph, false, false);
-    furi_hal_interrupt_set_isr(resources->irq, NULL, NULL);
-    FURI_CRITICAL_EXIT();
+    hw_clear_bits(
+        &uart_get_hw(periph)->imsc,
+        UART_UARTIMSC_RXIM_BITS | UART_UARTIMSC_RTIM_BITS | UART_UARTIMSC_OEIM_BITS | UART_UARTIMSC_BEIM_BITS | UART_UARTIMSC_PEIM_BITS |
+            UART_UARTIMSC_FEIM_BITS);
 }
 
 void furi_hal_serial_async_tx_start(FuriHalSerialHandle* handle) {

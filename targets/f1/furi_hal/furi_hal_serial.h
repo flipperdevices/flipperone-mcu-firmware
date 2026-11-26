@@ -123,7 +123,8 @@ void furi_hal_serial_set_hw_flow_control(
     FuriHalSerialHwFlowControl flow_control);
 
 /**
- * Set the callback functions for the serial interface.
+ * Set the callback functions for the serial interface. Stops interrupt-driven receiving and transmitting;
+ * start them again with furi_hal_serial_async_rx_start() and furi_hal_serial_async_tx_start().
  *
  * @param handle Pointer to the serial handle.
  * @param tx_callback Pointer to the transmit callback function.
@@ -217,7 +218,7 @@ size_t furi_hal_serial_rx_data_non_blocking(FuriHalSerialHandle* handle, uint8_t
 void furi_hal_serial_async_rx_start(FuriHalSerialHandle* handle, bool report_errors);
 
 /**
- * Stop receiving in interrupt-driven mode. Stops interrupt-driven transmission too.
+ * Stop receiving in interrupt-driven mode.
  *
  * @param handle Pointer to the serial handle.
  */
@@ -226,7 +227,7 @@ void furi_hal_serial_async_rx_stop(FuriHalSerialHandle* handle);
 /**
  * Start transmitting in interrupt-driven mode: the transmit callback is called from the interrupt for one byte
  * after another until it returns false. Call it whenever there is new data to send; calling it while
- * transmitting is harmless. Can be called from a thread or an interrupt, after furi_hal_serial_async_rx_start().
+ * transmitting is harmless. Can be called from a thread or from an interrupt that may use FreeRTOS.
  *
  * @param handle Pointer to the serial handle.
  */
