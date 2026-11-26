@@ -19,7 +19,9 @@
  * 0x400..0x467   16..17  USB white label, written with block 1
  * 0xF40..0xF7F   61      Hardware keys
  * 0xF80..0xFFF   62..63  Page lock rows
- * Everything else is free.
+ * Pages are locked whole, so the rest of pages 3..7 and 16..17 (0x0D1..0x0FF,
+ * 0x150..0x17F, 0x1CA..0x1FF, 0x468..0x47F) is read only once their block
+ * is written. Everything else is free.
  *
  * Blocks are ECC rows of 16 data bits, little endian, built off the device
  * (scripts/otp.py) and written whole, in order: block 1, then 2, then 3. Each

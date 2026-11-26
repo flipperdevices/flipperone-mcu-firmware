@@ -10,10 +10,15 @@ with -o, and written on the device with `otp program OTP<n> <hex>`:
     otp.py create-otp3 --key key.pem --key-id 0 --otp1 otp1.bin --otp2 otp2.bin -o otp3.bin
     otp.py load otp1.bin     # its fields and the hex for `otp program OTP1`
 
+Keep the files: a write cut short (power, a reset) is finished by sending the
+same block again, byte for byte. A block made anew differs (its timestamp at
+least), and the device refuses it. So -o does not overwrite a file.
+
 Keys and signatures need the `cryptography` package.
 """
 
 import argparse
+import os
 import struct
 import sys
 import time
@@ -85,6 +90,8 @@ def show(data: bytes, output: str = None):
             value = value.rstrip(b"\0").decode("ascii") if name in ("name", "model", "region") else value.hex()
         print(f"  {name:14} {value}")
     if output:
+        if os.path.exists(output):
+            raise SystemExit(f"{output} exists: send that one, or remove it to make a new block")
         with open(output, "wb") as f:
             f.write(data)
         print(f"OTP{fields['index']} saved to: {output}")
@@ -172,7 +179,9 @@ def cmd_create_otp3(args):
     unpack(otp2, 2)
     sigs = []
     for index, block in ((1, otp1), (2, otp2)):
-        r, s = decode_dss_signature(key.sign(signed_data(chip_id, index, block), ec.ECDSA(hashes.SHA256())))
+        # Deterministic (RFC 6979): the same blocks and key give the same OTP3
+        ecdsa = ec.ECDSA(hashes.SHA256(), deterministic_signing=True)
+        r, s = decode_dss_signature(key.sign(signed_data(chip_id, index, block), ecdsa))
         sigs.append(r.to_bytes(32, "big") + s.to_bytes(32, "big"))
     show(pack(3, args.version, args.timestamp, args.key_id, *sigs), args.output)
 

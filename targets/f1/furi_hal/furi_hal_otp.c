@@ -183,7 +183,6 @@ static bool furi_hal_otp_row_state(uint16_t row, uint16_t want, FuriHalOtpRowSta
 }
 
 typedef struct {
-    bool done; // every row holds its wanted value
     bool other; // some row holds bits its wanted value has not
 } FuriHalOtpRows;
 
@@ -191,16 +190,21 @@ static bool furi_hal_otp_rows_scan(FuriHalOtpRows* rows, uint16_t first_row, con
     for(size_t i = 0; i < count; i++) {
         FuriHalOtpRowState state;
         if(!furi_hal_otp_row_state(first_row + i, want[i], &state)) return false;
-        if(state != FuriHalOtpRowDone) rows->done = false;
         if(state == FuriHalOtpRowOther) rows->other = true;
     }
     return true;
 }
 
-// Whether count rows from first_row all hold their wanted values
+// Whether count rows from first_row all read as their wanted values through
+// ECC, which corrects a bit that did not program. Whose data a row holds is
+// told by its raw bits instead (furi_hal_otp_rows_scan()).
 static bool furi_hal_otp_rows_done(uint16_t first_row, const uint16_t* want, size_t count) {
-    FuriHalOtpRows rows = {.done = true};
-    return furi_hal_otp_rows_scan(&rows, first_row, want, count) && rows.done;
+    for(size_t i = 0; i < count; i++) {
+        uint16_t have = 0;
+        otp_cmd_t cmd = {.flags = (first_row + i) | OTP_CMD_ECC_BITS};
+        if(furi_hal_otp_access((uint8_t*)&have, sizeof(have), cmd) != BOOTROM_OK || have != want[i]) return false;
+    }
+    return true;
 }
 
 static bool furi_hal_otp_write_ecc(uint16_t row, uint16_t value) {
@@ -254,13 +258,35 @@ static bool furi_hal_otp_usb_white_label_write_string(uint16_t base_row, uint8_t
     return true;
 }
 
-// Copies of USB_BOOT_FLAGS that mark the white label
+// clang-format off
+// USB_BOOT_FLAGS of the white label: every entry written is valid
+#define WL_USB_BOOT_FLAGS ( \
+    OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_VID_VALUE_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_PID_VALUE_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_SERIAL_NUMBER_VALUE_VALID_BITS | /* entry 2: bcdDevice */ \
+    OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_LANG_ID_VALUE_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_MANUFACTURER_STRDEF_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_PRODUCT_STRDEF_VALID_BITS | \
+    /* bit 6 (SERIAL_NUMBER_STRDEF) intentionally not set: no serial string */ \
+    OTP_DATA_USB_BOOT_FLAGS_WL_USB_CONFIG_ATTRIBUTES_MAX_POWER_VALUES_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_VOLUME_LABEL_STRDEF_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_VENDOR_STRDEF_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_PRODUCT_STRDEF_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_VERSION_STRDEF_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_URL_STRDEF_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_NAME_STRDEF_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_MODEL_STRDEF_VALID_BITS | \
+    OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_BOARD_ID_STRDEF_VALID_BITS)
+// clang-format on
+
+// Copies of USB_BOOT_FLAGS that hold all the white label's flags
 static uint32_t furi_hal_otp_usb_white_label_flag_copies(void) {
     uint32_t copies = 0;
     for(uint16_t row = OTP_DATA_USB_BOOT_FLAGS_ROW; row <= OTP_DATA_USB_BOOT_FLAGS_R2_ROW; row++) {
         uint32_t flags = 0;
         otp_cmd_t cmd = {.flags = row};
-        if(furi_hal_otp_access((uint8_t*)&flags, sizeof(flags), cmd) == BOOTROM_OK && (flags & OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS)) {
+        if(furi_hal_otp_access((uint8_t*)&flags, sizeof(flags), cmd) == BOOTROM_OK && (flags & WL_USB_BOOT_FLAGS) == WL_USB_BOOT_FLAGS) {
             copies++;
         }
     }
@@ -392,27 +418,8 @@ static FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t 
             break;
         }
 
-        // clang-format off
-    // 4. Write USB_BOOT_FLAGS (raw, 3× redundant) — mark all written entries valid
-    const uint32_t usb_boot_flags =
-        OTP_DATA_USB_BOOT_FLAGS_WHITE_LABEL_ADDR_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_VID_VALUE_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_PID_VALUE_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_SERIAL_NUMBER_VALUE_VALID_BITS | // entry 2: bcdDevice
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_LANG_ID_VALUE_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_MANUFACTURER_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_DEVICE_PRODUCT_STRDEF_VALID_BITS |
-        // bit 6 (SERIAL_NUMBER_STRDEF) intentionally not set — no serial string
-        OTP_DATA_USB_BOOT_FLAGS_WL_USB_CONFIG_ATTRIBUTES_MAX_POWER_VALUES_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_VOLUME_LABEL_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_VENDOR_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_PRODUCT_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_SCSI_INQUIRY_VERSION_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_URL_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_INDEX_HTM_REDIRECT_NAME_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_MODEL_STRDEF_VALID_BITS |
-        OTP_DATA_USB_BOOT_FLAGS_WL_INFO_UF2_TXT_BOARD_ID_STRDEF_VALID_BITS;
-        // clang-format on
+        // 4. Write USB_BOOT_FLAGS (raw, 3× redundant) — mark all written entries valid
+        const uint32_t usb_boot_flags = WL_USB_BOOT_FLAGS;
 
         if(!furi_hal_otp_write_raw(OTP_DATA_USB_BOOT_FLAGS_ROW, usb_boot_flags)) {
             error = FuriHalOtpUsbWhiteLabelErrorWriteBootFlagsFailed;
@@ -578,22 +585,26 @@ static bool furi_hal_otp_usb_white_label_lock(void) {
 }
 
 // Whether a white label, finished or cut short, has another board id than
-// these values: its board id STRDEF and string rows are compared with them
-static bool furi_hal_otp_usb_white_label_board_id_differs(uint32_t target, uint32_t body, uint32_t connect) {
+// these values: its board id STRDEF and string rows are compared with them.
+// False if OTP cannot be read.
+static bool furi_hal_otp_usb_white_label_board_id_check(uint32_t target, uint32_t body, uint32_t connect, bool* differs) {
     char board_id[34];
     const size_t len = snprintf(board_id, sizeof(board_id), OTP_BOARD_ID_FORMAT, target, body, connect);
     uint16_t want[(sizeof(board_id) + 1) / 2] = {0};
     memcpy(want, board_id, len);
     const uint16_t strdef = WL_STRDEF(WL_OFF_BOARD_ID, len);
 
-    FuriHalOtpRows rows = {.done = true};
+    FuriHalOtpRows rows = {0};
     if(!furi_hal_otp_rows_scan(&rows, WL_BASE_ROW + WL_BOARD_ID_STRDEF, &strdef, 1) ||
        !furi_hal_otp_rows_scan(&rows, WL_BASE_ROW + WL_OFF_BOARD_ID, want, (len + 1) / 2)) {
-        return true;
+        return false;
     }
     // A finished one must hold this board id in full; one cut short must
     // hold nothing that is not of it
-    return rows.other || (furi_hal_otp_usb_white_label_valid() && !rows.done);
+    const bool finished = furi_hal_otp_usb_white_label_valid();
+    *differs = rows.other || (finished && !(furi_hal_otp_rows_done(WL_BASE_ROW + WL_BOARD_ID_STRDEF, &strdef, 1) &&
+                                            furi_hal_otp_rows_done(WL_BASE_ROW + WL_OFF_BOARD_ID, want, (len + 1) / 2)));
+    return true;
 }
 
 // Blocks 1..3
@@ -668,12 +679,15 @@ static bool furi_hal_otp_block_check(FuriHalOtpBlock block, const uint8_t* data)
 
 static bool furi_hal_otp_block_read_rows(FuriHalOtpBlock block, void* data) {
     const FuriHalOtpBlockLayout* layout = furi_hal_otp_block_layout(block);
+    // ECC reads take a 2-byte aligned buffer; data may be a packed struct
+    uint16_t rows[FURI_HAL_OTP_BLOCK_MAX_SIZE / 2];
     otp_cmd_t cmd = {.flags = layout->base_row | OTP_CMD_ECC_BITS};
-    int rc = furi_hal_otp_access(data, layout->size, cmd);
+    int rc = furi_hal_otp_access((uint8_t*)rows, layout->size, cmd);
     if(rc != BOOTROM_OK) {
         FURI_LOG_E(TAG, "OTP block %u read failed: %d", block, rc);
         return false;
     }
+    memcpy(data, rows, layout->size);
     return true;
 }
 
@@ -686,8 +700,8 @@ bool furi_hal_otp_block_read(FuriHalOtpBlock block, void* data, size_t size) {
     const FuriHalOtpBlockLayout* layout = furi_hal_otp_block_layout(block);
     furi_check(size == layout->size);
     memset(data, 0, size);
-    // The magic is written last, after the rest reads back right: only then
-    // are the rows read through ECC
+    // The magic is written last, after the rest reads back right: a block
+    // without it is not read further
     const uint16_t magic[2] = {FURI_HAL_OTP_MAGIC & 0xFFFF, FURI_HAL_OTP_MAGIC >> 16};
     if(!furi_hal_otp_rows_done(layout->base_row, magic, 2)) return false;
     if(!furi_hal_otp_block_read_rows(block, data) || !furi_hal_otp_block_check(block, data)) {
@@ -708,10 +722,10 @@ static bool furi_hal_otp_block_valid(FuriHalOtpBlock block) {
 // a row, is finished by the same call with the same block; a row holding
 // other data refuses the call before any write.
 static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, const uint16_t* want, size_t count) {
-    FuriHalOtpRows rows = {.done = true};
+    FuriHalOtpRows rows = {0};
     if(!furi_hal_otp_rows_scan(&rows, base_row, want, count)) return FuriHalOtpErrorWriteFailed;
 
-    if(!rows.done) {
+    if(!furi_hal_otp_rows_done(base_row, want, count)) {
         if(furi_hal_otp_rows_done(base_row, want, 2)) return FuriHalOtpErrorAlreadyWritten;
         if(rows.other) return FuriHalOtpErrorNotBlank;
 
@@ -757,7 +771,17 @@ static bool furi_hal_otp_signature_ok(
     return uECC_verify(key, hash.bytes, sizeof(hash.bytes), signature, uECC_secp256r1());
 }
 
+static void furi_hal_otp_chip_id(uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE]);
+
 static bool furi_hal_otp_signatures_ok(const FuriHalOtpBlock1Data* b1, const FuriHalOtpBlock2Data* b2, const FuriHalOtpBlock3Data* b3) {
+    // The signatures cover the chip id block 1 holds; only this chip's makes
+    // them this device's, not a copy of another's OTP
+    uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE];
+    furi_hal_otp_chip_id(chip_id);
+    if(memcmp(b1->chip_id, chip_id, sizeof(chip_id))) {
+        FURI_LOG_E(TAG, "OTP block 1: made for another chip");
+        return false;
+    }
     if(b3->key_id >= COUNT_OF(furi_hal_otp_keys)) {
         FURI_LOG_E(TAG, "OTP block 3: unknown key id %u", b3->key_id);
         return false;
@@ -813,7 +837,9 @@ static FuriHalOtpError furi_hal_otp_block_program_locked(FuriHalOtpBlock block, 
         if(memcmp(b1.chip_id, chip_id, sizeof(chip_id))) return FuriHalOtpErrorChipId;
         // The white label carries the same board id: one with another,
         // finished or cut short, is refused before anything is written
-        if(furi_hal_otp_usb_white_label_board_id_differs(b1.target, b1.body, b1.connect)) return FuriHalOtpErrorWhiteLabelMismatch;
+        bool differs = false;
+        if(!furi_hal_otp_usb_white_label_board_id_check(b1.target, b1.body, b1.connect, &differs)) return FuriHalOtpErrorWriteFailed;
+        if(differs) return FuriHalOtpErrorWhiteLabelMismatch;
         snprintf(board_id, sizeof(board_id), OTP_BOARD_ID_FORMAT, (uint32_t)b1.target, (uint32_t)b1.body, (uint32_t)b1.connect);
     } else if(block == FuriHalOtpBlock3) {
         // Locked for good: only signatures that verify

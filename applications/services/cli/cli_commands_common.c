@@ -424,7 +424,7 @@ static void cli_command_otp_program(PipeSide* pipe, FuriString* args) {
         while(true) {
             char answer;
             if(pipe_receive(pipe, &answer, sizeof(answer)) != sizeof(answer)) break;
-            if(answer == 'n' || answer == 'N') {
+            if(answer == 'n' || answer == 'N' || answer == CliKeyETX) {
                 printf("Cancelled\r\n");
                 break;
             } else if(answer == 'y' || answer == 'Y') {
