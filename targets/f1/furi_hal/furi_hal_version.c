@@ -31,37 +31,115 @@ const uint8_t* furi_hal_version_get_ble_mac(void) {
     return ble_mac;
 }
 
-// OTP blocks 1 and 2. Written once, so a copy stays true once it is there;
-// until then every call looks again, so a block written while running shows
-// at once.
+// OTP blocks, read for the getters here. Written once, so a copy stays true
+// once it is there; until then every call looks again, so a block written
+// while running shows at once.
 static FuriHalOtpBlock1Data furi_hal_version_board;
-static volatile bool furi_hal_version_board_valid;
 static FuriHalOtpBlock2Data furi_hal_version_device;
-static volatile bool furi_hal_version_device_valid;
+static FuriHalOtpBlock3Data furi_hal_version_signatures;
+static volatile bool furi_hal_version_otp_read[FuriHalOtpBlockCount + 1];
 
-static const FuriHalOtpBlock1Data* furi_hal_version_get_board(void) {
-    if(!furi_hal_version_board_valid) {
-        FuriHalOtpBlock1Data board;
-        if(furi_hal_otp_block_read(FuriHalOtpBlock1, &board, sizeof(board))) {
+static const void* furi_hal_version_get_otp_block(FuriHalOtpBlock block) {
+    static void* const copies[FuriHalOtpBlockCount + 1] = {
+        [FuriHalOtpBlock1] = &furi_hal_version_board,
+        [FuriHalOtpBlock2] = &furi_hal_version_device,
+        [FuriHalOtpBlock3] = &furi_hal_version_signatures,
+    };
+    furi_check(block >= FuriHalOtpBlock1 && block <= FuriHalOtpBlockCount);
+    if(!furi_hal_version_otp_read[block]) {
+        uint8_t data[FURI_HAL_OTP_BLOCK_MAX_SIZE];
+        const size_t size = furi_hal_otp_block_size(block);
+        if(furi_hal_otp_block_read(block, data, size)) {
             // Published whole: readers see the flag only after the copy
-            furi_hal_version_board = board;
+            memcpy(copies[block], data, size);
             __DMB();
-            furi_hal_version_board_valid = true;
+            furi_hal_version_otp_read[block] = true;
         }
     }
-    return furi_hal_version_board_valid ? &furi_hal_version_board : NULL;
+    return furi_hal_version_otp_read[block] ? copies[block] : NULL;
+}
+
+static const FuriHalOtpBlock1Data* furi_hal_version_get_board(void) {
+    return furi_hal_version_get_otp_block(FuriHalOtpBlock1);
 }
 
 static const FuriHalOtpBlock2Data* furi_hal_version_get_device(void) {
-    if(!furi_hal_version_device_valid) {
-        FuriHalOtpBlock2Data device;
-        if(furi_hal_otp_block_read(FuriHalOtpBlock2, &device, sizeof(device))) {
-            furi_hal_version_device = device;
-            __DMB();
-            furi_hal_version_device_valid = true;
-        }
-    }
-    return furi_hal_version_device_valid ? &furi_hal_version_device : NULL;
+    return furi_hal_version_get_otp_block(FuriHalOtpBlock2);
+}
+
+bool furi_hal_version_is_otp_valid(FuriHalOtpBlock block) {
+    return furi_hal_version_get_otp_block(block) != NULL;
+}
+
+bool furi_hal_version_is_otp_signed(void) {
+    return furi_hal_otp_valid();
+}
+
+uint64_t furi_hal_version_get_otp_timestamp(FuriHalOtpBlock block) {
+    const FuriHalOtpHeader* header = furi_hal_version_get_otp_block(block);
+    return header ? header->timestamp : 0;
+}
+
+const uint8_t* furi_hal_version_get_otp_chip_id(void) {
+    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
+    return board ? board->chip_id : NULL;
+}
+
+const uint8_t* furi_hal_version_get_mac(FuriHalOtpMac mac) {
+    furi_check(mac < FuriHalOtpMacCount);
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    return device ? device->mac[mac] : NULL;
+}
+
+const uint8_t* furi_hal_version_get_cpu_id(void) {
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    return device ? device->cpu_id : NULL;
+}
+
+uint32_t furi_hal_version_get_ram_gb(void) {
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    return device ? device->ram_gb : 0;
+}
+
+uint32_t furi_hal_version_get_ufs_gb(void) {
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    return device ? device->ufs_gb : 0;
+}
+
+uint16_t furi_hal_version_get_hw_color(void) {
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    return device ? device->color : 0;
+}
+
+uint16_t furi_hal_version_get_hw_display(void) {
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    return device ? device->display : 0;
+}
+
+const char* furi_hal_version_get_hw_region_name(void) {
+    static char region[3];
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    if(!device) return "Unknown";
+    memcpy(region, device->region, 2);
+    return region;
+}
+
+const char* furi_hal_version_get_model_ptr(void) {
+    const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
+    return device && memchr(device->model, '\0', sizeof(device->model)) ? device->model : "Unknown";
+}
+
+uint16_t furi_hal_version_get_sign_key_id(void) {
+    const FuriHalOtpBlock3Data* signatures = furi_hal_version_get_otp_block(FuriHalOtpBlock3);
+    return signatures ? signatures->key_id : 0;
+}
+
+const uint8_t* furi_hal_version_get_otp_signature(FuriHalOtpBlock block) {
+    const FuriHalOtpBlock3Data* signatures = furi_hal_version_get_otp_block(FuriHalOtpBlock3);
+    if(!signatures) return NULL;
+    if(block == FuriHalOtpBlock1) return signatures->block1_signature;
+    if(block == FuriHalOtpBlock2) return signatures->block2_signature;
+    return NULL;
 }
 
 void furi_hal_version_init(void) {
@@ -101,8 +179,7 @@ uint16_t furi_hal_version_get_hw_connect(void) {
 }
 
 uint64_t furi_hal_version_get_hw_timestamp(void) {
-    const FuriHalOtpBlock1Data* board = furi_hal_version_get_board();
-    return board ? board->header.timestamp : 0;
+    return furi_hal_version_get_otp_timestamp(FuriHalOtpBlock1);
 }
 
 const char* furi_hal_version_get_hw_version_code(void) {
