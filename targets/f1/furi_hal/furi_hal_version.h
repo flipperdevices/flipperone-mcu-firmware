@@ -160,6 +160,12 @@ uint32_t furi_hal_version_get_ufs_gb(void);
 /** Key id OTP block 3 holds, 0 if not written */
 uint16_t furi_hal_version_get_sign_key_id(void);
 
+/** Curve OTP block 3 holds (FuriHalOtpCurve), 0 if not written */
+uint16_t furi_hal_version_get_sign_curve(void);
+
+/** Public key OTP block 3 holds, X || Y, NULL if not written */
+const uint8_t* furi_hal_version_get_sign_public_key(void);
+
 /** Signature OTP block 3 holds of block 1 or 2, NULL if not written */
 const uint8_t* furi_hal_version_get_otp_signature(FuriHalOtpBlock block);
 

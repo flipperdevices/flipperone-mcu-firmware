@@ -82,14 +82,15 @@ static void furi_hal_info_get_otp(PropertyValueContext* ctx, FuriString* temp) {
 
     property_out_bool(ctx, "otp3", "valid", furi_hal_version_is_otp_valid(FuriHalOtpBlock3));
     property_out_uint(ctx, "otp3", "key_id", furi_hal_version_get_sign_key_id());
+    property_out_uint(ctx, "otp3", "curve", furi_hal_version_get_sign_curve());
+    property_out_hex(ctx, temp, "otp3", "public_key", furi_hal_version_get_sign_public_key(), FURI_HAL_OTP_PUBLIC_SIZE);
     property_out_hex(ctx, temp, "otp3", "otp1_sig", furi_hal_version_get_otp_signature(FuriHalOtpBlock1), FURI_HAL_OTP_SIGN_SIZE);
     property_out_hex(ctx, temp, "otp3", "otp2_sig", furi_hal_version_get_otp_signature(FuriHalOtpBlock2), FURI_HAL_OTP_SIGN_SIZE);
     property_out_long(ctx, "otp3", "timestamp", furi_hal_version_get_otp_timestamp(FuriHalOtpBlock3));
 
     property_out_bool(ctx, "otp", "white_label", furi_hal_version_is_usb_white_label_valid());
 
-    // All three written, and the signatures verify with a key the firmware
-    // carries. The last property.
+    // The last property
     ctx->last = true;
     property_out_bool(ctx, "otp", "valid", furi_hal_version_is_otp_signed());
 }

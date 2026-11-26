@@ -4,38 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/*
- * OTP map (RP2350: 4096 rows of 24 bits, 64 pages of 64 rows)
- *
- * Rows           Pages   Owner
- * 0x000..0x03F   0       Factory: chip id, random id, calibration
- * 0x040..0x07F   1       Boot config read by the bootrom. Ours in it:
- *                          BOOTSEL_LED_CFG (0x056) and BOOT_FLAGS0.ENABLE_BOOTSEL_LED,
- *                          USB_BOOT_FLAGS (0x059..0x05B), USB_WHITE_LABEL_ADDR (0x05C)
- * 0x080..0x0BF   2       Boot keys
- * 0x0C0..0x0D0   3       Block 1, board
- * 0x100..0x14F   4..5    Block 2, device
- * 0x180..0x1C9   6..7    Block 3, signatures
- * 0x400..0x467   16..17  USB white label, written with block 1
- * 0xF40..0xF7F   61      Hardware keys
- * 0xF80..0xFFF   62..63  Page lock rows
- * Pages are locked whole, so the rest of pages 3..7 and 16..17 (0x0D1..0x0FF,
- * 0x150..0x17F, 0x1CA..0x1FF, 0x468..0x47F) is read only once their block
- * is written. Everything else is free.
- *
- * Blocks are ECC rows of 16 data bits, little endian, built off the device
- * (scripts/otp.py) and written whole, in order: block 1, then 2, then 3. Each
- * starts with FuriHalOtpHeader and ends with a CRC-16/CCITT-FALSE of all its
- * rows but the magic and the CRC. The magic is written last, after the rest
- * reads back right, so a block cut short is never taken as written. A
- * written block's pages are locked: read only for Secure and Non-secure
- * access, which the hardware applies from the next reset (until then SW_LOCKn
- * holds it), and for the USB bootloader, which honours LOCK_BL.
- *
- * Block 3 holds ECDSA P-256 signatures (SHA-256, r || s) of
- *   chip id || "-otp1-" || block 1   and   chip id || "-otp2-" || block 2
- * by a production key whose public half the firmware carries, by key id.
- */
+/* OTP blocks 1..3, the USB white label and the page locks: see OTP.md */
 
 #define FURI_HAL_OTP_MAGIC 0x544F3146 /* "F1OT" */
 
@@ -50,13 +19,18 @@ typedef struct __attribute__((packed)) {
     uint32_t magic; /* FURI_HAL_OTP_MAGIC */
     uint16_t index; /* FuriHalOtpBlock */
     uint16_t version; /* layout version of this block */
-    uint64_t timestamp; /* when it was made, seconds since the epoch */
+    uint64_t timestamp; /* seconds since the epoch */
 } FuriHalOtpHeader;
 
 #define FURI_HAL_OTP_CHIP_ID_SIZE 8 /* RP2350 CHIPID, as pico_get_unique_board_id() */
 #define FURI_HAL_OTP_MAC_SIZE     6
 #define FURI_HAL_OTP_STR_SIZE     32 /* 31 chars + NUL */
-#define FURI_HAL_OTP_SIGN_SIZE    64 /* ECDSA P-256 r || s */
+#define FURI_HAL_OTP_PUBLIC_SIZE  64 /* X || Y */
+#define FURI_HAL_OTP_SIGN_SIZE    64 /* r || s */
+
+typedef enum {
+    FuriHalOtpCurveSecp256r1 = 1, /* ECDSA P-256 with SHA-256 */
+} FuriHalOtpCurve;
 
 /* Block 1, version 1: the board */
 typedef struct __attribute__((packed)) {
@@ -99,13 +73,15 @@ typedef struct __attribute__((packed)) {
 /* Block 3, version 1: the signatures */
 typedef struct __attribute__((packed)) {
     FuriHalOtpHeader header;
-    uint16_t key_id;
+    uint16_t key_id; /* must be a key the firmware carries */
+    uint16_t curve; /* FuriHalOtpCurve */
+    uint8_t public_key[FURI_HAL_OTP_PUBLIC_SIZE]; /* must equal the firmware's key_id */
     uint8_t block1_signature[FURI_HAL_OTP_SIGN_SIZE];
     uint8_t block2_signature[FURI_HAL_OTP_SIGN_SIZE];
     uint16_t crc;
 } FuriHalOtpBlock3Data;
 
-#define FURI_HAL_OTP_BLOCK_MAX_SIZE sizeof(FuriHalOtpBlock2Data)
+#define FURI_HAL_OTP_BLOCK_MAX_SIZE sizeof(FuriHalOtpBlock3Data)
 
 void furi_hal_otp_init(void);
 
@@ -114,13 +90,13 @@ typedef enum {
     FuriHalOtpErrorInvalidBlock, /* Wrong size, magic, index, version or CRC */
     FuriHalOtpErrorOrder, /* An earlier block is not written */
     FuriHalOtpErrorChipId, /* Block 1 is made for another chip */
-    FuriHalOtpErrorSignature, /* Block 3: unknown key or a signature that does not verify */
+    FuriHalOtpErrorSignature, /* Block 3: unknown key or curve, or a signature that does not verify */
     FuriHalOtpErrorAlreadyWritten, /* The block is written with other data */
     FuriHalOtpErrorNotBlank, /* No magic, and rows hold other data than this write's */
     FuriHalOtpErrorWriteFailed,
     FuriHalOtpErrorLockFailed, /* Written, but its pages are not locked */
     FuriHalOtpErrorWhiteLabelFailed, /* Block 1 written, the USB white label not */
-    FuriHalOtpErrorWhiteLabelMismatch, /* The white label has another board id: nothing written */
+    FuriHalOtpErrorWhiteLabelMismatch, /* The white label holds other data: nothing written */
 } FuriHalOtpError;
 
 const char* furi_hal_otp_error_to_string(FuriHalOtpError error);
@@ -146,8 +122,8 @@ FuriHalOtpError furi_hal_otp_block_program(FuriHalOtpBlock block, const void* da
  * a key the firmware carries */
 bool furi_hal_otp_valid(void);
 
-/** Whether the bootrom takes the USB white label as written (2 of 3 flag
- * copies). Block 1 writes it; it is not part of furi_hal_otp_valid(). */
+/** Whether the bootrom takes the USB white label as written. Block 1 writes
+ * it; it is not part of furi_hal_otp_valid(). */
 bool furi_hal_otp_usb_white_label_valid(void);
 
 /** Check if BOOTSEL LED is enabled in OTP (BOOT_FLAGS0.ENABLE_BOOTSEL_LED)

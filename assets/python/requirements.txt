@@ -5,3 +5,4 @@ pillow==12.2.0
 protobuf==7.35.1
 grpcio-tools==1.83.0  # bundles protoc, so no system protoc is needed
 pytest==9.2.0  # scripts/agent_tools tests, see .github/workflows/agent-tools-tests.yml
+cryptography==50.0.2  # scripts/otp.py: keys and signatures of the OTP blocks

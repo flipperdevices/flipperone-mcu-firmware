@@ -31,9 +31,8 @@ const uint8_t* furi_hal_version_get_ble_mac(void) {
     return ble_mac;
 }
 
-// OTP blocks, read for the getters here. Written once, so a copy stays true
-// once it is there; until then every call looks again, so a block written
-// while running shows at once.
+// A block read whole is kept: OTP is written once. Until then every call reads
+// again, so a block written while running shows at once.
 static FuriHalOtpBlock1Data furi_hal_version_board;
 static FuriHalOtpBlock2Data furi_hal_version_device;
 static FuriHalOtpBlock3Data furi_hal_version_signatures;
@@ -136,6 +135,16 @@ const char* furi_hal_version_get_model_ptr(void) {
 uint16_t furi_hal_version_get_sign_key_id(void) {
     const FuriHalOtpBlock3Data* signatures = furi_hal_version_get_otp_block(FuriHalOtpBlock3);
     return signatures ? signatures->key_id : 0;
+}
+
+uint16_t furi_hal_version_get_sign_curve(void) {
+    const FuriHalOtpBlock3Data* signatures = furi_hal_version_get_otp_block(FuriHalOtpBlock3);
+    return signatures ? signatures->curve : 0;
+}
+
+const uint8_t* furi_hal_version_get_sign_public_key(void) {
+    const FuriHalOtpBlock3Data* signatures = furi_hal_version_get_otp_block(FuriHalOtpBlock3);
+    return signatures ? signatures->public_key : NULL;
 }
 
 const uint8_t* furi_hal_version_get_otp_signature(FuriHalOtpBlock block) {
