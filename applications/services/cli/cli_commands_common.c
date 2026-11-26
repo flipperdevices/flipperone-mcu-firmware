@@ -362,7 +362,6 @@ static void cli_command_otp_help(void) {
     printf("The blocks, decoded, are in device_info. Blocks are built by scripts/otp.py.\r\n");
 }
 
-// OTP1..OTP3, as BusyBar's CLI names its blocks
 static bool cli_command_otp_read_block(FuriString* args, FuriString* word, FuriHalOtpBlock* block) {
     static const char* const names[] = {[FuriHalOtpBlock1] = "OTP1", [FuriHalOtpBlock2] = "OTP2", [FuriHalOtpBlock3] = "OTP3"};
     if(args_read_string_and_trim(args, word)) {

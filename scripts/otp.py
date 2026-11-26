@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Build, sign and check the Flipper One MCU OTP blocks.
 
-The layout is targets/f1/furi_hal/furi_hal_otp.h; the commands follow
-BusyBar's bsbotp.py. A block is printed with its raw hex, or saved to a file
-with -o, and written on the device with `otp program OTP<n> <hex>`:
+The layout is targets/f1/furi_hal/furi_hal_otp.h. A block is printed with its
+raw hex, or saved to a file with -o, and written on the device with
+`otp program OTP<n> <hex>`:
 
     otp.py create-otp1 --hw-version 1 --target 2 --body 1 --connect 1 --chip-id <rp2350_hardware_uid> -o otp1.bin
     otp.py create-otp2 --eth0 ... --name ... -o otp2.bin
