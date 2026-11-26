@@ -224,15 +224,6 @@ The `probe` port is the console of the debug probe itself; `f1.py probe "CMD"...
 
 Do not run `power off`, `power ship`, `power reboot` or `power boot` unless that is the point of the test. `power reboot` cuts power to the whole device, the host included, and the device comes back by itself within seconds. `power off` and `power ship` both switch the whole device off: after `power ship` it comes back when the user holds the power button, after `power off` only when USB power is connected. `power boot` resets the charger and the USB PD controller and reboots the MCU into its USB bootloader (BOOTSEL): the firmware stops, the MCU console goes silent, `status` shows `active none`, and with a cable on the Flipper's USB port a drive named `RP2350` appears on this machine. `swd reset` or a reset through the probe brings the firmware back. A running Linux stays up through `power boot`.
 
-`cli --raw` drives a command that keeps the console, or feeds input faster than the shell reads it. To fill the input pipe of the UART console (1024 bytes) while `log` reads one character per 100 ms, then check that the MCU still answers:
-
-```bash
-python3 scripts/agent_tools/f1.py cli --raw 'log\r' "$(printf 'x%.0s' $(seq 2000))"
-python3 scripts/agent_tools/f1.py cli --console mcu-usb uptime
-```
-
-`log` keeps running afterwards, and while the pipe is full the console drops input, the Ctrl+C of the next `cli` call too, which then reports no prompt. `swd reset` brings the console back.
-
 If the MCU console was left in a bad state (a command still running, or a crashed RPC session), the tools recover it on the next call. If they report no prompt, the MCU itself is down: see [When the firmware crashes or hangs](#when-the-firmware-crashes-or-hangs).
 
 ## Linux host
