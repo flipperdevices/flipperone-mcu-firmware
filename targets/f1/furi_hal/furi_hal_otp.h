@@ -146,6 +146,10 @@ FuriHalOtpError furi_hal_otp_block_program(FuriHalOtpBlock block, const void* da
  * a key the firmware carries */
 bool furi_hal_otp_valid(void);
 
+/** Whether the bootrom takes the USB white label as written (2 of 3 flag
+ * copies). Block 1 writes it; it is not part of furi_hal_otp_valid(). */
+bool furi_hal_otp_usb_white_label_valid(void);
+
 /** Check if BOOTSEL LED is enabled in OTP (BOOT_FLAGS0.ENABLE_BOOTSEL_LED)
  *
  * @return true if enabled

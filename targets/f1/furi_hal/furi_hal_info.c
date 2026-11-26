@@ -86,6 +86,8 @@ static void furi_hal_info_get_otp(PropertyValueContext* ctx, FuriString* temp) {
     property_out_hex(ctx, temp, "otp3", "otp2_sig", furi_hal_version_get_otp_signature(FuriHalOtpBlock2), FURI_HAL_OTP_SIGN_SIZE);
     property_out_long(ctx, "otp3", "timestamp", furi_hal_version_get_otp_timestamp(FuriHalOtpBlock3));
 
+    property_out_bool(ctx, "otp", "white_label", furi_hal_version_is_usb_white_label_valid());
+
     // All three written, and the signatures verify with a key the firmware
     // carries. The last property.
     ctx->last = true;

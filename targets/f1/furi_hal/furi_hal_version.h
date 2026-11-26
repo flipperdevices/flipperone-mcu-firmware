@@ -133,6 +133,9 @@ uint16_t furi_hal_version_get_hw_display(void);
 /** Whether an OTP block is written whole, of a known version, with a right CRC */
 bool furi_hal_version_is_otp_valid(FuriHalOtpBlock block);
 
+/** Whether the bootrom takes the USB white label OTP block 1 writes as written */
+bool furi_hal_version_is_usb_white_label_valid(void);
+
 /** Whether all OTP blocks are written and their signatures verify */
 bool furi_hal_version_is_otp_signed(void);
 

@@ -14,7 +14,7 @@ Keep the files: a write cut short (power, a reset) is finished by sending the
 same block again, byte for byte. A block made anew differs (its timestamp at
 least), and the device refuses it. So -o does not overwrite a file.
 
-Keys and signatures need the `cryptography` package.
+Keys and signatures need the `cryptography` package, 43 or newer.
 """
 
 import argparse

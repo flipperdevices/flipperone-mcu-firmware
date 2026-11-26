@@ -71,6 +71,10 @@ bool furi_hal_version_is_otp_valid(FuriHalOtpBlock block) {
     return furi_hal_version_get_otp_block(block) != NULL;
 }
 
+bool furi_hal_version_is_usb_white_label_valid(void) {
+    return furi_hal_otp_usb_white_label_valid();
+}
+
 bool furi_hal_version_is_otp_signed(void) {
     return furi_hal_otp_valid();
 }

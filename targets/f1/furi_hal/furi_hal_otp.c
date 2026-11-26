@@ -33,7 +33,6 @@ typedef enum {
 } FuriHalOtpUsbWhiteLabelError;
 
 static bool furi_hal_otp_usb_white_label_lock(void);
-static bool furi_hal_otp_usb_white_label_valid(void);
 
 // Every bootrom OTP call goes through it: the bootrom takes its OTP lock
 // without waiting, and a write leaves OTP unreadable until it is done. Held
@@ -166,8 +165,8 @@ typedef enum {
     FuriHalOtpRowOther, // holds bits the wanted value has not
 } FuriHalOtpRowState;
 
-// What an ECC row holds against a wanted value, from its raw bits alone: no
-// ECC read of a row that may not decode
+// What an ECC row holds against a wanted value, from its raw bits alone:
+// only they tell a row cut short from one holding other data
 static bool furi_hal_otp_row_state(uint16_t row, uint16_t want, FuriHalOtpRowState* state) {
     uint32_t raw = 0;
     if(!furi_hal_otp_read_raw(row, &raw)) return false;
@@ -293,7 +292,7 @@ static uint32_t furi_hal_otp_usb_white_label_flag_copies(void) {
     return copies;
 }
 
-static bool furi_hal_otp_usb_white_label_valid(void) {
+bool furi_hal_otp_usb_white_label_valid(void) {
     // As the bootrom reads it: a majority of the three copies
     return furi_hal_otp_usb_white_label_flag_copies() >= 2;
 }
@@ -345,7 +344,7 @@ static bool furi_hal_otp_usb_white_label_reads_back(const char* board_id) {
            furi_hal_otp_usb_white_label_string_ok(WL_OFF_REDIRECT_URL, OTP_REDIRECT_URL) &&
            furi_hal_otp_usb_white_label_string_ok(WL_OFF_REDIRECT_NAME, OTP_REDIRECT_NAME) && furi_hal_otp_usb_white_label_string_ok(WL_OFF_MODEL, OTP_MODEL) &&
            furi_hal_otp_usb_white_label_string_ok(WL_OFF_BOARD_ID, board_id) && furi_hal_otp_rows_done(OTP_DATA_USB_WHITE_LABEL_ADDR_ROW, &addr, 1) &&
-           furi_hal_otp_usb_white_label_flag_copies() == 3;
+           furi_hal_otp_usb_white_label_valid();
 }
 
 static FuriHalOtpUsbWhiteLabelError furi_hal_otp_write_usb_white_label(uint32_t target, uint32_t body, uint32_t connect) {
@@ -742,6 +741,15 @@ static FuriHalOtpError furi_hal_otp_block_write(uint16_t base_row, const uint16_
             FURI_LOG_E(TAG, "OTP block at 0x%04x reads back wrong", base_row);
             return FuriHalOtpErrorWriteFailed;
         }
+    } else {
+        // Reads right, but a row may be a bit short, ECC correcting it: write
+        // it again while the page is open, so the correction is not spent
+        for(size_t i = 0; i < count; i++) {
+            FuriHalOtpRowState state;
+            if(furi_hal_otp_row_state(base_row + i, want[i], &state) && state == FuriHalOtpRowToWrite) {
+                furi_hal_otp_write_ecc_rc(base_row + i, want[i]);
+            }
+        }
     }
 
     if(!furi_hal_otp_lock_rows(base_row, count)) return FuriHalOtpErrorLockFailed;
@@ -854,11 +862,14 @@ static FuriHalOtpError furi_hal_otp_block_program_locked(FuriHalOtpBlock block, 
 
     FuriHalOtpError error = furi_hal_otp_block_write(layout->base_row, want, size / 2);
     furi_hal_otp_generation++;
-    if(error != FuriHalOtpErrorNone || block != FuriHalOtpBlock1) return error;
+    // Block 1 is written even if its lock failed: the white label goes on, so
+    // a lock row that cannot be finished does not keep it out for good
+    if(block != FuriHalOtpBlock1 || (error != FuriHalOtpErrorNone && error != FuriHalOtpErrorLockFailed)) return error;
 
     // A white label written before the locks existed is locked now
     if(furi_hal_otp_usb_white_label_reads_back(board_id)) {
-        return furi_hal_otp_usb_white_label_lock() ? FuriHalOtpErrorNone : FuriHalOtpErrorWhiteLabelFailed;
+        if(!furi_hal_otp_usb_white_label_lock()) return FuriHalOtpErrorWhiteLabelFailed;
+        return error;
     }
     FuriHalOtpBlock1Data b1;
     memcpy(&b1, want, sizeof(b1));
@@ -867,7 +878,7 @@ static FuriHalOtpError furi_hal_otp_block_program_locked(FuriHalOtpBlock block, 
         FURI_LOG_E(TAG, "USB white label: %s", furi_hal_otp_usb_white_label_error_to_string(wl_error));
         return FuriHalOtpErrorWhiteLabelFailed;
     }
-    return FuriHalOtpErrorNone;
+    return error;
 }
 
 FuriHalOtpError furi_hal_otp_block_program(FuriHalOtpBlock block, const void* data, size_t size) {
