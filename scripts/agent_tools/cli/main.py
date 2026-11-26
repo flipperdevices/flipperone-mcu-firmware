@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import time
+import warnings
 
 from .. import constants
 from ..logic import flash, swd
@@ -151,9 +152,19 @@ def cmd_status(args):
         render_swd(swd.status())
 
 
+def decode_escapes(text):
+    """Bytes of `text` with its backslash escapes; an unknown escape is an error, not a warning."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        try:
+            return codecs.escape_decode(text.encode())[0]
+        except (DeprecationWarning, ValueError) as error:
+            raise ValueError(f"bad escape in {text!r}: {error}") from None
+
+
 def cmd_cli(args):
     # Decode every argument first, so that a bad escape fails before anything is sent
-    raw = [codecs.escape_decode(line.encode())[0] for line in args.command] if args.raw else None
+    raw = [decode_escapes(line) for line in args.command] if args.raw else None
     with DeviceSession(args.console) as session:
         if raw:
             for data in raw:

@@ -93,4 +93,5 @@ def test_cli_raw_bad_escape_sends_nothing(monkeypatch, capsys):
     opened = []
     monkeypatch.setattr(main_module, "DeviceSession", lambda role: opened.append(role))
     assert run(monkeypatch, ["cli", "--raw", "log\\r", "oops\\"]) == 1
+    assert run(monkeypatch, ["cli", "--raw", "log\\r", "\\q"]) == 1
     assert opened == []
