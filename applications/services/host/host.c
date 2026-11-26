@@ -75,11 +75,16 @@ static void host_start_cpu_app(Host* instance);
 
 // Host state
 
+static void host_publish(Host* instance) {
+    HostEvent event = {.state = instance->state, .cpu_state = instance->cpu_state};
+    furi_pubsub_publish(instance->pubsub, &event);
+}
+
 static void host_set_state(Host* instance, HostState state) {
     if(instance->state == state) return;
     instance->state = state;
     FURI_LOG_I(TAG, "Host state: %d", state);
-    furi_pubsub_publish(instance->pubsub, &state);
+    host_publish(instance);
 }
 
 // The host was just powered: Linux has to write its CPU state in time.
@@ -113,6 +118,8 @@ static void host_power_cut(Host* instance) {
     power_bq2579x_reset_config(instance->power);
 
     furi_bsp_linux_reset();
+    // What the host reported is gone with its power: Unknown until it reports again
+    instance->cpu_state = CpuStateUnknown;
     furi_event_loop_timer_stop(instance->response_timer);
     // A pending powered-off from before is answered by this cut: a host
     // powered again right after must not be cut by it.
@@ -209,17 +216,19 @@ static void host_down_timer_callback(void* context) {
     Host* instance = context;
     if(!host_is_down(instance, instance->cpu_state)) return; // disarmed meanwhile
     bool armed = host_switch_armed(instance);
+    // The cut forgets the CPU state
+    const bool restarting = instance->cpu_state == CpuStateRestarting;
 
     FURI_LOG_I(TAG, "Host is down, cutting its power");
     host_power_off_internal(instance);
 
     if(armed) {
-        HOST_RESTART_MARKER = instance->cpu_state == CpuStateRestarting ? HOST_RESTART_MARKER_MAGIC : 0;
+        HOST_RESTART_MARKER = restarting ? HOST_RESTART_MARKER_MAGIC : 0;
         updater_activate(instance->updater);
         HOST_RESTART_MARKER = 0;
         // Returns only if the staged image went away meanwhile: a restarting
         // host still expects to come back.
-        if(instance->cpu_state == CpuStateRestarting) {
+        if(restarting) {
             FURI_LOG_E(TAG, "Switch failed, powering the host again");
             host_power_on_internal(instance);
             return;
@@ -232,8 +241,10 @@ static void host_down_timer_callback(void* context) {
 // Messages
 
 static void host_set_cpu_state_internal(Host* instance, CpuState cpu_state) {
+    const bool changed = instance->cpu_state != cpu_state;
     instance->cpu_state = cpu_state;
     FURI_LOG_I(TAG, "CPU State: %d", instance->cpu_state);
+    if(changed) host_publish(instance);
 
     if(cpu_state != CpuStateUnknown) host_reported(instance);
     host_down_state_changed(instance, cpu_state);

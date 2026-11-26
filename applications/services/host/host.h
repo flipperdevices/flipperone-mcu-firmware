@@ -41,6 +41,13 @@ typedef enum {
     HostStateMaskrom, /* Powered into the SoC maskrom */
 } HostState;
 
+/* Published on host_get_pubsub() when either state changes. Cutting the
+ * host's power forgets its CPU state: CpuStateUnknown until it reports again. */
+typedef struct {
+    HostState state;
+    CpuState cpu_state;
+} HostEvent;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -60,7 +67,7 @@ void host_power_maskrom(Host* instance);
 
 HostState host_get_state(Host* instance);
 
-/** Publishes the new HostState on every change, from the host thread. */
+/** Publishes a HostEvent on every change of HostState or CpuState, from the host thread. */
 FuriPubSub* host_get_pubsub(Host* instance);
 
 #ifdef __cplusplus
