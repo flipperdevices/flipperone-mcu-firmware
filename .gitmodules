@@ -16,3 +16,6 @@
 [submodule "assets/proto"]
 	path = assets/proto
 	url = https://github.com/flipperdevices/flipperone-mcu-protobuf.git
+[submodule "lib/micro-ecc"]
+	path = lib/micro-ecc
+	url = https://github.com/kmackay/micro-ecc.git

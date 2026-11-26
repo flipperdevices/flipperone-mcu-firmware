@@ -42,8 +42,8 @@ class DeviceSession:
             self._console.sync()
         return self._console
 
-    def command(self, line, timeout=5.0):
-        return self.console().command(line, timeout)
+    def command(self, line, timeout=5.0, answer=None):
+        return self.console().command(line, timeout, answer)
 
     def send_raw(self, data, timeout=5.0):
         return self.console().send_raw(data, timeout)

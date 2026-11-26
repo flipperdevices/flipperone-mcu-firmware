@@ -1,9 +1,14 @@
 """MCU console session: sync and one-shot commands over a serial port."""
 
+import re
 import time
 
 from ..packets import rpc
 from ..packets.mcu_console import PROMPT, at_prompt, clean
+
+
+# A command waiting for the user: its output ends with a y/n question
+QUESTION = re.compile(rb"y/n\)?\s*$")
 
 
 class McuConsole:
@@ -37,11 +42,19 @@ class McuConsole:
         self.port.write(data)
         return clean(self.port.read_until_quiet(timeout, quiet=0.5, wait_for_data=False)).strip("\n")
 
-    def command(self, line, timeout=5.0):
-        """Run one CLI command and return its output without the echo and the prompt."""
+    def command(self, line, timeout=5.0, answer=None):
+        """Run one CLI command and return its output without the echo and the prompt.
+
+        With answer, a y/n question the command asks is answered with it.
+        """
         self.port.write(line.encode() + b"\r")
+        done = lambda d: at_prompt(d) and line.encode() in d  # noqa: E731
+        asked = lambda d: answer is not None and bool(QUESTION.search(clean(d).encode()))  # noqa: E731
         try:
-            reply = self.port.read_until(lambda d: at_prompt(d) and line.encode() in d, timeout)
+            reply = self.port.read_until(lambda d: done(d) or asked(d), timeout)
+            if not done(reply):
+                self.port.write(answer.encode())
+                reply += self.port.read_until(lambda d: at_prompt(d), timeout)
         except TimeoutError as error:
             # Leave the console usable for the next call
             self.port.write(b"\x03")

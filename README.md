@@ -65,7 +65,7 @@ Each board is described by `targets/<name>/target.cmake`, and a target can be ba
 | `f2-recovery` | f2 firmware and `recovery.uf2` |
 | `f1-release` | f1 firmware |
 
-Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [TARGETS.md](TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
+Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [docs/TARGETS.md](docs/TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
 
 ### VSCode
 

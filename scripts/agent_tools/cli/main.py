@@ -175,7 +175,7 @@ def cmd_cli(args):
         for line in args.command:
             if len(args.command) > 1:
                 print(f"> {line}")
-            print(session.command(line, args.timeout))
+            print(session.command(line, args.timeout, args.answer))
 
 
 def bootloader_drive():
@@ -541,6 +541,7 @@ def build_parser():
     p = sub.add_parser("cli", help="run MCU console commands")
     p.add_argument("command", nargs="+", help="one CLI command per argument, e.g. 'uptime' 'power show'")
     p.add_argument("--timeout", type=float, default=5.0)
+    p.add_argument("--answer", help="answer to a y/n question a command asks, e.g. y for 'otp program'")
     p.add_argument(
         "--raw",
         action="store_true",

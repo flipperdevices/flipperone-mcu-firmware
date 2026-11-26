@@ -148,7 +148,14 @@ add_executable(${PROJECT_NAME}
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_common.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_encode.c
     ${CMAKE_CURRENT_LIST_DIR}/lib/nanopb/pb_decode.c
+    # The OTP block signatures (furi_hal_otp.c)
+    ${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c
 )
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc)
+# secp256r1 only, in plain C: its Thumb-2 assembly is not used
+set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c PROPERTIES COMPILE_DEFINITIONS
+    "uECC_SUPPORTS_secp160r1=0;uECC_SUPPORTS_secp192r1=0;uECC_SUPPORTS_secp224r1=0;uECC_SUPPORTS_secp256k1=0;uECC_PLATFORM=uECC_arch_other")
+set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c PROPERTIES COMPILE_OPTIONS -Wno-maybe-uninitialized)
 # Also for a build of only this target
 add_dependencies(${PROJECT_NAME} build_link)
 
@@ -240,6 +247,7 @@ target_link_libraries(${PROJECT_NAME}
     hardware_watchdog
     hardware_clocks
     pico_unique_id
+    pico_sha256
     uart_pio
     tinyusb_device
     cli
