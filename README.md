@@ -2,15 +2,11 @@
 
 [![MemBrowse](https://membrowse.com/badge.svg)](https://membrowse.com/public/flipperdevices/flipperone-mcu-firmware)
 
-Firmware for the Flipper One low-power MCU (Raspberry Pi RP2350): the co-processor that
-runs the display, buttons, touchpad, LEDs, battery and power, next to the Linux CPU. How
-the two work together: [docs/Architecture.md](docs/Architecture.md).
+Firmware for the Flipper One low-power MCU (Raspberry Pi RP2350): the co-processor that runs the display, buttons, touchpad, LEDs, battery and power, next to the Linux CPU. How the two work together: [docs/Architecture.md](docs/Architecture.md).
 
 ## Get the firmware
 
-[**📥 Latest dev build**](https://update.flipperzero.one/builds/flipper-one-mcu/dev/). CI
-builds every push to `dev`, every tag and every pull request; a bot comment links a pull
-request's build.
+[**📥 Latest dev build**](https://update.flipperzero.one/builds/flipper-one-mcu/dev/). CI builds every push to `dev`, every tag and every pull request; a bot comment links a pull request's build.
 
 - On a Flipper One: follow the [firmware update guide](https://docs.flipper.net/one/mcu-firmware/firmware-update).
 - On a bare RP2350 board, and to recover a device that no longer boots: [docs/Flashing.md](docs/Flashing.md).
@@ -26,9 +22,7 @@ cmake --preset f2-release
 cmake --build --preset f2-release
 ```
 
-The firmware is `build/f2-release/flipperone-mcu-firmware.uf2`. The first run downloads
-the pinned toolchain (400–500 MB). Other boards, host requirements and other setups:
-[docs/Building.md](docs/Building.md). Editor setup: [docs/VSCode.md](docs/VSCode.md).
+The firmware is `build/f2-release/flipperone-mcu-firmware.uf2`. The first run downloads the pinned toolchain (400–500 MB). Other boards, host requirements and other setups: [docs/Building.md](docs/Building.md). Editor setup: [docs/VSCode.md](docs/VSCode.md).
 
 ## Documentation
 
@@ -45,11 +39,8 @@ the pinned toolchain (400–500 MB). Other boards, host requirements and other s
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) and pick a task from the
-[MCU Firmware project](https://github.com/orgs/flipperdevices/projects/8). Product
-specifications: [docs.flipper.net/one/tech-specs](https://docs.flipper.net/one/tech-specs).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and pick a task from the [MCU Firmware project](https://github.com/orgs/flipperdevices/projects/8). Product specifications: [docs.flipper.net/one/tech-specs](https://docs.flipper.net/one/tech-specs).
 
 ## License
 
-Mostly MIT; some files ported from the Flipper Zero firmware are GPL-3.0-or-later, and
-assets and documentation are CC-BY-SA-4.0. Details: [LICENSE.md](LICENSE.md).
+Mostly MIT; some files ported from the Flipper Zero firmware are GPL-3.0-or-later, and assets and documentation are CC-BY-SA-4.0. Details: [LICENSE.md](LICENSE.md).

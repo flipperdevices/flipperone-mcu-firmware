@@ -1,7 +1,6 @@
 # Contributing
 
-Thank you for contributing! This guide covers the workflow from an issue to a merged pull
-request. Setting up the build: [docs/Building.md](docs/Building.md).
+Thank you for contributing! This guide covers the workflow from an issue to a merged pull request. Setting up the build: [docs/Building.md](docs/Building.md).
 
 ## Ground rules
 
@@ -14,8 +13,7 @@ Feel free to ask questions in issues if you're not sure about the scope or appro
 
 ## AI-assisted development
 
-Using AI tools (Copilot, Claude, Cursor, etc.) is allowed. However, **you are the author
-of your PR, not the AI.** This means:
+Using AI tools (Copilot, Claude, Cursor, etc.) is allowed. However, **you are the author of your PR, not the AI.** This means:
 
 - You understand every change you submit.
 - You can explain design decisions without asking an AI.
@@ -24,17 +22,14 @@ of your PR, not the AI.** This means:
 
 ### What is a low-effort AI PR
 
-A low-effort AI PR is one where the contributor acts as a relay between the reviewer
-and an AI agent — forwarding review comments to the model and submitting its output
-without genuine engagement. Signs include:
+A low-effort AI PR is one where the contributor acts as a relay between the reviewer and an AI agent — forwarding review comments to the model and submitting its output without genuine engagement. Signs include:
 
 - Unable to explain why a specific approach was chosen.
 - Review responses that restate the question or are clearly AI-generated.
 - Changes that don't address the actual feedback — only its surface wording.
 - No evidence of testing or local verification.
 
-**Low-effort AI PRs will be closed without merging.** If a PR is identified as such,
-the contributor is welcome to reopen it once they have engaged with the code themselves.
+**Low-effort AI PRs will be closed without merging.** If a PR is identified as such, the contributor is welcome to reopen it once they have engaged with the code themselves.
 
 The bar is not "did you use AI" — it is "do you understand and own what you're submitting."
 
@@ -42,25 +37,20 @@ The bar is not "did you use AI" — it is "do you understand and own what you're
 
 ### Create a new issue
 
-If you find a bug or have a feature request, search existing issues first. If a related
-issue doesn't exist, open a new one with enough detail to reproduce the problem or
-understand the proposal.
+If you find a bug or have a feature request, search existing issues first. If a related issue doesn't exist, open a new one with enough detail to reproduce the problem or understand the proposal.
 
 ### Work on an existing issue
 
-Check the [MCU Firmware Project tracker](https://github.com/orgs/flipperdevices/projects/8)
-for open tasks. Leave a comment on the issue before starting work to avoid duplication.
+Check the [MCU Firmware Project tracker](https://github.com/orgs/flipperdevices/projects/8) for open tasks. Leave a comment on the issue before starting work to avoid duplication.
 
 ## Making changes
 
-1. Create a working branch from `dev`: in this repository if you can push to it,
-   otherwise in a fork.
+1. Create a working branch from `dev`: in this repository if you can push to it, otherwise in a fork.
 2. Make your changes and verify the build.
 3. Flash and test on hardware ([docs/Flashing.md](docs/Flashing.md)).
 4. Update the documentation the change affects, in the same PR.
 
-Changing the pinned toolchain or the build's Python packages:
-[docs/Building.md](docs/Building.md#updating-the-toolchain).
+Changing the pinned toolchain or the build's Python packages: [docs/Building.md](docs/Building.md#updating-the-toolchain).
 
 ## Commit your update
 
@@ -70,39 +60,21 @@ Changing the pinned toolchain or the build's Python packages:
 
 ## Pull Request
 
-Open the pull request as a **draft** against `dev`: CI builds a branch only once it has a
-PR, and reviewers, Copilot included, are asked only when you mark it ready. Fill out the
-PR template and keep it short: *Verification* lists only steps a reviewer can
-realistically repeat, other cases you tried get two or three words each.
+Open the pull request as a **draft** against `dev`: CI builds a branch only once it has a PR, and reviewers, Copilot included, are asked only when you mark it ready. Fill out the PR template and keep it short: *Verification* lists only steps a reviewer can realistically repeat, other cases you tried get two or three words each.
 
 Then make these checks as separate passes, not along the way while editing:
 
 1. **Ownership.** For every state, resource and decision the PR touches, make sure that:
    - it has exactly one owner, and that owner is the right module;
-   - all its code lives in the owner, and other modules go through the owner without
-     reading or duplicating its internal state;
+   - all its code lives in the owner, and other modules go through the owner without reading or duplicating its internal state;
    - no case is handled in two places;
    - no case is left uncovered because a check sits in the wrong place.
 
-   If something is in the wrong place, don't patch around it. Describe the target
-   structure (who owns what, what moves where) and agree with the code owner whether to
-   widen the PR.
-2. **Comments.** Every comment the PR adds or touches is needed, current and short. It
-   explains what the code cannot say (a non-obvious reason or constraint); it doesn't
-   retell the code next to it or repeat an option's own description.
-3. **Documentation.** The same for every passage of documentation the PR adds or touches. User
-   documentation follows the user's scenario. The product is in development and its
-   procedures, buttons and names still change, so link the single source of truth (the
-   page on docs.flipper.net) instead of retelling its steps or UI details.
-4. **Hardware.** Run a user-facing flow on hardware the way the user will before claiming
-   it works. A procedure quoted in an issue may be stale. In *Verification*, write what you
-   actually ran; if it was not the way the user will run it, or not on a device at all,
-   say so.
-5. **Self-review.** Have the PR reviewed by someone who has not seen your work on it: a
-   colleague, or an AI reviewer given only the PR and nothing from your session; it reads
-   the diff and whatever code it needs itself. Fix the serious remarks (bugs,
-   architecture, misleading documentation; not style or taste) and pass the fixes through
-   checks 1-4 again.
+   If something is in the wrong place, don't patch around it. Describe the target structure (who owns what, what moves where) and agree with the code owner whether to widen the PR.
+2. **Comments.** Every comment the PR adds or touches is needed, current and short. It explains what the code cannot say (a non-obvious reason or constraint); it doesn't retell the code next to it or repeat an option's own description.
+3. **Documentation.** The same for every passage of documentation the PR adds or touches. User documentation follows the user's scenario. The product is in development and its procedures, buttons and names still change, so link the single source of truth (the page on docs.flipper.net) instead of retelling its steps or UI details.
+4. **Hardware.** Run a user-facing flow on hardware the way the user will before claiming it works. A procedure quoted in an issue may be stale. In *Verification*, write what you actually ran; if it was not the way the user will run it, or not on a device at all, say so.
+5. **Self-review.** Have the PR reviewed by someone who has not seen your work on it: a colleague, or an AI reviewer given only the PR and nothing from your session; it reads the diff and whatever code it needs itself. Fix the serious remarks (bugs, architecture, misleading documentation; not style or taste) and pass the fixes through checks 1-4 again.
 
 Only then mark the PR **ready for review**.
 

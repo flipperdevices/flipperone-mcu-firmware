@@ -1,9 +1,7 @@
 # Applications
 
 > [!NOTE]
-> Not written yet. Until then, start from
-> [`applications/template/app.c`](../applications/template/app.c) and the registry in
-> [`applications/applications.c`](../applications/applications.c).
+> Not written yet. Until then, start from [`applications/template/app.c`](../applications/template/app.c) and the registry in [`applications/applications.c`](../applications/applications.c).
 
 Planned contents:
 

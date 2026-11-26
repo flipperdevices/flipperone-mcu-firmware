@@ -1,17 +1,12 @@
 # AGENTS.md
 
-Orientation for AI agents working in this repository. Keep it short and factual —
-`docs/Targets.md`, `CONTRIBUTING.md` and `.github/copilot-instructions.md` own the details.
+Orientation for AI agents working in this repository. Keep it short and factual — `docs/Targets.md`, `CONTRIBUTING.md` and `.github/copilot-instructions.md` own the details.
 
 ## What this is
 
-Firmware for the Flipper One low-power MCU (Raspberry Pi RP2350B): display, buttons,
-touchpad, LEDs, battery and power control. It talks to the Linux CPU over SPI, I²C and
-UART. Written in C11 against the Pico SDK and FreeRTOS, with TinyUSB, built by CMake with
-the Arm bare-metal GCC toolchain.
+Firmware for the Flipper One low-power MCU (Raspberry Pi RP2350B): display, buttons, touchpad, LEDs, battery and power control. It talks to the Linux CPU over SPI, I²C and UART. Written in C11 against the Pico SDK and FreeRTOS, with TinyUSB, built by CMake with the Arm bare-metal GCC toolchain.
 
-Do not quote pinned versions here. The SDK, toolchain and picotool pins live in the build
-files and in the build workflow; read them there when a version matters for a review.
+Do not quote pinned versions here. The SDK, toolchain and picotool pins live in the build files and in the build workflow; read them there when a version matters for a review.
 
 ## Layout
 
@@ -38,16 +33,9 @@ cmake --preset f2-release
 cmake --build --preset f2-release
 ```
 
-`fbtenv.sh` (`fbtenv.ps1` on Windows) sets up the flipperone-mcu-toolchain release
-pinned in `toolchain.json`, downloading it the first time; source it in every new shell.
-`FW_TARGET` defaults to `f2`; `f1` is the other board. Presets are in
-`CMakePresets.json`, each with its own `build/<preset>/`. Output is
-`build/f2-release/flipperone-mcu-firmware.uf2`.
+`fbtenv.sh` (`fbtenv.ps1` on Windows) sets up the flipperone-mcu-toolchain release pinned in `toolchain.json`, downloading it the first time; source it in every new shell. `FW_TARGET` defaults to `f2`; `f1` is the other board. Presets are in `CMakePresets.json`, each with its own `build/<preset>/`. Output is `build/f2-release/flipperone-mcu-firmware.uf2`.
 
-Configure checks the tools against `toolchain.json` (`cmake/toolchain_check.cmake`). Do
-not edit `toolchain.json` or the `sdkVersion`/`toolchainVersion`/`picotoolVersion` lines
-of `CMakeLists.txt` by hand: `scripts/toolchain/toolchain.py` writes them. Details:
-[docs/Building.md](docs/Building.md); flashing: [docs/Flashing.md](docs/Flashing.md).
+Configure checks the tools against `toolchain.json` (`cmake/toolchain_check.cmake`). Do not edit `toolchain.json` or the `sdkVersion`/`toolchainVersion`/`picotoolVersion` lines of `CMakeLists.txt` by hand: `scripts/toolchain/toolchain.py` writes them. Details: [docs/Building.md](docs/Building.md); flashing: [docs/Flashing.md](docs/Flashing.md).
 
 ## Test
 
@@ -58,9 +46,7 @@ python3 scripts/testops.py sanity --commit <sha> --target f2
 python3 scripts/testops.py unit-tests
 ```
 
-Both require a leased stand (`FO_LEASE` / `/run/fo/lease.json`), which exists only on the
-self-hosted `fone-lab` runners. Which board CI covers is defined in the workflows — do not
-assume every target has hardware coverage.
+Both require a leased stand (`FO_LEASE` / `/run/fo/lease.json`), which exists only on the self-hosted `fone-lab` runners. Which board CI covers is defined in the workflows — do not assume every target has hardware coverage.
 
 The agent tools have host unit tests, with no device and no firmware build:
 
@@ -68,9 +54,7 @@ The agent tools have host unit tests, with no device and no firmware build:
 python3 -m pytest scripts/agent_tools/tests -q
 ```
 
-They need the packages of `scripts/requirements-test.txt`; CI runs them in
-`.github/workflows/agent-tools-tests.yml`. The tests of `scripts/toolchain` need only
-pytest: `python3 -m pytest scripts/toolchain/tests -q`. Details: [docs/Testing.md](docs/Testing.md).
+They need the packages of `scripts/requirements-test.txt`; CI runs them in `.github/workflows/agent-tools-tests.yml`. The tests of `scripts/toolchain` need only pytest: `python3 -m pytest scripts/toolchain/tests -q`. Details: [docs/Testing.md](docs/Testing.md).
 
 ## Agent Tools
 
@@ -78,30 +62,19 @@ To see and control a Flipper One attached to this machine (screen, buttons, cons
 
 ## Opening a pull request
 
-Follow the pull request steps in [CONTRIBUTING.md](CONTRIBUTING.md#pull-request). On top
-of them:
+Follow the pull request steps in [CONTRIBUTING.md](CONTRIBUTING.md#pull-request). On top of them:
 
 - If you can push to this repository, use a branch in it instead of a fork.
-- `gh pr create --body` skips [the PR template](.github/pull_request_template.md), so copy
-  it in by hand. Leave the *Contributor checklist* unticked: the human author ticks it.
+- `gh pr create --body` skips [the PR template](.github/pull_request_template.md), so copy it in by hand. Leave the *Contributor checklist* unticked: the human author ticks it.
 - Ownership check: the code owner to agree with is the user.
-- Self-review: use a fresh subagent on the most capable model available. Give it the PR
-  number and ask it to review the PR and report back to you without posting anything on
-  GitHub. Add nothing from your session: no memory, no notes (what the harness loads into
-  every agent by itself is fine). If you are not sure which
-  model is the most capable, ask the user; either way, tell the user which model
-  reviewed. If serious remarks were fixed, run one more round with a new subagent. Fix
-  the serious remarks of the second round too, but run no third round.
-- Never mark the PR ready yourself: when the checks are done, tell the user what is
-  still open and leave marking it ready to them.
+- Self-review: use a fresh subagent on the most capable model available. Give it the PR number and ask it to review the PR and report back to you without posting anything on GitHub. Add nothing from your session: no memory, no notes (what the harness loads into every agent by itself is fine). If you are not sure which model is the most capable, ask the user; either way, tell the user which model reviewed. If serious remarks were fixed, run one more round with a new subagent. Fix the serious remarks of the second round too, but run no third round.
+- Never mark the PR ready yourself: when the checks are done, tell the user what is still open and leave marking it ready to them.
 
 ## Rules that are easy to get wrong
 
-- `malloc`/`calloc`/`free`/`strdup` are remapped onto `pvPortMalloc`: allocation never
-  returns `NULL` (it crashes), memory comes back zeroed, `malloc(0)` crashes, and
-  allocating from an ISR crashes. Never add `NULL` checks.
+- `malloc`/`calloc`/`free`/`strdup` are remapped onto `pvPortMalloc`: allocation never returns `NULL` (it crashes), memory comes back zeroed, `malloc(0)` crashes, and allocating from an ISR crashes. Never add `NULL` checks.
 - No `goto`. Error paths unwind with `do { ... break; } while(false)`.
 - Inside `targets/` use `<>` includes only — quoted includes defeat header shadowing.
 - Services are permanent threads with no teardown; that is not a leak.
-- `*.pb.c/h`, `assets.h`, image `.c` files, `pb2/`, `targets/memory_flash.incl` and
-  `targets/flash.tcl` are generated. Edit the generator or the source of truth instead.
+- Markdown prose is not hard-wrapped: one line per paragraph or list item.
+- `*.pb.c/h`, `assets.h`, image `.c` files, `pb2/`, `targets/memory_flash.incl` and `targets/flash.tcl` are generated. Edit the generator or the source of truth instead.

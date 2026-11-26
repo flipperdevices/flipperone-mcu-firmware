@@ -6,6 +6,7 @@ applyTo: "**/*.md"
 
 Documentation lives in `docs/`, one file per topic; the root keeps only entry points such as `README.md` and `CONTRIBUTING.md`. Plain GitHub-flavoured Markdown.
 
+- Prose is not hard-wrapped: each paragraph, list item and quote paragraph is one line. Flag a change that wraps prose at a fixed width or reflows a paragraph it does not otherwise change.
 - Flag a new document in the root, or a new topic appended to an unrelated document.
 - A change of behaviour, command line, build knob, target or file layout that the docs describe must update them in the same PR. Flag a PR that changes behaviour and leaves the matching document stale.
 - A change to an interface in `docs/protocols/` (registers, messages, wire values, console output that scripts parse) must update its document in the same PR, and bump the interface's version when the change is incompatible.
