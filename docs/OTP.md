@@ -110,7 +110,7 @@ Block 1 writes it after the block itself. Before writing block 1, every row of t
 
 ## Tools
 
-`scripts/otp.py` needs the `cryptography` package, as pinned in `assets/python/requirements.txt`.
+`scripts/otp.py` needs the `cryptography` package: `pip install -r scripts/requirements-otp.txt`.
 
 ```sh
 otp.py generate-key -o key.pem --public key.pub

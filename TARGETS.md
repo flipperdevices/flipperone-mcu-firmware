@@ -23,14 +23,15 @@ what `version.c` reports as `TARGET`.
 
 ## Building for a target
 
-The default is `f1`. To build another one:
+The default is `f2`. To build another one:
 
-* **VSCode** — `Terminal → Run Task → Select Target`, then compile as usual. Nothing
-  else changes: the executable is always named after `project()`, so the compile,
-  flash and debug entries never mention a target.
-* **Command line** — `cmake .. -DFW_TARGET=f2`.
+* **Command line** — a preset per board, e.g. `cmake --preset f1-release` (see
+  [CMakePresets.json](CMakePresets.json)), or `-DFW_TARGET=f1` without one. Each
+  preset has its own build directory, `build/<preset>/`.
+* **VSCode** — pick the preset in CMake Tools. The executable is always named after
+  `project()`, so the tasks and debug entries never mention a target.
 
-There is one build directory, so switching targets means a full rebuild. CI builds
+CI builds
 every target of the matrix in [.github/workflows/build.yml](.github/workflows/build.yml)
 and publishes them as `flipper-one-mcu-<target>-firmware-<suffix>.uf2`.
 
@@ -111,8 +112,7 @@ The top-level CMakeLists consumes all of this through three commands:
    build identically to its base before you start changing anything.
 2. Add the name to the `target` matrix in [.github/workflows/build.yml](.github/workflows/build.yml),
    and a link line to the body of the `comment` job right below it.
-3. Add the name to the `fwTarget` options in `vscode_template/tasks.json` and
-   `.vscode/tasks.json` — the two files are kept identical.
+3. Add presets for it to [CMakePresets.json](CMakePresets.json).
 
 ## Configure errors
 

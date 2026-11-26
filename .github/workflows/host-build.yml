@@ -1,0 +1,40 @@
+name: Host build
+
+# Windows and macOS builds, as developers run them. On demand only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: Configure and build preset
+        default: f2-release
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, macos-15]
+    env:
+      PRESET: ${{ inputs.preset }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      # The version comes from the newest semver tag
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: ./.github/actions/toolchain
+
+      - run: cmake --preset "$PRESET"
+
+      - run: cmake --build --preset "$PRESET"

@@ -1,4 +1,12 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.28)
+
+# Every find_package(Python3), the SDK's too, takes the first python3 on PATH: the
+# toolchain bundle's once its environment is set up. Under the SDK's older policies
+# FindPython prefers the newest version, and by default macOS frameworks and Windows
+# registry entries come before PATH.
+set(Python3_FIND_STRATEGY LOCATION)
+set(Python3_FIND_FRAMEWORK LAST)
+set(Python3_FIND_REGISTRY LAST)
 
 # Make sure every git submodule the build needs is checked out.
 find_package(Git QUIET)
@@ -52,8 +60,10 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# No C++ modules here; clangd rejects the module-scan flags CMake adds for GCC
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
-set(FW_TARGET "f1" CACHE STRING "Hardware target, a directory under targets/")
+set(FW_TARGET "f2" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")
 # A TBYB image starts only via a flash-update boot, which the bootrom does not do
 # after an absolute-family UF2.
@@ -68,6 +78,9 @@ set(FIRMWARE_TARGET "${CMAKE_MATCH_1}")
 # Initialise pico_sdk from installed location
 # (note this can come from environment, CMake cache etc)
 
+# The pinned tools are in toolchain.json; the version lines below copy it for the
+# Raspberry Pi Pico VS Code extension. scripts/toolchain/toolchain.py keeps them in
+# sync, and cmake/toolchain_check.cmake checks them on every configure.
 # == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
 if(WIN32)
     set(USERHOME $ENV{USERPROFILE})
@@ -89,12 +102,25 @@ set(PICO_BOARD "board_mcu_2350" CACHE STRING "Board type" FORCE)
 set(TINYUSB_OPT_OS OPT_OS_FREERTOS CACHE STRING "TinyUSB OS option")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/toolchain_find.cmake")
 include("lib/sdk/pico_sdk_import.cmake")
 
 project(flipperone-mcu-firmware C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
+
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/toolchain_check.cmake")
+
+# build/current follows the preset configured or built last
+set(FW_SOURCE_DIR "${CMAKE_SOURCE_DIR}")
+set(FW_BUILD_DIR "${CMAKE_BINARY_DIR}")
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/build_link.cmake")
+add_custom_target(build_link
+    COMMAND ${CMAKE_COMMAND} -DFW_SOURCE_DIR=${FW_SOURCE_DIR} -DFW_BUILD_DIR=${FW_BUILD_DIR}
+        -P "${CMAKE_CURRENT_LIST_DIR}/cmake/build_link.cmake"
+    COMMENT "Linking build/current"
+    VERBATIM)
 
 # Enable warnings and treat as errors
 add_compile_options(-fno-strict-aliasing)
@@ -130,6 +156,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_LIST_DIR}/lib
 set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c PROPERTIES COMPILE_DEFINITIONS
     "uECC_SUPPORTS_secp160r1=0;uECC_SUPPORTS_secp192r1=0;uECC_SUPPORTS_secp224r1=0;uECC_SUPPORTS_secp256k1=0;uECC_PLATFORM=uECC_arch_other")
 set_source_files_properties(${CMAKE_CURRENT_LIST_DIR}/lib/micro-ecc/uECC.c PROPERTIES COMPILE_OPTIONS -Wno-maybe-uninitialized)
+# Also for a build of only this target
+add_dependencies(${PROJECT_NAME} build_link)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE 
     PICO_DEFAULT_UART_TX_PIN=0
@@ -231,7 +259,8 @@ target_link_libraries(${PROJECT_NAME}
     assets
     mlib
     kvstore
-    kvstore_default
+    kvstore_logkvs
+    blockdevice_flash
     rtt
 )
 

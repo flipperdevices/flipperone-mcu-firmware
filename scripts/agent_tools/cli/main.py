@@ -594,7 +594,7 @@ def build_parser():
     swd_sub.add_parser("reset", help="plain MCU reset; the host keeps running")
     swd_sub.add_parser("resume", help="resume cores left halted by a debugger")
     swd_sub.add_parser("where", help="halt for a moment, print pc and lr of both cores with function names, run on")
-    q = swd_sub.add_parser("symbol", help="function and source line for addresses from a crash log (uses build/*.elf, no probe needed)")
+    q = swd_sub.add_parser("symbol", help="function and source line for addresses from a crash log (uses the newest ELF under build/, no probe needed)")
     q.add_argument("addresses", nargs="+", help="hex addresses, e.g. 1000a133")
     q = swd_sub.add_parser("read", help="read 32-bit words without halting")
     q.add_argument("address")

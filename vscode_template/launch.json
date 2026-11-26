@@ -1,40 +1,34 @@
 {
-    // openocd comes from the Pico extension (see tasks.json). svdFile cannot: the
-    // extension's getSVDPath only answers for Rust projects, so the SDK version
-    // stays spelled out here and must match sdkVersion in CMakeLists.txt.
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Pico Debug",
-            "cwd": "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
-            "executable": "${command:raspberry-pi-pico.launchTargetPath}",
+            "name": "Debug",
+            "cwd": "${workspaceFolder}/.toolchain/tools/openocd/scripts",
+            "executable": "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
             "request": "launch",
+            "preLaunchTask": "Compile Project",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
-            "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
-            "device": "${command:raspberry-pi-pico.getChipUppercase}",
+            "serverpath": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
+            "armToolchainPath": "${workspaceFolder}/.toolchain/tools/arm-none-eabi-gcc/bin",
+            "device": "RP2350",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                // The SDK RP2350 target plus the board helpers, f1_stage_tbyb among them
                 "${workspaceFolder}/scripts/agent_tools/openocd/flipperone-mcu.cfg"
             ],
-            "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
+            "svdFile": "${workspaceFolder}/.toolchain/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
             "runToEntryPoint": "main",
-            // Fix for no_flash binaries, where monitor reset halt doesn't do what is expected
-            // Also works fine for flash binaries
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000",
-                // The image is try-before-you-buy: a plain reset ignores it until it is bought.
-                // Boot slot A as a flash-update boot, as after an update (board config).
+                "monitor program \"${workspaceFolder}/build/current/flipperone-mcu-firmware.elf\" verify 0x2000",
+                // Boot the try-before-you-buy image as after an update
                 "monitor f1_stage_tbyb 0x10002000",
                 "monitor reset halt"
             ],
             "openOCDLaunchCommands": [
                 "adapter speed 5000",
-                "rp2350.dap.core0 configure -event gdb-detach { resume }",
-                "rp2350.dap.core1 configure -event gdb-detach { resume }"
+                "rp2350.cm0 configure -event gdb-detach { resume }",
+                "rp2350.cm1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -50,27 +44,27 @@
                         "type": "console"
                     }
                 ]
-            },
+            }
         },
         {
-            "name": "Pico Debug Attach",
-            "cwd": "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
-            "executable": "${command:raspberry-pi-pico.launchTargetPath}",
+            "name": "Debug Attach",
+            "cwd": "${workspaceFolder}/.toolchain/tools/openocd/scripts",
+            "executable": "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
-            "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
-            "device": "${command:raspberry-pi-pico.getChipUppercase}",
+            "serverpath": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
+            "armToolchainPath": "${workspaceFolder}/.toolchain/tools/arm-none-eabi-gcc/bin",
+            "device": "RP2350",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg"
+                "target/rp2350.cfg"
             ],
-            "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
+            "svdFile": "${workspaceFolder}/.toolchain/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
             "openOCDLaunchCommands": [
                 "adapter speed 5000",
-                "rp2350.dap.core0 configure -event gdb-detach { resume }",
-                "rp2350.dap.core1 configure -event gdb-detach { resume }"
+                "rp2350.cm0 configure -event gdb-detach { resume }",
+                "rp2350.cm1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -86,40 +80,37 @@
                         "type": "console"
                     }
                 ]
-            },
+            }
         },
         {
-            "name": "Pico Debug (FreeRTOS)",
-            "cwd": "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
-            "executable": "${command:raspberry-pi-pico.launchTargetPath}",
+            "name": "Debug (FreeRTOS)",
+            "cwd": "${workspaceFolder}/.toolchain/tools/openocd/scripts",
+            "executable": "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
             "request": "launch",
+            "preLaunchTask": "Compile Project",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
-            "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
-            "device": "${command:raspberry-pi-pico.getChipUppercase}",
+            "serverpath": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
+            "armToolchainPath": "${workspaceFolder}/.toolchain/tools/arm-none-eabi-gcc/bin",
+            "device": "RP2350",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                // The SDK RP2350 target plus the board helpers, f1_stage_tbyb among them
                 "${workspaceFolder}/scripts/agent_tools/openocd/flipperone-mcu.cfg"
             ],
-            "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
+            "svdFile": "${workspaceFolder}/.toolchain/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
             "rtos": "FreeRTOS",
             "runToEntryPoint": "main",
-            // Fix for no_flash binaries, where monitor reset halt doesn't do what is expected
-            // Also works fine for flash binaries
             "overrideLaunchCommands": [
                 "monitor reset halt",
-                "monitor program \"${command:raspberry-pi-pico.launchTargetPath}\" verify 0x2000",
-                // The image is try-before-you-buy: a plain reset ignores it until it is bought.
-                // Boot slot A as a flash-update boot, as after an update (board config).
+                "monitor program \"${workspaceFolder}/build/current/flipperone-mcu-firmware.elf\" verify 0x2000",
+                // Boot the try-before-you-buy image as after an update
                 "monitor f1_stage_tbyb 0x10002000",
                 "monitor reset halt"
             ],
             "openOCDLaunchCommands": [
                 "adapter speed 5000",
-                "rp2350.dap.core0 configure -event gdb-detach { resume }",
-                "rp2350.dap.core1 configure -event gdb-detach { resume }"
+                "rp2350.cm0 configure -event gdb-detach { resume }",
+                "rp2350.cm1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -135,28 +126,28 @@
                         "type": "console"
                     }
                 ]
-            },
+            }
         },
         {
-            "name": "Pico Debug Attach (FreeRTOS)",
-            "cwd": "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
-            "executable": "${command:raspberry-pi-pico.launchTargetPath}",
+            "name": "Debug Attach (FreeRTOS)",
+            "cwd": "${workspaceFolder}/.toolchain/tools/openocd/scripts",
+            "executable": "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "openocd",
-            "serverpath": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
-            "gdbPath": "${command:raspberry-pi-pico.getGDBPath}",
-            "device": "${command:raspberry-pi-pico.getChipUppercase}",
+            "serverpath": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
+            "armToolchainPath": "${workspaceFolder}/.toolchain/tools/arm-none-eabi-gcc/bin",
+            "device": "RP2350",
             "configFiles": [
                 "interface/cmsis-dap.cfg",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg"
+                "target/rp2350.cfg"
             ],
-            "svdFile": "${userHome}/.pico-sdk/sdk/2.3.1/src/${command:raspberry-pi-pico.getChip}/hardware_regs/${command:raspberry-pi-pico.getChipUppercase}.svd",
+            "svdFile": "${workspaceFolder}/.toolchain/pico-sdk/src/rp2350/hardware_regs/RP2350.svd",
             "rtos": "FreeRTOS",
             "openOCDLaunchCommands": [
                 "adapter speed 5000",
-                "rp2350.dap.core0 configure -event gdb-detach { resume }",
-                "rp2350.dap.core1 configure -event gdb-detach { resume }"
+                "rp2350.cm0 configure -event gdb-detach { resume }",
+                "rp2350.cm1 configure -event gdb-detach { resume }"
             ],
             "rttConfig": {
                 "enabled": true,
@@ -172,7 +163,7 @@
                         "type": "console"
                     }
                 ]
-            },
-        },
+            }
+        }
     ]
 }
