@@ -87,10 +87,6 @@ __attribute__((always_inline)) static inline void furi_hal_interrupt_call(FuriHa
 //     NVIC_GetPendingIRQ(furi_hal_interrupt_irqn[index]);
 // }
 
-// __attribute__((always_inline)) static inline void furi_hal_interrupt_set_pending(FuriHalInterruptId index) {
-//     NVIC_SetPendingIRQ(furi_hal_interrupt_irqn[index]);
-// }
-
 // __attribute__((always_inline)) static inline void furi_hal_interrupt_disable(FuriHalInterruptId index) {
 //     NVIC_DisableIRQ(furi_hal_interrupt_irqn[index]);
 // }
@@ -481,6 +477,11 @@ void furi_hal_interrupt_set_isr_ex(FuriHalInterruptId index, FuriHalInterruptPri
 // }
 
 // Potential space-saver for updater build
+void furi_hal_interrupt_set_pending(FuriHalInterruptId index) {
+    furi_check(index < FuriHalInterruptIdMax);
+    irq_set_pending(furi_hal_interrupt_irqn[index]);
+}
+
 const char* furi_hal_interrupt_get_name(uint8_t exception_number) {
     int32_t id = (int32_t)exception_number - 16;
 
