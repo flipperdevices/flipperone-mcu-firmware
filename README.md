@@ -2,43 +2,20 @@
 
 [![MemBrowse](https://membrowse.com/badge.svg)](https://membrowse.com/public/flipperdevices/flipperone-mcu-firmware)
 
-This repository is part of [Flipper One MCU Firmware](https://github.com/orgs/flipperdevices/projects/8) sub-project and contains issue tracking and firmware sources for the Flipper One MCU — the low-power co-processor that controls the LCD, buttons, and battery.
+Firmware for the Flipper One low-power MCU (Raspberry Pi RP2350): the co-processor that
+runs the display, buttons, touchpad, LEDs, battery and power, next to the Linux CPU. How
+the two work together: [docs/Architecture.md](docs/Architecture.md).
 
-<img width="1474" height="450" alt="Flipper One MCU and CPI interconnection" src="https://github.com/user-attachments/assets/67d4810f-38b0-49af-8321-11bbc84ed04d" />
+## Get the firmware
 
-### Flipper One uses a dual-processor architecture:
+[**📥 Latest dev build**](https://update.flipperzero.one/builds/flipper-one-mcu/dev/). CI
+builds every push to `dev`, every tag and every pull request; a bot comment links a pull
+request's build.
 
-* **Low-Power MCU** (Raspberry Pi RP2350)  
-  Buttons, LCD display, touchpad, and LEDs are physically connected to the MCU. It also manages battery and power control.  
-  To render graphics on the LCD from Linux, the main CPU transfers display data to the MCU over SPI.  
-  When the device is powered off, the MCU controls power-bank mode and system power states.  
-  The MCU also participates in booting the main CPU.
+- On a Flipper One: follow the [firmware update guide](https://docs.flipper.net/one/mcu-firmware/firmware-update).
+- On a bare RP2350 board, and to recover a device that no longer boots: [docs/Flashing.md](docs/Flashing.md).
 
-* **High-Performance Linux CPU** (Rockchip RK3576)  
-  This processor runs Linux, and all high-level peripherals are connected to it: USB, HDMI, M.2, Wi-Fi, Ethernet, and audio.
-
-The MCU and CPU are interconnected via several interfaces: SPI, I²C, and UART. Additional GPIO lines are used for BOOT_0, BOOT_1, and IRQ signals.
-
-## Automated builds
-Builds run automatically on every push to the `dev` branch, on tag pushes, and on pull requests. PR builds are linked from a bot comment on the pull request.
-
-### [`📥 Download latest dev firmware →`](https://update.flipperzero.one/builds/flipper-one-mcu/dev/)
-**⚠️ TODO:** make a proper build server address and folder structure instead of using `flipperzero.one`
-
-## Manual build 
-
-**⚠️ TODO:** how to build manually? 
-
-## Join development
-
-* Check the public task tracker: [MCU Firmware Project](https://github.com/orgs/flipperdevices/projects/8)
-
-* Read the documentation: [docs.flipper.net/one/tech-specs](https://docs.flipper.net/one/tech-specs)
-  ⚠️ *Co-processor architecture documentation is coming soon (TODO).*
-
-## How to build
-
-Every tool the build needs comes from one pinned release of [flipperone-mcu-toolchain](https://github.com/flipperdevices/flipperone-mcu-toolchain): Arm GCC, the Pico SDK, picotool, OpenOCD, CMake, Ninja, and Python with the packages the generators use. [`toolchain.json`](toolchain.json) names the release, and a script sets it up:
+## Build
 
 ```shell
 git clone --recursive https://github.com/flipperdevices/flipperone-mcu-firmware.git
@@ -49,58 +26,30 @@ cmake --preset f2-release
 cmake --build --preset f2-release
 ```
 
-The output firmware file will be at `build/f2-release/flipperone-mcu-firmware.uf2`.
+The firmware is `build/f2-release/flipperone-mcu-firmware.uf2`. The first run downloads
+the pinned toolchain (400–500 MB). Other boards, host requirements and other setups:
+[docs/Building.md](docs/Building.md). Editor setup: [docs/VSCode.md](docs/VSCode.md).
 
-The first time, `fbtenv` downloads the archive for your machine (400–500 MB), checks its sha256 against `toolchain.json`, and unpacks it into `~/.flipper/flipperone-mcu-toolchain/<tag>/` (or `$FLIPPERONE_TOOLCHAIN_HOME/<tag>/`). After that it only sets up the environment and points the tree's `.toolchain` link at that release (a junction on Windows); run it once in every new shell. Each checkout or worktree has its own link, so trees pinned to different releases work side by side. On Windows the link is a junction, and `git clean -x` can follow it and delete that release from `~/.flipper`; source `fbtenv` again to reinstall it. `git clean` without `-x` leaves `.toolchain` alone. To set it up offline, download the archive yourself and point `FLIPPERONE_TOOLCHAIN_ARCHIVE` at it.
+## Documentation
 
-The toolchain runs on Linux x86_64 and aarch64 with glibc 2.34 or newer, macOS on Apple silicon, and Windows x64. It brings its own USB libraries; on Linux it needs only `libudev1`, which systemd-based distributions have, plus udev rules to use a debug probe or flash without root (see the toolchain's [README](https://github.com/flipperdevices/flipperone-mcu-toolchain#host-requirements)).
-
-### Hardware targets
-
-Each board is described by `targets/<name>/target.cmake`, and a target can be based on another one. The default is `f2`. Each preset builds in its own `build/<preset>/` directory, so switching boards needs no rebuild. `build/current` links to the preset configured or built last (a junction on Windows); VSCode, clangd and `scripts/isr_ram_check.py` use it:
-
-| Preset | Builds |
+| Document | Covers |
 | --- | --- |
-| `f2-release` | f2 firmware |
-| `f2-recovery` | f2 firmware and `recovery.uf2` |
-| `f1-release` | f1 firmware |
+| [Architecture](docs/Architecture.md) | The two processors and how the firmware is organised |
+| [Building](docs/Building.md) | The toolchain, presets, the toolchain check |
+| [VSCode](docs/VSCode.md) | clangd, tasks, debug configurations |
+| [Flashing](docs/Flashing.md) | Devices, bare boards, slots, recovery |
+| [Debugging](docs/Debugging.md) | Logs, the debugger, crash reports |
+| [Testing](docs/Testing.md) | On-device unit tests and host tests |
+| [Protocols](docs/protocols/README.md) | Contracts with Linux and host tools |
+| [All documents](docs/README.md) | Targets, OTP, applications and the rest |
 
-Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [docs/TARGETS.md](docs/TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
+## Contributing
 
-### VSCode
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and pick a task from the
+[MCU Firmware project](https://github.com/orgs/flipperdevices/projects/8). Product
+specifications: [docs.flipper.net/one/tech-specs](https://docs.flipper.net/one/tech-specs).
 
-Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, clangd, Cortex-Debug). Code navigation and diagnostics come from the toolchain's clangd, which reads the compile commands in `build/current`, so configure a preset first. On save, clangd formats the changed lines of C and C++ files with `.clang-format`. Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Debug** launches, and the **Run Project**, **Write partition table** and **Flash** tasks, build the selected preset first and use its build through `build/current`. **Debug Attach** uses `build/current` without building.
+## License
 
-### Other setups
-
-Configuring checks the tools against `toolchain.json`: with the toolchain, that it is the pinned release; without it, that the Pico SDK and GCC versions match. A mismatch stops the configuration with a hint, and `-DFW_TOOLCHAIN_CHECK=WARN` builds anyway. Only the toolchain release reproduces CI's binaries exactly.
-
-The [Raspberry Pi Pico extension](https://marketplace.visualstudio.com/items?itemName=raspberry-pi.raspberry-pi-pico) installs its own Pico SDK and Arm GCC, at the versions on the `sdkVersion`, `toolchainVersion` and `picotoolVersion` lines of `CMakeLists.txt`, which match `toolchain.json`. A new build directory uses them only when the pinned toolchain is neither set up with `fbtenv` nor installed; an existing one keeps the SDK it was configured with. An installed toolchain also wins over a global `PICO_SDK_PATH`; pass `-DPICO_SDK_PATH=<SDK>` to use another SDK.
-
-## How to update MCU firmware
-
-The firmware uses the [UF2](https://github.com/microsoft/uf2) format for the RP2350 microcontroller.
-
-### On a Flipper One device
-
-The procedure for entering firmware update mode on the real device differs from a bare board. Follow the official guide: [docs.flipper.net/one/mcu-firmware/firmware-update](https://docs.flipper.net/one/mcu-firmware/firmware-update).
-
-### On a plain RP2350 board
-
-1. Enter bootloader mode: hold the **BOOTSEL** button on the RP2350 while connecting USB
-2. A USB mass storage device will appear on your computer
-3. Copy the `.uf2` firmware file to the mass storage device
-4. The device will automatically reboot with the new firmware
-
-Alternatively, you can flash the firmware with [`picotool`](https://github.com/raspberrypi/picotool), which comes with the toolchain:
-
-```shell
-picotool load -x build/f2-release/flipperone-mcu-firmware.uf2
-```
-
-### Recovering the MCU
-
-If the MCU no longer boots, flash the recovery image: `flipper-one-mcu-<target>-recovery-<version>.uf2` from CI, or `build/f2-recovery/recovery.uf2` from the `f2-recovery` preset (any build configured with `-DFW_RECOVERY=ON` makes one). It holds the partition table and the firmware.
-
-1. Put the MCU into BOOTSEL (DFU) mode as described in the [firmware update guide](https://docs.flipper.net/one/mcu-firmware/firmware-update)
-2. Copy the recovery file onto the drive that appears
+Mostly MIT; some files ported from the Flipper Zero firmware are GPL-3.0-or-later, and
+assets and documentation are CC-BY-SA-4.0. Details: [LICENSE.md](LICENSE.md).

@@ -1,14 +1,9 @@
-# Welcome to Flipper One MCU Firmware contributing guide
+# Contributing
 
-Thank you for investing your time in contributing to our project!
+Thank you for contributing! This guide covers the workflow from an issue to a merged pull
+request. Setting up the build: [docs/Building.md](docs/Building.md).
 
-In this guide, you will get an overview of the contribution workflow — from opening an issue to
-creating, reviewing, and merging a PR.
-
-## Getting started
-
-Before writing code and creating a PR, make sure that your contribution aligns with the
-project's goals and guidelines:
+## Ground rules
 
 - Your PR must compile and not break the CI build.
 - Your PR must pass review by the code owner before merging.
@@ -58,25 +53,14 @@ for open tasks. Leave a comment on the issue before starting work to avoid dupli
 
 ## Making changes
 
-1. Fork the repository.
-2. Create a working branch from `dev`.
-3. Make your changes and verify the build.
-4. Flash and test on hardware.
+1. Create a working branch from `dev`: in this repository if you can push to it,
+   otherwise in a fork.
+2. Make your changes and verify the build.
+3. Flash and test on hardware ([docs/Flashing.md](docs/Flashing.md)).
+4. Update the documentation the change affects, in the same PR.
 
-## Toolchain
-
-The build tools are the [flipperone-mcu-toolchain](https://github.com/flipperdevices/flipperone-mcu-toolchain)
-release pinned in `toolchain.json`; the README shows how to set it up.
-
-- To pin a new release: `python3 scripts/toolchain/toolchain.py update --tag v<N>`
-  (the newest without `--tag`). It reads the release's `release.json` and also rewrites
-  the version lines the Pico VS Code extension reads at the top of `CMakeLists.txt`.
-- A change to the build's Python packages (`assets/python/requirements.txt`) needs a
-  toolchain release with them first. Pin that release in the same pull request as the
-  change. Otherwise the build ignores the toolchain's Python packages and installs its
-  own from PyPI.
-- On Windows, `.toolchain` is a junction into `~/.flipper`. `git clean -x` can delete
-  the installed release through it; sourcing `fbtenv` reinstalls it.
+Changing the pinned toolchain or the build's Python packages:
+[docs/Building.md](docs/Building.md#updating-the-toolchain).
 
 ## Commit your update
 

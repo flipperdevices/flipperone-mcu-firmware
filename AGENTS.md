@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Orientation for AI agents working in this repository. Keep it short and factual —
-`docs/TARGETS.md`, `CONTRIBUTING.md` and `.github/copilot-instructions.md` own the details.
+`docs/Targets.md`, `CONTRIBUTING.md` and `.github/copilot-instructions.md` own the details.
 
 ## What this is
 
@@ -26,6 +26,7 @@ files and in the build workflow; read them there when a version matters for a re
 | `lib/` | First-party `toolbox`, `cli`, `containers`, `drivers`, `uart_pio`, `tusb`; submodules `corelibs`, `freertos`, `micro-ecc`, `nanopb`, `pico-kvstore`, `rtt` |
 | `targets/` | Board descriptors (`f1` base, `f2` derived) and generated flash layout |
 | `assets/` | PNG/UI sources, protobuf (`assets/proto` submodule), generation scripts |
+| `docs/` | Developer documentation, one file per topic; index in `docs/README.md` |
 | `scripts/` | `toolchain/` (toolchain bootstrap and pin), `get_env.py` (CI naming), `testops.py` (on-device test runner), `partition_table_update.py` |
 | `toolchain.json` | The pinned flipperone-mcu-toolchain release, written by `scripts/toolchain/toolchain.py` |
 
@@ -45,7 +46,8 @@ pinned in `toolchain.json`, downloading it the first time; source it in every ne
 
 Configure checks the tools against `toolchain.json` (`cmake/toolchain_check.cmake`). Do
 not edit `toolchain.json` or the `sdkVersion`/`toolchainVersion`/`picotoolVersion` lines
-of `CMakeLists.txt` by hand: `scripts/toolchain/toolchain.py` writes them.
+of `CMakeLists.txt` by hand: `scripts/toolchain/toolchain.py` writes them. Details:
+[docs/Building.md](docs/Building.md); flashing: [docs/Flashing.md](docs/Flashing.md).
 
 ## Test
 
@@ -68,7 +70,7 @@ python3 -m pytest scripts/agent_tools/tests -q
 
 They need the packages of `scripts/requirements-test.txt`; CI runs them in
 `.github/workflows/agent-tools-tests.yml`. The tests of `scripts/toolchain` need only
-pytest: `python3 -m pytest scripts/toolchain/tests -q`.
+pytest: `python3 -m pytest scripts/toolchain/tests -q`. Details: [docs/Testing.md](docs/Testing.md).
 
 ## Agent Tools
 

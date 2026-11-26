@@ -1,0 +1,3 @@
+# clangd: the compile commands of the preset configured or built last
+CompileFlags:
+  CompilationDatabase: build/current
