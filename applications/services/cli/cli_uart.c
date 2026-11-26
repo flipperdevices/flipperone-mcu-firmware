@@ -41,6 +41,11 @@ struct CliUart {
 
     CliShell* cli_shell;
     PipeSide* volatile own_pipe; // read by the UART interrupt
+
+    // Taken from the pipe in batches: a pipe operation per byte would cost the interrupt far more than the byte
+    uint8_t tx_buffer[TRANSFER_BATCH_SIZE];
+    size_t tx_buffer_pos;
+    size_t tx_buffer_len;
 };
 
 // ================
@@ -69,10 +74,18 @@ static bool cli_uart_tx_callback(FuriHalSerialHandle* handle, uint8_t* byte, voi
     UNUSED(handle);
     CliUart* cli_uart = context;
 
-    // pipe_receive() would wait for a byte that is not there, which in an interrupt never ends
-    PipeSide* pipe = cli_uart->own_pipe;
-    if(!pipe || !pipe_bytes_available(pipe)) return false;
-    furi_check(pipe_receive(pipe, byte, sizeof(*byte)) == sizeof(*byte));
+    if(cli_uart->tx_buffer_pos == cli_uart->tx_buffer_len) {
+        PipeSide* pipe = cli_uart->own_pipe;
+        if(!pipe) return false;
+        // pipe_receive() would wait for bytes that are not there, which in an interrupt never ends
+        size_t length = MIN(pipe_bytes_available(pipe), sizeof(cli_uart->tx_buffer));
+        if(!length) return false;
+        furi_check(pipe_receive(pipe, cli_uart->tx_buffer, length) == length);
+        cli_uart->tx_buffer_pos = 0;
+        cli_uart->tx_buffer_len = length;
+    }
+
+    *byte = cli_uart->tx_buffer[cli_uart->tx_buffer_pos++];
     return true;
 }
 
