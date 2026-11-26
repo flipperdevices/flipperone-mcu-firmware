@@ -60,6 +60,8 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# No C++ modules here; clangd rejects the module-scan flags CMake adds for GCC
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 set(FW_TARGET "f2" CACHE STRING "Hardware target, a directory under targets/")
 set(FIRMWARE_ORIGIN "Official" CACHE STRING "Firmware origin")

@@ -2,7 +2,7 @@
     "recommendations": [
         "marus25.cortex-debug",
         "ms-vscode.cmake-tools",
-        "ms-vscode.cpptools",
+        "llvm-vs-code-extensions.vscode-clangd",
         "ms-vscode.vscode-serial-monitor"
     ]
 }

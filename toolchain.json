@@ -1,14 +1,14 @@
 {
   "schema": 1,
-  "toolchain": "v3",
+  "toolchain": "v4",
   "repository": "flipperdevices/flipperone-mcu-toolchain",
-  "source_commit": "0e7e0c655d1f59184c6c41550c08609948570b13",
-  "image": "ghcr.io/flipperdevices/flipperone-mcu-toolchain@sha256:b65ee5b56d96eea904da7015d55126ab16246b197c466d2aede0440e68774bfa",
+  "source_commit": "1b5df5e6fc812d31615b94aa21bd4490397443f3",
+  "image": "ghcr.io/flipperdevices/flipperone-mcu-toolchain@sha256:1536020b084b0cbc0e02da0bad56170b9498f0d0099bc61d982405982350b32c",
   "archives": {
-    "linux-x86_64": {"name": "flipperone-mcu-toolchain-v3-linux-x86_64.tar.gz", "sha256": "c867d7f859742d4c548018d7715e14ca1060a3866b9a48e2669ef2803e65c4ee", "size": 489453935},
-    "linux-aarch64": {"name": "flipperone-mcu-toolchain-v3-linux-aarch64.tar.gz", "sha256": "a9eb980e6e6efb02e5b42bf687102982dc12b7dff646912fc08c27d376c415f1", "size": 462578732},
-    "darwin-arm64": {"name": "flipperone-mcu-toolchain-v3-darwin-arm64.tar.gz", "sha256": "abc9d2c41aae05c980c2b0db006ce64b421a55a1d0dc392130d640afe2b7166b", "size": 420103048},
-    "windows-x64": {"name": "flipperone-mcu-toolchain-v3-windows-x64.zip", "sha256": "9ccd6bb89e9090bb3cba183a209787498da9e64883aa64963f1219748f9edc76", "size": 498074840}
+    "linux-x86_64": {"name": "flipperone-mcu-toolchain-v4-linux-x86_64.tar.gz", "sha256": "124ce4486b4bbec90943f082a4d538a018ada69905b0c535a13cf65f662cf363", "size": 511540725},
+    "linux-aarch64": {"name": "flipperone-mcu-toolchain-v4-linux-aarch64.tar.gz", "sha256": "f38242717a7ced978204e16dd94d976af2afd50bad5fd90c828dcbb88c79c1f8", "size": 483369256},
+    "darwin-arm64": {"name": "flipperone-mcu-toolchain-v4-darwin-arm64.tar.gz", "sha256": "831d695a8d184fde750c0c51f1c6d6e3bc51ae1d9c3c71c00088470eb5915b8c", "size": 435189934},
+    "windows-x64": {"name": "flipperone-mcu-toolchain-v4-windows-x64.zip", "sha256": "e8267fd99ebd405e831642e105056044de2e181cacf1f0afe6f593fd33f87a55", "size": 513464530}
   },
   "components": {
     "arm-none-eabi-gcc": {"version": "14.2.1-1.1", "license": "GPL-3.0-or-later WITH GCC-exception-3.1 AND LicenseRef-newlib"},
@@ -26,7 +26,8 @@
     "python-packages": {"version": "requirements.lock", "license": "various (see THIRD_PARTY.md)"},
     "uv": {"version": "0.13.7", "license": "MIT OR Apache-2.0"},
     "ccache": {"version": "4.14.3", "license": "GPL-3.0-or-later"},
-    "clang-format": {"version": "23.1.4", "license": "Apache-2.0 WITH LLVM-exception"},
-    "clang-tidy": {"version": "23.1.4", "license": "Apache-2.0 WITH LLVM-exception"}
+    "clang-format": {"version": "22.1.1", "license": "Apache-2.0 WITH LLVM-exception"},
+    "clang-tidy": {"version": "22.1.0.1", "license": "Apache-2.0 WITH LLVM-exception"},
+    "clangd": {"version": "22.1.1", "license": "Apache-2.0 WITH LLVM-exception"}
   }
 }

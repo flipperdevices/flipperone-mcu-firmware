@@ -4,8 +4,24 @@
     "cmake.configureOnEdit": false,
     "cmake.automaticReconfigure": false,
     "cmake.configureOnOpen": false,
-    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
-    "C_Cpp.debugShortcut": false,
+    "cmake.copyCompileCommands": "${workspaceFolder}/build/compile_commands.json",
+    "clangd.path": "${workspaceFolder}/.toolchain/tools/clangd/bin/clangd",
+    "clangd.arguments": [
+        "--compile-commands-dir=${workspaceFolder}/build",
+        "--query-driver=**/arm-none-eabi-*",
+        "--header-insertion=never"
+    ],
+    "C_Cpp.intelliSenseEngine": "disabled",
+    "[c]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+        "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "modificationsIfAvailable"
+    },
+    "[cpp]": {
+        "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+        "editor.formatOnSave": true,
+        "editor.formatOnSaveMode": "modificationsIfAvailable"
+    },
     "cortex-debug.variableUseNaturalFormat": true,
     "search.exclude": {".toolchain": true},
     "files.watcherExclude": {"**/.toolchain/**": true},

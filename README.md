@@ -69,7 +69,7 @@ Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [TARGETS.md](TARGETS.m
 
 ### VSCode
 
-Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, Cortex-Debug). Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Run Project**, **Write partition table** and **Flash** tasks act on the selected preset's build.
+Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, clangd, Cortex-Debug). Code navigation and diagnostics come from the toolchain's clangd, which reads the selected preset's compile commands, so configure a preset first. On save, clangd formats the changed lines of C and C++ files with `.clang-format`. Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Run Project**, **Write partition table** and **Flash** tasks act on the selected preset's build.
 
 ### Other setups
 
