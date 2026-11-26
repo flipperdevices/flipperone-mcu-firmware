@@ -108,7 +108,7 @@ size_t furi_hal_otp_block_size(FuriHalOtpBlock block);
  * right CRC. data is zeroed otherwise. size must be the block's size. */
 bool furi_hal_otp_block_read(FuriHalOtpBlock block, void* data, size_t size);
 
-/** Read a block's rows as they are, valid or not, for a dump */
+/** Read a block through ECC, valid or not, for a dump */
 bool furi_hal_otp_block_dump(FuriHalOtpBlock block, void* data, size_t size);
 
 /** Write a block built off the device and lock its pages. Irreversible.

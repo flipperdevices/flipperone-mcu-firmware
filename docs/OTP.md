@@ -47,8 +47,6 @@ A block the firmware reads is one whose magic, index, version and CRC are right.
 | `connect` | u16 | |
 | `chip_id` | u8[8] | RP2350 CHIPID (`rp2350_hardware_uid` in `device_info`). The device refuses a block 1 made for another chip |
 
-A firmware runs on a board whose block 1 has its target, or on one with no block 1 (`furi_hal_version_do_i_belong_here()`).
-
 ### Block 2, the device (160 bytes)
 
 | Field | Type | |
@@ -81,10 +79,12 @@ The block carries its key so that `otp.py verify` can check a set of files on it
 
 Blocks are written in order: 1, then 2, then 3. The device refuses a block whose earlier blocks are not written, a block 1 for another chip, and a block 3 whose key or signatures it does not accept.
 
+Make all three files and check them with `otp.py verify` before writing block 1. Blocks 1 and 2 are locked as they are written, and only block 3 tells whether they are the ones that were signed: a block 2 other than the signed one leaves the device without valid OTP for good.
+
 A block is written in this order:
 
 1. Every row but the magic.
-2. Those rows are read back. The bootrom does not check what it wrote, so the magic only goes on a block that reads back right.
+2. Those rows are read back. The bootrom does not check what it wrote, so the magic only goes on a block that reads back right. A row with a bit that did not program still reads right through ECC: it is written again first, so ECC keeps its correction.
 3. The magic.
 4. The block's pages are locked, read only for Secure, Non-secure and bootloader access. The lock is permanent from the next reset; until then the firmware's software lock holds it.
 
@@ -93,7 +93,7 @@ Block 1 also writes the USB white label (below), with the board id `F<target>B<b
 A write cut short (power lost, a reset) is finished by sending the same block again, byte for byte. Each row is read raw to tell what it holds:
 
 - the wanted value, as is or inverted (the bootrom's bit repair by polarity): done;
-- blank, or a part of the wanted value's bits: a write cut short, written again;
+- blank, or a part of the wanted value's bits, as is or inverted: a write cut short, written again;
 - anything else, including a whole ECC row of another value: other data. The block is refused before anything is written.
 
 A block made anew differs from the one cut short, if only by its timestamp, so `otp.py` keeps the files it makes and never overwrites one.
@@ -129,5 +129,5 @@ otp.py load otp1.bin
 On the device:
 
 - `otp program OTP<n> <hex>` writes a block. It asks for confirmation; `--answer y` of `scripts/agent_tools/f1.py cli` gives it.
-- `otp dump OTP<n>` prints a block's rows as they are, valid or not.
+- `otp dump OTP<n>` prints a block as read through ECC, valid or not.
 - `device_info` prints the blocks, decoded.
