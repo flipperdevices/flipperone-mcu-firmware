@@ -51,7 +51,7 @@ cmake --build --preset f2-release
 
 The output firmware file will be at `build/f2-release/flipperone-mcu-firmware.uf2`.
 
-The first time, `fbtenv` downloads the archive for your machine (400–500 MB), checks its sha256 against `toolchain.json`, and unpacks it into `~/.flipperone-mcu-toolchain/<tag>/`. After that it only sets up the environment and points `~/.flipperone-mcu-toolchain/current` at that release (a junction on Windows); run it once in every new shell. To set it up offline, download the archive yourself and point `FLIPPERONE_TOOLCHAIN_ARCHIVE` at it.
+The first time, `fbtenv` downloads the archive for your machine (400–500 MB), checks its sha256 against `toolchain.json`, and unpacks it into `~/.flipper/flipperone-mcu-toolchain/<tag>/` (or `$FLIPPERONE_TOOLCHAIN_HOME/<tag>/`). After that it only sets up the environment and points the tree's `.toolchain` link at that release (a junction on Windows); run it once in every new shell. Each checkout or worktree has its own link, so trees pinned to different releases work side by side. To set it up offline, download the archive yourself and point `FLIPPERONE_TOOLCHAIN_ARCHIVE` at it.
 
 The toolchain runs on Linux x86_64 and aarch64 with glibc 2.34 or newer, macOS on Apple silicon, and Windows x64. It brings its own USB libraries; on Linux it needs only `libudev1`, which systemd-based distributions have, plus udev rules to use a debug probe or flash without root (see the toolchain's [README](https://github.com/flipperdevices/flipperone-mcu-toolchain#host-requirements)).
 
@@ -69,7 +69,7 @@ Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [TARGETS.md](TARGETS.m
 
 ### VSCode
 
-Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, Cortex-Debug). Set up the toolchain once with `fbtenv` as above; after that VSCode finds it in `~/.flipperone-mcu-toolchain` by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come from the `current` link, the release `fbtenv` set up last. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Run Project**, **Write partition table** and **Flash** tasks act on the selected preset's build. The template expects the toolchain in `~/.flipperone-mcu-toolchain`: with `FLIPPERONE_TOOLCHAIN_HOME` set elsewhere, change its paths to match.
+Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, Cortex-Debug). Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Run Project**, **Write partition table** and **Flash** tasks act on the selected preset's build.
 
 ### Other setups
 

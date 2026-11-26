@@ -14,7 +14,7 @@
         {
             "label": "Run Project",
             "type": "process",
-            "command": "${userHome}/.flipperone-mcu-toolchain/current/tools/picotool/picotool",
+            "command": "${workspaceFolder}/.toolchain/tools/picotool/picotool",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
@@ -31,7 +31,7 @@
         {
             "label": "Write partition table",
             "type": "process",
-            "command": "${userHome}/.flipperone-mcu-toolchain/current/tools/picotool/picotool",
+            "command": "${workspaceFolder}/.toolchain/tools/picotool/picotool",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
@@ -48,12 +48,12 @@
         {
             "label": "Flash",
             "type": "process",
-            "command": "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/openocd",
+            "command": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
                 "-s",
-                "${userHome}/.flipperone-mcu-toolchain/current/tools/openocd/scripts",
+                "${workspaceFolder}/.toolchain/tools/openocd/scripts",
                 "-f",
                 "interface/cmsis-dap.cfg",
                 "-f",

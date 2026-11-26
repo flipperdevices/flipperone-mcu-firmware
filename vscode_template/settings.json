@@ -1,12 +1,14 @@
 {
     "cmake.useCMakePresets": "always",
-    "cmake.cmakePath": "${userHome}/.flipperone-mcu-toolchain/current/tools/cmake/bin/cmake",
+    "cmake.cmakePath": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
     "cmake.configureOnEdit": false,
     "cmake.automaticReconfigure": false,
     "cmake.configureOnOpen": false,
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
     "C_Cpp.debugShortcut": false,
     "cortex-debug.variableUseNaturalFormat": true,
+    "search.exclude": {".toolchain": true},
+    "files.watcherExclude": {"**/.toolchain/**": true},
     "python-envs.pythonProjects": [
         {
             "path": ".",

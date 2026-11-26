@@ -7,10 +7,10 @@
 #
 # The first time, it downloads the windows-x64 release archive, checks its sha256
 # against toolchain.json and unpacks it into
-# $env:FLIPPERONE_TOOLCHAIN_HOME (default ~\.flipperone-mcu-toolchain)\<tag>\.
+# $env:FLIPPERONE_TOOLCHAIN_HOME (default ~\.flipper\flipperone-mcu-toolchain)\<tag>\.
 # Then, and on every later run, it dot-sources that bundle's own fbtenv.ps1, which
-# puts the tools first on PATH and sets PICO_SDK_PATH and the rest, and points the
-# `current` junction beside it at <tag> for IDE configs. Running it again is harmless.
+# puts the tools first on PATH and sets PICO_SDK_PATH and the rest, and points this
+# tree's .toolchain junction at the bundle for IDE configs. Running it again is harmless.
 #
 # Offline: set $env:FLIPPERONE_TOOLCHAIN_ARCHIVE to an already downloaded archive. It
 # is checked against toolchain.json all the same.
@@ -30,7 +30,7 @@ $_foBundle = & {
     }
 
     $home_ = if ($env:FLIPPERONE_TOOLCHAIN_HOME) { $env:FLIPPERONE_TOOLCHAIN_HOME }
-             else { Join-Path $HOME '.flipperone-mcu-toolchain' }
+             else { Join-Path $HOME '.flipper\flipperone-mcu-toolchain' }
     $dir = Join-Path $home_ $tag
     $marker = Join-Path $dir '.archive-sha256'
     $installed = if (Test-Path -LiteralPath $marker) { (Get-Content -LiteralPath $marker -TotalCount 1).Trim() }
@@ -85,7 +85,7 @@ $_foBundle = & {
     }
 
     # A junction needs no admin rights or developer mode, unlike a symlink
-    $current = Join-Path $home_ 'current'
+    $current = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path '.toolchain'
     try {
         $link = Get-Item -LiteralPath $current -Force -ErrorAction SilentlyContinue
         if ($link -and -not ($link.Attributes -band [IO.FileAttributes]::ReparsePoint)) {

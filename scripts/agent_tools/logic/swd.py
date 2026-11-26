@@ -27,9 +27,9 @@ CONFIG = str(constants.REPO_ROOT / "scripts" / "agent_tools" / "openocd" / "flip
 
 
 def _bundle_tool(*parts):
-    """Paths of a tool in the toolchain bundle whose environment is set up (scripts/toolchain/fbtenv.sh)."""
-    root = os.environ.get("FLIPPERONE_TOOLCHAIN_ROOT")
-    if not root:
+    """Paths of a tool in the toolchain bundle: the one set up in this shell, else this tree's .toolchain link (scripts/toolchain/fbtenv.sh)."""
+    root = os.environ.get("FLIPPERONE_TOOLCHAIN_ROOT") or os.path.join(REPO, ".toolchain")
+    if not os.path.isdir(root):
         return []
     path = os.path.join(root, "tools", *parts)
     return [path, path + ".exe"]

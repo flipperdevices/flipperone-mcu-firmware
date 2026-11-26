@@ -6,7 +6,7 @@
 
 `check` fails when toolchain.json is not in its canonical layout, when the version
 lines at the top of CMakeLists.txt (Pico VS Code extension) disagree with it, or when
-vscode_template/ names a toolchain version instead of the `current` link.
+vscode_template/ names a toolchain path other than this tree's .toolchain link.
 
 `update` reads release.json of the newest toolchain release (or of --tag) and
 rewrites toolchain.json and those version lines.
@@ -38,7 +38,7 @@ SHA256_RE = re.compile(r'[0-9a-f]{64}')
 IMAGE_RE = re.compile(r'ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}')
 # The Pico VS Code extension reads these lines literally; see CMakeLists.txt.
 VSCODE_LINE = 'set({name} {value})'
-VERSIONED_PATH_RE = re.compile(r'\.flipperone-mcu-toolchain/v[0-9]+/')
+HOME_PATH_RE = re.compile(r'flipperone-mcu-toolchain/')
 
 
 class PinError(Exception):
@@ -163,8 +163,8 @@ def update_copies(pin: dict, cmakelists: str) -> str:
 
 
 def template_problems(templates: dict[str, str]) -> list[str]:
-    return [f'vscode_template/{name}: use .flipperone-mcu-toolchain/current/, which fbtenv keeps up to date'
-            for name, text in sorted(templates.items()) if VERSIONED_PATH_RE.search(text)]
+    return [f'vscode_template/{name}: use ${{workspaceFolder}}/.toolchain/, which fbtenv keeps up to date'
+            for name, text in sorted(templates.items()) if HOME_PATH_RE.search(text)]
 
 
 def _templates() -> dict[str, str]:

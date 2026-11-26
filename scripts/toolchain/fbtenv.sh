@@ -5,10 +5,10 @@
 #
 # The first time, it downloads the release archive for this machine, checks its
 # sha256 against toolchain.json and unpacks it into
-# ${FLIPPERONE_TOOLCHAIN_HOME:-~/.flipperone-mcu-toolchain}/<tag>/. Then, and on every
-# later run, it sources that bundle's own fbtenv.sh, which puts the tools first on
-# PATH and exports PICO_SDK_PATH and the rest, and points the `current` link beside
-# it at <tag> for IDE configs. Sourcing it again is harmless.
+# ${FLIPPERONE_TOOLCHAIN_HOME:-~/.flipper/flipperone-mcu-toolchain}/<tag>/. Then, and on
+# every later run, it sources that bundle's own fbtenv.sh, which puts the tools first on
+# PATH and exports PICO_SDK_PATH and the rest, and points this tree's .toolchain link at
+# the bundle for IDE configs. Sourcing it again is harmless.
 #
 # Offline: set FLIPPERONE_TOOLCHAIN_ARCHIVE to an already downloaded archive. It is
 # checked against toolchain.json all the same.
@@ -56,7 +56,7 @@ _fo_bootstrap() {
         return 1
     fi
 
-    home="${FLIPPERONE_TOOLCHAIN_HOME:-$HOME/.flipperone-mcu-toolchain}"
+    home="${FLIPPERONE_TOOLCHAIN_HOME:-$HOME/.flipper/flipperone-mcu-toolchain}"
     dir="$home/$tag"
     if [ "$(cat "$dir/.archive-sha256" 2>/dev/null)" != "$sha256" ]; then
         mkdir -p "$home" || return 1
@@ -114,11 +114,11 @@ _fo_bootstrap() {
         return 1
     fi
 
-    if [ -L "$home/current" ] || [ ! -e "$home/current" ]; then
-        [ "$(readlink "$home/current")" = "$tag" ] || ln -sfn "$tag" "$home/current" ||
-            echo "fbtenv.sh: cannot point $home/current at $tag" >&2
+    if [ -L "$repo/.toolchain" ] || [ ! -e "$repo/.toolchain" ]; then
+        [ "$(readlink "$repo/.toolchain")" = "$dir" ] || ln -sfn "$dir" "$repo/.toolchain" ||
+            echo "fbtenv.sh: cannot point $repo/.toolchain at $dir" >&2
     else
-        echo "fbtenv.sh: $home/current is not a link, left alone" >&2
+        echo "fbtenv.sh: $repo/.toolchain is not a link, left alone" >&2
     fi
 }
 

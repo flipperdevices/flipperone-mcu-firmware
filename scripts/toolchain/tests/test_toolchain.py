@@ -93,7 +93,7 @@ def test_a_later_arm_release_of_the_same_gcc_is_kept():
 
 
 def test_templates_use_the_current_link():
-    templates = {'a.json': '~/.flipperone-mcu-toolchain/v7/x', 'b.json': '~/.flipperone-mcu-toolchain/current/x'}
+    templates = {'a.json': '${userHome}/.flipper/flipperone-mcu-toolchain/v7/x', 'b.json': '${workspaceFolder}/.toolchain/x'}
     assert [p.split(':')[0] for p in toolchain.template_problems(templates)] == ['vscode_template/a.json']
 
 
@@ -174,8 +174,8 @@ def test_bootstrap_installs_once_then_reuses(shell, checkout, tmp_path):
     assert 'unpacking' in first.stderr
     installed = tmp_path / 'tc' / 'v7'
     assert (installed / 'fbtenv.sh').is_file()
-    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['current', 'v7']  # no partial left over
-    assert (tmp_path / 'tc' / 'current').readlink() == Path('v7')
+    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['v7']  # no partial left over
+    assert (tree / '.toolchain').readlink() == installed
 
     archive.unlink()  # a second run needs no archive
     again = source(shell, tree, archive, tmp_path, '; type _fo_bootstrap >/dev/null 2>&1 && echo leaked')
@@ -189,24 +189,25 @@ def test_bootstrap_replaces_an_unfinished_install(shell, checkout, tmp_path):
     (tmp_path / 'tc' / 'v7' / 'leftover').mkdir(parents=True)
     assert 'rc=0 v7' in source(shell, tree, archive, tmp_path).stdout
     assert sorted(p.name for p in (tmp_path / 'tc' / 'v7').iterdir()) == ['.archive-sha256', 'fbtenv.sh']
-    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['current', 'v7']
+    assert sorted(p.name for p in (tmp_path / 'tc').iterdir()) == ['v7']
 
 
 @pytest.mark.parametrize('shell', SHELLS)
-def test_bootstrap_moves_the_current_link(shell, checkout, tmp_path):
+def test_bootstrap_moves_the_tree_link(shell, checkout, tmp_path):
     tree, archive = checkout
-    (tmp_path / 'tc').mkdir()
-    (tmp_path / 'tc' / 'current').symlink_to('v6')
+    (tmp_path / 'tc' / 'v6').mkdir(parents=True)
+    (tree / '.toolchain').symlink_to(tmp_path / 'tc' / 'v6')
     assert 'rc=0 v7' in source(shell, tree, archive, tmp_path).stdout
-    assert (tmp_path / 'tc' / 'current').readlink() == Path('v7')
+    assert (tree / '.toolchain').readlink() == tmp_path / 'tc' / 'v7'
+    assert (tmp_path / 'tc' / 'v6').is_dir()  # only the link moves
 
 
-def test_bootstrap_leaves_a_real_current_directory_alone(checkout, tmp_path):
+def test_bootstrap_leaves_a_real_toolchain_directory_alone(checkout, tmp_path):
     tree, archive = checkout
-    (tmp_path / 'tc' / 'current').mkdir(parents=True)
+    (tree / '.toolchain').mkdir()
     result = source('bash', tree, archive, tmp_path)
     assert 'rc=0 v7' in result.stdout and 'not a link' in result.stderr
-    assert list((tmp_path / 'tc' / 'current').iterdir()) == []
+    assert list((tree / '.toolchain').iterdir()) == []
 
 
 @pytest.mark.parametrize('shell', SHELLS)
