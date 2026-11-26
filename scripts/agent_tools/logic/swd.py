@@ -26,10 +26,20 @@ REPO = str(constants.REPO_ROOT)
 CONFIG = str(constants.REPO_ROOT / "scripts" / "agent_tools" / "openocd" / "flipperone-mcu.cfg")
 
 
+def _bundle_tool(*parts):
+    """Paths of a tool in the toolchain bundle: the one set up in this shell, else this tree's .toolchain link (scripts/toolchain/fbtenv.sh)."""
+    root = os.environ.get("FLIPPERONE_TOOLCHAIN_ROOT") or os.path.join(REPO, ".toolchain")
+    if not os.path.isdir(root):
+        return []
+    path = os.path.join(root, "tools", *parts)
+    return [path, path + ".exe"]
+
+
 def find_openocd():
-    """Return (binary, scripts dir). Needs a build with RP2350 support, such as the Pico SDK one."""
+    """Return (binary, scripts dir). Needs a build with RP2350 support: the toolchain bundle's or the Pico SDK one."""
     override = os.environ.get("F1_OPENOCD")
     candidates = [override] if override else []
+    candidates += _bundle_tool("openocd", "openocd")
     candidates += sorted(glob.glob(os.path.expanduser("~/.pico-sdk/openocd/*/openocd")), reverse=True)
     candidates += sorted(glob.glob(os.path.expanduser("~/.pico-sdk/openocd/*/openocd.exe")), reverse=True)
     for binary in candidates:
@@ -39,7 +49,7 @@ def find_openocd():
     system = shutil.which("openocd")
     if system:
         return system, None
-    raise RuntimeError("OpenOCD not found. Install the Pico SDK tooling or set F1_OPENOCD to the binary.")
+    raise RuntimeError("OpenOCD not found. Source scripts/toolchain/fbtenv.sh, or set F1_OPENOCD to the binary.")
 
 
 def run(commands, timeout=120):
@@ -136,14 +146,22 @@ def symbolize(addresses):
     return [(address, names.get(address, "in the bootrom" if address < 0x8000 else "?")) for address in addresses]
 
 
+def find_elf():
+    """The newest ELF in build/ or in a preset's build/<preset>/, or None."""
+    elves = glob.glob(os.path.join(REPO, "build", "*.elf")) + glob.glob(os.path.join(REPO, "build", "*", "*.elf"))
+    return max(elves, key=os.path.getmtime) if elves else None
+
+
 def _symbolize(addresses):
     if not addresses:
         return []
-    tool = sorted(glob.glob(os.path.expanduser("~/.pico-sdk/toolchain/*/bin/arm-none-eabi-addr2line")), reverse=True)
-    elf = glob.glob(os.path.join(REPO, "build", "*.elf"))
+    tool = [path for path in _bundle_tool("arm-none-eabi-gcc", "bin", "arm-none-eabi-addr2line") if os.path.isfile(path)]
+    tool += [shutil.which("arm-none-eabi-addr2line")] if shutil.which("arm-none-eabi-addr2line") else []
+    tool += sorted(glob.glob(os.path.expanduser("~/.pico-sdk/toolchain/*/bin/arm-none-eabi-addr2line")), reverse=True)
+    elf = find_elf()
     if not tool or not elf:
         return [(address, "?") for address in addresses]
-    output = process.run([tool[0], "-f", "-C", "-e", elf[0], *(f"{address:#x}" for address in addresses)], timeout=120).stdout.splitlines()
+    output = process.run([tool[0], "-f", "-C", "-e", elf, *(f"{address:#x}" for address in addresses)], timeout=120).stdout.splitlines()
     return [(address, f"{output[2 * i]} at {os.path.relpath(output[2 * i + 1], REPO) if output[2 * i + 1].startswith('/') else output[2 * i + 1]}") for i, address in enumerate(addresses)]
 
 
