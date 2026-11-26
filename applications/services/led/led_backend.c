@@ -510,7 +510,7 @@ void led_set_color_batch(Led* instance, const LedBatch* batch) {
 
 void led_set_pattern(Led* instance, FuriBspLedType type, LedPattern pattern) {
     furi_check(instance);
-    furi_check(pattern < LedPatternMax);
+    if(pattern >= LedPatternMax) return;
     furi_check(led_get_led_group_by_led_type(type) == LedGroupLink);
 
     const LedMessage msg = {
