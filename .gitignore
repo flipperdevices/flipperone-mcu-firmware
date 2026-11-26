@@ -2,6 +2,7 @@
 build
 .cache
 .vscode
+*.code-workspace
 
 # Python venv
 .env

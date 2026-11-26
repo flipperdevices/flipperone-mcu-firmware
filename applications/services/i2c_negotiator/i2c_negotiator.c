@@ -190,6 +190,26 @@ void i2c_negotiator_led_link4(I2CNegotiator* instance, uint16_t value) {
 }
 I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4);
 
+void i2c_negotiator_led_link1_pattern(I2CNegotiator* instance, uint16_t value) {
+    led_set_pattern(instance->led, FuriBspLedTypeNet, (LedPattern)value);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link1_pattern);
+
+void i2c_negotiator_led_link2_pattern(I2CNegotiator* instance, uint16_t value) {
+    led_set_pattern(instance->led, FuriBspLedTypeWiFi, (LedPattern)value);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link2_pattern);
+
+void i2c_negotiator_led_link3_pattern(I2CNegotiator* instance, uint16_t value) {
+    led_set_pattern(instance->led, FuriBspLedTypeEth2, (LedPattern)value);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link3_pattern);
+
+void i2c_negotiator_led_link4_pattern(I2CNegotiator* instance, uint16_t value) {
+    led_set_pattern(instance->led, FuriBspLedTypeEth1, (LedPattern)value);
+}
+I2C_NEGOTIATOR_REGISTER_MESSAGE_FROM_IRQ(i2c_negotiator_led_link4_pattern);
+
 // Haptic functions
 void i2c_negotiator_haptic_play_effect(I2CNegotiator* instance, uint16_t value) {
     Drv2605lEffect effect_id = (Drv2605lEffect)((value & I2C_HAPTIC_NUM_EFFECT_MASK) >> I2C_HAPTIC_NUM_EFFECT_SHIFT);
@@ -267,6 +287,11 @@ static void i2c_negotiator_setup_leds(I2CNegotiator* instance) {
     i2c_register_add_writable(I2C_LED_LINK2_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link2_message, instance->negotiator_queue);
     i2c_register_add_writable(I2C_LED_LINK3_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link3_message, instance->negotiator_queue);
     i2c_register_add_writable(I2C_LED_LINK4_COLOR_REG_ADDRESS, 0, i2c_negotiator_led_link4_message, instance->negotiator_queue);
+
+    i2c_register_add_writable(I2C_LED_LINK1_PATTERN_REG_ADDRESS, LedPatternStaticColor, i2c_negotiator_led_link1_pattern_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_LED_LINK2_PATTERN_REG_ADDRESS, LedPatternStaticColor, i2c_negotiator_led_link2_pattern_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_LED_LINK3_PATTERN_REG_ADDRESS, LedPatternStaticColor, i2c_negotiator_led_link3_pattern_message, instance->negotiator_queue);
+    i2c_register_add_writable(I2C_LED_LINK4_PATTERN_REG_ADDRESS, LedPatternStaticColor, i2c_negotiator_led_link4_pattern_message, instance->negotiator_queue);
 
     i2c_register_add_writable(I2C_LED_BRIGHTNESS_LINK_REG_ADDRESS, 0, i2c_negotiator_link_led_brightness_set_message, instance->negotiator_queue);
     i2c_register_add_writable(I2C_LED_BRIGHTNESS_POWER_REG_ADDRESS, 0, i2c_negotiator_power_led_brightness_set_message, instance->negotiator_queue);

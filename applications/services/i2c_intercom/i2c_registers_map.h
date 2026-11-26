@@ -195,12 +195,26 @@
  * 0x0310+2 Link2 LED color (read, write)
  * 0x0310+4 Link3 LED color (read, write)
  * 0x0310+6 Link4 LED color (read, write)
+ * 
+ * 0x0310+10 Link1 LED pattern ID (read, write)
+ * 0x0310+12 Link2 LED pattern ID (read, write)
+ * 0x0310+14 Link3 LED pattern ID (read, write)
+ * 0x0310+16 Link4 LED pattern ID (read, write)
+ *
+ * Pattern IDs: 0 - static color (the color register value, the default),
+ * 1 - rainbow gradient, 2 - fade, 3 - blink. Patterns run until another ID is
+ * written; 0 stops the animation and shows the static color again.
  */
 #define I2C_LED_COLOR_REG_BASE          (0x0310)
 #define I2C_LED_LINK1_COLOR_REG_ADDRESS (I2C_LED_COLOR_REG_BASE + 0x00)
 #define I2C_LED_LINK2_COLOR_REG_ADDRESS (I2C_LED_COLOR_REG_BASE + 0x02)
 #define I2C_LED_LINK3_COLOR_REG_ADDRESS (I2C_LED_COLOR_REG_BASE + 0x04)
 #define I2C_LED_LINK4_COLOR_REG_ADDRESS (I2C_LED_COLOR_REG_BASE + 0x06)
+
+#define I2C_LED_LINK1_PATTERN_REG_ADDRESS (I2C_LED_COLOR_REG_BASE + 0x10)
+#define I2C_LED_LINK2_PATTERN_REG_ADDRESS (I2C_LED_COLOR_REG_BASE + 0x12)
+#define I2C_LED_LINK3_PATTERN_REG_ADDRESS (I2C_LED_COLOR_REG_BASE + 0x14)
+#define I2C_LED_LINK4_PATTERN_REG_ADDRESS (I2C_LED_COLOR_REG_BASE + 0x16)
 
 // Backlight control registers
 /*
