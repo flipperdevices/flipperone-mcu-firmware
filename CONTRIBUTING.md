@@ -75,6 +75,8 @@ release pinned in `toolchain.json`; the README shows how to set it up.
   toolchain release with them first. Pin that release in the same pull request as the
   change. Otherwise the build ignores the toolchain's Python packages and installs its
   own from PyPI.
+- On Windows, `.toolchain` is a junction into `~/.flipper`. `git clean -x` can delete
+  the installed release through it; sourcing `fbtenv` reinstalls it.
 
 ## Commit your update
 
