@@ -5,7 +5,7 @@ The layout is targets/f1/furi_hal/furi_hal_otp.h; the commands follow
 BusyBar's bsbotp.py. A block is printed with its raw hex, or saved to a file
 with -o, and written on the device with `otp program OTP<n> <hex>`:
 
-    otp.py create-otp1 --target 2 --body 1 --connect 1 --chip-id <rp2350_hardware_uid> -o otp1.bin
+    otp.py create-otp1 --hw-version 1 --target 2 --body 1 --connect 1 --chip-id <rp2350_hardware_uid> -o otp1.bin
     otp.py create-otp2 --eth0 ... --name ... -o otp2.bin
     otp.py create-otp3 --key key.pem --key-id 0 --otp1 otp1.bin --otp2 otp2.bin -o otp3.bin
     otp.py load otp1.bin     # its fields and the hex for `otp program OTP1`

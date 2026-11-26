@@ -33,6 +33,7 @@ typedef enum {
 } FuriHalOtpUsbWhiteLabelError;
 
 static bool furi_hal_otp_usb_white_label_lock(void);
+static bool furi_hal_otp_usb_white_label_valid(void);
 
 // Every bootrom OTP call goes through it: the bootrom takes its OTP lock
 // without waiting, and a write leaves OTP unreadable until it is done. Held
@@ -266,7 +267,7 @@ static uint32_t furi_hal_otp_usb_white_label_flag_copies(void) {
     return copies;
 }
 
-bool furi_hal_otp_usb_white_label_valid(void) {
+static bool furi_hal_otp_usb_white_label_valid(void) {
     // As the bootrom reads it: a majority of the three copies
     return furi_hal_otp_usb_white_label_flag_copies() >= 2;
 }
@@ -590,7 +591,8 @@ static bool furi_hal_otp_usb_white_label_board_id_differs(uint32_t target, uint3
        !furi_hal_otp_rows_scan(&rows, WL_BASE_ROW + WL_OFF_BOARD_ID, want, (len + 1) / 2)) {
         return true;
     }
-    // A finished one must hold it all; one cut short only nothing else
+    // A finished one must hold this board id in full; one cut short must
+    // hold nothing that is not of it
     return rows.other || (furi_hal_otp_usb_white_label_valid() && !rows.done);
 }
 
@@ -765,7 +767,7 @@ static bool furi_hal_otp_signatures_ok(const FuriHalOtpBlock1Data* b1, const Fur
            furi_hal_otp_signature_ok(key, b1->chip_id, FuriHalOtpBlock2, b2, sizeof(*b2), b3->block2_signature);
 }
 
-void furi_hal_otp_chip_id(uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE]) {
+static void furi_hal_otp_chip_id(uint8_t chip_id[FURI_HAL_OTP_CHIP_ID_SIZE]) {
     pico_unique_board_id_t id;
     pico_get_unique_board_id(&id);
     memcpy(chip_id, id.id, FURI_HAL_OTP_CHIP_ID_SIZE);

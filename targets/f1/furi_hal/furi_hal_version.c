@@ -192,7 +192,6 @@ const char* furi_hal_version_get_hw_version_code(void) {
 
 const char* furi_hal_version_get_name_ptr(void) {
     const FuriHalOtpBlock2Data* device = furi_hal_version_get_device();
-    // NUL terminated: scripts/otp.py keeps it to 31 chars, and the CRC holds
     return device && memchr(device->name, '\0', sizeof(device->name)) ? device->name : NULL;
 }
 

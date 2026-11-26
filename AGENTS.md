@@ -23,7 +23,7 @@ files and in the build workflow; read them there when a version matters for a re
 | `applications/main/` | Boot-time apps and CLI commands (`cpu`, `dmesg`, `saradc`, `self_check`) |
 | `applications/debug/` | Hardware test apps and `unit_test_app` |
 | `applications/template/app.c` | Canonical minimal app (`app_alloc` / `app_body` / `app_free`) |
-| `lib/` | First-party `toolbox`, `cli`, `containers`, `drivers`, `uart_pio`, `tusb`; submodules `corelibs`, `freertos`, `nanopb`, `pico-kvstore`, `rtt` |
+| `lib/` | First-party `toolbox`, `cli`, `containers`, `drivers`, `uart_pio`, `tusb`; submodules `corelibs`, `freertos`, `micro-ecc`, `nanopb`, `pico-kvstore`, `rtt` |
 | `targets/` | Board descriptors (`f1` base, `f2` derived) and generated flash layout |
 | `assets/` | PNG/UI sources, protobuf (`assets/proto` submodule), generation scripts |
 | `scripts/` | `get_env.py` (CI naming), `testops.py` (on-device test runner), `partition_table_update.py` |
