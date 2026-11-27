@@ -63,7 +63,9 @@ Each board is described by `targets/<name>/target.cmake`, and a target can be ba
 | --- | --- |
 | `f2-release` | f2 firmware |
 | `f2-recovery` | f2 firmware and `recovery.uf2` |
+| `f2-debug` | f2 firmware, debug: `-Og`, `furi_assert` on |
 | `f1-release` | f1 firmware |
+| `f1-debug` | f1 firmware, debug |
 
 Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [docs/TARGETS.md](docs/TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
 
@@ -76,7 +78,7 @@ Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [docs/TARGETS.md](docs
 
 Ctrl+Shift+B (Cmd+Shift+B on macOS) lists the tasks:
 
-- **Build**: the selected preset. **Build f2**, **Build f2 recovery**, **Build f1**: that preset.
+- **Build**: the selected preset. **Build f2**, **Build f2 recovery**, **Build f2 debug**, **Build f1**, **Build f1 debug**: that preset.
 - **Flash**: build the selected preset, then flash it over SWD with a debug probe ([see below](#with-a-debug-probe)).
 - **Flash over USB (BOOTSEL)**, **Write partition table over USB (BOOTSEL)**: build, then load into an MCU already in BOOTSEL mode.
 

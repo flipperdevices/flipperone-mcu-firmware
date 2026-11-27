@@ -134,6 +134,9 @@ add_compile_options(-Wno-unused-but-set-variable)
 # clay.c has some warnings also
 add_compile_options(-Wno-unknown-pragmas)
 
+# Debug builds: the Pico SDK sets -Og -g; NDEBUG keeps assert() out, FURI_DEBUG turns furi_assert on
+add_compile_definitions($<$<CONFIG:Debug>:NDEBUG> $<$<CONFIG:Debug>:FURI_DEBUG>)
+
 # The set of sources and include directories is described by the target, see
 # targets/target_api.cmake for how a target inherits from another one.
 include("${CMAKE_CURRENT_LIST_DIR}/targets/target_api.cmake")

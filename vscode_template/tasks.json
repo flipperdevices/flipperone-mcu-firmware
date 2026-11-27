@@ -30,12 +30,32 @@
             "problemMatcher": []
         },
         {
+            "label": "Build f2 debug",
+            "detail": "Configure and build the f2-debug preset",
+            "type": "process",
+            "command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake.exe"},
+            "args": ["--workflow", "--preset", "f2-debug"],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
             "label": "Build f1",
             "detail": "Configure and build the f1-release preset",
             "type": "process",
             "command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
             "windows": {"command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake.exe"},
             "args": ["--workflow", "--preset", "f1-release"],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build f1 debug",
+            "detail": "Configure and build the f1-debug preset",
+            "type": "process",
+            "command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake.exe"},
+            "args": ["--workflow", "--preset", "f1-debug"],
             "group": "build",
             "problemMatcher": []
         },
