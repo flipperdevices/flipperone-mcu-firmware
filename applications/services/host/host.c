@@ -86,8 +86,9 @@ static void host_set_state(Host* instance, HostState state) {
     instance->state = state;
     FURI_LOG_I(TAG, "Host state: %d", state);
     furi_pubsub_publish(instance->pubsub, &state);
-    // Its frames were dropped until now, the first of this kernel's too
-    if(state == HostStateRunning && (was == HostStateStarting || was == HostStateHandover || was == HostStateNotResponding)) {
+    // From a boot phase its frames were dropped, the first of this kernel's
+    // too; from not responding it may have nothing new to draw
+    if(state == HostStateRunning && (was == HostStateStarting || was == HostStateHandover || was == HostStateMaskrom || was == HostStateNotResponding)) {
         host_request_frame();
     }
 }
@@ -107,12 +108,13 @@ static void host_response_timer_callback(void* context) {
 }
 
 static void host_reported(Host* instance, CpuState cpu_state) {
-    if(instance->state == HostStateOff || instance->state == HostStateMaskrom) return;
+    if(instance->state == HostStateOff) return;
     if(!instance->reported) {
         instance->reported = true;
         furi_event_loop_timer_stop(instance->response_timer);
     }
-    const bool booting = instance->state == HostStateStarting || instance->state == HostStateHandover;
+    // A kernel booted after maskrom too: flashed, then reset from the PC
+    const bool booting = instance->state == HostStateStarting || instance->state == HostStateHandover || instance->state == HostStateMaskrom;
     if(instance->state == HostStateNotResponding || (booting && host_state_is_live(cpu_state))) {
         host_set_state(instance, HostStateRunning);
     }

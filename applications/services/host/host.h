@@ -36,11 +36,11 @@ typedef enum {
  * are its kernel's only in Running and NotResponding. */
 typedef enum {
     HostStateOff, /* Rails off */
-    HostStateStarting, /* Powered or restarted, by the MCU or by itself: until a kernel reports */
+    HostStateStarting, /* Powered or restarted, by the MCU or by itself: until a kernel reports a live state */
     HostStateRunning, /* A kernel reported, or the host was found powered after an MCU reset */
     HostStateNotResponding, /* Powered, but Linux has not written its CPU state in time */
-    HostStateMaskrom, /* Powered into the SoC maskrom */
-    HostStateHandover, /* The boot loader's kernel handed over to the profile's: until it reports */
+    HostStateMaskrom, /* Powered into the SoC maskrom: until a kernel reports a live state */
+    HostStateHandover, /* The boot loader's kernel handed over to the profile's: until it reports a live state */
 } HostState;
 
 #ifdef __cplusplus
