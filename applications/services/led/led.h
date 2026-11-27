@@ -46,6 +46,16 @@ typedef enum {
     LedGroupMax, // internal use only, keep it last
 } LedGroup;
 
+// Link LED animation presets, selectable by I2C_LED_LINKx_PATTERN_REG_ADDRESS regs
+typedef enum {
+    LedPatternStaticColor = 0,
+    LedPatternRainbowGradient,
+    LedPatternFade,
+    LedPatternBlink,
+
+    LedPatternMax,
+} LedPattern;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -53,6 +63,8 @@ extern "C" {
 void led_set_color_single(Led* instance, FuriBspLedType type, LedColor color);
 
 void led_set_color_batch(Led* instance, const LedBatch* batch);
+
+void led_set_pattern(Led* instance, FuriBspLedType type, LedPattern pattern);
 
 void led_set_brightness(Led* instance, LedGroup group, uint8_t brightness);
 

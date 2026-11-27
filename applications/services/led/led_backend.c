@@ -1,4 +1,5 @@
 #include "led.h"
+#include "led_patterns_i.h"
 
 #include <furi_bsp.h>
 #include <furi_hal_nvm.h>
@@ -15,8 +16,45 @@
 #define LED_BACKLIGHT_TIME_DEFAULT (10 * 1000)
 #define LED_BACKLIGHT_TIME_MAX     ((UINT16_MAX) * 100) // I2C: 16-bit register with 100ms resolution
 
+static const FuriBspLedType leds_in_link_group[] = {
+    FuriBspLedTypeNet,
+    FuriBspLedTypeWiFi,
+    FuriBspLedTypeEth2,
+    FuriBspLedTypeEth1,
+};
+
+static const FuriBspLedType leds_in_power_group[] = {
+    FuriBspLedTypePower,
+};
+
+static const FuriBspLedType leds_in_wattmeter_group[] = {
+    FuriBspLedTypeBatteryOutline,
+    FuriBspLedTypeBatteryWatt1,
+    FuriBspLedTypeBatteryWatt2,
+    FuriBspLedTypeBatteryWatt3,
+    FuriBspLedTypeBatteryWatt4,
+    FuriBspLedTypeUsbCharging,
+    FuriBspLedTypeUsbWatt1,
+    FuriBspLedTypeUsbWatt2,
+    FuriBspLedTypeUsbWatt3,
+    FuriBspLedTypeUsbWatt4,
+    FuriBspLedTypeBatteryCenter,
+};
+
+#define LED_WITH_PATTERN_COUNT (COUNT_OF(leds_in_link_group))
+
+typedef struct {
+    Led* instance; // owning service, the timer callback context
+    FuriBspLedType type;
+    FuriEventLoopTimer* timer;
+    LedPattern pattern;
+    uint8_t phase;
+    LedColor active_color; // last color produced by the preset
+} LedPatternState;
+
 typedef struct {
     LedColor colors[LED_TOTAL_LEDS_COUNT];
+    LedPatternState patterns[LED_TOTAL_LEDS_COUNT];
     FuriState* brightness[LedGroupMax];
     FuriState* backlight_time;
     bool backlight_always_on;
@@ -35,6 +73,7 @@ typedef enum {
     LedMessageTypeSetColorSingle,
     LedMessageTypeSetColorBatch,
     LedMessageTypeSetBrightness,
+    LedMessageTypeSetPattern,
     LedMessageTypeSetBacklightTime,
     LedMessageTypeBacklightControl,
     LedMessageTypeBacklightInputToggle,
@@ -58,6 +97,11 @@ typedef struct {
             LedGroup group;
             uint8_t brightness;
         } set_brightness;
+
+        struct {
+            FuriBspLedType type;
+            LedPattern pattern;
+        } set_pattern;
 
         struct {
             uint32_t timeout_ms;
@@ -97,31 +141,6 @@ static LedGroup led_get_led_group_by_led_type(FuriBspLedType type) {
     }
 }
 
-static const FuriBspLedType leds_in_link_group[] = {
-    FuriBspLedTypeNet,
-    FuriBspLedTypeWiFi,
-    FuriBspLedTypeEth2,
-    FuriBspLedTypeEth1,
-};
-
-static const FuriBspLedType leds_in_power_group[] = {
-    FuriBspLedTypePower,
-};
-
-static const FuriBspLedType leds_in_wattmeter_group[] = {
-    FuriBspLedTypeBatteryOutline,
-    FuriBspLedTypeBatteryWatt1,
-    FuriBspLedTypeBatteryWatt2,
-    FuriBspLedTypeBatteryWatt3,
-    FuriBspLedTypeBatteryWatt4,
-    FuriBspLedTypeUsbCharging,
-    FuriBspLedTypeUsbWatt1,
-    FuriBspLedTypeUsbWatt2,
-    FuriBspLedTypeUsbWatt3,
-    FuriBspLedTypeUsbWatt4,
-    FuriBspLedTypeBatteryCenter,
-};
-
 static const FuriBspLedType* leds_group[LedGroupMax] = {
     [LedGroupLink] = leds_in_link_group,
     [LedGroupPower] = leds_in_power_group,
@@ -136,20 +155,84 @@ static const size_t leds_in_group_count[LedGroupMax] = {
     [LedGroupDisplayBacklight] = 0,
 };
 
-static void led_set_color(Led* instance, FuriBspLedType type, LedColor color, uint8_t brightness) {
+static void led_store_color(Led* instance, FuriBspLedType type, LedColor color) {
     const uint8_t first_index = furi_bsp_led_get_physical_index(type);
     const uint8_t leds_count = furi_bsp_led_get_leds_count(type);
     for(uint8_t i = 0; i < leds_count; i++) {
         instance->led_state.colors[first_index + i] = color;
     }
+}
 
+static void led_output_color(Led* instance, FuriBspLedType type, LedColor color, uint8_t brightness) {
     LedColor adjusted_color = {
         ((float)color.r * brightness) / 255.0f * LED_RGB_BRIGHTNESS_MULTIPLIER,
         ((float)color.g * brightness) / 255.0f * LED_RGB_BRIGHTNESS_MULTIPLIER,
         ((float)color.b * brightness) / 255.0f * LED_RGB_BRIGHTNESS_MULTIPLIER,
     };
-    //instance->led_state.line[type] = ws2812_urgb_u32(adjusted_color.r, adjusted_color.g, adjusted_color.b);
     furi_bsp_led_set(instance->bsp_led, type, adjusted_color.r, adjusted_color.g, adjusted_color.b);
+}
+
+// Outputs what the LED should show right now: the stored color for the static
+// pattern, the last preset step otherwise.
+static void led_render(Led* instance, FuriBspLedType type) {
+    const uint8_t index = furi_bsp_led_get_physical_index(type);
+    const LedPatternState* pattern_state = &instance->led_state.patterns[index];
+
+    uint8_t brightness;
+    furi_state_get(instance->led_state.brightness[led_get_led_group_by_led_type(type)], &brightness);
+
+    const LedColor color = (pattern_state->pattern == LedPatternStaticColor) ? instance->led_state.colors[index] : pattern_state->active_color;
+    led_output_color(instance, type, color, brightness);
+}
+
+// One preset step, then a redraw with the current brightness.
+static void led_pattern_step(Led* instance, FuriBspLedType type) {
+    const uint8_t index = furi_bsp_led_get_physical_index(type);
+    LedPatternState* pattern_state = &instance->led_state.patterns[index];
+
+    furi_check(pattern_state->pattern < LedPatternMax);
+
+    pattern_state->active_color = led_pattern_presets[pattern_state->pattern].callback(instance->led_state.colors[index], &pattern_state->phase);
+    led_render(instance, type);
+}
+
+static void led_pattern_timer_callback(void* context) {
+    furi_assert(context);
+    LedPatternState* pattern_state = context;
+
+    led_pattern_step(pattern_state->instance, pattern_state->type);
+    furi_bsp_led_update(pattern_state->instance->bsp_led);
+}
+
+static void led_process_set_pattern(Led* instance, FuriBspLedType type, LedPattern pattern) {
+    const uint8_t index = furi_bsp_led_get_physical_index(type);
+    LedPatternState* pattern_state = &instance->led_state.patterns[index];
+
+    furi_check(pattern_state->timer); // patterns are only for the link LEDs
+
+    pattern_state->pattern = pattern;
+    pattern_state->phase = 0;
+
+    if(pattern == LedPatternStaticColor) {
+        furi_event_loop_timer_stop(pattern_state->timer);
+        led_render(instance, type);
+    } else {
+        led_pattern_step(instance, type);
+        furi_event_loop_timer_start(pattern_state->timer, led_pattern_presets[pattern].period_ms);
+    }
+
+    furi_bsp_led_update(instance->bsp_led);
+}
+
+// Stops every running pattern without touching the outputs, for "all off" batch.
+static void led_pattern_stop_all(Led* instance) {
+    for(size_t i = 0; i < LED_WITH_PATTERN_COUNT; i++) {
+        const uint8_t index = furi_bsp_led_get_physical_index(leds_in_link_group[i]);
+        LedPatternState* pattern_state = &instance->led_state.patterns[index];
+
+        furi_event_loop_timer_stop(pattern_state->timer);
+        pattern_state->pattern = LedPatternStaticColor;
+    }
 }
 
 static void led_backlight_enable(Led* instance, bool enable) {
@@ -182,17 +265,14 @@ static void led_process_set_color_batch(Led* instance, LedItem* items, size_t co
         case FuriBspLedTypeNet ... FuriBspLedTypeBatteryCenter:
         case FuriBspLedTypeBatteryOutline1:
         case FuriBspLedTypeBatteryOutline2: {
-            LedGroup group = led_get_led_group_by_led_type(items[i].type);
-
-            uint8_t brightness;
-            furi_state_get(instance->led_state.brightness[group], &brightness);
-
-            led_set_color(instance, items[i].type, items[i].color, brightness);
+            led_store_color(instance, items[i].type, items[i].color);
+            led_render(instance, items[i].type);
             break;
         }
 
         case FuriBspLedTypeAllOff:
-            //turn off all lines
+            // Turn off all lines
+            led_pattern_stop_all(instance);
             furi_bsp_led_all_off(instance->bsp_led);
             break;
         }
@@ -212,9 +292,7 @@ static void led_process_set_brightness(Led* instance, LedGroup group, uint8_t br
         size_t group_leds_count = leds_in_group_count[group];
 
         for(size_t i = 0; i < group_leds_count; i++) {
-            FuriBspLedType type = group_leds[i];
-            const uint8_t index = furi_bsp_led_get_physical_index(type);
-            led_set_color(instance, type, instance->led_state.colors[index], brightness);
+            led_render(instance, group_leds[i]);
         }
 
         furi_bsp_led_update(instance->bsp_led);
@@ -254,6 +332,11 @@ static void led_message_queue_callback(FuriEventLoopObject* object, void* contex
     }
     case LedMessageTypeSetBrightness: {
         led_process_set_brightness(instance, msg.set_brightness.group, msg.set_brightness.brightness, true);
+        result = true;
+        break;
+    }
+    case LedMessageTypeSetPattern: {
+        led_process_set_pattern(instance, msg.set_pattern.type, msg.set_pattern.pattern);
         result = true;
         break;
     }
@@ -352,6 +435,14 @@ static Led* led_alloc(void) {
     instance->event_loop = furi_event_loop_alloc();
     instance->message_queue = furi_message_queue_alloc(LED_MAX_MESSAGES, sizeof(LedMessage));
     instance->backlight_timer = furi_event_loop_timer_alloc(instance->event_loop, led_backlight_timer_callback, FuriEventLoopTimerTypeOnce, instance);
+    for(size_t i = 0; i < LED_WITH_PATTERN_COUNT; i++) {
+        const uint8_t index = furi_bsp_led_get_physical_index(leds_in_link_group[i]);
+        LedPatternState* pattern_state = &instance->led_state.patterns[index];
+
+        pattern_state->instance = instance;
+        pattern_state->type = leds_in_link_group[i];
+        pattern_state->timer = furi_event_loop_timer_alloc(instance->event_loop, led_pattern_timer_callback, FuriEventLoopTimerTypePeriodic, pattern_state);
+    }
 
     instance->led_state.backlight_time = furi_state_alloc(sizeof(uint32_t));
     uint32_t backlight_time_value = 0;
@@ -413,6 +504,18 @@ void led_set_color_batch(Led* instance, const LedBatch* batch) {
     const LedMessage msg = {
         .type = LedMessageTypeSetColorBatch,
         .set_color_batch = {.items = batch},
+    };
+    led_send_message(instance, &msg);
+}
+
+void led_set_pattern(Led* instance, FuriBspLedType type, LedPattern pattern) {
+    furi_check(instance);
+    if(pattern >= LedPatternMax) return;
+    furi_check(led_get_led_group_by_led_type(type) == LedGroupLink);
+
+    const LedMessage msg = {
+        .type = LedMessageTypeSetPattern,
+        .set_pattern = {.type = type, .pattern = pattern},
     };
     led_send_message(instance, &msg);
 }

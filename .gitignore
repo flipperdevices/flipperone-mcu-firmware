@@ -4,6 +4,7 @@ build
 /.toolchain
 .cache
 .vscode
+*.code-workspace
 
 # Python venv
 .env
