@@ -4,7 +4,14 @@
 extern "C" {
 #endif
 
+/** Classic softkey: a 48x14 button along the bottom edge, index 0..4 from left to right.
+ *  Active: the key of an open popup menu, drawn over it. */
 void elements_softkey_button_element(size_t index, const char* text, bool active, bool pressed);
+
+/** Home screen tab along the bottom edge: Help (1), Power (2) and Settings (3)
+ *  as in the mock-up, 0 and 4 continue the row outwards. A pressed tab is
+ *  inverted; an active one is the key of an open popup menu, drawn over it. */
+void elements_home_tab_element(size_t index, const char* text, bool active, bool pressed);
 
 #if defined(__cplusplus)
 }

@@ -34,6 +34,7 @@ typedef struct {
     size_t position;
     bool visible;
     bool power_pressed;
+    PopupMenuSoftkeyStyle softkey_style;
 } PopupMenuViewModel;
 
 static void popup_menu_draw_item(PopupMenuItem* item, size_t line_index, bool selected) {
@@ -200,7 +201,11 @@ static bool popup_menu_layout_callback(void* _model) {
             popup_menu_draw_item_list(model);
         }
     }
-    elements_softkey_button_element(2, "Power", true, model->power_pressed);
+    if(model->softkey_style == PopupMenuSoftkeyStyleHomeTab) {
+        elements_home_tab_element(2, "Power", true, model->power_pressed);
+    } else {
+        elements_softkey_button_element(2, "Power", true, model->power_pressed);
+    }
 
     return false;
 }
@@ -319,6 +324,11 @@ PopupMenu* popup_menu_alloc(View* view) {
     view_set_transparent(menu->view, true);
 
     return menu;
+}
+
+void popup_menu_set_softkey_style(PopupMenu* menu, PopupMenuSoftkeyStyle style) {
+    furi_check(menu);
+    with_view_model(menu->view, PopupMenuViewModel * model, { model->softkey_style = style; }, true);
 }
 
 void popup_menu_free(PopupMenu* menu) {

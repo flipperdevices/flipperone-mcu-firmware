@@ -187,9 +187,9 @@ static bool desktop_layout(void* _model) {
             parallax_element(CLAY_ID_LOCAL("Scene"), model->scene);
         }
 
-        elements_softkey_button_element(1, "Help", false, model->help_pressed);
-        elements_softkey_button_element(2, "Power", false, false);
-        elements_softkey_button_element(3, "Settings", false, model->settings_pressed);
+        elements_home_tab_element(1, "Help", false, model->help_pressed);
+        elements_home_tab_element(2, "Power", false, false);
+        elements_home_tab_element(3, "Settings", false, model->settings_pressed);
     }
 
     return false;
