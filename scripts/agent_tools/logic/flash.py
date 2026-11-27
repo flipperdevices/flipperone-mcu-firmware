@@ -118,6 +118,13 @@ def write(plan, activate=False):
     return plan
 
 
+def write_partition_table(path):
+    """Write a partition table image (partition_table.bin) at the start of flash and verify it."""
+    quoted = "{" + os.path.abspath(path) + "}"
+    swd.run(["reset halt", f"flash write_image erase {quoted} {constants.XIP_BASE:#x} bin",
+             f"verify_image {quoted} {constants.XIP_BASE:#x} bin"], timeout=120)
+
+
 def flash(slot, path, activate=False):
     """preflight() and write() in one step, for callers that do not need the plan first."""
     return write(preflight(slot, path), activate=activate)

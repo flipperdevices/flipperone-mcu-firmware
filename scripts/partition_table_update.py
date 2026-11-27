@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Updates partition offset/size in flash.tcl and memory_flash.incl based on partition_table.json.
-Run this after changing partition_table.json to update the build scripts.
+Updates memory_flash.incl from partition_table.json.
+Run this after changing partition_table.json. scripts/flash.py and the agent tools
+read the slot offsets from partition_table.json themselves.
 """
 
 import argparse
@@ -12,7 +13,6 @@ from pathlib import Path
 
 DEFAULT_JSON = "targets/partition_table.json"
 DEFAULT_LD = "targets/memory_flash.incl"
-DEFAULT_TCL = "targets/flash.tcl"
 FLASH_BASE = 0x10000000
 
 def get_stripped(d, key, default=None):
@@ -117,43 +117,9 @@ def write_ld(path: Path, size: int):
     path.write_text(content, encoding="utf-8")
 
 
-def update_tcl(path: Path, var_name: str, new_value_hex: str):
-    """
-    Update Tcl variable line:
-
-        set _FW_B_offset 0x10782000
-
-    to new computed value.
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"Tcl script not found: {path}")
-
-    text = path.read_text(encoding="utf-8")
-
-    # Matches:
-    #   set _FW_B_offset 0x10782000
-    #   set _FW_B_offset 0x10782000 ;# comment
-    #
-    # It does not consume a semicolon if it immediately follows the value.
-    pattern = re.compile(
-        rf"^(?P<prefix>\s*set\s+{re.escape(var_name)}\s+)(?P<value>[^\s;]+)(?P<rest>.*)$",
-        re.MULTILINE,
-    )
-
-    if not pattern.search(text):
-        raise ValueError(f"Variable '{var_name}' was not found in {path}")
-
-    new_text = pattern.sub(
-        lambda m: m.group("prefix") + new_value_hex + m.group("rest"),
-        text,
-    )
-
-    path.write_text(new_text, encoding="utf-8")
-
-
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate memory_flash.incl and update flash.tcl using data from partition_table.json"
+        description="Generate memory_flash.incl from partition_table.json"
     )
 
     parser.add_argument(
@@ -170,14 +136,6 @@ def main():
         type=Path,
         default=DEFAULT_LD,
         help=f"Output linker file, default: {DEFAULT_LD}",
-    )
-
-    parser.add_argument(
-        "--tcl",
-        dest="tcl_path",
-        type=Path,
-        default=DEFAULT_TCL,
-        help=f"Openocd flash script to patch, default: {DEFAULT_TCL}",
     )
 
     args = parser.parse_args()
@@ -200,11 +158,6 @@ def main():
 
         if (args.ld_path is not None):
             write_ld(args.ld_path, size_bytes)
-
-        new_offset = FLASH_BASE + 0x2000 + size_bytes
-        new_offset_hex = f"0x{new_offset:x}"
-
-        update_tcl(args.tcl_path, "_FW_B_offset", new_offset_hex)
 
         if size_bytes % 0x1000 != 0:
             print(

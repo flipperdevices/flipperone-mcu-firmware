@@ -69,7 +69,7 @@ Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [docs/TARGETS.md](docs
 
 ### VSCode
 
-Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, clangd, Cortex-Debug). Code navigation and diagnostics come from the toolchain's clangd, which reads the compile commands in `build/current`, so configure a preset first. On save, clangd formats the changed lines of C and C++ files with `.clang-format`. Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Debug** launches, and the **Run Project**, **Write partition table** and **Flash** tasks, build the selected preset first and use its build through `build/current`. **Debug Attach** uses `build/current` without building.
+Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, clangd, Cortex-Debug). The same files work on Linux, macOS and Windows. Code navigation and diagnostics come from the toolchain's clangd, which reads the compile commands in `build/current`, so configure a preset first. On save, clangd formats the changed lines of C and C++ files with `.clang-format`. Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. Ctrl+Shift+B lists the tasks: **Build** (the selected preset), **Build f2**, **Build f2 recovery** and **Build f1**, **Flash** (over SWD, see below), and **Flash over USB (BOOTSEL)** and **Write partition table over USB (BOOTSEL)** for an MCU already in BOOTSEL mode. The **Debug** launches and the flashing tasks build the selected preset first and use its build through `build/current`; **Debug Attach** uses `build/current` without building.
 
 ### Other setups
 
@@ -97,6 +97,8 @@ Alternatively, you can flash the firmware with [`picotool`](https://github.com/r
 ```shell
 picotool load -x build/f2-release/flipperone-mcu-firmware.uf2
 ```
+
+With a CMSIS-DAP debug probe, flash over SWD instead: `python3 scripts/flash.py` writes the partition table and slot A from `build/current` and starts the firmware. Builds are try-before-you-buy images, which the bootrom skips on a normal reset, so the script boots the new image once as an update and waits until it is accepted (`--slot b`, `--build-dir`, `--no-partition-table`). picotool's `-x` does the same over USB.
 
 ### Recovering the MCU
 

@@ -101,5 +101,5 @@ of them:
 - No `goto`. Error paths unwind with `do { ... break; } while(false)`.
 - Inside `targets/` use `<>` includes only — quoted includes defeat header shadowing.
 - Services are permanent threads with no teardown; that is not a leak.
-- `*.pb.c/h`, `assets.h`, image `.c` files, `pb2/`, `targets/memory_flash.incl` and
-  `targets/flash.tcl` are generated. Edit the generator or the source of truth instead.
+- `*.pb.c/h`, `assets.h`, image `.c` files, `pb2/` and `targets/memory_flash.incl`
+  are generated. Edit the generator or the source of truth instead.

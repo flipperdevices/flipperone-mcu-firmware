@@ -4,6 +4,7 @@ import copy
 import hashlib
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -235,3 +236,34 @@ def test_bootstrap_refuses_to_run_as_a_program(checkout):
     result = subprocess.run(['bash', str(tree / 'scripts' / 'toolchain' / 'fbtenv.sh')], capture_output=True,
                             text=True, timeout=60)
     assert result.returncode == 1 and 'source this file' in result.stderr
+
+
+# vscode_template on every OS
+
+def _strip_comments(text):
+    return re.sub(r'^\s*//.*$', '', text, flags=re.MULTILINE)
+
+
+def test_toolchain_programs_have_a_windows_exe():
+    """VS Code checks that a task's program exists, so Windows needs the .exe name.
+
+    Cortex-Debug finds openocd.exe by itself, and fbtenv.ps1 gives clangd.exe an
+    extensionless name for the clangd extension, so launch.json and settings.json
+    need no Windows variant.
+    """
+    tasks = json.loads(_strip_comments(toolchain._templates()['tasks.json']))['tasks']
+    entries = [(t['label'], t, 'command') for t in tasks if t['type'] == 'process']
+    assert entries
+    for name, entry, key in entries:
+        if '/.toolchain/' in entry[key]:
+            override = entry.get('windows', {}).get(key, '')
+            assert '/.toolchain/tools/' in override and override.endswith('.exe'), name
+
+
+def test_build_menu_lists_every_task_and_has_no_default():
+    tasks = json.loads(_strip_comments(toolchain._templates()['tasks.json']))['tasks']
+    assert all(t.get('group') == 'build' for t in tasks)  # a default would skip the menu
+    labels = {t['label'] for t in tasks}
+    assert {'Build', 'Build f2', 'Build f1', 'Flash'} <= labels
+    launch = json.loads(_strip_comments(toolchain._templates()['launch.json']))['configurations']
+    assert {c['preLaunchTask'] for c in launch if 'preLaunchTask' in c} <= labels

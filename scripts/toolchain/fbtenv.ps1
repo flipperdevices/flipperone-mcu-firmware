@@ -99,6 +99,13 @@ $_foBundle = & {
     } catch {
         Write-Warning "fbtenv.ps1: cannot point $current at ${dir}: $_"
     }
+    # VS Code's clangd extension needs its configured path to exist, and the template
+    # names it without .exe so one settings.json serves every OS: add that name
+    $clangd = Join-Path $dir 'tools\clangd\bin\clangd'
+    if ((Test-Path -LiteralPath "$clangd.exe") -and -not (Test-Path -LiteralPath $clangd)) {
+        try { New-Item -ItemType HardLink -Path $clangd -Target "$clangd.exe" | Out-Null }
+        catch { Write-Warning "fbtenv.ps1: cannot link $clangd to clangd.exe: $_" }
+    }
     $dir
 }
 

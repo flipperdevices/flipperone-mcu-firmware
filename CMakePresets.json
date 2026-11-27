@@ -35,5 +35,10 @@
     {"name": "f2-release", "configurePreset": "f2-release"},
     {"name": "f2-recovery", "configurePreset": "f2-recovery"},
     {"name": "f1-release", "configurePreset": "f1-release"}
+  ],
+  "workflowPresets": [
+    {"name": "f2-release", "steps": [{"type": "configure", "name": "f2-release"}, {"type": "build", "name": "f2-release"}]},
+    {"name": "f2-recovery", "steps": [{"type": "configure", "name": "f2-recovery"}, {"type": "build", "name": "f2-recovery"}]},
+    {"name": "f1-release", "steps": [{"type": "configure", "name": "f1-release"}, {"type": "build", "name": "f1-release"}]}
   ]
 }
