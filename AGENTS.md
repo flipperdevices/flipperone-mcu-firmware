@@ -26,7 +26,7 @@ files and in the build workflow; read them there when a version matters for a re
 | `lib/` | First-party `toolbox`, `cli`, `containers`, `drivers`, `uart_pio`, `tusb`; submodules `corelibs`, `freertos`, `micro-ecc`, `nanopb`, `pico-kvstore`, `rtt` |
 | `targets/` | Board descriptors (`f1` base, `f2` derived) and generated flash layout |
 | `assets/` | PNG/UI sources, protobuf (`assets/proto` submodule), generation scripts |
-| `scripts/` | `toolchain/` (toolchain bootstrap and pin), `get_env.py` (CI naming), `testops.py` (on-device test runner), `partition_table_update.py` |
+| `scripts/` | `toolchain/` (toolchain bootstrap and pin), `get_env.py` (CI naming), `testops.py` (on-device test runner), `flash.py` (SWD flashing), `partition_table_update.py` |
 | `toolchain.json` | The pinned flipperone-mcu-toolchain release, written by `scripts/toolchain/toolchain.py` |
 
 ## Build

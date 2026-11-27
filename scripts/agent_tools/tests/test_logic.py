@@ -392,3 +392,37 @@ def test_symbols_come_from_the_newest_elf_of_any_build_directory(tmp_path, monke
     new.write_text("")
     os.utime(old, (1, 1))
     assert swd.find_elf() == str(new)
+
+
+def test_outranking_slot_follows_the_bootrom_choice():
+    from agent_tools.logic import flash
+
+    def slots(a, b):
+        return {"A": a, "B": b}
+
+    def valid(major):
+        return {"state": "valid", "version_major_word": major, "version_minor_word": 0}
+
+    ours = {"version_major_word": 3, "version_minor_word": 0}
+    plan_a, plan_b = {"slot": "A", "image": ours}, {"slot": "B", "image": ours}
+    # A wins ties, so only a higher B outranks a build in A
+    assert flash.outranking_slot(plan_a, slots(valid(1), valid(3))) is None
+    assert flash.outranking_slot(plan_a, slots(valid(1), valid(4))) == "B"
+    assert flash.outranking_slot(plan_b, slots(valid(3), valid(1))) == "A"
+    assert flash.outranking_slot(plan_b, slots(valid(2), valid(1))) is None
+    assert flash.outranking_slot(plan_b, slots({"state": "erased"}, valid(1))) is None
+    assert flash.outranking_slot(plan_a, slots(valid(1), {"state": "no image header"})) is None
+
+
+def test_write_partition_table_writes_and_verifies_at_the_start_of_flash(tmp_path, monkeypatch):
+    from agent_tools import constants
+    from agent_tools.logic import flash, swd
+
+    commands = []
+    monkeypatch.setattr(swd, "run", lambda lines, timeout=None: commands.append(lines))
+    table = tmp_path / "partition_table.bin"
+    table.write_bytes(b"\x00" * 148)
+    flash.write_partition_table(str(table))
+    quoted = "{" + str(table) + "}"
+    assert commands == [["reset halt", f"flash write_image erase {quoted} {constants.XIP_BASE:#x} bin",
+                         f"verify_image {quoted} {constants.XIP_BASE:#x} bin"]]

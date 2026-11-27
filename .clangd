@@ -19,5 +19,6 @@ CompileFlags:
     - -Wno-c23-extensions
 Diagnostics:
   # As clang, CMSIS includes clang's arm_acle.h, whose __nop and __dmb/__dsb/__isb clash with
-  # the Pico SDK's hardware/sync.h; GCC's arm_acle.h defines neither
+  # the Pico SDK's hardware/sync.h; GCC's arm_acle.h defines neither. clangd cannot scope this
+  # to those headers, so it hides these errors in project code too: the GCC build still reports them
   Suppress: [redefinition, static_non_static]

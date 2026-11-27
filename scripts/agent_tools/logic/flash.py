@@ -118,6 +118,24 @@ def write(plan, activate=False):
     return plan
 
 
+def outranking_slot(plan, slots):
+    """The other slot the bootrom would boot instead of the plan's image, or None.
+
+    `slots` is swd.status()["slots"]. The bootrom boots the valid image with the
+    higher version; with equal versions, slot A.
+    """
+    def version(image):
+        return image.get("version_major_word", 0), image.get("version_minor_word", 0)
+
+    ours = version(plan["image"])
+    for name, image in sorted(slots.items()):
+        if name == plan["slot"] or image.get("state") != "valid":
+            continue
+        if version(image) > ours or (version(image) == ours and name < plan["slot"]):
+            return name
+    return None
+
+
 def write_partition_table(path):
     """Write a partition table image (partition_table.bin) at the start of flash and verify it."""
     quoted = "{" + os.path.abspath(path) + "}"

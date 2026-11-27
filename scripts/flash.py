@@ -4,14 +4,17 @@
     python3 scripts/flash.py                     # build/current: partition table, then slot A
     python3 scripts/flash.py --build-dir build/f1-release --slot b
 
-Builds are try-before-you-buy (TBYB) images, which the bootrom skips on a normal
-reset. After writing, this boots the slot once as a flash update, so the firmware
-accepts the image, and waits until the bootrom has committed it. Uses the same code
-as `scripts/agent_tools/f1.py swd flash --activate`.
+If the other slot holds an image the bootrom would boot instead (a higher version,
+or slot A with the same version), its header is erased first. Builds are
+try-before-you-buy (TBYB) images, which the bootrom skips on a normal reset. After
+writing, this boots the slot once as a flash update, so the firmware accepts the
+image, and waits until the bootrom has committed it. Uses the same code as
+`scripts/agent_tools/f1.py swd flash --activate`.
 """
 
 import argparse
 import os
+import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -42,12 +45,15 @@ def main(argv=None):
                 raise ValueError(f"{table} not found: build first, or pass --no-partition-table")
             print(f"Writing the partition table ({table})...", flush=True)
             flash.write_partition_table(table)
-        print(f"Writing slot {plan['slot']} at 0x{plan['address']:08x} ({len(plan['payload'])} bytes)...", flush=True)
-        if plan["image"].get("tbyb_pending"):
-            print("Starting the try-before-you-buy image once, so it accepts itself...", flush=True)
+        other = flash.outranking_slot(plan, swd.status()["slots"])
+        if other:
+            print(f"Slot {other} holds an image the bootrom would boot instead: erasing its header...", flush=True)
+            swd.erase_slot_header(other)
+        tbyb = " and starting it once, so the try-before-you-buy image accepts itself" if plan["image"].get("tbyb_pending") else ""
+        print(f"Writing slot {plan['slot']} at 0x{plan['address']:08x} ({len(plan['payload'])} bytes){tbyb}...", flush=True)
         flash.write(plan, activate=True)
         state = swd.status()
-    except (ValueError, RuntimeError, TimeoutError, OSError) as error:
+    except (ValueError, RuntimeError, TimeoutError, OSError, subprocess.TimeoutExpired) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(f"Done: slot {plan['slot']} written and verified; the MCU runs slot {state['active_slot'] or 'none'}.")
