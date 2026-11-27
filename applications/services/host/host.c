@@ -109,12 +109,13 @@ static void host_response_timer_callback(void* context) {
 
 static void host_reported(Host* instance, CpuState cpu_state) {
     if(instance->state == HostStateOff) return;
-    if(!instance->reported) {
+    // A kernel booted after maskrom too: flashed, then reset from the PC
+    const bool booting = instance->state == HostStateStarting || instance->state == HostStateHandover || instance->state == HostStateMaskrom;
+    // While booting only a live state answers: a kernel going down still reports
+    if(!instance->reported && (!booting || host_state_is_live(cpu_state))) {
         instance->reported = true;
         furi_event_loop_timer_stop(instance->response_timer);
     }
-    // A kernel booted after maskrom too: flashed, then reset from the PC
-    const bool booting = instance->state == HostStateStarting || instance->state == HostStateHandover || instance->state == HostStateMaskrom;
     if(instance->state == HostStateNotResponding || (booting && host_state_is_live(cpu_state))) {
         host_set_state(instance, HostStateRunning);
     }

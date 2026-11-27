@@ -147,7 +147,8 @@ static bool cpu_app_model_own_screen(CpuAppModel* model, void* context) {
     const CpuAppScreen screen = (CpuAppScreen)(uintptr_t)context;
     if(model->screen == screen) return false;
     model->starting_linux_tick = furi_get_tick();
-    model->screen = screen;
+    // After the tick: the layout reads the screen first
+    __atomic_store_n(&model->screen, screen, __ATOMIC_RELEASE);
     return true;
 }
 

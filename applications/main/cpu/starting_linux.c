@@ -87,7 +87,8 @@ void starting_linux_layout(uint32_t elapsed_ms) {
                 {
                     .layout = {.sizing = {CLAY_SIZING_FIXED(starting_linux_bar_frame.width), CLAY_SIZING_FIXED(starting_linux_bar_frame.height)}},
                     .image = {.imageData = (void*)&starting_linux_bar_frame},
-                    .floating = {.attachTo = CLAY_ATTACH_TO_PARENT, .zIndex = 1},
+                    // Floating: drawn after the bar and the thumb, under later floating elements
+                    .floating = {.attachTo = CLAY_ATTACH_TO_PARENT},
                 }) {
             }
         }
