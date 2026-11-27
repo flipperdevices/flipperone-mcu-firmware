@@ -75,16 +75,21 @@ static void host_start_cpu_app(Host* instance);
 
 // Host state
 
-static void host_publish(Host* instance) {
-    HostEvent event = {.state = instance->state, .cpu_state = instance->cpu_state};
-    furi_pubsub_publish(instance->pubsub, &event);
+// The host draws only on a change: ask for its current screen
+static void host_request_frame(void) {
+    with_i2c_register({ i2c_register_set_interrupt(I2C_SYSTEM_INTERRUPT_REG_ADDRESS, 1 << I2C_SYSTEM_INTERRUPT_REG_BIT_FRAME); });
 }
 
 static void host_set_state(Host* instance, HostState state) {
     if(instance->state == state) return;
+    const HostState was = instance->state;
     instance->state = state;
     FURI_LOG_I(TAG, "Host state: %d", state);
-    host_publish(instance);
+    furi_pubsub_publish(instance->pubsub, &state);
+    // Its frames were dropped until now, the first of this kernel's too
+    if(state == HostStateRunning && (was == HostStateStarting || was == HostStateHandover || was == HostStateNotResponding)) {
+        host_request_frame();
+    }
 }
 
 // The host was just powered: Linux has to write its CPU state in time.
@@ -101,11 +106,16 @@ static void host_response_timer_callback(void* context) {
     host_set_state(instance, HostStateNotResponding);
 }
 
-static void host_reported(Host* instance) {
-    if(instance->reported || instance->state == HostStateOff || instance->state == HostStateMaskrom) return;
-    instance->reported = true;
-    furi_event_loop_timer_stop(instance->response_timer);
-    if(instance->state == HostStateNotResponding) host_set_state(instance, HostStateRunning);
+static void host_reported(Host* instance, CpuState cpu_state) {
+    if(instance->state == HostStateOff || instance->state == HostStateMaskrom) return;
+    if(!instance->reported) {
+        instance->reported = true;
+        furi_event_loop_timer_stop(instance->response_timer);
+    }
+    const bool booting = instance->state == HostStateStarting || instance->state == HostStateHandover;
+    if(instance->state == HostStateNotResponding || (booting && host_state_is_live(cpu_state))) {
+        host_set_state(instance, HostStateRunning);
+    }
 }
 
 // Host power. Runs on the host thread only, so the rails have one owner.
@@ -118,7 +128,8 @@ static void host_power_cut(Host* instance) {
     power_bq2579x_reset_config(instance->power);
 
     furi_bsp_linux_reset();
-    // What the host reported is gone with its power: Unknown until it reports again
+    // What the host reported is gone with its power, so a stale state does not
+    // read as part of the next boot: Unknown until it reports again
     instance->cpu_state = CpuStateUnknown;
     furi_event_loop_timer_stop(instance->response_timer);
     // A pending powered-off from before is answered by this cut: a host
@@ -241,13 +252,23 @@ static void host_down_timer_callback(void* context) {
 // Messages
 
 static void host_set_cpu_state_internal(Host* instance, CpuState cpu_state) {
-    const bool changed = instance->cpu_state != cpu_state;
+    const CpuState was = instance->cpu_state;
     instance->cpu_state = cpu_state;
     FURI_LOG_I(TAG, "CPU State: %d", instance->cpu_state);
-    if(changed) host_publish(instance);
 
-    if(cpu_state != CpuStateUnknown) host_reported(instance);
+    if(cpu_state != CpuStateUnknown) host_reported(instance, cpu_state);
     host_down_state_changed(instance, cpu_state);
+
+    // Boot phases a running host goes through by itself. Shutting down right
+    // after its start, with no request, is the boot loader's kernel handing
+    // over to the profile's.
+    if(instance->state != HostStateOff && instance->state != HostStateMaskrom && cpu_state != was) {
+        if(cpu_state == CpuStateRestarting) {
+            host_await_report(instance, HostStateStarting, HOST_STARTING_RESPONSE_MS);
+        } else if(cpu_state == CpuStateShuttingDown && was == CpuStateKernelInit) {
+            host_await_report(instance, HostStateHandover, HOST_STARTING_RESPONSE_MS);
+        }
+    }
 
     if(host_state_is_live(cpu_state)) {
         host_start_cpu_app(instance);
@@ -274,9 +295,8 @@ static void host_message_queue_callback(FuriEventLoopObject* object, void* conte
     case HostMessageTypePowerOn:
         host_power_on_internal(instance);
         if(instance->state == HostStateRunning || instance->state == HostStateNotResponding) {
-            // The host draws only on a change: ask for its current screen.
             FURI_LOG_I(TAG, "Host already running: requesting its screen");
-            with_i2c_register({ i2c_register_set_interrupt(I2C_SYSTEM_INTERRUPT_REG_ADDRESS, 1 << I2C_SYSTEM_INTERRUPT_REG_BIT_FRAME); });
+            host_request_frame();
         }
         break;
     case HostMessageTypePowerOff:
@@ -335,8 +355,7 @@ static void host_stop_cpu_app(Host* instance) {
 }
 
 static bool host_state_is_live(CpuState cpu_state) {
-    return cpu_state == CpuStateBootloader || cpu_state == CpuStateKernelInit ||
-           cpu_state == CpuStateOnline;
+    return cpu_state == CpuStateBootloader || cpu_state == CpuStateKernelInit || cpu_state == CpuStateOnline;
 }
 
 // Start the CPU app unless the user is in another app; stops self_check and
@@ -389,9 +408,7 @@ static void host_boot_start(Host* instance) {
 
     // Power first: the screen may wait for self_check, the host need not.
     UpdaterBootType boot_type = updater_get_boot_type(instance->updater);
-    const char* after = boot_type == UpdaterBootTypeFlashUpdate ? "Switched to a new image" :
-                        boot_type == UpdaterBootTypeReverted    ? "Update reverted" :
-                                                                  NULL;
+    const char* after = boot_type == UpdaterBootTypeFlashUpdate ? "Switched to a new image" : boot_type == UpdaterBootTypeReverted ? "Update reverted" : NULL;
     if(after && restart) {
         FURI_LOG_I(TAG, "%s: starting the host", after);
         host_power_on_internal(instance);

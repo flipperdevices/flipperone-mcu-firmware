@@ -16,6 +16,7 @@
 #define TAG "CpuApp"
 
 #define CPU_APP_MESSAGE_QUEUE_SIZE 64
+#define CPU_APP_HOST_STATE_FLAG    (1 << 0)
 
 #define CPU_ARG_START   "start"
 #define CPU_ARG_MASKROM "maskrom"
@@ -48,7 +49,6 @@ typedef enum {
     CpuAppMessageTypeMaskrom,
     CpuAppMessageTypeShutdown,
     CpuAppMessageTypeNewFrame,
-    CpuAppMessageTypeHostEvent,
 } CpuAppMessageType;
 
 typedef struct {
@@ -58,7 +58,6 @@ typedef struct {
             uint8_t* data;
             size_t size;
         } new_frame;
-        HostEvent host_event;
     } as;
 } CpuAppMessage;
 
@@ -72,15 +71,12 @@ typedef struct {
     PioGetFrame* pio_get_frame;
     Host* host;
     FuriPubSubSubscription* host_subscription;
-    HostEvent host_event; // the last one handled
+    FuriEventFlag* host_state_flag;
     SelfCheckScreen* self_check;
     // One of our own screens is shown: until the host draws something, its
     // frames that are entirely black do not replace it
     bool own_screen;
     FuriEventLoopTimer* animation_timer;
-    // The kernel went down: it can still send frames after that, so frames
-    // wait until a kernel reports being up
-    bool host_frames_stale;
 } CpuApp;
 
 static bool cpu_app_layout(void* _model) {
@@ -214,11 +210,20 @@ static void cpu_app_animation_timer_callback(void* context) {
     cpu_app_model_apply(instance, cpu_app_model_animate, NULL);
 }
 
-// Until the host sends a frame, show what state it is in.
+/* What the host's state shows: our screens while it boots, until it draws,
+ * and a placeholder until its first frame otherwise. */
 static void cpu_app_show_host_state(CpuApp* instance) {
     const Image* image = NULL;
     switch(host_get_state(instance->host)) {
+    case HostStateStarting:
+        cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
+        return;
+    case HostStateHandover:
+        cpu_app_show_own_screen(instance, CpuAppScreenStartingLinux);
+        return;
     case HostStateRunning:
+        // Our screen stays until the host draws: it was asked for its screen
+        if(instance->own_screen) return;
         image = &display_waiting;
         break;
     case HostStateNotResponding:
@@ -231,37 +236,20 @@ static void cpu_app_show_host_state(CpuApp* instance) {
     cpu_app_model_apply(instance, cpu_app_model_placeholder, (void*)image);
 }
 
-/* The self check screen goes up when the MCU powers the host and when the host
- * restarts by itself; not for a host found running after an MCU reset.
- * Starting Linux goes up when the boot loader's kernel hands over to the
- * profile's one: shutting down right after its start, with no request. */
-static void cpu_app_host_event(CpuApp* instance, const HostEvent* event) {
-    const HostEvent last = instance->host_event;
-    instance->host_event = *event;
-    // Up again: its frames count from now on
-    if(event->cpu_state == CpuStateBootloader || event->cpu_state == CpuStateKernelInit || event->cpu_state == CpuStateOnline) {
-        instance->host_frames_stale = false;
-    }
-    if(event->state == HostStateStarting && last.state != HostStateStarting) {
-        cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
-    } else if(event->cpu_state == CpuStateRestarting && last.cpu_state != CpuStateRestarting) {
-        instance->host_frames_stale = true;
-        cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
-    } else if(event->cpu_state == CpuStateShuttingDown && last.cpu_state == CpuStateKernelInit) {
-        instance->host_frames_stale = true;
-        cpu_app_show_own_screen(instance, CpuAppScreenStartingLinux);
-    } else if(event->state != last.state) {
-        cpu_app_show_host_state(instance);
-    }
+// Host thread: hand the change over to the app's event loop. Changes that
+// come together merge: the screen follows the state the host is in.
+static void cpu_app_host_state_callback(const void* message, void* context) {
+    UNUSED(message);
+    CpuApp* instance = context;
+    furi_event_flag_set(instance->host_state_flag, CPU_APP_HOST_STATE_FLAG);
 }
 
-// Host thread: hand the event over to the app's event loop, in order.
-static void cpu_app_host_event_callback(const void* message, void* context) {
+static void cpu_app_host_state_logic(FuriEventLoopObject* object, void* context) {
+    furi_check(context);
     CpuApp* instance = context;
-    CpuAppMessage app_message = {.type = CpuAppMessageTypeHostEvent, .as.host_event = *(const HostEvent*)message};
-    if(furi_message_queue_put(instance->app_queue, &app_message, 0) != FuriStatusOk) {
-        FURI_LOG_E(TAG, "Host event dropped: queue full");
-    }
+    furi_check(object == instance->host_state_flag);
+    furi_event_flag_clear(instance->host_state_flag, CPU_APP_HOST_STATE_FLAG);
+    cpu_app_show_host_state(instance);
 }
 
 // Only while one of our screens is up, so it is cheap enough
@@ -303,21 +291,13 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     CpuAppMessage message;
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
-        case CpuAppMessageTypeStart: {
+        case CpuAppMessageTypeStart:
             host_power_on(instance->host);
-            // A host powered already publishes nothing: take its state as it is
-            HostEvent event = {.state = host_get_state(instance->host), .cpu_state = instance->host_event.cpu_state};
-            cpu_app_host_event(instance, &event);
+            // A host powered already publishes nothing
+            cpu_app_show_host_state(instance);
             break;
-        }
         case CpuAppMessageTypeReset:
-            instance->host_frames_stale = true;
             host_power_restart(instance->host);
-            // The host stays Starting across a restart: no event brings it up
-            cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
-            break;
-        case CpuAppMessageTypeHostEvent:
-            cpu_app_host_event(instance, &message.as.host_event);
             break;
         case CpuAppMessageTypeShutdown:
             FURI_LOG_I(TAG, "CPU app shutdown requested");
@@ -328,9 +308,10 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
         case CpuAppMessageTypeMaskrom:
             host_power_maskrom(instance->host);
             break;
-        case CpuAppMessageTypeNewFrame:
-            if(instance->host_frames_stale) {
-                // A frame of the kernel that went down
+        case CpuAppMessageTypeNewFrame: {
+            const HostState state = host_get_state(instance->host);
+            if(state != HostStateRunning && state != HostStateNotResponding) {
+                // A kernel going down, or one that has not reported yet
             } else if(instance->own_screen && cpu_app_frame_is_black(message.as.new_frame.data, message.as.new_frame.size)) {
                 // Not drawn yet: keep our screen
             } else {
@@ -343,6 +324,7 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
                 gui_push_frame(instance->gui, message.as.new_frame.data);
             }
             break;
+        }
         default:
             furi_assert(false);
             break;
@@ -381,10 +363,10 @@ static CpuApp* cpu_app_alloc(void) {
     pio_get_frame_set_callback_rx(instance->pio_get_frame, cpu_app_pio_get_frame_isr, instance);
 
     furi_event_loop_subscribe_message_queue(instance->event_loop, instance->app_queue, FuriEventLoopEventIn, cpu_app_message_logic, instance);
-    instance->animation_timer =
-        furi_event_loop_timer_alloc(instance->event_loop, cpu_app_animation_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
-    instance->host_event = (HostEvent){.state = HostStateOff, .cpu_state = CpuStateUnknown};
-    instance->host_subscription = furi_pubsub_subscribe(host_get_pubsub(instance->host), cpu_app_host_event_callback, instance);
+    instance->animation_timer = furi_event_loop_timer_alloc(instance->event_loop, cpu_app_animation_timer_callback, FuriEventLoopTimerTypePeriodic, instance);
+    instance->host_state_flag = furi_event_flag_alloc();
+    furi_event_loop_subscribe_event_flag(instance->event_loop, instance->host_state_flag, FuriEventLoopEventIn, cpu_app_host_state_logic, instance);
+    instance->host_subscription = furi_pubsub_subscribe(host_get_pubsub(instance->host), cpu_app_host_state_callback, instance);
 
     instance->display_view = view_alloc();
     view_allocate_model(instance->display_view, ViewModelTypeLockFree, sizeof(CpuAppModel));
@@ -407,7 +389,6 @@ static CpuApp* cpu_app_alloc(void) {
 }
 
 static void cpu_app_free(CpuApp* instance) {
-
     gui_set_menu(instance->gui, NULL);
     gui_remove_view(instance->gui, instance->display_view);
     gui_remove_view(instance->gui, instance->menu_view);
@@ -419,6 +400,8 @@ static void cpu_app_free(CpuApp* instance) {
     view_free(instance->menu_view);
 
     furi_pubsub_unsubscribe(host_get_pubsub(instance->host), instance->host_subscription);
+    furi_event_loop_unsubscribe(instance->event_loop, instance->host_state_flag);
+    furi_event_flag_free(instance->host_state_flag);
     furi_record_close(RECORD_HOST);
     furi_event_loop_timer_free(instance->animation_timer);
     furi_event_loop_unsubscribe(instance->event_loop, instance->app_queue);
