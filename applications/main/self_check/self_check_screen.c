@@ -16,15 +16,15 @@
 
 /* Positions from the mock, in pixels from the top left corner. The mock has
  * eight checks 10 pixels apart; with nine they are 9 apart to clear the footer. */
-#define SELF_CHECK_SCREEN_LEFT          9
-#define SELF_CHECK_SCREEN_TITLE_Y       12
-#define SELF_CHECK_SCREEN_CHECKS_Y      32
-#define SELF_CHECK_SCREEN_CHECKS_STEP   9
-#define SELF_CHECK_SCREEN_LOGO_X        112
-#define SELF_CHECK_SCREEN_LOGO_Y        12
-#define SELF_CHECK_SCREEN_FOOTER_Y      117
-#define SELF_CHECK_SCREEN_FOOTER_STEP   12
-#define SELF_CHECK_SCREEN_HARDWARE_X    132
+#define SELF_CHECK_SCREEN_LEFT        9
+#define SELF_CHECK_SCREEN_TITLE_Y     12
+#define SELF_CHECK_SCREEN_CHECKS_Y    32
+#define SELF_CHECK_SCREEN_CHECKS_STEP 9
+#define SELF_CHECK_SCREEN_LOGO_X      112
+#define SELF_CHECK_SCREEN_LOGO_Y      12
+#define SELF_CHECK_SCREEN_FOOTER_Y    117
+#define SELF_CHECK_SCREEN_FOOTER_STEP 12
+#define SELF_CHECK_SCREEN_HARDWARE_X  132
 
 static const Clay_Color COLOR_LABEL = {0x69, 0x69, 0x69, 0xFF};
 
@@ -121,8 +121,8 @@ SelfCheckScreen* self_check_screen_alloc(void) {
     furi_string_free(uid);
 
     if(furi_hal_version_is_otp_valid(FuriHalOtpBlock1)) {
-        instance->hardware = furi_string_alloc_printf(
-            " F%uB%uC%u", furi_hal_version_get_hw_target(), furi_hal_version_get_hw_body(), furi_hal_version_get_hw_connect());
+        instance->hardware =
+            furi_string_alloc_printf(" F%uB%uC%u", furi_hal_version_get_hw_target(), furi_hal_version_get_hw_body(), furi_hal_version_get_hw_connect());
     } else {
         instance->hardware = furi_string_alloc_set(" Unknown");
     }
@@ -164,7 +164,7 @@ static void self_check_screen_field(Clay_ElementId id, float x, float y, const c
     }
 }
 
-void self_check_screen_layout(const SelfCheckScreen* instance) {
+void self_check_screen_layout(const SelfCheckScreen* instance, const char* title) {
     furi_check(instance);
 
     CLAY(
@@ -174,12 +174,11 @@ void self_check_screen_layout(const SelfCheckScreen* instance) {
             .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}},
         }) {
         SELF_CHECK_SCREEN_AT(CLAY_APP_ID("Title"), SELF_CHECK_SCREEN_LEFT, SELF_CHECK_SCREEN_TITLE_Y) {
-            self_check_screen_text(CLAY_STRING("Self Check"), FontBig, COLOR_WHITE);
+            self_check_screen_text(clay_helper_string_from_chars(title), FontBig, COLOR_WHITE);
         }
 
         for(size_t i = 0; i < SelfCheckCount; i++) {
-            SELF_CHECK_SCREEN_AT(
-                CLAY_IDI(TAG "Check", i), SELF_CHECK_SCREEN_LEFT, SELF_CHECK_SCREEN_CHECKS_Y + i * SELF_CHECK_SCREEN_CHECKS_STEP) {
+            SELF_CHECK_SCREEN_AT(CLAY_IDI(TAG "Check", i), SELF_CHECK_SCREEN_LEFT, SELF_CHECK_SCREEN_CHECKS_Y + i * SELF_CHECK_SCREEN_CHECKS_STEP) {
                 self_check_screen_text(clay_helper_string_from(instance->checks[i]), FontBody, COLOR_WHITE);
             }
         }
@@ -188,15 +187,9 @@ void self_check_screen_layout(const SelfCheckScreen* instance) {
             clay_fixed_image(CLAY_ID_LOCAL("Image"), &self_check_logo);
         }
 
+        self_check_screen_field(CLAY_APP_ID("Serial"), SELF_CHECK_SCREEN_LEFT, SELF_CHECK_SCREEN_FOOTER_Y, "Serial:", instance->serial);
+        self_check_screen_field(CLAY_APP_ID("Hardware"), SELF_CHECK_SCREEN_HARDWARE_X, SELF_CHECK_SCREEN_FOOTER_Y, "Hardware:", instance->hardware);
         self_check_screen_field(
-            CLAY_APP_ID("Serial"), SELF_CHECK_SCREEN_LEFT, SELF_CHECK_SCREEN_FOOTER_Y, "Serial:", instance->serial);
-        self_check_screen_field(
-            CLAY_APP_ID("Hardware"), SELF_CHECK_SCREEN_HARDWARE_X, SELF_CHECK_SCREEN_FOOTER_Y, "Hardware:", instance->hardware);
-        self_check_screen_field(
-            CLAY_APP_ID("Firmware"),
-            SELF_CHECK_SCREEN_LEFT,
-            SELF_CHECK_SCREEN_FOOTER_Y + SELF_CHECK_SCREEN_FOOTER_STEP,
-            "MCU Firmware:",
-            instance->firmware);
+            CLAY_APP_ID("Firmware"), SELF_CHECK_SCREEN_LEFT, SELF_CHECK_SCREEN_FOOTER_Y + SELF_CHECK_SCREEN_FOOTER_STEP, "MCU Firmware:", instance->firmware);
     }
 }

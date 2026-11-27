@@ -20,7 +20,7 @@ typedef struct {
 static bool self_check_layout(void* _model) {
     furi_assert(_model);
     SelfCheckModel* model = (SelfCheckModel*)_model;
-    self_check_screen_layout(model->screen);
+    self_check_screen_layout(model->screen, "Self Check");
     return false;
 }
 

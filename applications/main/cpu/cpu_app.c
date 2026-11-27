@@ -107,7 +107,7 @@ static bool cpu_app_layout(void* _model) {
             }) {
             switch(__atomic_load_n(&model->screen, __ATOMIC_ACQUIRE)) {
             case CpuAppScreenSelfCheck:
-                self_check_screen_layout(model->self_check);
+                self_check_screen_layout(model->self_check, "Starting CPU...");
                 break;
             case CpuAppScreenStartingLinux:
                 starting_linux_layout(furi_get_tick() - model->starting_linux_tick);
