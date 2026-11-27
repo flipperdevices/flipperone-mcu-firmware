@@ -25,6 +25,9 @@ struct Parallax {
     uint16_t scene_width;
     int16_t origin_x;
     int16_t origin_y;
+    /* Set from any thread; a render pass works with its own copy in speed,
+     * so its layers all see one value. */
+    float requested_speed;
     float speed;
     uint32_t last_time_ms;
     bool has_last_time;
@@ -156,6 +159,7 @@ static void parallax_render(Canvas* canvas, const Clay_BoundingBox* bounding_box
     Parallax* parallax = context;
     uint32_t now_ms = canvas_get_render_time(canvas);
 
+    parallax->speed = parallax->requested_speed;
     parallax_advance(parallax, now_ms);
 
     bool mirror = parallax->speed > 0.f;
@@ -238,12 +242,12 @@ void parallax_set_origin(Parallax* parallax, int16_t x, int16_t y) {
 
 void parallax_set_speed(Parallax* parallax, float speed) {
     furi_check(parallax);
-    parallax->speed = speed;
+    parallax->requested_speed = speed;
 }
 
 float parallax_get_speed(const Parallax* parallax) {
     furi_check(parallax);
-    return parallax->speed;
+    return parallax->requested_speed;
 }
 
 void parallax_element(Clay_ElementId id, Parallax* parallax) {

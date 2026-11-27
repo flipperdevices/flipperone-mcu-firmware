@@ -107,7 +107,7 @@ float parallax_get_speed(const Parallax* parallax);
  *  clips the scene to that box. */
 void parallax_element(Clay_ElementId id, Parallax* parallax);
 
-/* ── Wrap arithmetic, shared with the unit tests ─────────────────────────── */
+/* ── Wrap arithmetic ─────────────────────────────────────────────────────── */
 
 /** Mirroring a `box_width` wide frame in place: where a `width` wide sprite
  *  at `x` inside it lands. */
