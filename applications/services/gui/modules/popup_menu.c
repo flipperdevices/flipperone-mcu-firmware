@@ -95,7 +95,7 @@ typedef struct {
     bool key_pressed;
     PopupMenuSoftkeyStyle softkey_style;
     size_t softkey_index;
-    char* softkey_label;
+    const char* softkey_label;
     ClayCustomElement window;
     ClayCustomElement selector;
 } PopupMenuViewModel;
@@ -382,7 +382,7 @@ PopupMenu* popup_menu_alloc(View* view) {
     menu->view = view;
     menu->key = InputKeyPower;
 
-    view_allocate_model(menu->view, ViewModelTypeLockFree, sizeof(PopupMenuViewModel));
+    view_allocate_model(menu->view, ViewModelTypeLocking, sizeof(PopupMenuViewModel));
     with_view_model(
         menu->view,
         PopupMenuViewModel * model,
@@ -390,7 +390,7 @@ PopupMenu* popup_menu_alloc(View* view) {
             PopupMenuItemArray_init(model->items);
             model->key_pressed = true;
             model->softkey_index = 2;
-            model->softkey_label = strdup("Power");
+            model->softkey_label = "Power";
             model->window.render = popup_menu_render_window;
             model->selector.render = popup_menu_render_selector;
         },
@@ -411,8 +411,7 @@ void popup_menu_set_softkey(PopupMenu* menu, PopupMenuSoftkeyStyle style, size_t
         menu->view,
         PopupMenuViewModel * model,
         {
-            free(model->softkey_label);
-            model->softkey_label = strdup(label);
+            model->softkey_label = label;
             model->softkey_style = style;
             model->softkey_index = index;
         },
@@ -427,7 +426,6 @@ void popup_menu_free(PopupMenu* menu) {
         PopupMenuViewModel * model,
         {
             if(model->title) free(model->title);
-            free(model->softkey_label);
             PopupMenuItemArray_it_t it;
             for(PopupMenuItemArray_it(it, model->items); !PopupMenuItemArray_end_p(it); PopupMenuItemArray_next(it)) {
                 PopupMenuItem* item = PopupMenuItemArray_ref(it);

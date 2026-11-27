@@ -30,7 +30,7 @@ void popup_menu_free(PopupMenu* menu);
 
 /** The key that opens and closes the menu and the softkey drawn active over it,
  * at the index and with the label the screen under the menu gives it. Default:
- * the Power key, classic softkey 2 "Power". */
+ * the Power key, classic softkey 2 "Power". The label must outlive the menu. */
 void popup_menu_set_softkey(PopupMenu* menu, PopupMenuSoftkeyStyle style, size_t index, const char* label, InputKey key);
 
 void popup_menu_set_title(PopupMenu* menu, const char* title);
