@@ -418,6 +418,7 @@ static CpuApp* cpu_app_alloc(void) {
     instance->menu = popup_menu_alloc(instance->menu_view);
     popup_menu_set_callback(instance->menu, cpu_app_menu_item_selected, instance);
     popup_menu_set_title(instance->menu, "Flipper OS");
+    popup_menu_set_icon(instance->menu, &popup_menu_power_icon);
     popup_menu_add_item(instance->menu, "Stop", CpuMenuItemStop);
     popup_menu_add_item(instance->menu, "Reboot", CpuMenuItemReboot);
 
