@@ -33,6 +33,7 @@ typedef enum {
     CpuAppScreenFrame, // a placeholder or the host's frame
     CpuAppScreenSelfCheck,
     CpuAppScreenStartingLinux,
+    CpuAppScreenMaskrom,
 } CpuAppScreen;
 
 /* The model is lock free and Clay keeps the image pointer from layout until
@@ -85,6 +86,32 @@ typedef struct {
     uint8_t* black_frame;
 } CpuApp;
 
+/* From the mock: the mode in the top right corner of a white screen. The
+ * screen is two pixels wider than the mock, which starts at its x 1. */
+#define CPU_APP_MASKROM_TEXT_X (1 + 165)
+#define CPU_APP_MASKROM_ICON_X (1 + 230)
+#define CPU_APP_MASKROM_Y      4
+
+static void cpu_app_maskrom_layout(void) {
+    CLAY(
+        CLAY_APP_ID("Maskrom"),
+        {
+            .backgroundColor = COLOR_WHITE,
+            .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}},
+        }) {
+        CLAY(CLAY_APP_ID("MaskromText"), {.floating = {.offset = {CPU_APP_MASKROM_TEXT_X, CPU_APP_MASKROM_Y}, .attachTo = CLAY_ATTACH_TO_PARENT}}) {
+            CLAY_TEXT(CLAY_STRING("Maskrom Mode"), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+        }
+        CLAY(
+            CLAY_APP_ID("MaskromIcon"),
+            {
+                .layout = {.sizing = {.width = CLAY_SIZING_FIXED(maskrom_usb_icon.width), .height = CLAY_SIZING_FIXED(maskrom_usb_icon.height)}},
+                .floating = {.offset = {CPU_APP_MASKROM_ICON_X, CPU_APP_MASKROM_Y}, .attachTo = CLAY_ATTACH_TO_PARENT},
+                .image = {.imageData = (void*)&maskrom_usb_icon},
+            }){};
+    }
+}
+
 static bool cpu_app_layout(void* _model) {
     furi_assert(_model);
     CpuAppModel* model = (CpuAppModel*)_model;
@@ -118,6 +145,9 @@ static bool cpu_app_layout(void* _model) {
             case CpuAppScreenStartingLinux:
                 starting_linux_layout(furi_get_tick() - model->starting_linux_tick);
                 break;
+            case CpuAppScreenMaskrom:
+                cpu_app_maskrom_layout();
+                break;
             default:
                 CLAY(
                     CLAY_APP_ID("FrameImage"),
@@ -141,7 +171,8 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     model->screen = CpuAppScreenFrame;
-    model->frame = &display_starting;
+    // Not seen: the first screen is set before the view is shown
+    model->frame = &display_waiting;
     model->host_frame.format = ImageFormatRawGray8;
     model->host_frame.width = JD9853_WIDTH;
     model->host_frame.height = JD9853_HEIGHT;
@@ -244,6 +275,9 @@ static void cpu_app_show_host_state(CpuApp* instance) {
         return;
     case HostStateHandover:
         cpu_app_show_own_screen(instance, CpuAppScreenStartingLinux);
+        return;
+    case HostStateMaskrom:
+        cpu_app_show_own_screen(instance, CpuAppScreenMaskrom);
         return;
     case HostStateRunning:
         // Our screen stays until the host draws, it was asked for its screen,
@@ -412,7 +446,6 @@ static CpuApp* cpu_app_alloc(void) {
     cpu_app_model_apply(instance, cpu_app_model_init, instance->self_check);
 
     view_set_layout_callback(instance->display_view, cpu_app_layout);
-    gui_add_view(instance->gui, instance->display_view, GuiViewPriorityApplication);
 
     instance->menu_view = view_alloc();
     instance->menu = popup_menu_alloc(instance->menu_view);
@@ -458,13 +491,25 @@ static void cpu_app_free(CpuApp* instance) {
 
 int32_t cpu_app(void* p) {
     CpuApp* instance = cpu_app_alloc();
+    const char* arg = p;
+    const bool start = arg && strcmp(arg, CPU_ARG_START) == 0;
+    const bool maskrom = arg && strcmp(arg, CPU_ARG_MASKROM) == 0;
 
-    if(p) {
-        char* arg = (char*)p;
+    // From the first frame, the screen of the state the host is about to enter
+    if(start && host_get_state(instance->host) == HostStateOff) {
+        cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
+    } else if(maskrom) {
+        cpu_app_show_own_screen(instance, CpuAppScreenMaskrom);
+    } else {
+        cpu_app_show_host_state(instance);
+    }
+    gui_add_view(instance->gui, instance->display_view, GuiViewPriorityApplication);
+
+    if(arg) {
         FURI_LOG_I(TAG, "CPU app started with arg: %s", arg);
-        if(strcmp(arg, CPU_ARG_START) == 0) {
+        if(start) {
             cpu_app_send_message(instance, CpuAppMessageTypeStart);
-        } else if(strcmp(arg, CPU_ARG_MASKROM) == 0) {
+        } else if(maskrom) {
             cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
         } else {
             FURI_LOG_E(TAG, "Unknown argument: %s", arg);
