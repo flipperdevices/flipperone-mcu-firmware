@@ -69,7 +69,20 @@ Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [docs/TARGETS.md](docs
 
 ### VSCode
 
-Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, clangd, Cortex-Debug). The same files work on Linux, macOS and Windows; copy them again when they change. Code navigation and diagnostics come from the toolchain's clangd, which reads the compile commands in `build/current`, so configure a preset first. On save, clangd formats the changed lines of C and C++ files with `.clang-format`. Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. Ctrl+Shift+B (Cmd+Shift+B on macOS) lists the tasks: **Build** (the selected preset), **Build f2**, **Build f2 recovery** and **Build f1**, **Flash** (over SWD, see below), and **Flash over USB (BOOTSEL)** and **Write partition table over USB (BOOTSEL)** for an MCU already in BOOTSEL mode. The **Debug** launches and the flashing tasks build the selected preset first and use its build through `build/current`; **Debug Attach** uses `build/current` without building.
+1. Set up the toolchain with `fbtenv`, as above.
+2. Copy the contents of `vscode_template` to `.vscode`, and copy them again when the template changes. The same files work on Linux, macOS and Windows.
+3. Install the recommended extensions: CMake Tools, clangd and Cortex-Debug.
+4. Pick a preset in the CMake Tools panel.
+
+Ctrl+Shift+B (Cmd+Shift+B on macOS) lists the tasks:
+
+- **Build**: the selected preset. **Build f2**, **Build f2 recovery**, **Build f1**: that preset.
+- **Flash**: build the selected preset, then flash it over SWD with a debug probe ([see below](#with-a-debug-probe)).
+- **Flash over USB (BOOTSEL)**, **Write partition table over USB (BOOTSEL)**: build, then load into an MCU already in BOOTSEL mode.
+
+**Debug** builds the selected preset, flashes it into slot A and stops at `main`; **Debug Attach** attaches to the running firmware without building. Their **(FreeRTOS)** variants also list the FreeRTOS tasks.
+
+Code navigation and diagnostics come from the toolchain's clangd, which reads the compile commands of `build/current`; on save it formats the changed lines with `.clang-format`. VSCode finds the tools through the `.toolchain` link, so after switching to a branch that pins another toolchain release, run `fbtenv` again.
 
 ### Other setups
 
