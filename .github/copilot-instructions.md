@@ -58,7 +58,8 @@ When reviewing a pull request:
 ## Repository References
 
 - `AGENTS.md` - architecture overview, module layout, build and test commands. Trust it over any path quoted elsewhere.
-- `docs/TARGETS.md` - board descriptor API, inheritance, and the rules for that directory.
+- `docs/Targets.md` - board descriptor API, inheritance, and the rules for that directory.
+- `docs/README.md` - index of the developer documentation (building, flashing, debugging, testing).
 - `CONTRIBUTING.md` - contribution process and the AI-assisted development policy.
 - `.clang-format` - formatting rules; do not restate them in a review.
 - `.github/instructions/*.instructions.md` - path-scoped rules that refine this file for a given area of the tree.

@@ -4,14 +4,13 @@ applyTo: "applications/**/*.c,applications/**/*.h,lib/toolbox/**/*.c,lib/toolbox
 
 # C/C++ firmware review checks
 
-`AGENTS.md` is the source of truth for layout, build and test commands; `docs/TARGETS.md` covers board descriptors; `.clang-format` defines formatting. Refer to them instead of assuming a path or a name from this file. The rules below are the ones that recur most often and are meant to outlive any single file.
+`AGENTS.md` is the source of truth for layout, build and test commands; `docs/Targets.md` covers board descriptors; `.clang-format` defines formatting. Refer to them instead of assuming a path or a name from this file. The rules below are the ones that recur most often and are meant to outlive any single file.
 
 ## Naming and structure
 
 - Every function, including file-local helpers, carries its module prefix (`foo_start_timer`, not `start_timer`).
 - The first parameter of a module function is the instance, always named `instance`; callback payloads are named `context`.
-- Public types are opaque in the header (`typedef struct Foo Foo;`) and defined in the
-`.c`. Implementation-only headers use an `_i.h` suffix.
+- Public types are opaque in the header (`typedef struct Foo Foo;`) and defined in the `.c`. Implementation-only headers use an `_i.h` suffix.
 - Callback typedefs are PascalCase ending in `Callback` or `Function`, and take `void* context` as their last parameter.
 - Enums are anonymous `typedef enum` with module-prefixed PascalCase values and a `...Max` member kept last.
 - Headers use `#pragma once`. Empty parameter lists are written `(void)`. Macros are UPPER_SNAKE with the module prefix and parenthesised values.

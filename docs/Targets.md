@@ -1,8 +1,6 @@
 # Hardware targets
 
-A target is one board. It is described by `targets/<name>/target.cmake`, and a target
-can be based on another one, taking over its sources and replacing only the parts
-where the hardware differs.
+A target is one board. It is described by `targets/<name>/target.cmake`, and a target can be based on another one, taking over its sources and replacing only the parts where the hardware differs.
 
 ```
 targets/
@@ -18,38 +16,26 @@ targets/
     └── target.cmake      fw_base(f1), nothing of its own yet
 ```
 
-The directory name is the target name and must look like `f<number>`; the number is
-what `version.c` reports as `TARGET`.
+The directory name is the target name and must look like `f<number>`; the number is what `version.c` reports as `TARGET`.
 
 ## Building for a target
 
 The default is `f2`. To build another one:
 
-* **Command line** — a preset per board, e.g. `cmake --preset f1-release` (see
-  [CMakePresets.json](../CMakePresets.json)), or `-DFW_TARGET=f1` without one. Each
-  preset has its own build directory, `build/<preset>/`.
-* **VSCode** — pick the preset in CMake Tools. The executable is always named after
-  `project()`, so the tasks and debug entries never mention a target.
+* **Command line** — a preset per board, e.g. `cmake --preset f1-release` (see [CMakePresets.json](../CMakePresets.json)), or `-DFW_TARGET=f1` without one. Each preset has its own build directory, `build/<preset>/`.
+* **VSCode** — pick the preset in CMake Tools. The executable is always named after `project()`, so the tasks and debug entries never mention a target.
 
-CI builds
-every target of the matrix in [.github/workflows/build.yml](../.github/workflows/build.yml)
-and publishes them as `flipper-one-mcu-<target>-firmware-<suffix>.uf2`.
+CI builds every target of the matrix in [.github/workflows/build.yml](../.github/workflows/build.yml) and publishes them as `flipper-one-mcu-<target>-firmware-<suffix>.uf2`.
 
 ## What a descriptor is
 
-A descriptor only declares data — which target it is based on, and which sources and
-include directories make up the firmware. It must not create CMake targets. That is
-what keeps inheritance a matter of editing lists.
+A descriptor only declares data — which target it is based on, and which sources and include directories make up the firmware. It must not create CMake targets. That is what keeps inheritance a matter of editing lists.
 
-Everything that does not vary between boards stays in the top-level
-[CMakeLists.txt](../CMakeLists.txt): the Pico board, compile definitions, linked
-libraries, flash layout, NVM bank size. Move a knob into the API only once a board
-actually needs a different value for it.
+Everything that does not vary between boards stays in the top-level [CMakeLists.txt](../CMakeLists.txt): the Pico board, compile definitions, linked libraries, flash layout, NVM bank size. Move a knob into the API only once a board actually needs a different value for it.
 
 ## Inheritance
 
-`fw_base(f1)` in `targets/f2/target.cmake` makes the search path
-`[targets/f2, targets/f1]` — child first. From that one rule:
+`fw_base(f1)` in `targets/f2/target.cmake` makes the search path `[targets/f2, targets/f1]` — child first. From that one rule:
 
 | To do this | Do this |
 | --- | --- |
@@ -60,24 +46,17 @@ actually needs a different value for it.
 | Drop shared code | `fw_remove(lib/drivers/tca6416a/*.c)` |
 | Add shared code | `fw_sources(lib/drivers/pcal6416/*.c)` |
 
-A `fw_base()` must be the first statement in a descriptor: the base is loaded in
-place, so everything after it is applied on top.
+A `fw_base()` must be the first statement in a descriptor: the base is loaded in place, so everything after it is applied on top.
 
 ### No quoted includes inside `targets/`
 
-Headers are overridden by include order, not by copying — both directories stay on
-the path, child first. Quotes break that: the compiler searches the including file's
-own directory first, so one translation unit can pull in the f1 copy and the f2
-copy at once. `#pragma once` keys on the path and will not deduplicate them, and
-every type in the header is redeclared.
+Headers are overridden by include order, not by copying — both directories stay on the path, child first. Quotes break that: the compiler searches the including file's own directory first, so one translation unit can pull in the f1 copy and the f2 copy at once. `#pragma once` keys on the path and will not deduplicate them, and every type in the header is redeclared.
 
 Use `<>` for everything under `targets/`, SDK headers included.
 
 ## API
 
-The rule for paths: **without a prefix they are relative to the repository root**,
-like everywhere else in the project. The `fw_target_` ones are relative to the target
-directory and are looked up along the inheritance chain.
+The rule for paths: **without a prefix they are relative to the repository root**, like everywhere else in the project. The `fw_target_` ones are relative to the target directory and are looked up along the inheritance chain.
 
 | Declaration | Paths relative to | Effect |
 | --- | --- | --- |
@@ -89,13 +68,9 @@ directory and are looked up along the inheritance chain.
 | `fw_includes(<dirs>...)` | repository root | Include directories shared by every target |
 | `fw_target_includes(<dirs>...)` | target directory, chain | Board-specific include directories; each expands to every directory in the chain that has it |
 
-Globs are recursive, so `lib/drivers/*.c` also matches subdirectories. The order in
-which sources are declared does not matter — the final list is sorted. The order of
-include directories does matter and is preserved, with the base's entries first. New
-files in an already declared directory are picked up without re-running CMake by hand.
+Globs are recursive, so `lib/drivers/*.c` also matches subdirectories. The order in which sources are declared does not matter — the final list is sorted. The order of include directories does matter and is preserved, with the base's entries first. New files in an already declared directory are picked up without re-running CMake by hand.
 
-A removal that matches nothing is an error rather than a no-op, so a pattern left
-behind by a rename in the base is caught instead of silently changing what is built.
+A removal that matches nothing is an error rather than a no-op, so a pattern left behind by a rename in the base is caught instead of silently changing what is built.
 
 The top-level CMakeLists consumes all of this through three commands:
 
@@ -107,11 +82,8 @@ The top-level CMakeLists consumes all of this through three commands:
 
 ## Adding a target
 
-1. Create `targets/f<number>/target.cmake`. Start with `fw_base(<existing target>)` if
-   the board is close to one that already exists, and add nothing else — it should
-   build identically to its base before you start changing anything.
-2. Add the name to the `target` matrix in [.github/workflows/build.yml](../.github/workflows/build.yml),
-   and a link line to the body of the `comment` job right below it.
+1. Create `targets/f<number>/target.cmake`. Start with `fw_base(<existing target>)` if the board is close to one that already exists, and add nothing else — it should build identically to its base before you start changing anything.
+2. Add the name to the `target` matrix in [.github/workflows/build.yml](../.github/workflows/build.yml), and a link line to the body of the `comment` job right below it.
 3. Add presets for it to [CMakePresets.json](../CMakePresets.json).
 
 ## Configure errors
