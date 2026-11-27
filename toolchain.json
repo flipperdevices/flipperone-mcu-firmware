@@ -1,14 +1,15 @@
 {
   "schema": 1,
-  "toolchain": "v4",
+  "toolchain": "v5",
   "repository": "flipperdevices/flipperone-mcu-toolchain",
-  "source_commit": "1b5df5e6fc812d31615b94aa21bd4490397443f3",
-  "image": "ghcr.io/flipperdevices/flipperone-mcu-toolchain@sha256:1536020b084b0cbc0e02da0bad56170b9498f0d0099bc61d982405982350b32c",
+  "source_commit": "27ff2cfb0bdc3bebfcbc1eabfa9d4b2e05530238",
+  "image": "ghcr.io/flipperdevices/flipperone-mcu-toolchain@sha256:523e2c3d19d4181d0170bfcfb92cd2d429ab1b7c1a9638d7009a63254126d28f",
   "archives": {
-    "linux-x86_64": {"name": "flipperone-mcu-toolchain-v4-linux-x86_64.tar.gz", "sha256": "124ce4486b4bbec90943f082a4d538a018ada69905b0c535a13cf65f662cf363", "size": 511540725},
-    "linux-aarch64": {"name": "flipperone-mcu-toolchain-v4-linux-aarch64.tar.gz", "sha256": "f38242717a7ced978204e16dd94d976af2afd50bad5fd90c828dcbb88c79c1f8", "size": 483369256},
-    "darwin-arm64": {"name": "flipperone-mcu-toolchain-v4-darwin-arm64.tar.gz", "sha256": "831d695a8d184fde750c0c51f1c6d6e3bc51ae1d9c3c71c00088470eb5915b8c", "size": 435189934},
-    "windows-x64": {"name": "flipperone-mcu-toolchain-v4-windows-x64.zip", "sha256": "e8267fd99ebd405e831642e105056044de2e181cacf1f0afe6f593fd33f87a55", "size": 513464530}
+    "linux-x86_64": {"name": "flipperone-mcu-toolchain-v5-linux-x86_64.tar.gz", "sha256": "8e529a18f25f5e628449b8f106ab950baebf3c0bf0b406ee8a1268975c1605c3", "size": 517435549},
+    "linux-aarch64": {"name": "flipperone-mcu-toolchain-v5-linux-aarch64.tar.gz", "sha256": "6d4cdf9bb838ab89284b6d1d05a6a30b87ea7a51ac7ea15c2b2b978bfc8eaa23", "size": 489402576},
+    "darwin-arm64": {"name": "flipperone-mcu-toolchain-v5-darwin-arm64.tar.gz", "sha256": "823950b7bf6adb88eaf9449be8a7793dada4ed414d9299ce2ba6931278c8a66a", "size": 433637773},
+    "windows-x64": {"name": "flipperone-mcu-toolchain-v5-windows-x64.zip", "sha256": "bbb4d0eb22753dbac79d8b444ba815cf25eb029dc0a18c1c9da4aa7e96b65564", "size": 513876555},
+    "windows-arm64": {"name": "flipperone-mcu-toolchain-v5-windows-arm64.zip", "sha256": "b83591dd4e25e595be36c5896add40ba3d42464b869de6270f80c9d29d83aa6c", "size": 529951510}
   },
   "components": {
     "arm-none-eabi-gcc": {"version": "14.2.1-1.1", "license": "GPL-3.0-or-later WITH GCC-exception-3.1 AND LicenseRef-newlib"},
@@ -16,10 +17,9 @@
     "libusb": {"version": "1.0.26-1", "license": "LGPL-2.1-or-later", "platforms": ["linux-aarch64", "linux-x86_64"]},
     "libftdi1": {"version": "1.5-6", "license": "LGPL-2.1-only", "platforms": ["linux-aarch64", "linux-x86_64"]},
     "hidapi": {"version": "0.13.1-1", "license": "GPL-3.0-only OR BSD-3-Clause OR LicenseRef-HIDAPI", "platforms": ["linux-aarch64", "linux-x86_64"]},
-    "libgpiod": {"version": "1.6.3-1", "license": "LGPL-2.1-or-later", "platforms": ["linux-aarch64"]},
     "picotool": {"version": "2.3.1", "license": "BSD-3-Clause"},
     "pioasm": {"version": "2.3.1", "license": "BSD-3-Clause"},
-    "openocd": {"version": "0.12.0+dev-gacff23f", "license": "GPL-2.0-or-later"},
+    "openocd": {"version": "0.12.0+dev-flipper-v1", "license": "GPL-2.0-or-later"},
     "cmake": {"version": "3.31.9-1", "license": "BSD-3-Clause"},
     "ninja": {"version": "1.13.1-1", "license": "Apache-2.0"},
     "python": {"version": "3.12.16+20261026", "license": "PSF-2.0"},
@@ -28,6 +28,8 @@
     "ccache": {"version": "4.14.3", "license": "GPL-3.0-or-later"},
     "clang-format": {"version": "22.1.1", "license": "Apache-2.0 WITH LLVM-exception"},
     "clang-tidy": {"version": "22.1.0.1", "license": "Apache-2.0 WITH LLVM-exception"},
-    "clangd": {"version": "22.1.1", "license": "Apache-2.0 WITH LLVM-exception"}
+    "clangd": {"version": "22.1.1", "license": "Apache-2.0 WITH LLVM-exception"},
+    "msvc-runtime-x64": {"version": "14.51.36231", "license": "LicenseRef-Microsoft-Visual-Cpp-Redistributable", "platforms": ["windows-arm64", "windows-x64"]},
+    "msvc-runtime-arm64": {"version": "14.51.36231", "license": "LicenseRef-Microsoft-Visual-Cpp-Redistributable", "platforms": ["windows-arm64"]}
   }
 }

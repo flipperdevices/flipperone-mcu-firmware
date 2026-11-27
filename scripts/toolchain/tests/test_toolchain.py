@@ -24,7 +24,7 @@ REPO = HERE.parents[2]
 def release(tag='v7', sha='a'):
     """A release.json as flipperone-mcu-toolchain publishes it."""
     archives = {}
-    for platform in toolchain.PLATFORMS:
+    for platform in toolchain.PLATFORMS + toolchain.OPTIONAL_PLATFORMS:
         suffix = '.zip' if platform.startswith('windows') else '.tar.gz'
         archives[platform] = {'name': f'flipperone-mcu-toolchain-{tag}-{platform}{suffix}', 'sha256': sha * 64,
                               'size': 1}
@@ -52,7 +52,7 @@ def test_render_round_trips_and_keeps_one_line_per_archive():
     toolchain.validate(pin)
     text = toolchain.render(pin)
     assert json.loads(text) == pin
-    for platform in toolchain.PLATFORMS:
+    for platform in toolchain.PLATFORMS + toolchain.OPTIONAL_PLATFORMS:
         assert sum(f'"{platform}": {{"name": ' in line for line in text.splitlines()) == 1
 
 
@@ -60,6 +60,7 @@ def test_render_round_trips_and_keeps_one_line_per_archive():
     lambda p: p.update(toolchain='7'),
     lambda p: p.update(image='ghcr.io/x:latest'),
     lambda p: p['archives'].pop('darwin-arm64'),
+    lambda p: p['archives'].update({'windows-x86': dict(p['archives']['windows-x64'])}),
     lambda p: p['archives']['linux-x86_64'].update(sha256='A' * 64),
     lambda p: p['archives']['linux-x86_64'].update(name='other.tar.gz'),
     lambda p: p['components'].pop('pico-sdk'),
@@ -69,6 +70,16 @@ def test_validate_rejects(breakage):
     breakage(pin)
     with pytest.raises(toolchain.PinError):
         toolchain.validate(pin)
+
+
+def test_a_release_without_the_optional_platforms_still_pins():
+    older = release('v4')
+    for platform in toolchain.OPTIONAL_PLATFORMS:
+        del older['archives'][platform]
+    pin = toolchain.pin_from_release(older)
+    toolchain.validate(pin)
+    assert sorted(pin['archives']) == sorted(toolchain.PLATFORMS)
+    assert json.loads(toolchain.render(pin)) == pin
 
 
 def test_copies_follow_the_pin():
