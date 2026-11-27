@@ -12,6 +12,9 @@
 
 #define MENU_LINE_HEIGHT 15
 
+// Clay sorts floating elements across the whole screen: above any app's
+#define POPUP_MENU_Z_INDEX 1000
+
 struct PopupMenu {
     View* view;
     PopupMenuCallback callback;
@@ -64,6 +67,7 @@ static void popup_menu_draw_item(PopupMenuItem* item, size_t line_index, bool se
                         {
                             .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_TOP, .parent = CLAY_ATTACH_POINT_CENTER_TOP},
                             .attachTo = CLAY_ATTACH_TO_PARENT,
+                            .zIndex = POPUP_MENU_Z_INDEX + 1,
                         },
                     .border =
                         {
@@ -83,6 +87,7 @@ static void popup_menu_draw_item(PopupMenuItem* item, size_t line_index, bool se
                         {
                             .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
                             .attachTo = CLAY_ATTACH_TO_PARENT,
+                            .zIndex = POPUP_MENU_Z_INDEX + 1,
                         },
                     .image = {.imageData = (void*)left_border},
                 }){};
@@ -94,6 +99,7 @@ static void popup_menu_draw_item(PopupMenuItem* item, size_t line_index, bool se
                         {
                             .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
                             .attachTo = CLAY_ATTACH_TO_PARENT,
+                            .zIndex = POPUP_MENU_Z_INDEX + 1,
                         },
                     .image = {.imageData = (void*)right_border},
                 }){};
@@ -166,6 +172,7 @@ static bool popup_menu_layout_callback(void* _model) {
                 {
                     .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_TOP, .parent = CLAY_ATTACH_POINT_LEFT_TOP},
                     .attachTo = CLAY_ATTACH_TO_ROOT,
+                    .zIndex = POPUP_MENU_Z_INDEX,
                 },
         }) {
         CLAY(
@@ -184,6 +191,7 @@ static bool popup_menu_layout_callback(void* _model) {
                     {
                         .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
                         .attachTo = CLAY_ATTACH_TO_ROOT,
+                        .zIndex = POPUP_MENU_Z_INDEX,
                     },
                 .border = {.color = COLOR_BLACK, .width = {.top = 1, .left = 1, .right = 1, .bottom = 1}},
                 .cornerRadius = CLAY_CORNER_RADIUS(5),

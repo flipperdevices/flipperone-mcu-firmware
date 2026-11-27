@@ -1,20 +1,12 @@
 #include <gui/gui.h>
-#include <gui/clay_helper.h>
-
-#include <furi_bsp_expander.h>
 #include <haptic/haptic.h>
-#include <power/power.h>
-#include <input_touch/input_touch.h>
-#include <drivers/display/display_jd9853_qspi.h>
-#include <pd/pd.h>
-#include <usb_mux/usb_mux.h>
-#include <assets.h>
 #include <desktop/desktop.h>
+#include "self_check_screen.h"
 
 #define TAG "SelfCheck"
 
 typedef struct {
-    FuriString* status_str;
+    const SelfCheckScreen* screen;
 } SelfCheckModel;
 
 typedef struct {
@@ -22,59 +14,13 @@ typedef struct {
     View* view;
     FuriEventLoop* event_loop;
     FuriThread* thread;
-    FuriString* status_str;
+    SelfCheckScreen* screen;
 } SelfCheck;
 
 static bool self_check_layout(void* _model) {
     furi_assert(_model);
     SelfCheckModel* model = (SelfCheckModel*)_model;
-
-    CLAY(
-        CLAY_APP_ID("OuterContainer"),
-        {.backgroundColor = COLOR_WHITE,
-         .layout = {
-             .layoutDirection = CLAY_TOP_TO_BOTTOM,
-             .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-             .padding = {4, 4, 4, 4},
-             .childGap = 4,
-         }}) {
-        CLAY(
-            CLAY_APP_ID("MainContent"),
-            {
-                .clip = {.vertical = true},
-                .layout =
-                    {
-                        .layoutDirection = CLAY_LEFT_TO_RIGHT,
-                        .childGap = 8,
-                        .padding = {.left = 6, .right = 6, .top = 2, .bottom = 2},
-                        .sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)},
-                    },
-            }) {
-            // image wrapper with floating position
-            CLAY(
-                CLAY_APP_ID("LogoWrapper"),
-                {
-                    .layout =
-                        {
-                            .sizing = {.height = CLAY_SIZING_FIT(0), .width = CLAY_SIZING_FIT(0)},
-                            .padding = {.left = 0, .right = 3, .top = 3, .bottom = 0},
-                        },
-                    .floating =
-                        {
-                            .attachPoints = {.element = CLAY_ATTACH_POINT_RIGHT_TOP, .parent = CLAY_ATTACH_POINT_RIGHT_TOP},
-                            .attachTo = CLAY_ATTACH_TO_PARENT,
-                        },
-                }) {
-                clay_fixed_image(CLAY_ID_LOCAL("Logo"), &logo_head);
-            }
-
-            // text
-            CLAY(CLAY_APP_ID("StatusText")) {
-                CLAY_TEXT(clay_helper_string_from(model->status_str), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK}));
-            }
-        }
-    }
-
+    self_check_screen_layout(model->screen, "Self Check");
     return false;
 }
 
@@ -101,86 +47,6 @@ static bool self_check_input_touch(InputTouchEvent* event, void* context) {
     return false;
 }
 
-static bool self_check_process(FuriString* status_str) {
-    bool check_ok = true;
-    bool all_ok = true;
-
-    // check expander
-    FuriBspDevice expander_device = 0;
-    check_ok = furi_bsp_expander_is_initialized(&expander_device);
-    if(all_ok) {
-        all_ok = check_ok;
-    }
-
-    // check haptic
-    Haptic* haptic = furi_record_open(RECORD_HAPTIC);
-    HapticDevice haptic_device = 0;
-    check_ok = haptic_is_device_initialized(haptic, &haptic_device);
-    furi_record_close(RECORD_HAPTIC);
-    if(all_ok) {
-        all_ok = check_ok;
-    }
-
-    // check power
-    Power* power = furi_record_open(RECORD_POWER);
-    PowerDevice power_device = 0;
-    check_ok = power_is_device_initialized(power, &power_device);
-    furi_record_close(RECORD_POWER);
-    if(all_ok) {
-        all_ok = check_ok;
-    }
-
-    // check display
-    // TODO: tps62868x is not needed, it will be removed in the next version
-
-    // check input touch
-    InputTouch* input_touch = furi_record_open(RECORD_INPUT_TOUCH);
-    InputTouchDevice input_touch_device = 0;
-    check_ok = input_touch_is_device_initialized(input_touch, &input_touch_device);
-    furi_record_close(RECORD_INPUT_TOUCH);
-    if(all_ok) {
-        all_ok = check_ok;
-    }
-
-    // check pd
-    Pd* pd = furi_record_open(RECORD_PD);
-    PdDevice pd_device = 0;
-    check_ok = pd_is_device_initialized(pd, &pd_device);
-    furi_record_close(RECORD_PD);
-    if(all_ok) {
-        all_ok = check_ok;
-    }
-
-    // check usb mux
-    UsbMux* usb_mux = furi_record_open(RECORD_USBMUX);
-    UsbMuxDevice usb_mux_device = 0;
-    check_ok = usb_mux_is_device_initialized(usb_mux, &usb_mux_device);
-    furi_record_close(RECORD_USBMUX);
-    if(all_ok) {
-        all_ok = check_ok;
-    }
-
-    // show result
-    if(status_str) {
-        // TODO: get real cpu info
-        furi_string_printf(status_str, "CPU: Dual Cortex-M33 @ 150MHz\n");
-        furi_string_cat_printf(status_str, "Memory total: %dK\n", memmgr_get_total_heap() / 1024);
-        furi_string_cat_printf(status_str, "Memory free: %dK\n\n", memmgr_get_free_heap() / 1024);
-        furi_string_cat_printf(status_str, "Current meter: %s\n", (power_device & PowerDeviceIna219) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Expander control: %s\n", (expander_device & FuriBspDeviceExpanderControl) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Expander main: %s\n", (expander_device & FuriBspDeviceExpanderMain) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Haptic: %s\n", (haptic_device & HapticDeviceDrv2605l) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "PD: %s\n", (pd_device & PdDeviceFusb302) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Charger: %s\n", (power_device & PowerDeviceBq2579x) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Gauge: %s\n", (power_device & PowerDeviceBq28z620) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "Touchpad: %s\n", (input_touch_device & InputTouchDeviceIqs7211e) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "USB Mux: %s\n", (usb_mux_device & UsbMuxDeviceHd3ss3220) ? "ok" : "NOT FOUND");
-        furi_string_cat_printf(status_str, "\nPress DEL to enter setup, OK or BACK to exit");
-    }
-
-    return all_ok;
-}
-
 static SelfCheck* self_check_alloc(void) {
     SelfCheck* instance = malloc(sizeof(SelfCheck));
     instance->gui = furi_record_open(RECORD_GUI);
@@ -188,15 +54,15 @@ static SelfCheck* self_check_alloc(void) {
     instance->thread = furi_thread_get_current();
     instance->view = view_alloc();
 
-    instance->status_str = furi_string_alloc();
-    if(!self_check_process(instance->status_str)) {
+    instance->screen = self_check_screen_alloc();
+    if(!self_check_screen_is_ok(instance->screen)) {
         Haptic* haptic = furi_record_open(RECORD_HAPTIC);
         haptic_play_effect(haptic, Drv2605lEffectDoubleClick_100, 0);
         furi_record_close(RECORD_HAPTIC);
     }
 
     view_allocate_model(instance->view, ViewModelTypeLockFree, sizeof(SelfCheckModel));
-    with_view_model(instance->view, SelfCheckModel * model, { model->status_str = instance->status_str; }, false);
+    with_view_model(instance->view, SelfCheckModel * model, { model->screen = instance->screen; }, false);
 
     view_set_layout_callback(instance->view, self_check_layout);
     view_set_input_callback(instance->view, self_check_input, instance);
@@ -208,7 +74,7 @@ static SelfCheck* self_check_alloc(void) {
 static void self_check_free(SelfCheck* instance) {
     gui_remove_view(instance->gui, instance->view);
     furi_record_close(RECORD_GUI);
-    furi_string_free(instance->status_str);
+    self_check_screen_free(instance->screen);
     view_free(instance->view);
     furi_event_loop_free(instance->event_loop);
     free(instance);
@@ -232,7 +98,10 @@ static void self_check_app_autorun(void) {
         return;
     }
 
-    if(!self_check_process(NULL)) {
+    SelfCheckScreen* screen = self_check_screen_alloc();
+    const bool ok = self_check_screen_is_ok(screen);
+    self_check_screen_free(screen);
+    if(!ok) {
         self_check_app_main();
     }
 

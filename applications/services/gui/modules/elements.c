@@ -34,7 +34,8 @@ void elements_softkey_button_element(size_t index, const char* text, bool active
                     .offset = {.x = offset_x, .y = 0},
                     .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_BOTTOM, .parent = CLAY_ATTACH_POINT_CENTER_BOTTOM},
                     .attachTo = CLAY_ATTACH_TO_ROOT,
-                    .zIndex = active ? 100 : 0,
+                    // Active: the key of an open popup menu, over it (POPUP_MENU_Z_INDEX 1000)
+                    .zIndex = active ? 1100 : 0,
                 },
         }) {
         CLAY(

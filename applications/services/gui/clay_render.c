@@ -40,7 +40,7 @@ static U8G2FontRender render_font_renderers[FontMax];
 static const void* render_get_font_by_id(Font font_id) {
     switch(font_id) {
     case FontBody:
-        return u8g2_font_haxrcorp4089_tr;
+        return u8g2_font_haxrcorp4090_tr;
     case FontButton:
         return u8g2_font_helvB08_tr;
     case FontKeyboard:
@@ -50,7 +50,7 @@ static const void* render_get_font_by_id(Font font_id) {
     case FontBig:
         return u8g2_font_born2bsporty2_tn;
     default:
-        return u8g2_font_haxrcorp4089_tr;
+        return u8g2_font_haxrcorp4090_tr;
     }
 }
 

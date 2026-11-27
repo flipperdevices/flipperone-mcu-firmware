@@ -13,7 +13,7 @@ static const Clay_String font_test_rows[] = {
 };
 
 static const char* font_test_names[] = {
-    [FontBody] = "FontBody     haxrcorp4089",
+    [FontBody] = "FontBody     haxrcorp4090",
     [FontButton] = "FontButton   helvB08",
     [FontKeyboard] = "FontKeyboard profont11",
     [FontBusy9] = "FontBusy9    busy9_9px",

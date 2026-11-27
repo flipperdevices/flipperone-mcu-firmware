@@ -32,13 +32,15 @@ typedef enum {
     HostResetResponseCount,
 } HostResetResponse;
 
-/* The host as its screen shows it; published on host_get_pubsub() */
+/* The host as its screen shows it; published on host_get_pubsub(). Its frames
+ * are its kernel's only in Running and NotResponding. */
 typedef enum {
     HostStateOff, /* Rails off */
-    HostStateStarting, /* Powered from cold; stays until the next power change */
-    HostStateRunning, /* Found powered after an MCU reset, or reported back after not responding */
+    HostStateStarting, /* Powered or restarted, by the MCU or by itself: until a kernel reports a live state */
+    HostStateRunning, /* A kernel reported, or the host was found powered after an MCU reset */
     HostStateNotResponding, /* Powered, but Linux has not written its CPU state in time */
-    HostStateMaskrom, /* Powered into the SoC maskrom */
+    HostStateMaskrom, /* Powered into the SoC maskrom: until a kernel reports a live state */
+    HostStateHandover, /* The boot loader's kernel handed over to the profile's: until it reports a live state */
 } HostState;
 
 #ifdef __cplusplus
@@ -60,7 +62,8 @@ void host_power_maskrom(Host* instance);
 
 HostState host_get_state(Host* instance);
 
-/** Publishes the new HostState on every change, from the host thread. */
+/** Publishes the new HostState on every change, from the host thread. On entering
+ * Running from a state whose frames did not count it asks the host for its screen. */
 FuriPubSub* host_get_pubsub(Host* instance);
 
 #ifdef __cplusplus
