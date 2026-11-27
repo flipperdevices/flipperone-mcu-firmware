@@ -1,5 +1,5 @@
 #include "led.h"
-#include "led_patterns.h"
+#include "led_patterns_i.h"
 
 #include <furi_bsp.h>
 #include <furi_hal_nvm.h>

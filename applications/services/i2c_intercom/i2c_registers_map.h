@@ -191,15 +191,15 @@
 // Led color registers
 /*
  * All LED colors are in RGB 565 format
- * 0x0310+0 Link1 LED color (read, write)
- * 0x0310+2 Link2 LED color (read, write)
- * 0x0310+4 Link3 LED color (read, write)
- * 0x0310+6 Link4 LED color (read, write)
+ * 0x0310 + 0x00 Link1 LED color (read, write)
+ * 0x0310 + 0x02 Link2 LED color (read, write)
+ * 0x0310 + 0x04 Link3 LED color (read, write)
+ * 0x0310 + 0x06 Link4 LED color (read, write)
  * 
- * 0x0310+10 Link1 LED pattern ID (read, write)
- * 0x0310+12 Link2 LED pattern ID (read, write)
- * 0x0310+14 Link3 LED pattern ID (read, write)
- * 0x0310+16 Link4 LED pattern ID (read, write)
+ * 0x0310 + 0x10 Link1 LED pattern ID (read, write)
+ * 0x0310 + 0x12 Link2 LED pattern ID (read, write)
+ * 0x0310 + 0x14 Link3 LED pattern ID (read, write)
+ * 0x0310 + 0x16 Link4 LED pattern ID (read, write)
  *
  * Pattern IDs: 0 - static color (the color register value, the default),
  * 1 - rainbow gradient, 2 - fade, 3 - blink. Patterns run until another ID is

@@ -1,4 +1,4 @@
-#include "led_patterns.h"
+#include "led_patterns_i.h"
 
 #include <toolbox/color.h>
 
@@ -50,7 +50,6 @@ const LedPatternPreset led_pattern_presets[LedPatternMax] = {
     [LedPatternStaticColor] =
         {
             .callback = led_pattern_static_color,
-            .period_ms = 1000,
         },
     [LedPatternRainbowGradient] =
         {
