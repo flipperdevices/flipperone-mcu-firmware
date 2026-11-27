@@ -1,7 +1,8 @@
-# Pinned for the assets build and the agent-tools tests: every checkout and CI
-# run must generate identical output, so bump versions deliberately.
-# assets/CMakeLists.txt installs this file into build/assets/.venv.
+# Python packages the build runs its generators with (nanopb, image_convert.py).
+# Every checkout and CI run must generate identical output, so bump them
+# deliberately. The toolchain bundle's Python ships exactly these versions, so a
+# change here needs a flipperone-mcu-toolchain release first (CONTRIBUTING.md).
+# Without them, assets/CMakeLists.txt installs this file into build/assets/.venv.
 pillow==12.2.0
 protobuf==7.35.1
 grpcio-tools==1.83.0  # bundles protoc, so no system protoc is needed
-pytest==9.2.0  # scripts/agent_tools tests, see .github/workflows/agent-tools-tests.yml

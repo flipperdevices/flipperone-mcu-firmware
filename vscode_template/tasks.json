@@ -1,32 +1,25 @@
 {
-    // Tool paths: picotool and openocd are resolved by the Pico extension from the
-    // sdkVersion/toolchainVersion/picotoolVersion header in CMakeLists.txt, which
-    // is the single place those versions live. The extension has no such command
-    // for cmake and ninja, and ${config:raspberry-pi-pico.ninjaPath} does not work
-    // either: VS Code does not expand the ${HOME} inside that setting. So their
-    // paths below carry a version and have to match settings.json by hand.
     "version": "2.0.0",
     "tasks": [
         {
             "label": "Compile Project",
-            "type": "process",
-            "isBuildCommand": true,
-            "command": "${userHome}/.pico-sdk/ninja/v1.12.1/ninja",
-            "args": [
-                "-C",
-                "${workspaceFolder}/build"
-            ],
+            "type": "cmake",
+            "command": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
             "problemMatcher": []
         },
         {
             "label": "Run Project",
             "type": "process",
-            "command": "${command:raspberry-pi-pico.getPicotoolPath}",
+            "command": "${workspaceFolder}/.toolchain/tools/picotool/picotool",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
                 "load",
-                "${command:raspberry-pi-pico.launchTargetPath}",
+                "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
                 "-fx"
             ],
             "presentation": {
@@ -38,12 +31,12 @@
         {
             "label": "Write partition table",
             "type": "process",
-            "command": "${command:raspberry-pi-pico.getPicotoolPath}",
+            "command": "${workspaceFolder}/.toolchain/tools/picotool/picotool",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
                 "load",
-                "build/partition_table.uf2",
+                "${workspaceFolder}/build/current/partition_table.uf2",
                 "-fvx"
             ],
             "presentation": {
@@ -55,60 +48,22 @@
         {
             "label": "Flash",
             "type": "process",
-            "command": "${command:raspberry-pi-pico.getOpenOCDRoot}/openocd",
+            "command": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
             "group": "build",
             "dependsOn": "Compile Project",
             "args": [
                 "-s",
-                "${command:raspberry-pi-pico.getOpenOCDRoot}/scripts",
+                "${workspaceFolder}/.toolchain/tools/openocd/scripts",
                 "-f",
                 "interface/cmsis-dap.cfg",
                 "-f",
-                "target/${command:raspberry-pi-pico.getTarget}.cfg",
+                "target/rp2350.cfg",
+                "-c",
+                "set BUILD_DIR {${workspaceFolder}/build/current}",
                 "-f",
                 "targets/flash.tcl"
             ],
             "problemMatcher": []
-        },
-        {
-            // Reconfigures the one build directory for another board. Everything
-            // else keeps working unchanged: the executable is always named after
-            // project(), so the compile, flash and debug entries never mention a
-            // target. Switching costs a full rebuild.
-            "label": "Select Target",
-            "detail": "Reconfigure the build for a different hardware target",
-            "type": "process",
-            "command": "${userHome}/.pico-sdk/cmake/v3.31.5/bin/cmake",
-            "group": "build",
-            "args": [
-                "-S",
-                "${workspaceFolder}",
-                "-B",
-                "${workspaceFolder}/build",
-                "-G",
-                "Ninja",
-                "-DFW_TARGET=${input:fwTarget}"
-            ],
-            "presentation": {
-                "reveal": "always",
-                "panel": "dedicated"
-            },
-            "problemMatcher": []
-        }
-    ],
-    "inputs": [
-        {
-            // One entry per directory under targets/ that has a target.cmake.
-            // A name that is not there fails the configure with the list of the
-            // ones that are.
-            "id": "fwTarget",
-            "type": "pickString",
-            "description": "Hardware target",
-            "default": "f1",
-            "options": [
-                "f1",
-                "f2"
-            ]
         }
     ]
 }

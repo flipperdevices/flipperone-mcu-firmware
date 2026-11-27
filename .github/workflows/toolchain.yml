@@ -1,0 +1,43 @@
+name: Toolchain
+
+# toolchain.json, its copies and the bootstrap scripts are consistent.
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/toolchain.yml'
+      - '.github/actions/toolchain/**'
+      - 'CMakeLists.txt'
+      - 'scripts/toolchain/**'
+      - 'toolchain.json'
+      - 'vscode_template/**'
+  push:
+    branches: [dev]
+    paths:
+      - '.github/workflows/toolchain.yml'
+      - '.github/actions/toolchain/**'
+      - 'CMakeLists.txt'
+      - 'scripts/toolchain/**'
+      - 'toolchain.json'
+      - 'vscode_template/**'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: toolchain.json and its copies
+        run: python3 scripts/toolchain/toolchain.py check
+
+      - name: Tests
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y --no-install-recommends zsh
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --disable-pip-version-check pytest==9.2.0
+          "$RUNNER_TEMP/venv/bin/python" -m pytest scripts/toolchain/tests -q
+
