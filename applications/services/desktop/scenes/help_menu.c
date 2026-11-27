@@ -42,9 +42,9 @@ static void help_menu_on_alloc(Scene* scene, void* context) {
     popup_menu_set_icon(scene_data->menu, &popup_menu_help_icon);
     popup_menu_set_align(scene_data->menu, PopupMenuAlignLeft);
     popup_menu_set_callback(scene_data->menu, help_menu_item_selected, scene_data->desktop);
-    popup_menu_add_item(scene_data->menu, "Quick start", HelpMenuItemQuickStart);
-    popup_menu_add_item(scene_data->menu, "Ports", HelpMenuItemPorts);
-    popup_menu_add_item(scene_data->menu, "Troubleshooting", HelpMenuItemTroubleshooting);
+    popup_menu_add_item(scene_data->menu, "TBD Quick start", HelpMenuItemQuickStart);
+    popup_menu_add_item(scene_data->menu, "TBD Ports", HelpMenuItemPorts);
+    popup_menu_add_item(scene_data->menu, "TBD Troubleshooting", HelpMenuItemTroubleshooting);
 }
 
 static void help_menu_on_enter(Scene* scene, void* app) {
