@@ -25,15 +25,36 @@
       "cacheVariables": {"FW_TARGET": "f2", "FW_RECOVERY": "ON"}
     },
     {
+      "name": "f2-debug",
+      "displayName": "f2, debug",
+      "inherits": "base",
+      "cacheVariables": {"FW_TARGET": "f2", "CMAKE_BUILD_TYPE": "Debug"}
+    },
+    {
       "name": "f1-release",
       "displayName": "f1, release",
       "inherits": "base",
       "cacheVariables": {"FW_TARGET": "f1"}
+    },
+    {
+      "name": "f1-debug",
+      "displayName": "f1, debug",
+      "inherits": "base",
+      "cacheVariables": {"FW_TARGET": "f1", "CMAKE_BUILD_TYPE": "Debug"}
     }
   ],
   "buildPresets": [
     {"name": "f2-release", "configurePreset": "f2-release"},
     {"name": "f2-recovery", "configurePreset": "f2-recovery"},
-    {"name": "f1-release", "configurePreset": "f1-release"}
+    {"name": "f2-debug", "configurePreset": "f2-debug"},
+    {"name": "f1-release", "configurePreset": "f1-release"},
+    {"name": "f1-debug", "configurePreset": "f1-debug"}
+  ],
+  "workflowPresets": [
+    {"name": "f2-release", "steps": [{"type": "configure", "name": "f2-release"}, {"type": "build", "name": "f2-release"}]},
+    {"name": "f2-recovery", "steps": [{"type": "configure", "name": "f2-recovery"}, {"type": "build", "name": "f2-recovery"}]},
+    {"name": "f2-debug", "steps": [{"type": "configure", "name": "f2-debug"}, {"type": "build", "name": "f2-debug"}]},
+    {"name": "f1-release", "steps": [{"type": "configure", "name": "f1-release"}, {"type": "build", "name": "f1-release"}]},
+    {"name": "f1-debug", "steps": [{"type": "configure", "name": "f1-debug"}, {"type": "build", "name": "f1-debug"}]}
   ]
 }

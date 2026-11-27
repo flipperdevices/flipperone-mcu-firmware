@@ -33,6 +33,8 @@ VSCODE_TEMPLATE = REPO_ROOT / 'vscode_template'
 
 REPOSITORY = 'flipperdevices/flipperone-mcu-toolchain'
 PLATFORMS = ('linux-x86_64', 'linux-aarch64', 'darwin-arm64', 'windows-x64')
+# Releases from v5 on also carry these; a pin of an older release has none.
+OPTIONAL_PLATFORMS = ('windows-arm64',)
 TAG_RE = re.compile(r'v[1-9][0-9]*')
 SHA256_RE = re.compile(r'[0-9a-f]{64}')
 IMAGE_RE = re.compile(r'ghcr\.io/[a-z0-9._/-]+@sha256:[0-9a-f]{64}')
@@ -62,7 +64,8 @@ def pin_from_release(release: dict) -> dict:
         'repository': REPOSITORY,
         'source_commit': release['source_commit'],
         'image': f"{image['name']}@{image['digest']}",
-        'archives': {p: release['archives'][p] for p in PLATFORMS},
+        'archives': {p: release['archives'][p] for p in PLATFORMS + OPTIONAL_PLATFORMS
+                     if p in PLATFORMS or p in release['archives']},
         'components': release['components'],
     }
 
@@ -78,8 +81,8 @@ def validate(pin: dict) -> None:
     if not IMAGE_RE.fullmatch(pin.get('image', '')):
         problems.append(f"image {pin.get('image')!r} is not ghcr.io/<name>@sha256:<digest>")
     archives = pin.get('archives', {})
-    if sorted(archives) != sorted(PLATFORMS):
-        problems.append(f'archives must be exactly {", ".join(PLATFORMS)}')
+    if not set(PLATFORMS) <= set(archives) <= set(PLATFORMS + OPTIONAL_PLATFORMS):
+        problems.append(f'archives must be {", ".join(PLATFORMS)}, optionally with {", ".join(OPTIONAL_PLATFORMS)}')
     for platform, archive in archives.items():
         if set(archive) != {'name', 'sha256', 'size'}:
             problems.append(f'{platform}: archive keys must be name, sha256, size')
@@ -111,7 +114,8 @@ def render(pin: dict) -> str:
     lines = ['{']
     for key in ('schema', 'toolchain', 'repository', 'source_commit', 'image'):
         lines.append(line(key, pin[key]))
-    lines += block('archives', {p: {k: pin['archives'][p][k] for k in ('name', 'sha256', 'size')} for p in PLATFORMS})
+    lines += block('archives', {p: {k: pin['archives'][p][k] for k in ('name', 'sha256', 'size')}
+                                for p in PLATFORMS + OPTIONAL_PLATFORMS if p in pin['archives']})
     lines += block('components', pin['components'], last=True)
     lines.append('}')
     return '\n'.join(lines) + '\n'

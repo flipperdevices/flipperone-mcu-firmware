@@ -1,0 +1,24 @@
+# clangd: the compile commands of the preset configured or built last
+CompileFlags:
+  CompilationDatabase: build/current
+  # clangd parses as clang, whose arm-none-eabi defaults differ from arm-none-eabi-gcc's:
+  # match the GCC ABI, or enum bit-field sizes and printf format checks disagree with the build
+  Add:
+    # GCC sizes enums to fit their values (AAPCS variable-size enums); clang makes them int
+    - -fshort-enums
+    # GCC's int32_t and uint32_t are long and unsigned long; clang's are int and unsigned int
+    - -U__INT32_TYPE__
+    - -D__INT32_TYPE__=long int
+    - -U__UINT32_TYPE__
+    - -D__UINT32_TYPE__=long unsigned int
+    - -U__INT_LEAST32_TYPE__
+    - -D__INT_LEAST32_TYPE__=long int
+    - -U__UINT_LEAST32_TYPE__
+    - -D__UINT_LEAST32_TYPE__=long unsigned int
+    # GCC accepts these C23 forms in gnu11 without a warning
+    - -Wno-c23-extensions
+Diagnostics:
+  # As clang, CMSIS includes clang's arm_acle.h, whose __nop and __dmb/__dsb/__isb clash with
+  # the Pico SDK's hardware/sync.h; GCC's arm_acle.h defines neither. clangd cannot scope this
+  # to those headers, so it hides these errors in project code too: the GCC build still reports them
+  Suppress: [redefinition, static_non_static]

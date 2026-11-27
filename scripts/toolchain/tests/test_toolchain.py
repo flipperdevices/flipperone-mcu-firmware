@@ -4,6 +4,7 @@ import copy
 import hashlib
 import io
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -23,7 +24,7 @@ REPO = HERE.parents[2]
 def release(tag='v7', sha='a'):
     """A release.json as flipperone-mcu-toolchain publishes it."""
     archives = {}
-    for platform in toolchain.PLATFORMS:
+    for platform in toolchain.PLATFORMS + toolchain.OPTIONAL_PLATFORMS:
         suffix = '.zip' if platform.startswith('windows') else '.tar.gz'
         archives[platform] = {'name': f'flipperone-mcu-toolchain-{tag}-{platform}{suffix}', 'sha256': sha * 64,
                               'size': 1}
@@ -51,7 +52,7 @@ def test_render_round_trips_and_keeps_one_line_per_archive():
     toolchain.validate(pin)
     text = toolchain.render(pin)
     assert json.loads(text) == pin
-    for platform in toolchain.PLATFORMS:
+    for platform in toolchain.PLATFORMS + toolchain.OPTIONAL_PLATFORMS:
         assert sum(f'"{platform}": {{"name": ' in line for line in text.splitlines()) == 1
 
 
@@ -59,6 +60,7 @@ def test_render_round_trips_and_keeps_one_line_per_archive():
     lambda p: p.update(toolchain='7'),
     lambda p: p.update(image='ghcr.io/x:latest'),
     lambda p: p['archives'].pop('darwin-arm64'),
+    lambda p: p['archives'].update({'windows-x86': dict(p['archives']['windows-x64'])}),
     lambda p: p['archives']['linux-x86_64'].update(sha256='A' * 64),
     lambda p: p['archives']['linux-x86_64'].update(name='other.tar.gz'),
     lambda p: p['components'].pop('pico-sdk'),
@@ -68,6 +70,16 @@ def test_validate_rejects(breakage):
     breakage(pin)
     with pytest.raises(toolchain.PinError):
         toolchain.validate(pin)
+
+
+def test_a_release_without_the_optional_platforms_still_pins():
+    older = release('v4')
+    for platform in toolchain.OPTIONAL_PLATFORMS:
+        del older['archives'][platform]
+    pin = toolchain.pin_from_release(older)
+    toolchain.validate(pin)
+    assert sorted(pin['archives']) == sorted(toolchain.PLATFORMS)
+    assert json.loads(toolchain.render(pin)) == pin
 
 
 def test_copies_follow_the_pin():
@@ -235,3 +247,34 @@ def test_bootstrap_refuses_to_run_as_a_program(checkout):
     result = subprocess.run(['bash', str(tree / 'scripts' / 'toolchain' / 'fbtenv.sh')], capture_output=True,
                             text=True, timeout=60)
     assert result.returncode == 1 and 'source this file' in result.stderr
+
+
+# vscode_template on every OS
+
+def _strip_comments(text):
+    return re.sub(r'^\s*//.*$', '', text, flags=re.MULTILINE)
+
+
+def test_toolchain_programs_have_a_windows_exe():
+    """VS Code checks that a task's program exists, so Windows needs the .exe name.
+
+    Cortex-Debug finds openocd.exe by itself, and fbtenv.ps1 gives clangd.exe an
+    extensionless name for the clangd extension, so launch.json and settings.json
+    need no Windows variant.
+    """
+    tasks = json.loads(_strip_comments(toolchain._templates()['tasks.json']))['tasks']
+    entries = [(t['label'], t, 'command') for t in tasks if t['type'] == 'process']
+    assert entries
+    for name, entry, key in entries:
+        if '/.toolchain/' in entry[key]:
+            override = entry.get('windows', {}).get(key, '')
+            assert '/.toolchain/tools/' in override and override.endswith('.exe'), name
+
+
+def test_build_menu_lists_every_task_and_has_no_default():
+    tasks = json.loads(_strip_comments(toolchain._templates()['tasks.json']))['tasks']
+    assert all(t.get('group') == 'build' for t in tasks)  # a default would skip the menu
+    labels = {t['label'] for t in tasks}
+    assert {'Build', 'Build f2', 'Build f1', 'Flash'} <= labels
+    launch = json.loads(_strip_comments(toolchain._templates()['launch.json']))['configurations']
+    assert {c['preLaunchTask'] for c in launch if 'preLaunchTask' in c} <= labels

@@ -7,7 +7,7 @@
     "clangd.path": "${workspaceFolder}/.toolchain/tools/clangd/bin/clangd",
     "clangd.arguments": [
         "--compile-commands-dir=${workspaceFolder}/build/current",
-        "--query-driver=**/arm-none-eabi-*",
+        "--query-driver=**/arm-none-eabi-*,**/ARM-NO~*/bin/*",
         "--header-insertion=never"
     ],
     "C_Cpp.intelliSenseEngine": "disabled",

@@ -5,7 +5,8 @@
 # If scripts are blocked:
 #   powershell -ExecutionPolicy Bypass -NoExit -File .\scripts\toolchain\fbtenv.ps1
 #
-# The first time, it downloads the windows-x64 release archive, checks its sha256
+# The first time, it downloads the release archive for this PC (windows-arm64 on Arm,
+# when the pinned release has one; windows-x64 otherwise), checks its sha256
 # against toolchain.json and unpacks it into
 # $env:FLIPPERONE_TOOLCHAIN_HOME (default ~\.flipper\flipperone-mcu-toolchain)\<tag>\.
 # Then, and on every later run, it dot-sources that bundle's own fbtenv.ps1, which
@@ -24,9 +25,13 @@ $_foBundle = & {
     }
     $pin = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '..\..\toolchain.json') | ConvertFrom-Json
     $tag = $pin.toolchain
-    $archive = $pin.archives.'windows-x64'
+    # The OS's own architecture, which an x64 shell emulated on Arm does not report
+    $os = (Get-ItemProperty -LiteralPath 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' -ErrorAction SilentlyContinue).PROCESSOR_ARCHITECTURE
+    # Releases before v5 have no windows-arm64 archive: their x64 tools run emulated
+    $platform = if ($os -eq 'ARM64' -and $pin.archives.'windows-arm64') { 'windows-arm64' } else { 'windows-x64' }
+    $archive = $pin.archives.$platform
     if ($tag -notmatch '^v[1-9][0-9]*$' -or -not $archive.name -or $archive.sha256 -notmatch '^[0-9a-f]{64}$') {
-        throw 'fbtenv.ps1: toolchain.json has no usable windows-x64 archive'
+        throw "fbtenv.ps1: toolchain.json has no usable $platform archive"
     }
 
     $home_ = if ($env:FLIPPERONE_TOOLCHAIN_HOME) { $env:FLIPPERONE_TOOLCHAIN_HOME }
@@ -98,6 +103,13 @@ $_foBundle = & {
         }
     } catch {
         Write-Warning "fbtenv.ps1: cannot point $current at ${dir}: $_"
+    }
+    # VS Code's clangd extension needs its configured path to exist, and the template
+    # names it without .exe so one settings.json serves every OS: add that name
+    $clangd = Join-Path $dir 'tools\clangd\bin\clangd'
+    if ((Test-Path -LiteralPath "$clangd.exe") -and -not (Test-Path -LiteralPath $clangd)) {
+        try { New-Item -ItemType HardLink -Path $clangd -Target "$clangd.exe" | Out-Null }
+        catch { Write-Warning "fbtenv.ps1: cannot link $clangd to clangd.exe: $_" }
     }
     $dir
 }

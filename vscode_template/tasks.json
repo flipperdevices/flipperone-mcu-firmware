@@ -2,67 +2,97 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Compile Project",
+            "label": "Build",
+            "detail": "Build the preset selected in CMake Tools",
             "type": "cmake",
             "command": "build",
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
+            "group": "build",
             "problemMatcher": []
         },
         {
-            "label": "Run Project",
+            "label": "Build f2",
+            "detail": "Configure and build the f2-release preset",
             "type": "process",
-            "command": "${workspaceFolder}/.toolchain/tools/picotool/picotool",
+            "command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake.exe"},
+            "args": ["--workflow", "--preset", "f2-release"],
             "group": "build",
-            "dependsOn": "Compile Project",
-            "args": [
-                "load",
-                "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf",
-                "-fx"
-            ],
-            "presentation": {
-                "reveal": "always",
-                "panel": "dedicated"
-            },
             "problemMatcher": []
         },
         {
-            "label": "Write partition table",
+            "label": "Build f2 recovery",
+            "detail": "Configure and build the f2-recovery preset: firmware and recovery.uf2",
             "type": "process",
-            "command": "${workspaceFolder}/.toolchain/tools/picotool/picotool",
+            "command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake.exe"},
+            "args": ["--workflow", "--preset", "f2-recovery"],
             "group": "build",
-            "dependsOn": "Compile Project",
-            "args": [
-                "load",
-                "${workspaceFolder}/build/current/partition_table.uf2",
-                "-fvx"
-            ],
-            "presentation": {
-                "reveal": "always",
-                "panel": "dedicated"
-            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build f2 debug",
+            "detail": "Configure and build the f2-debug preset",
+            "type": "process",
+            "command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake.exe"},
+            "args": ["--workflow", "--preset", "f2-debug"],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build f1",
+            "detail": "Configure and build the f1-release preset",
+            "type": "process",
+            "command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake.exe"},
+            "args": ["--workflow", "--preset", "f1-release"],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build f1 debug",
+            "detail": "Configure and build the f1-debug preset",
+            "type": "process",
+            "command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/cmake/bin/cmake.exe"},
+            "args": ["--workflow", "--preset", "f1-debug"],
+            "group": "build",
             "problemMatcher": []
         },
         {
             "label": "Flash",
+            "detail": "Build, then write the partition table and slot A over SWD and start the firmware",
             "type": "process",
-            "command": "${workspaceFolder}/.toolchain/tools/openocd/openocd",
+            "command": "${workspaceFolder}/.toolchain/tools/python/bin/python3",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/python/python.exe"},
+            "args": ["${workspaceFolder}/scripts/flash.py", "--build-dir", "${workspaceFolder}/build/current"],
             "group": "build",
-            "dependsOn": "Compile Project",
-            "args": [
-                "-s",
-                "${workspaceFolder}/.toolchain/tools/openocd/scripts",
-                "-f",
-                "interface/cmsis-dap.cfg",
-                "-f",
-                "target/rp2350.cfg",
-                "-c",
-                "set BUILD_DIR {${workspaceFolder}/build/current}",
-                "-f",
-                "targets/flash.tcl"
-            ],
+            "dependsOn": "Build",
+            "presentation": {"reveal": "always", "panel": "dedicated"},
+            "problemMatcher": []
+        },
+        {
+            "label": "Flash over USB (BOOTSEL)",
+            "detail": "Build, then load the firmware with picotool into an MCU in BOOTSEL mode and start it",
+            "type": "process",
+            "command": "${workspaceFolder}/.toolchain/tools/picotool/picotool",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/picotool/picotool.exe"},
+            "args": ["load", "${workspaceFolder}/build/current/flipperone-mcu-firmware.elf", "-fx"],
+            "group": "build",
+            "dependsOn": "Build",
+            "presentation": {"reveal": "always", "panel": "dedicated"},
+            "problemMatcher": []
+        },
+        {
+            "label": "Write partition table over USB (BOOTSEL)",
+            "detail": "Build, then load the partition table with picotool into an MCU in BOOTSEL mode",
+            "type": "process",
+            "command": "${workspaceFolder}/.toolchain/tools/picotool/picotool",
+            "windows": {"command": "${workspaceFolder}/.toolchain/tools/picotool/picotool.exe"},
+            "args": ["load", "${workspaceFolder}/build/current/partition_table.uf2", "-fvx"],
+            "group": "build",
+            "dependsOn": "Build",
+            "presentation": {"reveal": "always", "panel": "dedicated"},
             "problemMatcher": []
         }
     ]

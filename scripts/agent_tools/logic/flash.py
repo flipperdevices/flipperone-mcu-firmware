@@ -88,16 +88,24 @@ def wait_for_buy(plan, timeout=STAGE_TIMEOUT):
         time.sleep(2.0)
 
 
+@contextmanager
+def _snapshot(data):
+    """A temporary file holding `data`, as an OpenOCD Tcl word; OpenOCD reads it twice, to write and to verify."""
+    temp = tempfile.NamedTemporaryFile("wb", suffix=".bin", delete=False)
+    try:
+        temp.write(data)
+        temp.close()
+        yield "{" + temp.name + "}"
+    finally:
+        temp.close()
+        os.unlink(temp.name)
+
+
 def write(plan, activate=False):
     """Write a preflight plan, verify it by readback and reset; optionally stage a TBYB buy boot."""
     tbyb = bool(plan["image"].get("tbyb_pending"))
-    temp = None
-    try:
-        # Write the bytes preflight() measured, not the file it read.
-        temp = tempfile.NamedTemporaryFile("wb", suffix=".bin", delete=False)
-        temp.write(plan["payload"])
-        temp.close()
-        quoted = "{" + temp.name + "}"
+    # Write the bytes preflight() measured, not the file it read.
+    with _snapshot(plan["payload"]) as quoted:
         # reset halt, not halt: after a TBYB revert the core sits in the bootrom,
         # where the flash driver fails with "Failed to invoke rcp_init".
         commands = ["reset halt", f"flash write_image erase {quoted} {plan['payload_address']:#x} bin", f"verify_image {quoted} {plan['payload_address']:#x} bin"]
@@ -111,11 +119,35 @@ def write(plan, activate=False):
         swd.run(commands, timeout=300)
         if staged:
             wait_for_buy(plan)
-    finally:
-        if temp is not None:
-            os.unlink(temp.name)
     plan.update(staged=staged, tbyb=tbyb)
     return plan
+
+
+def outranking_slot(plan, slots):
+    """The other slot the bootrom would boot instead of the plan's image, or None.
+
+    `slots` is swd.status()["slots"]. The bootrom boots the valid image with the
+    higher version; with equal versions, slot A.
+    """
+    def version(image):
+        return image.get("version_major_word", 0), image.get("version_minor_word", 0)
+
+    ours = version(plan["image"])
+    for name, image in sorted(slots.items()):
+        if name == plan["slot"] or image.get("state") != "valid":
+            continue
+        if version(image) > ours or (version(image) == ours and name < plan["slot"]):
+            return name
+    return None
+
+
+def write_partition_table(path):
+    """Write a partition table image (partition_table.bin) at the start of flash and verify it."""
+    with open(path, "rb") as source:
+        data = source.read()
+    with _snapshot(data) as quoted:
+        swd.run(["reset halt", f"flash write_image erase {quoted} {constants.XIP_BASE:#x} bin",
+                 f"verify_image {quoted} {constants.XIP_BASE:#x} bin"], timeout=120)
 
 
 def flash(slot, path, activate=False):

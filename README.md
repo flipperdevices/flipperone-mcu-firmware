@@ -53,7 +53,7 @@ The output firmware file will be at `build/f2-release/flipperone-mcu-firmware.uf
 
 The first time, `fbtenv` downloads the archive for your machine (400–500 MB), checks its sha256 against `toolchain.json`, and unpacks it into `~/.flipper/flipperone-mcu-toolchain/<tag>/` (or `$FLIPPERONE_TOOLCHAIN_HOME/<tag>/`). After that it only sets up the environment and points the tree's `.toolchain` link at that release (a junction on Windows); run it once in every new shell. Each checkout or worktree has its own link, so trees pinned to different releases work side by side. On Windows the link is a junction, and `git clean -x` can follow it and delete that release from `~/.flipper`; source `fbtenv` again to reinstall it. `git clean` without `-x` leaves `.toolchain` alone. To set it up offline, download the archive yourself and point `FLIPPERONE_TOOLCHAIN_ARCHIVE` at it.
 
-The toolchain runs on Linux x86_64 and aarch64 with glibc 2.34 or newer, macOS on Apple silicon, and Windows x64. It brings its own USB libraries; on Linux it needs only `libudev1`, which systemd-based distributions have, plus udev rules to use a debug probe or flash without root (see the toolchain's [README](https://github.com/flipperdevices/flipperone-mcu-toolchain#host-requirements)).
+The toolchain runs on Linux x86_64 and aarch64 with glibc 2.34 or newer, macOS on Apple silicon, and Windows on x64 and Arm. It brings its own USB libraries; on Linux it needs only `libudev1`, which systemd-based distributions have, plus udev rules to use a debug probe or flash without root (see the toolchain's [README](https://github.com/flipperdevices/flipperone-mcu-toolchain#host-requirements)).
 
 ### Hardware targets
 
@@ -63,13 +63,28 @@ Each board is described by `targets/<name>/target.cmake`, and a target can be ba
 | --- | --- |
 | `f2-release` | f2 firmware |
 | `f2-recovery` | f2 firmware and `recovery.uf2` |
+| `f2-debug` | f2 firmware, debug: `-Og`, `furi_assert` on |
 | `f1-release` | f1 firmware |
+| `f1-debug` | f1 firmware, debug |
 
 Without a preset, pass `-DFW_TARGET=<name>` to CMake. See [docs/TARGETS.md](docs/TARGETS.md) for the descriptor API, how inheritance works, and how to add a board.
 
 ### VSCode
 
-Copy the `vscode_template` folder contents to `.vscode` and install the recommended extensions (CMake Tools, clangd, Cortex-Debug). Code navigation and diagnostics come from the toolchain's clangd, which reads the compile commands in `build/current`, so configure a preset first. On save, clangd formats the changed lines of C and C++ files with `.clang-format`. Set up the toolchain once with `fbtenv` as above; after that VSCode finds it by itself. The build uses the release `toolchain.json` pins; the debugger, OpenOCD and picotool come through `.toolchain`, so after a branch switch to another release, source `fbtenv` again. Pick a preset in the CMake Tools panel, build, and debug with the **Debug** configurations. The **Debug** launches, and the **Run Project**, **Write partition table** and **Flash** tasks, build the selected preset first and use its build through `build/current`. **Debug Attach** uses `build/current` without building.
+1. Set up the toolchain with `fbtenv`, as above.
+2. Copy the contents of `vscode_template` to `.vscode`, and copy them again when the template changes. The same files work on Linux, macOS and Windows.
+3. Install the recommended extensions: CMake Tools, clangd and Cortex-Debug.
+4. Pick a preset in the CMake Tools panel.
+
+Ctrl+Shift+B (Cmd+Shift+B on macOS) lists the tasks:
+
+- **Build**: the selected preset. **Build f2**, **Build f2 recovery**, **Build f2 debug**, **Build f1**, **Build f1 debug**: that preset.
+- **Flash**: build the selected preset, then flash it over SWD with a debug probe ([see below](#with-a-debug-probe)).
+- **Flash over USB (BOOTSEL)**, **Write partition table over USB (BOOTSEL)**: build, then load into an MCU already in BOOTSEL mode.
+
+**Debug** builds the selected preset, flashes it into slot A and stops at `main`; **Debug Attach** attaches to the running firmware without building. Their **(FreeRTOS)** variants also list the FreeRTOS tasks.
+
+Code navigation and diagnostics come from the toolchain's clangd, which reads the compile commands of `build/current`; on save it formats the changed lines with `.clang-format`. VSCode finds the tools through the `.toolchain` link, so after switching to a branch that pins another toolchain release, run `fbtenv` again.
 
 ### Other setups
 
@@ -97,6 +112,10 @@ Alternatively, you can flash the firmware with [`picotool`](https://github.com/r
 ```shell
 picotool load -x build/f2-release/flipperone-mcu-firmware.uf2
 ```
+
+### With a debug probe
+
+With a CMSIS-DAP debug probe, on a Flipper One or a bare board, flash over SWD: `python3 scripts/flash.py` writes the partition table and slot A from `build/current` and starts the firmware (`--slot b`, `--build-dir`, `--no-partition-table`). If the other slot holds an image the bootrom would boot instead, a higher version or slot A with the same version, it erases that slot's header first. Builds are try-before-you-buy images, which the bootrom skips on a normal reset, so the script boots the new image once as an update and waits until it is accepted. picotool's `-x` does the same over USB.
 
 ### Recovering the MCU
 
