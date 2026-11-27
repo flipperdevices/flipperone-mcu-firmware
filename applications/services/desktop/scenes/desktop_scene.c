@@ -3,6 +3,7 @@
 #include <gui/clay_helper.h>
 #include <gui/modules/elements.h>
 #include <gui/modules/parallax.h>
+#include <version.h>
 #include "../scene.h"
 #include "../desktop_i.h"
 
@@ -152,11 +153,18 @@ static const ParallaxLayer home_scene_layers[] = {
      .arrive_speed = HOME_SWIM_IN_SPEED},
 };
 
+// Firmware version over the scene, as the mock places it on the 256 px screen
+#define DESKTOP_VERSION_X (5 + HOME_SCENE_X)
+#define DESKTOP_VERSION_Y 112
+
+static const Clay_Color COLOR_VERSION = {0xAA, 0xAA, 0xAA, 0xFF};
+
 typedef struct {
     bool help_pressed;
     bool settings_pressed;
     Desktop* desktop;
     Parallax* scene;
+    FuriString* version_text;
 } DesktopViewModel;
 
 static bool desktop_layout(void* _model) {
@@ -185,6 +193,20 @@ static bool desktop_layout(void* _model) {
                     },
             }) {
             parallax_element(CLAY_ID_LOCAL("Scene"), model->scene);
+        }
+
+        CLAY(
+            CLAY_APP_ID("Version"),
+            {
+                .floating =
+                    {
+                        .offset = {.x = DESKTOP_VERSION_X, .y = DESKTOP_VERSION_Y},
+                        .attachTo = CLAY_ATTACH_TO_ROOT,
+                    },
+            }) {
+            CLAY_TEXT(
+                clay_helper_string_from(model->version_text),
+                CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_VERSION, .wrapMode = CLAY_TEXT_WRAP_NONE}));
         }
 
         elements_home_tab_element(1, "Help", false, model->help_pressed);
@@ -252,6 +274,9 @@ static void desktop_on_alloc(Scene* scene, void* context) {
             model->desktop = context;
             model->scene = parallax_alloc(home_scene_layers, COUNT_OF(home_scene_layers), HOME_SCENE_WIDTH);
             parallax_set_origin(model->scene, HOME_SCENE_X, HOME_SCENE_Y);
+            const Version* version = version_get();
+            model->version_text =
+                furi_string_alloc_printf("%s %s /%s", version_get_version(version), version_get_githash(version), version_get_gitbranch(version));
         },
         false);
 
