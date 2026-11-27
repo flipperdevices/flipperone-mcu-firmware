@@ -61,6 +61,8 @@ struct Gui {
     // Event handling
     FuriEventLoop* event_loop;
     FuriEventFlag* redraw_flag;
+    // Wakes the redraw when an animated element on screen wants its next frame
+    FuriEventLoopTimer* animation_timer;
     FuriMessageQueue* input_queue;
     FuriMessageQueue* input_touch_queue;
 
@@ -169,6 +171,7 @@ static void gui_redraw(Gui* gui) {
     if(fast_frame) {
         size_t size = canvas_get_width(gui->render_canvas) * canvas_get_height(gui->render_canvas);
         memcpy(canvas_get_data(gui->render_canvas), frame, size);
+        furi_event_loop_timer_stop(gui->animation_timer);
     } else {
         Clay_ResetMeasureTextCache();
         Clay_BeginLayout();
@@ -226,6 +229,14 @@ static void gui_redraw(Gui* gui) {
 #endif
 
         clay_render_do_render(gui->render_canvas, &renderCommands);
+
+        // A redraw for any other reason restarts it: nothing on screen asks, it stops
+        uint32_t animation_delay_ms;
+        if(canvas_get_redraw_delay(gui->render_canvas, &animation_delay_ms)) {
+            furi_event_loop_timer_start(gui->animation_timer, MAX(animation_delay_ms, 1u));
+        } else {
+            furi_event_loop_timer_stop(gui->animation_timer);
+        }
 
         if(gui_view_find_opaque_from_top(gui->views, &it)) {
             do {
@@ -434,6 +445,11 @@ static void gui_input_touch_logic(FuriEventLoopObject* object, void* context) {
     }
 }
 
+static void gui_animation_timer_callback(void* context) {
+    furi_check(context);
+    gui_update(context);
+}
+
 static void gui_redraw_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     Gui* gui = context;
@@ -454,6 +470,7 @@ static Gui* gui_alloc(void) {
     // Event handling
     gui->event_loop = furi_event_loop_alloc();
     gui->redraw_flag = furi_event_flag_alloc();
+    gui->animation_timer = furi_event_loop_timer_alloc(gui->event_loop, gui_animation_timer_callback, FuriEventLoopTimerTypeOnce, gui);
     gui->input_queue = furi_message_queue_alloc(GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent));
     FURI_LOG_I(
         TAG, "InputEvent: %zu bytes x %u -> queue ~%zu bytes", sizeof(InputEvent), GUI_INPUT_EVENT_QUEUE_SIZE, sizeof(InputEvent) * GUI_INPUT_EVENT_QUEUE_SIZE);

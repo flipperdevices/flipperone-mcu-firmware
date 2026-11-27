@@ -28,6 +28,12 @@ struct Canvas {
     int32_t scissors_y1;
 
     bool allocated_by_malloc;
+
+    // One clay_render_do_render() pass: the clock its animations are drawn at,
+    // and the shortest time until one of them wants another pass
+    uint32_t render_time_ms;
+    uint32_t redraw_delay_ms;
+    bool redraw_pending;
 };
 
 typedef struct {
@@ -598,74 +604,127 @@ static void render_mono1_row(Color* dst, const uint8_t* src, const uint8_t* mask
     }
 }
 
+// dst + (src - dst) * alpha / 255, exact at both ends
+static inline Color render_blend(Color dst, Color src, uint8_t alpha) {
+    return (Color)(dst + (((int32_t)src - dst) * alpha + 127) / 255);
+}
+
+static inline bool render_mask_bit(const uint8_t* row, int32_t x) {
+    return row[x >> 3] & (0x80 >> (x & 7));
+}
+
+void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image, bool mirror_x, uint8_t alpha) {
+    furi_check(image);
+    if(alpha == 0) return;
+
+    /* What is drawn is the image intersected with the scissors; a non-empty
+     * intersection lies inside the canvas, so the loops write without checks. */
+    const int32_t x0 = MAX(x, canvas->scissors_x0);
+    const int32_t y0 = MAX(y, canvas->scissors_y0);
+    const int32_t x1 = MIN(x + (int32_t)image->width, canvas->scissors_x1);
+    const int32_t y1 = MIN(y + (int32_t)image->height, canvas->scissors_y1);
+    if(x0 >= x1 || y0 >= y1) return;
+
+    // Image coordinates of the first drawn pixel
+    const int32_t src_x0 = x0 - x;
+    const int32_t src_y0 = y0 - y;
+    const uint32_t mono1_stride = image_mono1_stride(image->width);
+    const bool gray8 = image->format == ImageFormatRawGray8;
+    if(!gray8 && image->format != ImageFormatMono1) {
+        FURI_LOG_E(TAG, "Unsupported image format: %d", image->format);
+        return;
+    }
+
+    Color* dst = &canvas->data[y0 * canvas->width + x0];
+    const uint8_t* mask = image->mask ? image->mask + src_y0 * mono1_stride : NULL;
+    const uint8_t* src = (const uint8_t*)image->data + src_y0 * (gray8 ? image->width : mono1_stride);
+
+    for(int32_t row = y0; row < y1; row++) {
+        if(!mirror_x && alpha == 255) {
+            // Straight copies: whole rows, or a mask bit per pixel
+            if(!gray8) {
+                render_mono1_row(dst, src, mask, src_x0, x1 - x0);
+            } else if(!mask) {
+                memcpy(dst, src + src_x0, x1 - x0);
+            } else {
+                for(int32_t i = 0, sx = src_x0; i < x1 - x0; i++, sx++) {
+                    if(render_mask_bit(mask, sx)) dst[i] = src[sx];
+                }
+            }
+        } else {
+            for(int32_t i = 0; i < x1 - x0; i++) {
+                const int32_t sx = mirror_x ? (int32_t)image->width - 1 - (src_x0 + i) : src_x0 + i;
+                if(mask && !render_mask_bit(mask, sx)) continue;
+                const Color pixel = gray8 ? src[sx] : (render_mask_bit(src, sx) ? 0x00 : 0xFF);
+                dst[i] = alpha == 255 ? pixel : render_blend(dst[i], pixel, alpha);
+            }
+        }
+        src += gray8 ? image->width : mono1_stride;
+        if(mask) mask += mono1_stride;
+        dst += canvas->width;
+    }
+}
+
+uint32_t canvas_get_render_time(Canvas* canvas) {
+    return canvas->render_time_ms;
+}
+
+void canvas_request_redraw(Canvas* canvas, uint32_t delay_ms) {
+    if(!canvas->redraw_pending || delay_ms < canvas->redraw_delay_ms) canvas->redraw_delay_ms = delay_ms;
+    canvas->redraw_pending = true;
+}
+
+bool canvas_get_redraw_delay(Canvas* canvas, uint32_t* delay_ms) {
+    if(canvas->redraw_pending) *delay_ms = canvas->redraw_delay_ms;
+    return canvas->redraw_pending;
+}
+
+typedef struct {
+    int32_t x0, y0, x1, y1;
+} RenderScissors;
+
+// Narrow the scissors to a box; returns the old ones to restore
+static RenderScissors render_scissors_narrow(Canvas* canvas, const Clay_BoundingBox* bb) {
+    const RenderScissors saved = {canvas->scissors_x0, canvas->scissors_y0, canvas->scissors_x1, canvas->scissors_y1};
+    canvas->scissors_x0 = MAX(canvas->scissors_x0, (int32_t)bb->x);
+    canvas->scissors_y0 = MAX(canvas->scissors_y0, (int32_t)bb->y);
+    canvas->scissors_x1 = MIN(canvas->scissors_x1, (int32_t)(bb->x + bb->width));
+    canvas->scissors_y1 = MIN(canvas->scissors_y1, (int32_t)(bb->y + bb->height));
+    return saved;
+}
+
+static void render_scissors_restore(Canvas* canvas, const RenderScissors* saved) {
+    canvas->scissors_x0 = saved->x0;
+    canvas->scissors_y0 = saved->y0;
+    canvas->scissors_x1 = saved->x1;
+    canvas->scissors_y1 = saved->y1;
+}
+
 static void render_image(Canvas* canvas, Clay_BoundingBox* bb, Clay_ImageRenderData* image_data) {
     Image* image = (Image*)image_data->imageData;
     furi_check(image);
 
     RENDER_DEBUG(TAG, "Image");
     RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f] c%X", bb->x, bb->y, bb->width, bb->height, render_color(image_data->backgroundColor));
-    RENDER_DEBUG(
-        TAG,
-        "    [%.1f, %.1f, %.1f, %.1f]",
-        image_data->cornerRadius.topLeft,
-        image_data->cornerRadius.topRight,
-        image_data->cornerRadius.bottomRight,
-        image_data->cornerRadius.bottomLeft);
     RENDER_DEBUG(TAG, "    [img w: %lu, h: %lu]", image->width, image->height);
 
-    /* The image is drawn unscaled from the box's top left corner: a smaller box
-     * crops it. What is drawn is that area intersected with the scissors; a
-     * non-empty intersection lies inside the canvas, so the loops below write
-     * without further checks. */
-    const int32_t dst_x = (int32_t)bb->x;
-    const int32_t dst_y = (int32_t)bb->y;
-    const int32_t x0 = MAX(dst_x, canvas->scissors_x0);
-    const int32_t y0 = MAX(dst_y, canvas->scissors_y0);
-    const int32_t x1 = MIN(dst_x + MIN((int32_t)image->width, (int32_t)bb->width), canvas->scissors_x1);
-    const int32_t y1 = MIN(dst_y + MIN((int32_t)image->height, (int32_t)bb->height), canvas->scissors_y1);
-    if(x0 >= x1 || y0 >= y1) return;
+    // Unscaled from the box's top left corner: a smaller box crops it
+    const RenderScissors saved = render_scissors_narrow(canvas, bb);
+    canvas_draw_image(canvas, (int32_t)bb->x, (int32_t)bb->y, image, false, 255);
+    render_scissors_restore(canvas, &saved);
+}
 
-    // Image coordinates of the first drawn pixel
-    const int32_t src_x0 = x0 - dst_x;
-    const int32_t src_y0 = y0 - dst_y;
-    const uint32_t mono1_stride = image_mono1_stride(image->width);
+static void render_custom(Canvas* canvas, Clay_BoundingBox* bb, Clay_CustomRenderData* custom_data) {
+    const ClayCustomElement* element = custom_data->customData;
+    furi_check(element && element->render);
 
-    switch(image->format) {
-    case ImageFormatRawGray8: {
-        const uint8_t* src = (const uint8_t*)image->data + src_y0 * image->width + src_x0;
-        const uint8_t* mask = image->mask ? image->mask + src_y0 * mono1_stride : NULL;
-        Color* dst = &canvas->data[y0 * canvas->width + x0];
+    RENDER_DEBUG(TAG, "Custom");
+    RENDER_DEBUG(TAG, "    [x: %.1f, y: %.1f, w: %.1f, h: %.1f]", bb->x, bb->y, bb->width, bb->height);
 
-        for(int32_t y = y0; y < y1; y++) {
-            if(!mask) {
-                memcpy(dst, src, x1 - x0);
-            } else {
-                for(int32_t i = 0, sx = src_x0; i < x1 - x0; i++, sx++) {
-                    if(mask[sx >> 3] & (0x80 >> (sx & 7))) dst[i] = src[i];
-                }
-                mask += mono1_stride;
-            }
-            src += image->width;
-            dst += canvas->width;
-        }
-        break;
-    }
-    case ImageFormatMono1: {
-        const uint8_t* src = (const uint8_t*)image->data + src_y0 * mono1_stride;
-        const uint8_t* mask = image->mask ? image->mask + src_y0 * mono1_stride : NULL;
-        Color* dst = &canvas->data[y0 * canvas->width + x0];
-
-        for(int32_t y = y0; y < y1; y++) {
-            render_mono1_row(dst, src, mask, src_x0, x1 - x0);
-            src += mono1_stride;
-            if(mask) mask += mono1_stride;
-            dst += canvas->width;
-        }
-        break;
-    }
-    default:
-        FURI_LOG_E(TAG, "Unsupported image format: %d", image->format);
-    }
+    // The element draws in its own box only
+    const RenderScissors saved = render_scissors_narrow(canvas, bb);
+    element->render(canvas, bb, element->context);
+    render_scissors_restore(canvas, &saved);
 }
 
 static void render_scissor_start(Canvas* canvas, Clay_BoundingBox* bb) {
@@ -693,6 +752,9 @@ static void render_scissor_reset(Canvas* canvas) {
 }
 
 void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* render_commands) {
+    canvas->render_time_ms = furi_get_tick();
+    canvas->redraw_pending = false;
+
     for(int i = 0; i < render_commands->length; i++) {
         Clay_RenderCommand* render_command = &render_commands->internalArray[i];
         Clay_BoundingBox bounding_box = render_command->boundingBox;
@@ -745,7 +807,7 @@ void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* render_comma
             render_scissor_reset(canvas);
             break;
         case CLAY_RENDER_COMMAND_TYPE_CUSTOM:
-            furi_crash("Custom render commands are not supported");
+            render_custom(canvas, &bounding_box, &render_command->renderData.custom);
             break;
         }
     }
@@ -785,6 +847,9 @@ static Canvas* canvas_alloc_in_place_internal(void* buffer, size_t width, size_t
     canvas->height = height;
     render_scissor_reset(canvas);
     canvas->allocated_by_malloc = allocated_by_malloc;
+    canvas->render_time_ms = 0;
+    canvas->redraw_delay_ms = 0;
+    canvas->redraw_pending = false;
 
     return canvas;
 }
