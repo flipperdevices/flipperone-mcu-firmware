@@ -9,6 +9,7 @@ extern "C" {
 
 typedef enum {
     DesktopSceneEventTypeTogglePowerMenu,
+    DesktopSceneEventTypeToggleHelpMenu,
     DesktopSceneEventTypeReturnToDesktop,
     DesktopSceneEventTypeEnterSettingsMenu,
 

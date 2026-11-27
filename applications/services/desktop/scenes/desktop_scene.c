@@ -160,7 +160,6 @@ static const ParallaxLayer home_scene_layers[] = {
 static const Clay_Color COLOR_VERSION = {0xAA, 0xAA, 0xAA, 0xFF};
 
 typedef struct {
-    bool help_pressed;
     bool settings_pressed;
     Desktop* desktop;
     Parallax* scene;
@@ -209,7 +208,7 @@ static bool desktop_layout(void* _model) {
                 CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_VERSION, .wrapMode = CLAY_TEXT_WRAP_NONE}));
         }
 
-        elements_home_tab_element(1, "Help", false, model->help_pressed);
+        elements_home_tab_element(1, "Help", false, false);
         elements_home_tab_element(2, "Power", false, false);
         elements_home_tab_element(3, "Settings", false, model->settings_pressed);
     }
@@ -225,7 +224,7 @@ static bool desktop_input(InputEvent* event, void* context) {
     if(event->type == InputTypePress) {
         switch(event->key) {
         case InputKey2:
-            with_view_model(view, DesktopViewModel * model, { model->help_pressed = true; }, true);
+            desktop_send_scene_event(desktop, DesktopSceneEventTypeToggleHelpMenu, NULL);
             consumed = true;
             break;
         case InputKeyPower:
@@ -246,10 +245,6 @@ static bool desktop_input(InputEvent* event, void* context) {
         }
     } else if(event->type == InputTypeRelease) {
         switch(event->key) {
-        case InputKey2:
-            with_view_model(view, DesktopViewModel * model, { model->help_pressed = false; }, true);
-            consumed = true;
-            break;
         case InputKey4:
             with_view_model(view, DesktopViewModel * model, { model->settings_pressed = false; }, true);
             consumed = true;
@@ -287,14 +282,7 @@ static void desktop_on_alloc(Scene* scene, void* context) {
 static void desktop_on_exit(Scene* scene, void* app) {
     View* view = scene_get_view(scene);
 
-    with_view_model(
-        view,
-        DesktopViewModel * model,
-        {
-            model->help_pressed = false;
-            model->settings_pressed = false;
-        },
-        true);
+    with_view_model(view, DesktopViewModel * model, { model->settings_pressed = false; }, true);
 }
 
 const SceneCallbacks scene_desktop_callbacks = {

@@ -59,6 +59,7 @@ struct Desktop {
     Scene* main_scene;
     Scene* header_scene;
     Scene* power_menu_scene;
+    Scene* help_menu_scene;
     Scene* settings_menu_scene;
     Scene* display_settings_scene;
     Scene* power_settings_scene;
@@ -372,6 +373,14 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
         }
         consumed = true;
         break;
+    case DesktopSceneEventTypeToggleHelpMenu:
+        if(message.data) {
+            scene_exit(desktop->help_menu_scene, desktop);
+        } else {
+            scene_enter(desktop->help_menu_scene, desktop);
+        }
+        consumed = true;
+        break;
     case DesktopSceneEventTypeReturnToDesktop:
         if(message.data) scene_exit(message.data, desktop);
         scene_enter(desktop->main_scene, desktop);
@@ -472,6 +481,7 @@ static Desktop* desktop_alloc(void) {
     desktop->header_scene = scene_alloc(&scene_header_callbacks, desktop);
     desktop->main_scene = scene_alloc(&scene_desktop_callbacks, desktop);
     desktop->power_menu_scene = scene_alloc(&scene_power_menu_callbacks, desktop);
+    desktop->help_menu_scene = scene_alloc(&scene_help_menu_callbacks, desktop);
     desktop->settings_menu_scene = scene_alloc(&scene_settings_menu_callbacks, desktop);
     desktop->display_settings_scene = scene_alloc(&scene_display_settings_callbacks, desktop);
     desktop->power_settings_scene = scene_alloc(&scene_power_settings_callbacks, desktop);
@@ -488,6 +498,8 @@ static Desktop* desktop_alloc(void) {
     gui_add_view(desktop->gui, scene_get_view(desktop->power_settings_scene), GuiViewPriorityDesktop);
     gui_add_view(desktop->gui, scene_get_view(desktop->testing_menu_scene), GuiViewPriorityDesktop);
     gui_add_view(desktop->gui, scene_get_view(desktop->leds_menu_scene), GuiViewPriorityDesktop);
+    // Over the home screen it opens from
+    gui_add_view(desktop->gui, scene_get_view(desktop->help_menu_scene), GuiViewPriorityDesktop + 1);
 
     gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication - 1);
     gui_add_view(desktop->gui, scene_get_view(desktop->power_menu_scene), GuiViewPriorityPowerMenu);
