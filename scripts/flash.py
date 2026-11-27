@@ -34,12 +34,17 @@ def main(argv=None):
     parser.add_argument("--no-partition-table", action="store_true", help="leave the partition table as it is")
     args = parser.parse_args(argv)
 
-    firmware = os.path.join(args.build_dir, FIRMWARE)
-    table = os.path.join(args.build_dir, PARTITION_TABLE)
+    # build/current is a link that a configure elsewhere can move: resolve it once
+    build_dir = os.path.realpath(args.build_dir)
+    firmware = os.path.join(build_dir, FIRMWARE)
+    table = os.path.join(build_dir, PARTITION_TABLE)
     try:
         if not os.path.isfile(firmware):
             raise ValueError(f"{firmware} not found: build first")
         plan = flash.preflight(args.slot, firmware)
+        # The bootrom would not boot it, and the other slot would then be erased too
+        if plan["image"].get("state") != "valid":
+            raise ValueError(f"{firmware} has no image definition: not a firmware build")
         if not args.no_partition_table:
             if not os.path.isfile(table):
                 raise ValueError(f"{table} not found: build first, or pass --no-partition-table")

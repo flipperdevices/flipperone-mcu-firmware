@@ -3,6 +3,7 @@
 import struct
 import time
 import types
+from pathlib import Path
 
 import pytest
 
@@ -418,11 +419,20 @@ def test_write_partition_table_writes_and_verifies_at_the_start_of_flash(tmp_pat
     from agent_tools import constants
     from agent_tools.logic import flash, swd
 
-    commands = []
-    monkeypatch.setattr(swd, "run", lambda lines, timeout=None: commands.append(lines))
+    commands, written = [], []
+
+    def fake_run(lines, timeout=None):
+        commands.append(lines)
+        written.append(open(lines[1].split("{")[1].split("}")[0], "rb").read())
+
+    monkeypatch.setattr(swd, "run", fake_run)
     table = tmp_path / "partition_table.bin"
-    table.write_bytes(b"\x00" * 148)
+    table.write_bytes(b"\x5a" * 148)
     flash.write_partition_table(str(table))
-    quoted = "{" + str(table) + "}"
+    # Both commands read one snapshot of the table, removed afterwards
+    snapshot = commands[0][1].split("{")[1].split("}")[0]
+    quoted = "{" + snapshot + "}"
     assert commands == [["reset halt", f"flash write_image erase {quoted} {constants.XIP_BASE:#x} bin",
                          f"verify_image {quoted} {constants.XIP_BASE:#x} bin"]]
+    assert written == [b"\x5a" * 148] and snapshot != str(table)
+    assert not Path(snapshot).exists()
