@@ -588,9 +588,23 @@ static bool render_clip_image(Canvas* canvas, int32_t x, int32_t y, int32_t widt
     return true;
 }
 
-static void
-    render_blit_gray8(Canvas* canvas, int32_t x, int32_t y, const uint8_t* pixels, const uint8_t* mask, uint32_t width, uint32_t height, bool mirror_x) {
+/* dst += (src - dst) * alpha / 255, exact at both ends of the range. */
+static inline uint8_t render_blend(uint8_t dst, uint8_t src, uint8_t alpha) {
+    return (uint8_t)(dst + (((int32_t)src - dst) * alpha + 127) / 255);
+}
+
+static void render_blit_gray8(
+    Canvas* canvas,
+    int32_t x,
+    int32_t y,
+    const uint8_t* pixels,
+    const uint8_t* mask,
+    uint32_t width,
+    uint32_t height,
+    bool mirror_x,
+    uint8_t alpha) {
     RenderClip clip;
+    if(alpha == 0) return;
     if(!render_clip_image(canvas, x, y, width, height, &clip)) return;
 
     uint32_t mask_stride = image_mask_stride(width);
@@ -601,34 +615,33 @@ static void
         const uint8_t* src_row = &pixels[src_y * width];
         const uint8_t* mask_row = mask ? &mask[src_y * mask_stride] : NULL;
 
-        if(!mirror_x) {
-            if(!mask_row) {
-                memcpy(dst, &src_row[clip.src_x0], clip.width);
-                continue;
-            }
-            for(int32_t col = 0; col < clip.width; col++) {
-                int32_t src_x = clip.src_x0 + col;
-                if(mask_row[src_x >> 3] & (0x80 >> (src_x & 7))) dst[col] = src_row[src_x];
-            }
-        } else {
-            for(int32_t col = 0; col < clip.width; col++) {
-                int32_t src_x = (int32_t)width - 1 - (clip.src_x0 + col);
-                if(!mask_row || (mask_row[src_x >> 3] & (0x80 >> (src_x & 7)))) dst[col] = src_row[src_x];
-            }
+        if(!mirror_x && !mask_row && alpha == 255) {
+            memcpy(dst, &src_row[clip.src_x0], clip.width);
+            continue;
+        }
+        for(int32_t col = 0; col < clip.width; col++) {
+            int32_t src_x = clip.src_x0 + col;
+            if(mirror_x) src_x = (int32_t)width - 1 - src_x;
+            if(mask_row && !(mask_row[src_x >> 3] & (0x80 >> (src_x & 7)))) continue;
+            dst[col] = (alpha == 255) ? src_row[src_x] : render_blend(dst[col], src_row[src_x], alpha);
         }
     }
 }
 
 void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image, bool mirror_x) {
+    canvas_draw_image_alpha(canvas, x, y, image, mirror_x, 255);
+}
+
+void canvas_draw_image_alpha(Canvas* canvas, int32_t x, int32_t y, const Image* image, bool mirror_x, uint8_t alpha) {
     furi_check(image);
     const uint8_t* pixels = image->data;
 
     switch(image->format) {
     case ImageFormatRawGray8:
-        render_blit_gray8(canvas, x, y, pixels, NULL, image->width, image->height, mirror_x);
+        render_blit_gray8(canvas, x, y, pixels, NULL, image->width, image->height, mirror_x, alpha);
         break;
     case ImageFormatRawGray8Mask:
-        render_blit_gray8(canvas, x, y, pixels, pixels + image->width * image->height, image->width, image->height, mirror_x);
+        render_blit_gray8(canvas, x, y, pixels, pixels + image->width * image->height, image->width, image->height, mirror_x, alpha);
         break;
     case ImageFormatAnimation: {
         const ImageAnimation* animation = image->data;
@@ -636,7 +649,7 @@ void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image,
 
         uint32_t delay_ms;
         uint32_t frame = image_animation_frame_at(animation, canvas->render_time_ms, &delay_ms);
-        render_blit_gray8(canvas, x, y, animation->frames[frame], NULL, image->width, image->height, mirror_x);
+        render_blit_gray8(canvas, x, y, animation->frames[frame], NULL, image->width, image->height, mirror_x, alpha);
         canvas_request_redraw(canvas, delay_ms);
         break;
     }

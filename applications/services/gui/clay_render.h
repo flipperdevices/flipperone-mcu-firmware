@@ -49,6 +49,9 @@ Image canvas_to_image(Canvas* canvas);
  *  mirror_x flips it horizontally within the same rectangle. */
 void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image, bool mirror_x);
 
+/** Same, blended over the canvas with `alpha` (255 opaque, 0 draws nothing). */
+void canvas_draw_image_alpha(Canvas* canvas, int32_t x, int32_t y, const Image* image, bool mirror_x, uint8_t alpha);
+
 /** Draw a text with the top-left of its box at (x, y), as a Clay text element
  *  would; the glyphs start one pixel below the box top. */
 void canvas_draw_text(Canvas* canvas, int32_t x, int32_t y, Font font_id, ColorA color, const char* text);

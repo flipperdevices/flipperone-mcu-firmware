@@ -29,11 +29,23 @@ struct Parallax {
     bool has_last_time;
 };
 
+static bool parallax_layer_arriving(const Parallax* parallax, size_t i) {
+    return parallax->layers[i].arrive_speed > 0.f && parallax->states[i].offset != 0.f;
+}
+
+static bool parallax_is_arriving(const Parallax* parallax) {
+    for(size_t i = 0; i < parallax->layer_count; i++) {
+        if(parallax_layer_arriving(parallax, i)) return true;
+    }
+    return false;
+}
+
 static bool parallax_is_moving(const Parallax* parallax) {
     if(parallax->speed != 0.f) return true;
     for(size_t i = 0; i < parallax->layer_count; i++) {
         const ParallaxLayer* layer = &parallax->layers[i];
         if(layer->swim != 0.f || layer->frame_count > 1) return true;
+        if(parallax_layer_arriving(parallax, i)) return true;
     }
     return false;
 }
@@ -63,6 +75,17 @@ static void parallax_advance(Parallax* parallax, uint32_t now_ms) {
         const ParallaxLayer* layer = &parallax->layers[i];
         ParallaxLayerState* state = &parallax->states[i];
 
+        if(layer->arrive_speed > 0.f) {
+            /* On the way in: close in on 0 and stop there. */
+            float step = layer->arrive_speed * dt;
+            if(state->offset < 0.f) {
+                state->offset = MIN(state->offset + step, 0.f);
+            } else if(state->offset > 0.f) {
+                state->offset = MAX(state->offset - step, 0.f);
+            }
+            continue;
+        }
+
         state->offset += (parallax->speed * layer->speed_mult + layer->swim) * dt;
 
         float period = parallax_layer_period(parallax, layer);
@@ -70,11 +93,25 @@ static void parallax_advance(Parallax* parallax, uint32_t now_ms) {
     }
 }
 
-static const Image* parallax_layer_frame(const ParallaxLayer* layer, uint32_t now_ms) {
+static uint32_t parallax_layer_frame(const ParallaxLayer* layer, uint32_t now_ms) {
     furi_check(layer->frame_count > 0);
-    if(layer->frame_count == 1 || layer->fps == 0) return layer->frames[0];
-    uint32_t frame = (uint32_t)(((uint64_t)now_ms * layer->fps / 1000) % layer->frame_count);
-    return layer->frames[frame];
+    if(layer->frame_count == 1 || layer->fps == 0) return 0;
+    return (uint32_t)(((uint64_t)now_ms * layer->fps / 1000) % layer->frame_count);
+}
+
+/* Draw frame `frame` of the layer with its box's top-left at (x, y). */
+static void parallax_draw_frame(Canvas* canvas, const ParallaxLayer* layer, uint32_t frame, int32_t x, int32_t y, bool mirror_x) {
+    if(layer->frames) {
+        canvas_draw_image(canvas, x, y, layer->frames[frame], mirror_x);
+        return;
+    }
+    const ParallaxComposite* composite = &layer->composites[frame];
+    for(uint8_t i = 0; i < composite->sprite_count; i++) {
+        const ParallaxSprite* sprite = &composite->sprites[i];
+        int32_t sprite_x = sprite->x;
+        if(mirror_x) sprite_x = parallax_mirror_x(sprite_x, sprite->image->width, layer->wrap_width);
+        canvas_draw_image_alpha(canvas, x + sprite_x, y + sprite->y, sprite->image, mirror_x, sprite->alpha);
+    }
 }
 
 static void parallax_render(Canvas* canvas, const Clay_BoundingBox* bounding_box, void* context) {
@@ -84,12 +121,16 @@ static void parallax_render(Canvas* canvas, const Clay_BoundingBox* bounding_box
     parallax_advance(parallax, now_ms);
 
     bool mirror = parallax->speed > 0.f;
+    bool arriving = parallax_is_arriving(parallax);
     int32_t clip_left = bounding_box->x;
     int32_t clip_right = bounding_box->x + bounding_box->width;
 
     for(size_t i = 0; i < parallax->layer_count; i++) {
         const ParallaxLayer* layer = &parallax->layers[i];
-        const Image* frame = parallax_layer_frame(layer, now_ms);
+        if(layer->show == ParallaxShowStill && (parallax->speed != 0.f || arriving)) continue;
+        if(layer->show == ParallaxShowMoving && (parallax->speed == 0.f || arriving)) continue;
+        if(layer->show == ParallaxShowArriving && !parallax_layer_arriving(parallax, i)) continue;
+        uint32_t frame = parallax_layer_frame(layer, now_ms);
         bool mirror_x = layer->face_against_motion && mirror;
 
         int32_t x = parallax->origin_x + layer->x + (int32_t)lroundf(parallax->states[i].offset);
@@ -97,17 +138,17 @@ static void parallax_render(Canvas* canvas, const Clay_BoundingBox* bounding_box
 
         switch(layer->wrap) {
         case ParallaxWrapNone:
-            canvas_draw_image(canvas, x, y, frame, mirror_x);
+            parallax_draw_frame(canvas, layer, frame, x, y, mirror_x);
             break;
         case ParallaxWrapTile:
             for(int32_t tile_x = parallax_tile_first_x(x, layer->wrap_width, clip_left); tile_x < clip_right; tile_x += layer->wrap_width) {
-                canvas_draw_image(canvas, tile_x, y, frame, mirror_x);
+                parallax_draw_frame(canvas, layer, frame, tile_x, y, mirror_x);
             }
             break;
         case ParallaxWrapPeriod: {
             int32_t period = (int32_t)parallax->scene_width + layer->wrap_width;
             int32_t scene_x = parallax_period_x(x - parallax->origin_x, layer->wrap_width, period);
-            canvas_draw_image(canvas, parallax->origin_x + scene_x, y, frame, mirror_x);
+            parallax_draw_frame(canvas, layer, frame, parallax->origin_x + scene_x, y, mirror_x);
             break;
         }
         }
@@ -124,8 +165,10 @@ static void parallax_render(Canvas* canvas, const Clay_BoundingBox* bounding_box
 Parallax* parallax_alloc(const ParallaxLayer* layers, size_t layer_count, uint16_t scene_width) {
     furi_check(layers && layer_count > 0);
     for(size_t i = 0; i < layer_count; i++) {
-        furi_check(layers[i].frames && layers[i].frame_count > 0);
-        furi_check(layers[i].wrap == ParallaxWrapNone || layers[i].wrap_width > 0);
+        furi_check((layers[i].frames != NULL) != (layers[i].composites != NULL));
+        furi_check(layers[i].frame_count > 0);
+        furi_check((layers[i].wrap == ParallaxWrapNone && layers[i].frames) || layers[i].wrap_width > 0);
+        furi_check(layers[i].arrive_speed == 0.f || layers[i].wrap == ParallaxWrapNone);
     }
 
     Parallax* parallax = malloc(sizeof(Parallax));
@@ -135,6 +178,9 @@ Parallax* parallax_alloc(const ParallaxLayer* layers, size_t layer_count, uint16
     parallax->states = malloc(sizeof(ParallaxLayerState) * layer_count);
     parallax->layer_count = layer_count;
     parallax->scene_width = scene_width;
+    for(size_t i = 0; i < layer_count; i++) {
+        if(layers[i].arrive_speed > 0.f) parallax->states[i].offset = layers[i].arrive_from;
+    }
     return parallax;
 }
 

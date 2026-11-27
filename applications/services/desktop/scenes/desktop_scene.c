@@ -32,6 +32,79 @@ static const Image* const home_foliage_frames[] = {&home_foliage_1, &home_foliag
 /* The fish wrap with the width of their wider frame, so the 34 px one does not jitter. */
 #define HOME_FISH_WIDTH 35
 
+/* The sleeping dolphin: 14 composite frames on the artist's 113 px canvas,
+ * three body poses bobbing by a pixel and bubbles rising from the blowhole
+ * (right) and the tail (left) that fade as they go. The canvas sits at scene
+ * (71, 39), which puts sleepd_1 at (71, 43) as in the scene layout. */
+#define HOME_DOLPHIN_X     71
+#define HOME_DOLPHIN_Y     39
+#define HOME_DOLPHIN_WIDTH 113
+#define HOME_DOLPHIN_FPS   2
+
+#define DOLPHIN_1 {.image = &sleepd_1, .x = 0, .y = 4, .alpha = 255}
+#define DOLPHIN_2 {.image = &sleepd_2, .x = 1, .y = 5, .alpha = 255}
+#define DOLPHIN_3 {.image = &sleepd_3, .x = 1, .y = 6, .alpha = 255}
+#define BUBBLE(img, bx, by, pct) {.image = &img, .x = bx, .y = by, .alpha = (uint8_t)((pct) * 255 / 100)}
+
+static const ParallaxSprite home_dolphin_f1[] = {DOLPHIN_1};
+static const ParallaxSprite home_dolphin_f2[] = {DOLPHIN_2, BUBBLE(bubble_mid, 99, 19, 100)};
+static const ParallaxSprite home_dolphin_f3[] = {DOLPHIN_3, BUBBLE(bubble_mid, 102, 13, 75), BUBBLE(bubble_small, 100, 21, 100)};
+static const ParallaxSprite home_dolphin_f4[] = {DOLPHIN_2, BUBBLE(bubble_mid, 100, 6, 55), BUBBLE(bubble_small, 103, 16, 50)};
+static const ParallaxSprite home_dolphin_f5[] = {DOLPHIN_1, BUBBLE(bubble_mid, 97, 0, 15), BUBBLE(bubble_small, 102, 5, 5)};
+static const ParallaxSprite home_dolphin_f6[] = {DOLPHIN_2, BUBBLE(bubble_small, 100, 21, 100)};
+static const ParallaxSprite home_dolphin_f7[] = {DOLPHIN_3, BUBBLE(bubble_small, 104, 13, 60), BUBBLE(bubble_mid, 100, 20, 100)};
+static const ParallaxSprite home_dolphin_f8[] = {DOLPHIN_2, BUBBLE(bubble_small, 102, 3, 20), BUBBLE(bubble_mid, 102, 13, 60)};
+static const ParallaxSprite home_dolphin_f9[] = {DOLPHIN_1, BUBBLE(bubble_mid, 98, 6, 25)};
+static const ParallaxSprite home_dolphin_f10[] = {DOLPHIN_2, BUBBLE(bubble_mid, 6, 32, 100)};
+static const ParallaxSprite home_dolphin_f11[] = {DOLPHIN_3, BUBBLE(bubble_mid, 8, 27, 100)};
+static const ParallaxSprite home_dolphin_f12[] = {DOLPHIN_2, BUBBLE(bubble_mid, 5, 18, 75)};
+static const ParallaxSprite home_dolphin_f13[] = {DOLPHIN_3, BUBBLE(bubble_mid, 8, 8, 50)};
+static const ParallaxSprite home_dolphin_f14[] = {DOLPHIN_2, BUBBLE(bubble_mid, 4, 1, 15)};
+
+/* The swimming dolphin takes over while the scene moves: three poses of one
+ * tail stroke (down, mid, up, mid), aligned on the eye so the head pitches
+ * with the stroke. Its 130 px canvas is centred on the sleeping dolphin's
+ * (71 + 113 / 2), mid-water, so mirroring keeps it in the same place. */
+#define HOME_SWIM_X     62
+#define HOME_SWIM_Y     47
+#define HOME_SWIM_WIDTH 130
+#define HOME_SWIM_FPS   4
+
+static const ParallaxSprite home_swim_f1[] = {{.image = &swim1s, .x = 0, .y = 0, .alpha = 255}};
+static const ParallaxSprite home_swim_f2[] = {{.image = &swim2s, .x = 4, .y = 4, .alpha = 255}};
+static const ParallaxSprite home_swim_f3[] = {{.image = &swim3s, .x = 8, .y = 2, .alpha = 255}};
+
+#define DOLPHIN_FRAME(f) {.sprites = f, .sprite_count = COUNT_OF(f)}
+
+static const ParallaxComposite home_swim_frames[] = {
+    DOLPHIN_FRAME(home_swim_f1),
+    DOLPHIN_FRAME(home_swim_f3),
+    DOLPHIN_FRAME(home_swim_f2),
+    DOLPHIN_FRAME(home_swim_f3),
+};
+
+/* At boot the dolphin swims in from beyond the left edge of the screen to
+ * its place and only then falls asleep. */
+#define HOME_SWIM_IN_FROM  (-(HOME_SWIM_X + HOME_SWIM_WIDTH))
+#define HOME_SWIM_IN_SPEED 120.f
+
+static const ParallaxComposite home_dolphin_frames[] = {
+    DOLPHIN_FRAME(home_dolphin_f1),
+    DOLPHIN_FRAME(home_dolphin_f2),
+    DOLPHIN_FRAME(home_dolphin_f3),
+    DOLPHIN_FRAME(home_dolphin_f4),
+    DOLPHIN_FRAME(home_dolphin_f5),
+    DOLPHIN_FRAME(home_dolphin_f6),
+    DOLPHIN_FRAME(home_dolphin_f7),
+    DOLPHIN_FRAME(home_dolphin_f8),
+    DOLPHIN_FRAME(home_dolphin_f9),
+    DOLPHIN_FRAME(home_dolphin_f10),
+    DOLPHIN_FRAME(home_dolphin_f11),
+    DOLPHIN_FRAME(home_dolphin_f12),
+    DOLPHIN_FRAME(home_dolphin_f13),
+    DOLPHIN_FRAME(home_dolphin_f14),
+};
+
 static const ParallaxLayer home_scene_layers[] = {
     {.frames = home_bg_frames, .frame_count = 1, .x = 0, .y = 42, .speed_mult = 0.8f, .wrap = ParallaxWrapTile, .wrap_width = 256},
     {.frames = home_ship_frames, .frame_count = 1, .x = 99, .y = 44, .speed_mult = 0.7f, .wrap = ParallaxWrapPeriod, .wrap_width = 73},
@@ -56,18 +129,48 @@ static const ParallaxLayer home_scene_layers[] = {
     {.frames = home_ground_frames, .frame_count = 1, .x = 0, .y = 99, .speed_mult = 0.8f, .wrap = ParallaxWrapTile, .wrap_width = 256},
     {.frames = home_water_top_frames, .frame_count = 1, .x = 0, .y = 27, .speed_mult = 0.8f, .wrap = ParallaxWrapTile, .wrap_width = 256},
     {.frames = home_foliage_frames, .frame_count = 2, .fps = 2, .x = 0, .y = 84, .speed_mult = 1.0f, .wrap = ParallaxWrapTile, .wrap_width = 256},
+    {.composites = home_dolphin_frames,
+     .frame_count = COUNT_OF(home_dolphin_frames),
+     .fps = HOME_DOLPHIN_FPS,
+     .x = HOME_DOLPHIN_X,
+     .y = HOME_DOLPHIN_Y,
+     .speed_mult = 0.f,
+     .wrap = ParallaxWrapNone,
+     .wrap_width = HOME_DOLPHIN_WIDTH,
+     .face_against_motion = true,
+     .show = ParallaxShowStill},
+    {.composites = home_swim_frames,
+     .frame_count = COUNT_OF(home_swim_frames),
+     .fps = HOME_SWIM_FPS,
+     .x = HOME_SWIM_X,
+     .y = HOME_SWIM_Y,
+     .speed_mult = 0.f,
+     .wrap = ParallaxWrapNone,
+     .wrap_width = HOME_SWIM_WIDTH,
+     .face_against_motion = true,
+     .show = ParallaxShowMoving},
+    {.composites = home_swim_frames,
+     .frame_count = COUNT_OF(home_swim_frames),
+     .fps = HOME_SWIM_FPS,
+     .x = HOME_SWIM_X,
+     .y = HOME_SWIM_Y,
+     .wrap = ParallaxWrapNone,
+     .wrap_width = HOME_SWIM_WIDTH,
+     .show = ParallaxShowArriving,
+     .arrive_from = HOME_SWIM_IN_FROM,
+     .arrive_speed = HOME_SWIM_IN_SPEED},
 };
 
-/* Scene speed: while the charger is charging, the scene drifts left, faster
- * the more power the input delivers: -100 px/s at 36 W, at least 30 px/s.
- * Otherwise it stands still. */
+/* Scene speed: while the charger is charging, the scene drifts right (the
+ * dolphin swims left against it), faster the more power the input delivers:
+ * 100 px/s at 36 W, at least 30 px/s. Otherwise it stands still. */
 #define HOME_SCENE_CHARGE_FULL_W 36.f
 #define HOME_SCENE_FULL_SPEED    100.f
 #define HOME_SCENE_MIN_SPEED     30.f
 
 static float desktop_scene_speed_from_charging(float input_watts) {
     float speed = HOME_SCENE_FULL_SPEED * input_watts / HOME_SCENE_CHARGE_FULL_W;
-    return -fmaxf(speed, HOME_SCENE_MIN_SPEED);
+    return fmaxf(speed, HOME_SCENE_MIN_SPEED);
 }
 
 /* Firmware version over the scene: top-left corner of the glyphs at

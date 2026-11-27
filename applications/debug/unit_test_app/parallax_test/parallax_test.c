@@ -32,9 +32,19 @@ MU_TEST(parallax_tile_first) {
     mu_assert_int_eq(1, parallax_tile_first_x(1, 256, 1));
 }
 
+/* Mirroring a 113 px frame box in place: the box edges swap, a 4 px bubble at
+ * x = 99 ends up 4 px from the other edge. */
+MU_TEST(parallax_mirror) {
+    mu_assert_int_eq(0, parallax_mirror_x(0, 113, 113));
+    mu_assert_int_eq(1, parallax_mirror_x(0, 112, 113));
+    mu_assert_int_eq(10, parallax_mirror_x(99, 4, 113));
+    mu_assert_int_eq(99, parallax_mirror_x(10, 4, 113));
+}
+
 MU_TEST_SUITE(parallax_suite) {
     MU_RUN_TEST(parallax_period_wrap);
     MU_RUN_TEST(parallax_tile_first);
+    MU_RUN_TEST(parallax_mirror);
 }
 
 int run_parallax_test(void) {

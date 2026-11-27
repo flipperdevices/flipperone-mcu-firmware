@@ -26,9 +26,39 @@ typedef enum {
     ParallaxWrapPeriod,
 } ParallaxWrap;
 
+typedef enum {
+    ParallaxShowAlways,
+    /** Only while the scene speed is 0 and no layer is still arriving. */
+    ParallaxShowStill,
+    /** Only while the scene moves and no layer is still arriving. */
+    ParallaxShowMoving,
+    /** Only while this layer is on its way in (see arrive_from). */
+    ParallaxShowArriving,
+} ParallaxShow;
+
+/** One sprite of a composite frame, placed inside the frame's box. */
 typedef struct {
-    /** frames[floor(t * fps) % frame_count], phase-locked to the clock. */
+    const Image* image;
+    int16_t x;
+    int16_t y;
+    /** 255 opaque; lower values blend the sprite over what is already drawn. */
+    uint8_t alpha;
+} ParallaxSprite;
+
+/** A frame built from several sprites: an artist's canvas where each frame
+ *  places its parts at its own offsets (a bobbing sprite, its bubbles). */
+typedef struct {
+    const ParallaxSprite* sprites;
+    uint8_t sprite_count;
+} ParallaxComposite;
+
+typedef struct {
+    /** frames[floor(t * fps) % frame_count], phase-locked to the clock.
+     *  Either this or composites is set, never both. */
     const Image* const* frames;
+    /** Composite frames instead of plain images, same indexing; their box is
+     *  wrap_width wide, which mirroring and the wraps refer to. */
+    const ParallaxComposite* composites;
     uint8_t frame_count;
     /** Frame rate of the sequence; ignored with a single frame. */
     uint8_t fps;
@@ -45,6 +75,14 @@ typedef struct {
     /** Mirror the frames horizontally while the scene moves right, so the
      *  sprite always faces against the motion (the source art faces right). */
     bool face_against_motion;
+    /** When the layer is drawn at all: a sleeping and a swimming pose of one
+     *  character are two layers that take turns. */
+    ParallaxShow show;
+    /** An entrance: the layer starts arrive_from px away from its position
+     *  (negative = to the left) and closes in at arrive_speed px/s, once,
+     *  from the scene's first frame. Wrap must be None. */
+    int16_t arrive_from;
+    float arrive_speed;
 } ParallaxLayer;
 
 typedef struct Parallax Parallax;
@@ -69,6 +107,12 @@ float parallax_get_speed(const Parallax* parallax);
 void parallax_element(Clay_ElementId id, Parallax* parallax);
 
 /* ── Wrap arithmetic, shared with the unit tests ─────────────────────────── */
+
+/** Mirroring a `box_width` wide frame in place: where a `width` wide sprite
+ *  at `x` inside it lands. */
+static inline int32_t parallax_mirror_x(int32_t x, int32_t width, int32_t box_width) {
+    return box_width - x - width;
+}
 
 /** Period wrap: where a sprite of `width` whose unwrapped position is `x`
  *  shows up, in [-width, period - width). */
