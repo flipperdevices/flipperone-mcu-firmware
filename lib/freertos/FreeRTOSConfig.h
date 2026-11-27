@@ -250,8 +250,9 @@ header file. header file. Already defined unconditionally above as vFreeRTOSAsse
     }
 #endif
 
-extern __attribute__((__noreturn__)) void furi_thread_catch(void);
-#define configTASK_RETURN_ADDRESS (furi_thread_catch + 2)
+// + 2 skips the nop at the start of freertos_task_return, see there
+extern __attribute__((__noreturn__)) void freertos_task_return(void);
+#define configTASK_RETURN_ADDRESS (freertos_task_return + 2)
 
 // // Must be last line of config because of recursion
 // #include <core/check.h>
