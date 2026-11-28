@@ -12,7 +12,7 @@
 /** Encodes data from source buffer using RLE algorithm and place new data to destination buffer.
  *
  * @param[in]  src           Pointer to source containing data
- * @param[in]  src_len       Total length of src buffer in bytes
+ * @param[in]  src_len       Total length of src buffer in bytes, a multiple of blk_size
  * @param[in,out]  dest      Pointer to destination buffer
  * @param[in]  dest_len      Total length of dest buffer
  * @param[in]  blk_size      Size of block RLE checks to consider whether it is equal to the next or not.

@@ -33,6 +33,7 @@ typedef struct {
     uint8_t* frame_buffer; /* room for the wire header, then the encoded pixels */
     size_t data_size; /* encoded pixel bytes after the header room */
     Flipper_One_Frame_Encoding encoding;
+    bool frame_pending; /* the buffer holds a frame not sent yet */
     FuriMutex* mutex;
     FuriThread* thread;
     FuriSemaphore* done_sem; /* released when thread exits (replaces join) */
@@ -130,8 +131,8 @@ static void rpc_screen_fb_callback(const uint8_t* data, size_t width, size_t hei
     if(!stream->active) return;
 
     /* Non-blocking for the GUI thread: while a frame is being sent, ask for a
-     * redraw afterwards. A thread flag, not a variable: it stays set even when
-     * the stream thread has already looked and gone to sleep */
+     * the last drawn frame afterwards. A thread flag, not a variable: it stays
+     * set even when the stream thread has already looked and gone to sleep */
     if(furi_mutex_acquire(stream->mutex, 0) != FuriStatusOk) {
         furi_thread_flags_set(furi_thread_get_id(stream->thread), RpcScreenEventTypeRedrawMissed);
         return;
@@ -148,6 +149,7 @@ static void rpc_screen_fb_callback(const uint8_t* data, size_t width, size_t hei
         stream->data_size = size;
         stream->encoding = Flipper_One_Frame_Encoding_PLAIN;
     }
+    stream->frame_pending = true;
     furi_mutex_release(stream->mutex);
 
     /* Signal the stream thread to send the frame */
@@ -168,12 +170,16 @@ static int32_t rpc_screen_stream_thread(void* context) {
         uint32_t flags = furi_thread_flags_wait(RpcScreenEventTypeAll, FuriFlagWaitAny, FuriWaitForever);
         if(flags & RpcScreenEventTypeNewFrame) {
             if(furi_mutex_acquire(stream->mutex, FuriWaitForever) == FuriStatusOk) {
-                rpc_screen_send_frame(stream);
+                /* Every frame raises the flag, but one send can cover two of them */
+                if(stream->frame_pending) {
+                    rpc_screen_send_frame(stream);
+                    stream->frame_pending = false;
+                }
                 furi_mutex_release(stream->mutex);
             }
         }
         if(flags & RpcScreenEventTypeRedrawMissed) {
-            gui_update(stream->gui);
+            gui_read_framebuffer(stream->gui, rpc_screen_fb_callback, stream);
         }
         if(flags & RpcScreenEventTypeStop) {
             break;
@@ -210,6 +216,7 @@ void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message
     stream->frame_buffer = mem_block + sizeof(RpcScreenStream);
     stream->data_size = 0;
     stream->encoding = Flipper_One_Frame_Encoding_PLAIN;
+    stream->frame_pending = false;
 
     stream->session = session;
     stream->active = true;

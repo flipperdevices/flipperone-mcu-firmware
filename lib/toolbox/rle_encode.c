@@ -145,6 +145,8 @@ bool __not_in_flash_func(rle_compress)(
     size_t* result_len) {
     furi_assert(src);
     furi_assert(dest);
+    // The block loop would stop at a partial block and drop it
+    furi_check(blk_size > 0 && src_len % blk_size == 0);
 
     if(blk_size == 1) return rle_compress_bytes(src, src_len, dest, dest_len, result_len);
 
