@@ -191,39 +191,3 @@ bool __not_in_flash_func(rle_compress)(
     *result_len = error ? 0 : dest_index;
     return !error;
 }
-
-bool rle_decompress(
-    const uint8_t* src,
-    size_t src_len,
-    uint8_t* dest,
-    size_t dest_len,
-    size_t blk_size,
-    size_t* result_len) {
-    size_t dest_i = 0;
-    for(size_t src_i = 0; src_i < src_len;) {
-        uint8_t opcode = src[src_i++];
-        size_t blk_count = (opcode & 0x7F);
-        size_t byte_count = blk_count * blk_size;
-        if(dest_i + byte_count > dest_len) return false;
-
-        if(opcode & 0x80) {
-            memcpy(&dest[dest_i], &src[src_i], byte_count);
-            src_i += byte_count;
-            dest_i += byte_count;
-        } else {
-            if(blk_size == 1) {
-                memset(&dest[dest_i], src[src_i], byte_count);
-                dest_i += byte_count;
-            } else {
-                for(size_t repeat = 0; repeat < blk_count; repeat++) {
-                    memcpy(&dest[dest_i], &src[src_i], blk_size);
-                    dest_i += blk_size;
-                }
-            }
-            src_i += blk_size;
-        }
-    }
-
-    *result_len = dest_i;
-    return true;
-}
