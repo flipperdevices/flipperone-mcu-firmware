@@ -20,7 +20,8 @@ _Static_assert(
 typedef enum {
     RpcScreenEventTypeNewFrame = (1 << 0),
     RpcScreenEventTypeStop = (1 << 1),
-    RpcScreenEventTypeAll = (RpcScreenEventTypeNewFrame | RpcScreenEventTypeStop),
+    RpcScreenEventTypeRedrawMissed = (1 << 2), /* a redraw came while a frame was being sent */
+    RpcScreenEventTypeAll = (RpcScreenEventTypeNewFrame | RpcScreenEventTypeStop | RpcScreenEventTypeRedrawMissed),
 } RpcScreenEventType;
 
 #define SCREEN_PIXELS (JD9853_WIDTH * JD9853_HEIGHT)
@@ -32,7 +33,6 @@ typedef struct {
     uint8_t* frame_buffer; /* room for the wire header, then the encoded pixels */
     size_t data_size; /* encoded pixel bytes after the header room */
     Flipper_One_Frame_Encoding encoding;
-    volatile bool redraw_missed; /* a redraw came while a frame was being sent */
     FuriMutex* mutex;
     FuriThread* thread;
     FuriSemaphore* done_sem; /* released when thread exits (replaces join) */
@@ -129,10 +129,11 @@ static void rpc_screen_fb_callback(const uint8_t* data, size_t width, size_t hei
     RpcScreenStream* stream = (RpcScreenStream*)context;
     if(!stream->active) return;
 
-    /* Non-blocking for the GUI thread: while a frame is being sent, remember
-     * to ask for a redraw afterwards, so the last frame is never lost */
+    /* Non-blocking for the GUI thread: while a frame is being sent, ask for a
+     * redraw afterwards. A thread flag, not a variable: it stays set even when
+     * the stream thread has already looked and gone to sleep */
     if(furi_mutex_acquire(stream->mutex, 0) != FuriStatusOk) {
-        stream->redraw_missed = true;
+        furi_thread_flags_set(furi_thread_get_id(stream->thread), RpcScreenEventTypeRedrawMissed);
         return;
     }
 
@@ -170,10 +171,9 @@ static int32_t rpc_screen_stream_thread(void* context) {
                 rpc_screen_send_frame(stream);
                 furi_mutex_release(stream->mutex);
             }
-            if(stream->redraw_missed) {
-                stream->redraw_missed = false;
-                gui_update(stream->gui);
-            }
+        }
+        if(flags & RpcScreenEventTypeRedrawMissed) {
+            gui_update(stream->gui);
         }
         if(flags & RpcScreenEventTypeStop) {
             break;
@@ -210,7 +210,6 @@ void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message
     stream->frame_buffer = mem_block + sizeof(RpcScreenStream);
     stream->data_size = 0;
     stream->encoding = Flipper_One_Frame_Encoding_PLAIN;
-    stream->redraw_missed = false;
 
     stream->session = session;
     stream->active = true;

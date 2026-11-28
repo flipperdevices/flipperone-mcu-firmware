@@ -18,7 +18,7 @@
  * @param[in]  blk_size      Size of block RLE checks to consider whether it is equal to the next or not.
  * @param[out] result_len    Actual dest buffer data size.
  *
- * @return False when the encoded data would not fit in dest_len
+ * @return False unless the encoded data is shorter than dest_len
  */
 bool rle_compress(
     const uint8_t* src,
