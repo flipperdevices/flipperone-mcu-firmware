@@ -2,6 +2,7 @@
 #include <furi.h>
 #include <gui/clay_helper.h>
 #include <gui/modules/elements.h>
+#include <gui/modules/popup_menu.h>
 
 void elements_softkey_button_element(size_t index, const char* text, bool active, bool pressed) {
     furi_check(text);
@@ -34,8 +35,7 @@ void elements_softkey_button_element(size_t index, const char* text, bool active
                     .offset = {.x = offset_x, .y = 0},
                     .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_BOTTOM, .parent = CLAY_ATTACH_POINT_CENTER_BOTTOM},
                     .attachTo = CLAY_ATTACH_TO_ROOT,
-                    // Active: the key of an open popup menu, over it (POPUP_MENU_Z_INDEX 1000)
-                    .zIndex = active ? 1100 : 0,
+                    .zIndex = active ? POPUP_MENU_KEY_Z_INDEX : 0,
                 },
         }) {
         CLAY(
@@ -117,9 +117,8 @@ void elements_home_tab_element(size_t index, const char* text, bool active, bool
                     .offset = {.x = home_tab_x[index] + HOME_TAB_SCREEN_X_OFFSET, .y = 0},
                     .attachPoints = {.element = CLAY_ATTACH_POINT_LEFT_BOTTOM, .parent = CLAY_ATTACH_POINT_LEFT_BOTTOM},
                     .attachTo = CLAY_ATTACH_TO_ROOT,
-                    // Active: the key of an open popup menu, over it (POPUP_MENU_Z_INDEX 1000).
-                    // Power overlaps its neighbours' slanted sides.
-                    .zIndex = active ? 1100 :
+                    // Power overlaps its neighbours' slanted sides
+                    .zIndex = active ? POPUP_MENU_KEY_Z_INDEX :
                               power  ? 1 :
                                        0,
                 },

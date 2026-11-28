@@ -40,7 +40,8 @@ static void power_menu_on_alloc(Scene* scene, void* context) {
 
     scene_data->menu = popup_menu_alloc(view);
     // It opens over the home screen, whose keys are the tabs
-    popup_menu_set_softkey(scene_data->menu, PopupMenuSoftkeyStyleHomeTab, 2, "Power", InputKeyPower);
+    const DesktopHomeTab* tab = &desktop_home_tab_power;
+    popup_menu_set_softkey(scene_data->menu, PopupMenuSoftkeyStyleHomeTab, tab->index, tab->label, tab->key);
     popup_menu_set_title(scene_data->menu, "Power Menu");
     popup_menu_set_icon(scene_data->menu, &popup_menu_power_icon);
     popup_menu_set_callback(scene_data->menu, power_menu_item_selected, scene_data->desktop);

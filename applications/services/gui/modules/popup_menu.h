@@ -7,6 +7,11 @@
 
 #define POPUP_MENU_EXIT_ID SIZE_MAX // Special ID for exit/back action, not a real item ID
 
+// Clay sorts floating elements across the whole screen: above any app's
+#define POPUP_MENU_Z_INDEX     1000
+// The softkey that opens the menu, drawn active over it and its selector
+#define POPUP_MENU_KEY_Z_INDEX (POPUP_MENU_Z_INDEX + 100)
+
 typedef struct PopupMenu PopupMenu;
 typedef struct PopupMenuItem PopupMenuItem;
 

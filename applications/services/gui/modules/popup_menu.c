@@ -9,9 +9,6 @@
 
 #define MENU_ID(x) CLAY_SIDI(CLAY_STRING("PopupMenu"), x)
 
-// Clay sorts floating elements across the whole screen: above any app's
-#define POPUP_MENU_Z_INDEX 1000
-
 /* The window from the mock, in pixels from its top left corner: a white box
  * with a black border, corners cut by 3 pixels, a gray header and the same
  * shape in black 3 pixels down and right as its shadow. It is centered on the

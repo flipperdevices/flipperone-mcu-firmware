@@ -37,7 +37,8 @@ static void help_menu_on_alloc(Scene* scene, void* context) {
 
     scene_data->menu = popup_menu_alloc(view);
     // It opens over the home screen, whose keys are the tabs
-    popup_menu_set_softkey(scene_data->menu, PopupMenuSoftkeyStyleHomeTab, 1, "Help", InputKey2);
+    const DesktopHomeTab* tab = &desktop_home_tab_help;
+    popup_menu_set_softkey(scene_data->menu, PopupMenuSoftkeyStyleHomeTab, tab->index, tab->label, tab->key);
     popup_menu_set_title(scene_data->menu, "Flipper One - Help");
     popup_menu_set_icon(scene_data->menu, &popup_menu_help_icon);
     popup_menu_set_align(scene_data->menu, PopupMenuAlignLeft);

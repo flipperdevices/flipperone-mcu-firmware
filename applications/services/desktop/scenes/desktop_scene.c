@@ -159,6 +159,10 @@ static const ParallaxLayer home_scene_layers[] = {
 
 static const Clay_Color COLOR_VERSION = {0xAA, 0xAA, 0xAA, 0xFF};
 
+const DesktopHomeTab desktop_home_tab_help = {.index = 1, .label = "Help", .key = InputKey2};
+const DesktopHomeTab desktop_home_tab_power = {.index = 2, .label = "Power", .key = InputKeyPower};
+const DesktopHomeTab desktop_home_tab_settings = {.index = 3, .label = "Settings", .key = InputKey4};
+
 typedef struct {
     bool settings_pressed;
     Desktop* desktop;
@@ -208,9 +212,9 @@ static bool desktop_layout(void* _model) {
                 CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_VERSION, .wrapMode = CLAY_TEXT_WRAP_NONE}));
         }
 
-        elements_home_tab_element(1, "Help", false, false);
-        elements_home_tab_element(2, "Power", false, false);
-        elements_home_tab_element(3, "Settings", false, model->settings_pressed);
+        elements_home_tab_element(desktop_home_tab_help.index, desktop_home_tab_help.label, false, false);
+        elements_home_tab_element(desktop_home_tab_power.index, desktop_home_tab_power.label, false, false);
+        elements_home_tab_element(desktop_home_tab_settings.index, desktop_home_tab_settings.label, false, model->settings_pressed);
     }
 
     return false;
@@ -222,36 +226,22 @@ static bool desktop_input(InputEvent* event, void* context) {
     View* view = scene_get_view(context);
 
     if(event->type == InputTypePress) {
-        switch(event->key) {
-        case InputKey2:
+        consumed = true;
+        if(event->key == desktop_home_tab_help.key) {
             desktop_send_scene_event(desktop, DesktopSceneEventTypeToggleHelpMenu, NULL);
-            consumed = true;
-            break;
-        case InputKeyPower:
+        } else if(event->key == desktop_home_tab_power.key) {
             desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, NULL);
-            consumed = true;
-            break;
-        case InputKey4:
+        } else if(event->key == desktop_home_tab_settings.key) {
             with_view_model(view, DesktopViewModel * model, { model->settings_pressed = true; }, true);
             desktop_send_scene_event(desktop, DesktopSceneEventTypeEnterSettingsMenu, context);
-            consumed = true;
-            break;
-        case InputKeySw:
+        } else if(event->key == InputKeySw) {
             desktop_send_scene_event(desktop, DesktopSceneEventTypeOpenDebugMenu, NULL);
-            consumed = true;
-            break;
-        default:
-            break;
+        } else {
+            consumed = false;
         }
-    } else if(event->type == InputTypeRelease) {
-        switch(event->key) {
-        case InputKey4:
-            with_view_model(view, DesktopViewModel * model, { model->settings_pressed = false; }, true);
-            consumed = true;
-            break;
-        default:
-            break;
-        }
+    } else if(event->type == InputTypeRelease && event->key == desktop_home_tab_settings.key) {
+        with_view_model(view, DesktopViewModel * model, { model->settings_pressed = false; }, true);
+        consumed = true;
     }
 
     return consumed;
