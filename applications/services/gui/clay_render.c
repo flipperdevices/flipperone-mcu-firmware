@@ -604,9 +604,9 @@ static void render_mono1_row(Color* dst, const uint8_t* src, const uint8_t* mask
     }
 }
 
-// dst + (src - dst) * alpha / 255, exact at both ends
+// Rounded to the nearest, exact at both ends
 static inline Color render_blend(Color dst, Color src, uint8_t alpha) {
-    return (Color)(dst + (((int32_t)src - dst) * alpha + 127) / 255);
+    return (Color)((dst * (255 - alpha) + src * alpha + 127) / 255);
 }
 
 static inline bool render_mask_bit(const uint8_t* row, int32_t x) {
