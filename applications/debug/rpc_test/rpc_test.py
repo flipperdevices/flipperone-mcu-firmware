@@ -191,9 +191,25 @@ def parse_rpc_message(data):
         result["encoding"] = _frame_pb2.Encoding.Name(f.encoding)
         result["pixel_format"] = _frame_pb2.PixelFormat.Name(f.pixel_format)
         result["data_len"] = len(f.data)
-        result["data"] = f.data
+        result["data"] = _rle_decode(f.data) if f.encoding == _frame_pb2.RUN_LENGTH else f.data
 
     return result
+
+
+def _rle_decode(data):
+    """RUN_LENGTH frame data, one byte per pixel (format in lib/toolbox/rle_encode.c)."""
+    out, pos = bytearray(), 0
+    while pos < len(data):
+        opcode = data[pos]
+        count = opcode & 0x7F
+        pos += 1
+        if opcode & 0x80:
+            out += data[pos : pos + count]
+            pos += count
+        else:
+            out += bytes([data[pos]]) * count
+            pos += 1
+    return bytes(out)
 
 
 # ── Serial I/O ──────────────────────────────────────────────────────────────

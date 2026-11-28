@@ -38,6 +38,12 @@ typedef struct {
 void gui_add_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, void* context);
 void gui_remove_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, void* context);
 
+/**
+ * Call `callback` once with the frame last drawn to the display, without
+ * redrawing. For a framebuffer consumer that missed a frame.
+ */
+void gui_read_framebuffer(Gui* gui, GuiFramebufferCallback callback, void* context);
+
 size_t gui_get_width(Gui* gui);
 size_t gui_get_height(Gui* gui);
 

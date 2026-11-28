@@ -24,6 +24,37 @@ TOUCH_TYPES = {"start": 0, "move": 1, "end": 2}
 TOUCH_MAX_X, TOUCH_MAX_Y, TOUCH_MAX_PRESSURE = 1023, 767, 1024 * 16 - 1
 
 
+# Frame.encoding values (assets/proto/frame.proto)
+ENCODING_PLAIN = 0
+ENCODING_RUN_LENGTH = 1
+
+
+def rle_decode(data):
+    """Undo the MCU's RUN_LENGTH frame encoding, one byte per pixel.
+
+    Format of lib/toolbox/rle_encode.c: an opcode byte with the high bit set is
+    followed by that many (low 7 bits) bytes copied as they are; otherwise one
+    byte follows, repeated that many times.
+    """
+    out, pos = bytearray(), 0
+    while pos < len(data):
+        opcode = data[pos]
+        count = opcode & 0x7F
+        pos += 1
+        if opcode & 0x80:
+            chunk = data[pos : pos + count]
+            if len(chunk) != count:
+                raise ValueError("RUN_LENGTH frame ends inside a verbatim run")
+            out += chunk
+            pos += count
+        else:
+            if pos >= len(data):
+                raise ValueError("RUN_LENGTH frame ends before a repeated byte")
+            out += bytes([data[pos]]) * count
+            pos += 1
+    return bytes(out)
+
+
 def varint(value):
     out = bytearray()
     while True:

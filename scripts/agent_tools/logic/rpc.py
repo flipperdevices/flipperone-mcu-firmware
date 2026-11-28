@@ -75,7 +75,9 @@ class RpcSession:
             self._send(rpc.FIELD_STOP_VIRTUAL_DISPLAY, b"")
         frame = rpc.parse_message(message[rpc.FIELD_FRAME])
         width, height, encoding, data = frame.get(1, 0), frame.get(2, 0), frame.get(3, 0), frame.get(5, b"")
-        if encoding != 0:
+        if encoding == rpc.ENCODING_RUN_LENGTH:
+            data = rpc.rle_decode(data)
+        elif encoding != rpc.ENCODING_PLAIN:
             raise RuntimeError(f"Frame encoding {encoding} is not supported by this tool")
         if len(data) != width * height:
             raise RuntimeError(f"Frame is {len(data)} bytes, expected {width}x{height}")

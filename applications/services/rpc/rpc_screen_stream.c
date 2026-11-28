@@ -4,6 +4,7 @@
 #include <furi.h>
 #include <pb_encode.h>
 #include <drivers/display/display_jd9853_reg.h>
+#include <toolbox/rle_encode.h>
 
 #define TAG "RpcScreen"
 
@@ -13,13 +14,14 @@ _Static_assert(
     "nanopb version changed — wire header may be incompatible; "
     "regenerate *.pb.h and review rpc_frame_build_wire_header()");
 
-/* Expected wire header size for JD9853_WIDTH×JD9853_HEIGHT, fields 1-5 */
-#define RPC_EXPECTED_WIRE_HEADER_SIZE 21
+/* Room before the pixel data for the wire header, which depends on the encoded size */
+#define RPC_WIRE_HEADER_MAX_SIZE 32
 
 typedef enum {
     RpcScreenEventTypeNewFrame = (1 << 0),
     RpcScreenEventTypeStop = (1 << 1),
-    RpcScreenEventTypeAll = (RpcScreenEventTypeNewFrame | RpcScreenEventTypeStop),
+    RpcScreenEventTypeRedrawMissed = (1 << 2), /* a redraw came while a frame was being sent */
+    RpcScreenEventTypeAll = (RpcScreenEventTypeNewFrame | RpcScreenEventTypeStop | RpcScreenEventTypeRedrawMissed),
 } RpcScreenEventType;
 
 #define SCREEN_PIXELS (JD9853_WIDTH * JD9853_HEIGHT)
@@ -28,10 +30,10 @@ typedef struct {
     RpcSession* session;
     Gui* gui;
     volatile bool active;
-    uint8_t* frame_buffer; /* wire header + pixel data */
-    size_t wire_header_size; /* set once at startup by build_wire_header() */
-    size_t width;
-    size_t height;
+    uint8_t* frame_buffer; /* room for the wire header, then the encoded pixels */
+    size_t data_size; /* encoded pixel bytes after the header room */
+    Flipper_One_Frame_Encoding encoding;
+    bool frame_pending; /* the buffer holds a frame not sent yet */
     FuriMutex* mutex;
     FuriThread* thread;
     FuriSemaphore* done_sem; /* released when thread exits (replaces join) */
@@ -40,17 +42,19 @@ typedef struct {
 static RpcScreenStream* rpc_screen_stream = NULL;
 
 /*
- * Build the protobuf wire-format header for a frame message.
- * Called ONCE at startup — uses live nanopb field tags from
+ * Build the protobuf wire-format header for a frame message, per frame: the
+ * encoding and the data size change. Uses live nanopb field tags from
  * generated *.pb.h, so it survives .proto renumbering.
- *
- * Frame_buffer layout after build:
- *   [ header N bytes ] [ pixel data (w*h) bytes ]
  *
  * Returns the number of header bytes written.
  */
-static size_t rpc_frame_build_wire_header(uint8_t* buf, size_t buf_size, uint16_t width, uint16_t height) {
-    size_t data_len = (size_t)width * height;
+static size_t rpc_frame_build_wire_header(
+    uint8_t* buf,
+    size_t buf_size,
+    uint16_t width,
+    uint16_t height,
+    Flipper_One_Frame_Encoding encoding,
+    size_t data_len) {
 
     /* ── Pass 1: measure all varint sizes ────────────────────────── */
     uint8_t dummy[128];
@@ -63,7 +67,7 @@ static size_t rpc_frame_build_wire_header(uint8_t* buf, size_t buf_size, uint16_
     pb_encode_tag(&sizing, PB_WT_VARINT, Flipper_One_Frame_Frame_height_tag);
     pb_encode_varint(&sizing, height);
     pb_encode_tag(&sizing, PB_WT_VARINT, Flipper_One_Frame_Frame_encoding_tag);
-    pb_encode_varint(&sizing, Flipper_One_Frame_Encoding_PLAIN);
+    pb_encode_varint(&sizing, encoding);
     pb_encode_tag(&sizing, PB_WT_VARINT, Flipper_One_Frame_Frame_pixel_format_tag);
     pb_encode_varint(&sizing, Flipper_One_Frame_PixelFormat_L8);
     pb_encode_tag(&sizing, PB_WT_STRING, Flipper_One_Frame_Frame_data_tag);
@@ -97,7 +101,7 @@ static size_t rpc_frame_build_wire_header(uint8_t* buf, size_t buf_size, uint16_
     pb_encode_tag(&stream, PB_WT_VARINT, Flipper_One_Frame_Frame_height_tag);
     pb_encode_varint(&stream, height);
     pb_encode_tag(&stream, PB_WT_VARINT, Flipper_One_Frame_Frame_encoding_tag);
-    pb_encode_varint(&stream, Flipper_One_Frame_Encoding_PLAIN);
+    pb_encode_varint(&stream, encoding);
     pb_encode_tag(&stream, PB_WT_VARINT, Flipper_One_Frame_Frame_pixel_format_tag);
     pb_encode_varint(&stream, Flipper_One_Frame_PixelFormat_L8);
     pb_encode_tag(&stream, PB_WT_STRING, Flipper_One_Frame_Frame_data_tag);
@@ -106,11 +110,19 @@ static size_t rpc_frame_build_wire_header(uint8_t* buf, size_t buf_size, uint16_
     return stream.bytes_written;
 }
 
-/* ── Send one frame (header + pixels already in frame_buffer) ───────────── */
+/* ── Send one frame: header right before the encoded pixels ─────────────── */
 static void rpc_screen_send_frame(RpcScreenStream* stream) {
     RpcSession* session = stream->session;
     if(!stream->active || !session) return;
-    rpc_send_preencoded(session, stream->frame_buffer, stream->wire_header_size + SCREEN_PIXELS);
+
+    uint8_t header[RPC_WIRE_HEADER_MAX_SIZE];
+    size_t header_size = rpc_frame_build_wire_header(
+        header, sizeof(header), JD9853_WIDTH, JD9853_HEIGHT, stream->encoding, stream->data_size);
+    furi_check(header_size <= RPC_WIRE_HEADER_MAX_SIZE);
+
+    uint8_t* message = stream->frame_buffer + RPC_WIRE_HEADER_MAX_SIZE - header_size;
+    memcpy(message, header, header_size);
+    rpc_send_preencoded(session, message, header_size + stream->data_size);
 }
 
 /* ── Framebuffer callback: runs in GUI thread ───────────────────────────── */
@@ -118,12 +130,26 @@ static void rpc_screen_fb_callback(const uint8_t* data, size_t width, size_t hei
     RpcScreenStream* stream = (RpcScreenStream*)context;
     if(!stream->active) return;
 
-    /* Quick copy — non-blocking for the GUI thread */
-    if(furi_mutex_acquire(stream->mutex, 0) != FuriStatusOk) return;
+    /* Non-blocking for the GUI thread: while a frame is being sent, ask for a
+     * the last drawn frame afterwards. A thread flag, not a variable: it stays
+     * set even when the stream thread has already looked and gone to sleep */
+    if(furi_mutex_acquire(stream->mutex, 0) != FuriStatusOk) {
+        furi_thread_flags_set(furi_thread_get_id(stream->thread), RpcScreenEventTypeRedrawMissed);
+        return;
+    }
 
-    memcpy(stream->frame_buffer + stream->wire_header_size, data, width * height);
-    stream->width = width;
-    stream->height = height;
+    const size_t size = width * height;
+    furi_check(size == SCREEN_PIXELS);
+    uint8_t* pixels = stream->frame_buffer + RPC_WIRE_HEADER_MAX_SIZE;
+    /* RLE unless it comes out no smaller than the frame itself */
+    if(rle_compress(data, size, pixels, size, 1, &stream->data_size)) {
+        stream->encoding = Flipper_One_Frame_Encoding_RUN_LENGTH;
+    } else {
+        memcpy(pixels, data, size);
+        stream->data_size = size;
+        stream->encoding = Flipper_One_Frame_Encoding_PLAIN;
+    }
+    stream->frame_pending = true;
     furi_mutex_release(stream->mutex);
 
     /* Signal the stream thread to send the frame */
@@ -144,9 +170,16 @@ static int32_t rpc_screen_stream_thread(void* context) {
         uint32_t flags = furi_thread_flags_wait(RpcScreenEventTypeAll, FuriFlagWaitAny, FuriWaitForever);
         if(flags & RpcScreenEventTypeNewFrame) {
             if(furi_mutex_acquire(stream->mutex, FuriWaitForever) == FuriStatusOk) {
-                rpc_screen_send_frame(stream);
+                /* Every frame raises the flag, but one send can cover two of them */
+                if(stream->frame_pending) {
+                    rpc_screen_send_frame(stream);
+                    stream->frame_pending = false;
+                }
                 furi_mutex_release(stream->mutex);
             }
+        }
+        if(flags & RpcScreenEventTypeRedrawMissed) {
+            gui_read_framebuffer(stream->gui, rpc_screen_fb_callback, stream);
         }
         if(flags & RpcScreenEventTypeStop) {
             break;
@@ -176,34 +209,17 @@ void rpc_start_virtual_display_handler(const Flipper_One_Rpc_RpcMessage* message
         return;
     }
 
-    /* Single allocation: struct + wire buffer (header + pixels) */
-
-    /* Build header once into a stack buffer to measure its size */
-    uint8_t header_tmp[128];
-    size_t header_size = rpc_frame_build_wire_header(header_tmp, sizeof(header_tmp), JD9853_WIDTH, JD9853_HEIGHT);
-
-    if(header_size != RPC_EXPECTED_WIRE_HEADER_SIZE) {
-        FURI_LOG_W(
-            TAG,
-            "Wire header size changed: expected %u, got %u — "
-            "check .proto field numbering or nanopb version",
-            (unsigned)RPC_EXPECTED_WIRE_HEADER_SIZE,
-            (unsigned)header_size);
-    }
-
-    size_t alloc_size = sizeof(RpcScreenStream) + header_size + SCREEN_PIXELS;
+    /* Single allocation: struct + wire buffer (header room + pixels) */
+    size_t alloc_size = sizeof(RpcScreenStream) + RPC_WIRE_HEADER_MAX_SIZE + SCREEN_PIXELS;
     uint8_t* mem_block = malloc(alloc_size);
     RpcScreenStream* stream = (RpcScreenStream*)mem_block;
     stream->frame_buffer = mem_block + sizeof(RpcScreenStream);
-    stream->wire_header_size = header_size;
-
-    /* Copy the pre-built header into the allocated buffer */
-    memcpy(stream->frame_buffer, header_tmp, header_size);
+    stream->data_size = 0;
+    stream->encoding = Flipper_One_Frame_Encoding_PLAIN;
+    stream->frame_pending = false;
 
     stream->session = session;
     stream->active = true;
-    stream->width = 0;
-    stream->height = 0;
     stream->mutex = furi_mutex_alloc(FuriMutexTypeNormal);
     stream->thread = NULL;
     stream->done_sem = furi_semaphore_alloc(1, 0);

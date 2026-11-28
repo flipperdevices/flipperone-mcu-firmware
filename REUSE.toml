@@ -9,7 +9,7 @@ SPDX-FileCopyrightText = "2024-2026 Flipper FZCO"
 SPDX-License-Identifier = "MIT"
 
 # GPL-3.0-or-later: files ported from the Flipper Zero firmware
-# (https://github.com/flipperdevices/flipperzero-firmware)
+# (https://github.com/flipperdevices/flipperzero-firmware) and lib/toolbox/rle_encode
 # plus the top-level application entry points.
 [[annotations]]
 path = [
@@ -24,6 +24,8 @@ path = [
     "lib/toolbox/hex.c",
     "lib/toolbox/hex.h",
     "lib/toolbox/m_cstr_dup.h",
+    "lib/toolbox/rle_encode.c",
+    "lib/toolbox/rle_encode.h",
 ]
 precedence = "closest"
 SPDX-FileCopyrightText = "2024-2026 Flipper FZCO"

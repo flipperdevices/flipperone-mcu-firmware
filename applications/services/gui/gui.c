@@ -581,3 +581,17 @@ void gui_remove_framebuffer_callback(Gui* gui, GuiFramebufferCallback callback, 
 
     furi_mutex_release(gui->callback_mutex);
 }
+
+void gui_read_framebuffer(Gui* gui, GuiFramebufferCallback callback, void* context) {
+    furi_check(gui);
+    furi_check(callback);
+
+    // gui_redraw() fills the canvas and notifies consumers under the same lock
+    gui_lock(gui);
+    callback(
+        canvas_get_data(gui->render_canvas),
+        canvas_get_width(gui->render_canvas),
+        canvas_get_height(gui->render_canvas),
+        context);
+    gui_unlock(gui);
+}
