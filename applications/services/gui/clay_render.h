@@ -52,8 +52,9 @@ void canvas_draw_image(Canvas* canvas, int32_t x, int32_t y, const Image* image,
  * element of a pass that depends on time samples this one value. */
 uint32_t canvas_get_render_time(Canvas* canvas);
 
-/** Ask for another render pass delay_ms after the render clock. The shortest
- * request of a pass wins; the GUI arms its redraw timer with it. */
+/** Ask for another render pass in delay_ms. The shortest request of a pass
+ * wins; the GUI arms its redraw timer with it once the pass is drawn, so the
+ * next pass comes that much after the end of this one. */
 void canvas_request_redraw(Canvas* canvas, uint32_t delay_ms);
 
 // rendering primitives
@@ -99,7 +100,7 @@ Clay_Dimensions clay_render_measure_text(Clay_StringSlice text, Clay_TextElement
 void clay_render_do_render(Canvas* canvas, Clay_RenderCommandArray* renderCommands);
 
 /** Whether the last clay_render_do_render() pass asked for another one; if so
- * delay_ms gets the shortest delay asked, from the clock that pass was drawn at. */
+ * delay_ms gets the shortest delay asked. */
 bool canvas_get_redraw_delay(Canvas* canvas, uint32_t* delay_ms);
 
 /** A Clay custom element: pass its address as `.custom = {.customData = ...}`.

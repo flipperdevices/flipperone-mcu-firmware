@@ -8,9 +8,9 @@
 /* Redraws come at most this often, however fast something moves. */
 #define PARALLAX_MIN_FRAME_MS 33
 
-/* A pass that comes this long after the previous one (the scene was hidden)
- * advances the offsets by this much at most, so a stale clock is not a leap. */
-#define PARALLAX_MAX_STEP_MS 1000
+/* A pass advances the offsets by this much at most: a scene that was hidden
+ * goes on from where it stopped instead of leaping. */
+#define PARALLAX_MAX_STEP_MS 100
 
 typedef struct {
     /* Accumulated motion in px, kept within one wrap period. */
