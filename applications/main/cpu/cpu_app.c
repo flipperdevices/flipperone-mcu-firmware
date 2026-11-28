@@ -48,9 +48,7 @@ typedef struct {
 } CpuAppModel;
 
 typedef enum {
-    CpuAppMessageTypeStart,
     CpuAppMessageTypeReset,
-    CpuAppMessageTypeMaskrom,
     CpuAppMessageTypeShutdown,
     CpuAppMessageTypeNewFrame,
 } CpuAppMessageType;
@@ -367,11 +365,6 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     CpuAppMessage message;
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
-        case CpuAppMessageTypeStart:
-            host_power_on(instance->host);
-            // A host powered already publishes nothing
-            cpu_app_show_host_state(instance);
-            break;
         case CpuAppMessageTypeReset:
             host_power_restart(instance->host);
             break;
@@ -380,9 +373,6 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             // The actual hardware cleanup happens in cpu_app_do_shutdown()
             // after the event loop exits, so it covers every exit path.
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
-            break;
-        case CpuAppMessageTypeMaskrom:
-            host_power_maskrom(instance->host);
             break;
         case CpuAppMessageTypeNewFrame: {
             const HostState state = host_get_state(instance->host);
@@ -492,29 +482,21 @@ static void cpu_app_free(CpuApp* instance) {
 int32_t cpu_app(void* p) {
     CpuApp* instance = cpu_app_alloc();
     const char* arg = p;
-    const bool start = arg && strcmp(arg, CPU_ARG_START) == 0;
-    const bool maskrom = arg && strcmp(arg, CPU_ARG_MASKROM) == 0;
 
-    // From the first frame, the screen of the state the host is about to enter
-    if(start && host_get_state(instance->host) == HostStateOff) {
-        cpu_app_show_own_screen(instance, CpuAppScreenSelfCheck);
-    } else if(maskrom) {
-        cpu_app_show_own_screen(instance, CpuAppScreenMaskrom);
-    } else {
-        cpu_app_show_host_state(instance);
-    }
-    gui_add_view(instance->gui, instance->display_view, GuiViewPriorityApplication);
-
+    // Before the view: the host's power calls return in the state they put it
+    // in, so the first frame is already that state's screen
     if(arg) {
         FURI_LOG_I(TAG, "CPU app started with arg: %s", arg);
-        if(start) {
-            cpu_app_send_message(instance, CpuAppMessageTypeStart);
-        } else if(maskrom) {
-            cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
+        if(strcmp(arg, CPU_ARG_START) == 0) {
+            host_power_on(instance->host);
+        } else if(strcmp(arg, CPU_ARG_MASKROM) == 0) {
+            host_power_maskrom(instance->host);
         } else {
             FURI_LOG_E(TAG, "Unknown argument: %s", arg);
         }
     }
+    cpu_app_show_host_state(instance);
+    gui_add_view(instance->gui, instance->display_view, GuiViewPriorityApplication);
 
     furi_event_loop_run(instance->event_loop);
 
