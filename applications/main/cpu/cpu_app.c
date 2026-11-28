@@ -276,6 +276,8 @@ static void cpu_app_show_host_state(CpuApp* instance) {
         return;
     case HostStateMaskrom:
         cpu_app_show_own_screen(instance, CpuAppScreenMaskrom);
+        // Not a boot phase that waits for the host to draw: the next state replaces it at once
+        cpu_app_own_screen_done(instance);
         return;
     case HostStateRunning:
         // Our screen stays until the host draws, it was asked for its screen,
