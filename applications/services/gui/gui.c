@@ -230,7 +230,7 @@ static void gui_redraw(Gui* gui) {
 
         clay_render_do_render(gui->render_canvas, &renderCommands);
 
-        // A redraw for any other reason restarts it: nothing on screen asks, it stops
+        // Rearmed on every redraw; stops once nothing on screen animates
         uint32_t animation_delay_ms;
         if(canvas_get_redraw_delay(gui->render_canvas, &animation_delay_ms)) {
             furi_event_loop_timer_start(gui->animation_timer, MAX(animation_delay_ms, 1u));

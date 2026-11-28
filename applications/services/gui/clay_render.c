@@ -683,7 +683,6 @@ typedef struct {
     int32_t x0, y0, x1, y1;
 } RenderScissors;
 
-// Narrow the scissors to a box; returns the old ones to restore
 static RenderScissors render_scissors_narrow(Canvas* canvas, const Clay_BoundingBox* bb) {
     const RenderScissors saved = {canvas->scissors_x0, canvas->scissors_y0, canvas->scissors_x1, canvas->scissors_y1};
     canvas->scissors_x0 = MAX(canvas->scissors_x0, (int32_t)bb->x);

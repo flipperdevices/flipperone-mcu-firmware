@@ -140,7 +140,6 @@ static uint32_t parallax_layer_next_change_ms(const Parallax* parallax, size_t i
     return delay_ms;
 }
 
-/* Draw frame `frame` of the layer with its box's top-left at (x, y). */
 static void parallax_draw_frame(Canvas* canvas, const ParallaxLayer* layer, uint32_t frame, int32_t x, int32_t y, bool mirror_x) {
     if(layer->frames) {
         canvas_draw_image(canvas, x, y, layer->frames[frame], mirror_x, 255);

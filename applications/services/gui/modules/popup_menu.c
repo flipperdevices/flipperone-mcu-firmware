@@ -127,7 +127,6 @@ static void popup_menu_render_window(Canvas* canvas, const Clay_BoundingBox* box
     popup_menu_fill_cut_box(canvas, x + POPUP_MENU_SHADOW, y + POPUP_MENU_SHADOW, width, height, POPUP_MENU_BLACK);
     popup_menu_fill_cut_box(canvas, x, y, width, height, POPUP_MENU_BLACK);
 
-    // The inside: the header, then white
     for(int32_t row = 1; row < height - 1; row++) {
         int32_t x0, x1;
         popup_menu_cut_row(width, height, POPUP_MENU_CORNER, row, &x0, &x1);
