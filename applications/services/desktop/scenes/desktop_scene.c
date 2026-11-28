@@ -165,7 +165,6 @@ const DesktopHomeTab desktop_home_tab_power = {.index = 2, .label = "Power", .ke
 const DesktopHomeTab desktop_home_tab_settings = {.index = 3, .label = "Settings", .key = InputKey4};
 
 typedef struct {
-    bool settings_pressed;
     Desktop* desktop;
     Parallax* scene;
     FuriString* version_text;
@@ -215,7 +214,7 @@ static bool desktop_layout(void* _model) {
 
         elements_home_tab_element(desktop_home_tab_help.index, desktop_home_tab_help.label, false, false);
         elements_home_tab_element(desktop_home_tab_power.index, desktop_home_tab_power.label, false, false);
-        elements_home_tab_element(desktop_home_tab_settings.index, desktop_home_tab_settings.label, false, model->settings_pressed);
+        elements_home_tab_element(desktop_home_tab_settings.index, desktop_home_tab_settings.label, false, false);
     }
 
     return false;
@@ -224,7 +223,6 @@ static bool desktop_layout(void* _model) {
 static bool desktop_input(InputEvent* event, void* context) {
     bool consumed = false;
     Desktop* desktop = scene_get_data(context);
-    View* view = scene_get_view(context);
 
     if(event->type == InputTypePress) {
         consumed = true;
@@ -233,7 +231,6 @@ static bool desktop_input(InputEvent* event, void* context) {
         } else if(event->key == desktop_home_tab_power.key) {
             desktop_send_scene_event(desktop, DesktopSceneEventTypeTogglePowerMenu, NULL);
         } else if(event->key == desktop_home_tab_settings.key) {
-            with_view_model(view, DesktopViewModel * model, { model->settings_pressed = true; }, true);
             desktop_send_scene_event(desktop, DesktopSceneEventTypeEnterSettingsMenu, context);
         } else if(event->key == InputKeySw) {
             desktop_send_scene_event(desktop, DesktopSceneEventTypeOpenDebugMenu, NULL);
@@ -241,7 +238,6 @@ static bool desktop_input(InputEvent* event, void* context) {
             consumed = false;
         }
     } else if(event->type == InputTypeRelease && event->key == desktop_home_tab_settings.key) {
-        with_view_model(view, DesktopViewModel * model, { model->settings_pressed = false; }, true);
         consumed = true;
     }
 
@@ -272,15 +268,9 @@ static void desktop_on_alloc(Scene* scene, void* context) {
     view_set_input_callback(view, desktop_input, scene);
 }
 
-static void desktop_on_exit(Scene* scene, void* app) {
-    View* view = scene_get_view(scene);
-
-    with_view_model(view, DesktopViewModel * model, { model->settings_pressed = false; }, true);
-}
-
 const SceneCallbacks scene_desktop_callbacks = {
     .on_alloc = desktop_on_alloc,
     .on_enter = NULL,
-    .on_exit = desktop_on_exit,
+    .on_exit = NULL,
     .on_event = NULL,
 };
