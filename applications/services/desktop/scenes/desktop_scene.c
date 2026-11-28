@@ -4,6 +4,7 @@
 #include <gui/modules/elements.h>
 #include <gui/modules/parallax.h>
 #include <version.h>
+#include <furi_hal_flash.h>
 #include "../scene.h"
 #include "../desktop_i.h"
 
@@ -259,9 +260,11 @@ static void desktop_on_alloc(Scene* scene, void* context) {
             model->desktop = context;
             model->scene = parallax_alloc(home_scene_layers, COUNT_OF(home_scene_layers), HOME_SCENE_WIDTH);
             parallax_set_origin(model->scene, HOME_SCENE_X, HOME_SCENE_Y);
+            FlashPartitionId partition;
+            const char slot = !furi_hal_flash_get_active_fw_partition(&partition) ? '?' : partition == FlashPartitionIdFwA ? 'A' : 'B';
             const Version* version = version_get();
             model->version_text =
-                furi_string_alloc_printf("%s %s /%s", version_get_version(version), version_get_githash(version), version_get_gitbranch(version));
+                furi_string_alloc_printf("[%c] %s %s /%s", slot, version_get_version(version), version_get_githash(version), version_get_gitbranch(version));
         },
         false);
 
