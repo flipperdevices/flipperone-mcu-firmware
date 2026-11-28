@@ -9,8 +9,7 @@ SPDX-FileCopyrightText = "2024-2026 Flipper FZCO"
 SPDX-License-Identifier = "MIT"
 
 # GPL-3.0-or-later: files ported from the Flipper Zero firmware
-# (https://github.com/flipperdevices/flipperzero-firmware) and the BUSY Bar firmware
-# (rle_encode, GPL-2.0-or-later there)
+# (https://github.com/flipperdevices/flipperzero-firmware) and lib/toolbox/rle_encode
 # plus the top-level application entry points.
 [[annotations]]
 path = [

@@ -1,6 +1,6 @@
 /**
  * @brief Run-Length encoding and decoding.
- * Ported from the BUSY Bar firmware (lib/toolbox/rle_encode); the format is described in rle_encode.c.
+ * The format is described in rle_encode.c.
  */
 
 #pragma once
