@@ -55,6 +55,11 @@ void scene_exit(Scene* scene, void* app) {
     }
 }
 
+bool scene_is_active(Scene* scene) {
+    furi_check(scene);
+    return view_is_enabled(scene->view);
+}
+
 void scene_set_data(Scene* scene, void* data) {
     furi_check(scene);
     scene->data = data;

@@ -22,6 +22,9 @@ void scene_enter(Scene* scene, void* app);
 
 void scene_exit(Scene* scene, void* app);
 
+/** Entered and not exited since: its view is enabled */
+bool scene_is_active(Scene* scene);
+
 bool scene_event(Scene* scene, uint32_t event, void* data);
 
 void scene_set_data(Scene* scene, void* data);

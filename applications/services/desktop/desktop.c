@@ -353,6 +353,37 @@ static bool desktop_start_app_by_id(Desktop* desktop, const char* appid) {
     return result;
 }
 
+// The home screen gets the keys: no menu over it and no app in front of it
+static bool desktop_home_is_foreground(Desktop* desktop) {
+    return scene_is_active(desktop->main_scene) && !scene_is_active(desktop->power_menu_scene) && !scene_is_active(desktop->help_menu_scene) &&
+           !scene_is_active(desktop->debug_menu_scene) && !desktop->app.running;
+}
+
+/* Scenes only queue their events, and keys keep coming until this thread
+ * handles them: an event queued behind one that has changed the screen comes
+ * from a scene no longer in front, and is dropped. */
+static bool desktop_scene_event_is_current(Desktop* desktop, const DesktopSceneEventMessage* message) {
+    switch(message->event) {
+    case DesktopSceneEventTypeTogglePowerMenu:
+        return message->data ? scene_is_active(desktop->power_menu_scene) : desktop_home_is_foreground(desktop);
+    case DesktopSceneEventTypeToggleHelpMenu:
+        return message->data ? scene_is_active(desktop->help_menu_scene) : desktop_home_is_foreground(desktop);
+    case DesktopSceneEventTypeOpenDebugMenu:
+        return desktop_home_is_foreground(desktop);
+    case DesktopSceneEventTypeReturnToDesktop:
+    case DesktopSceneEventTypeEnterSettingsMenu:
+    case DesktopSceneEventTypeEnterDisplaySettings:
+    case DesktopSceneEventTypeEnterPowerSettings:
+    case DesktopSceneEventTypeEnterTestingMenu:
+    case DesktopSceneEventTypeEnterLedsMenu:
+        // Their data is the scene they leave
+        if(message->data == desktop->main_scene) return desktop_home_is_foreground(desktop);
+        return !message->data || scene_is_active(message->data);
+    default:
+        return true;
+    }
+}
+
 static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     Desktop* desktop = context;
@@ -360,6 +391,11 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
 
     DesktopSceneEventMessage message;
     furi_check(furi_message_queue_get(desktop->scene_event_message_queue, &message, 0) == FuriStatusOk);
+
+    if(!desktop_scene_event_is_current(desktop, &message)) {
+        FURI_LOG_D(TAG, "Stale scene event %lu dropped", message.event);
+        return;
+    }
 
     bool consumed = false;
 
