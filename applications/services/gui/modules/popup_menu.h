@@ -38,6 +38,7 @@ void popup_menu_free(PopupMenu* menu);
  * the Power key, classic softkey 2 "Power". The label must outlive the menu. */
 void popup_menu_set_softkey(PopupMenu* menu, PopupMenuSoftkeyStyle style, size_t index, const char* label, InputKey key);
 
+/** Only while the menu is hidden: the last layout's pointer to the old title lives until its render */
 void popup_menu_set_title(PopupMenu* menu, const char* title);
 
 /** The 14x14 icon before the title, none by default. It must outlive the menu. */
