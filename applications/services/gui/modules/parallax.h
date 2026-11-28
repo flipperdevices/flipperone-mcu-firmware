@@ -89,7 +89,7 @@ typedef struct {
 typedef struct Parallax Parallax;
 
 /** @param layers       drawn first to last (bottom to top); the array must outlive the scene
- *  @param scene_width  width the Period wrap and the default origin refer to */
+ *  @param scene_width  width the Period wrap refers to */
 Parallax* parallax_alloc(const ParallaxLayer* layers, size_t layer_count, uint16_t scene_width);
 
 void parallax_free(Parallax* parallax);

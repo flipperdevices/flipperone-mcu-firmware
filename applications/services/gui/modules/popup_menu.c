@@ -11,8 +11,7 @@
 
 /* The window from the mock, in pixels from its top left corner: a white box
  * with a black border, corners cut by 3 pixels, a gray header and the same
- * shape in black 3 pixels down and right as its shadow. It is centered on the
- * screen. */
+ * shape in black 3 pixels down and right as its shadow. */
 #define POPUP_MENU_CORNER        3
 #define POPUP_MENU_SHADOW        3
 #define POPUP_MENU_HEADER_BOTTOM 21 // The header is gray from below the border to here
