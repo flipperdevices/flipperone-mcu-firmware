@@ -81,6 +81,16 @@ def test_rpc_varint_roundtrip():
     assert rpc.varint(0) == b"\x00" and rpc.varint(300) == bytes([0xAC, 0x02])
 
 
+def test_rpc_rle_decode():
+    # a run of 5 x 0xFF, then 3 bytes as they are, then a run of 4 x 0x00
+    assert rpc.rle_decode(bytes([0x05, 0xFF, 0x83, 1, 2, 3, 0x04, 0x00])) == b"\xff" * 5 + b"\x01\x02\x03" + b"\x00" * 4
+    assert rpc.rle_decode(b"") == b""
+    with pytest.raises(ValueError, match="verbatim"):
+        rpc.rle_decode(bytes([0x83, 1]))
+    with pytest.raises(ValueError, match="repeated"):
+        rpc.rle_decode(bytes([0x05]))
+
+
 def test_host_shell_framing():
     assert host_shell.strip_probe_banner(b"fixed baud rate 1500000\nuser@f:~$ ") == b"user@f:~$"
     assert host_shell.SHELL_PROMPT.search(b"user@flipper:~$ ")
