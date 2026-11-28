@@ -28,6 +28,19 @@
 
 #define POPUP_MENU_HEADER_COLOR 0xE4
 
+/* A longer list scrolls. A window this tall would reach the tabs if centered,
+ * so it stands at the top of the screen instead. */
+#define POPUP_MENU_MAX_LINES 5
+#define POPUP_MENU_TOP_Y     4
+
+/* The scrollbar from the mock, in the window's right padding: a dotted track
+ * from just above the lines to 5 pixels above the bottom edge, and a 3 pixel
+ * wide thumb over it, a pixel inside the track at both ends */
+#define POPUP_MENU_SCROLLBAR_X      5 // From the window's right edge, the shadow not included
+#define POPUP_MENU_SCROLLBAR_WIDTH  3
+#define POPUP_MENU_SCROLLBAR_TOP    (POPUP_MENU_LINES_Y - 1)
+#define POPUP_MENU_SCROLLBAR_BOTTOM 5
+
 typedef struct {
     uint8_t title_x;
     uint8_t line_height;
@@ -38,6 +51,13 @@ typedef struct {
     uint8_t selected_label_y;
     uint8_t selector_extra; // The selector is this much wider than the widest selected label
 } PopupMenuAlignLayout;
+
+// What the scrollbar shows, written by the layout and read by the render after it
+typedef struct {
+    size_t first;
+    size_t visible;
+    size_t total;
+} PopupMenuScroll;
 
 static const PopupMenuAlignLayout popup_menu_align_layouts[] = {
     [PopupMenuAlignCenter] =
@@ -88,6 +108,8 @@ typedef struct {
     // The widest label in the selected line's font: the selector and the window fit it
     uint16_t selected_label_width;
     size_t position;
+    size_t first_line; // The top visible line of a list that scrolls
+    PopupMenuScroll scroll;
     bool visible;
     bool key_pressed;
     PopupMenuSoftkeyStyle softkey_style;
@@ -95,6 +117,7 @@ typedef struct {
     const char* softkey_label;
     ClayCustomElement window;
     ClayCustomElement selector;
+    ClayCustomElement scrollbar;
 } PopupMenuViewModel;
 
 // Row y of a shape whose corners are cut by `corner` pixels: x0 and x1 of its edge
@@ -153,6 +176,23 @@ static void popup_menu_render_selector(Canvas* canvas, const Clay_BoundingBox* b
     render_draw_line(canvas, r - 2, b - 2, r - 1, b - 2, POPUP_MENU_BLACK);
     render_draw_line(canvas, x + 2, b - 1, r - 2, b - 1, POPUP_MENU_BLACK);
     render_draw_line(canvas, x + 3, b, r - 3, b, POPUP_MENU_BLACK);
+}
+
+static void popup_menu_render_scrollbar(Canvas* canvas, const Clay_BoundingBox* box, void* context) {
+    const PopupMenuScroll* scroll = context;
+    const int32_t x = box->x;
+    const int32_t y = box->y;
+    const int32_t height = box->height;
+
+    for(int32_t row = 0; row < height; row += 2) {
+        render_draw_line(canvas, x + 1, y + row, x + 1, y + row, POPUP_MENU_BLACK);
+    }
+    const int32_t area = height - 2;
+    const int32_t thumb_y0 = 1 + (int32_t)((area * scroll->first + scroll->total / 2) / scroll->total);
+    const int32_t thumb_y1 = 1 + (int32_t)((area * (scroll->first + scroll->visible) + scroll->total / 2) / scroll->total);
+    for(int32_t row = thumb_y0; row < thumb_y1; row++) {
+        render_draw_line(canvas, x, y + row, x + POPUP_MENU_SCROLLBAR_WIDTH - 1, y + row, POPUP_MENU_BLACK);
+    }
 }
 
 static uint16_t popup_menu_selector_width(const PopupMenuViewModel* model) {
@@ -239,12 +279,25 @@ static bool popup_menu_layout_callback(void* _model) {
     }
 
     const PopupMenuAlignLayout* layout = &popup_menu_align_layouts[model->align];
-    // Centered without its shadow, on whole pixels of the screen with even sides
-    const size_t lines = PopupMenuItemArray_size(model->items);
+    const size_t total = PopupMenuItemArray_size(model->items);
+    const size_t lines = MIN(total, (size_t)POPUP_MENU_MAX_LINES);
+    // Scroll the selected line into view
+    if(model->position < model->first_line) {
+        model->first_line = model->position;
+    } else if(model->position >= model->first_line + lines) {
+        model->first_line = model->position + 1 - lines;
+    }
+    model->first_line = MIN(model->first_line, total - lines);
+    model->scroll = (PopupMenuScroll){.first = model->first_line, .visible = lines, .total = total};
+
     const uint16_t width = POPUP_MENU_LINES_X * 2 + popup_menu_selector_width(model);
     const uint16_t height = POPUP_MENU_LINES_Y + lines * layout->line_height + (POPUP_MENU_SELECTOR_HEIGHT - layout->line_height) + layout->bottom;
+    // Centered without its shadow, on whole pixels of the screen with even sides;
+    // a window of the most lines stands at the top
+    const bool top = lines == POPUP_MENU_MAX_LINES;
     const float x = (POPUP_MENU_SHADOW - width % 2) / 2.0f;
-    const float y = (POPUP_MENU_SHADOW - height % 2) / 2.0f;
+    const float y = top ? POPUP_MENU_TOP_Y : (POPUP_MENU_SHADOW - height % 2) / 2.0f;
+    const Clay_FloatingAttachPointType attach = top ? CLAY_ATTACH_POINT_CENTER_TOP : CLAY_ATTACH_POINT_CENTER_CENTER;
 
     CLAY(
         CLAY_APP_ID("Overlay"),
@@ -270,7 +323,7 @@ static bool popup_menu_layout_callback(void* _model) {
                 .floating =
                     {
                         .offset = {x, y},
-                        .attachPoints = {.element = CLAY_ATTACH_POINT_CENTER_CENTER, .parent = CLAY_ATTACH_POINT_CENTER_CENTER},
+                        .attachPoints = {.element = attach, .parent = attach},
                         .attachTo = CLAY_ATTACH_TO_ROOT,
                         .zIndex = POPUP_MENU_Z_INDEX,
                     },
@@ -278,15 +331,29 @@ static bool popup_menu_layout_callback(void* _model) {
             }) {
             popup_menu_draw_header(model);
 
-            size_t line_index = 0;
-            PopupMenuItemArray_it_t it;
-            for(PopupMenuItemArray_it(it, model->items); !PopupMenuItemArray_end_p(it); PopupMenuItemArray_next(it)) {
-                popup_menu_draw_item(model, PopupMenuItemArray_ref(it), line_index, line_index == model->position);
-                line_index++;
+            for(size_t line = model->first_line; line < model->first_line + lines; line++) {
+                popup_menu_draw_item(model, PopupMenuItemArray_get(model->items, line), line, line == model->position);
             }
             if(model->align == PopupMenuAlignLeft) {
                 // The last selector's shadow
                 CLAY(CLAY_ID("PopupMenuLastShadow"), {.layout = {.sizing = {.height = CLAY_SIZING_FIXED(1)}}}){};
+            }
+            if(lines < total) {
+                CLAY(
+                    CLAY_ID("PopupMenuScrollbar"),
+                    {
+                        .layout =
+                            {.sizing =
+                                 {.width = CLAY_SIZING_FIXED(POPUP_MENU_SCROLLBAR_WIDTH),
+                                  .height = CLAY_SIZING_FIXED(height - POPUP_MENU_SCROLLBAR_TOP - POPUP_MENU_SCROLLBAR_BOTTOM + 1)}},
+                        .floating =
+                            {
+                                .offset = {width - POPUP_MENU_SCROLLBAR_X, POPUP_MENU_SCROLLBAR_TOP},
+                                .attachTo = CLAY_ATTACH_TO_PARENT,
+                                .zIndex = POPUP_MENU_Z_INDEX,
+                            },
+                        .custom = {.customData = &model->scrollbar},
+                    }){};
             }
         }
     }
@@ -389,6 +456,8 @@ PopupMenu* popup_menu_alloc(View* view) {
             model->softkey_label = "Power";
             model->window.render = popup_menu_render_window;
             model->selector.render = popup_menu_render_selector;
+            model->scrollbar.render = popup_menu_render_scrollbar;
+            model->scrollbar.context = &model->scroll;
         },
         false);
 
