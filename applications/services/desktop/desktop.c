@@ -379,6 +379,17 @@ static bool desktop_scene_event_is_current(Desktop* desktop, const DesktopSceneE
         // Their data is the scene they leave
         if(message->data == desktop->main_scene) return desktop_home_is_foreground(desktop);
         return !message->data || scene_is_active(message->data);
+    case DesktopSceneEventTypeStartSelfCheckApp:
+    case DesktopSceneEventTypeStartMaskromApp:
+    case DesktopSceneEventTypeStartKeypadApp:
+    case DesktopSceneEventTypeStartTouchpadApp:
+    case DesktopSceneEventTypeStartHapticApp:
+    case DesktopSceneEventTypeStartDisplayTestApp:
+        // Their data is the menu they are picked in
+        return !message->data || scene_is_active(message->data);
+    case DesktopSceneEventTypeStartCpuApp:
+        // Picked in the power menu
+        return scene_is_active(desktop->power_menu_scene);
     default:
         return true;
     }
