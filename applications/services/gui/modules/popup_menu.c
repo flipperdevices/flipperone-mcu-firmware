@@ -292,8 +292,7 @@ static bool popup_menu_layout_callback(void* _model) {
 
     const uint16_t width = POPUP_MENU_LINES_X * 2 + popup_menu_selector_width(model);
     const uint16_t height = POPUP_MENU_LINES_Y + lines * layout->line_height + (POPUP_MENU_SELECTOR_HEIGHT - layout->line_height) + layout->bottom;
-    // Centered without its shadow, on whole pixels of the screen with even sides;
-    // a window of the most lines stands at the top
+    // Centered without its shadow, on whole pixels of the screen with even sides
     const bool top = lines == POPUP_MENU_MAX_LINES;
     const float x = (POPUP_MENU_SHADOW - width % 2) / 2.0f;
     const float y = top ? POPUP_MENU_TOP_Y : (POPUP_MENU_SHADOW - height % 2) / 2.0f;

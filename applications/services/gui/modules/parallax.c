@@ -1,7 +1,6 @@
 #include "parallax.h"
 #include <furi.h>
 #include <math.h>
-#include <string.h>
 
 #define TAG "Parallax"
 
@@ -212,9 +211,7 @@ Parallax* parallax_alloc(const ParallaxLayer* layers, size_t layer_count, uint16
         furi_check(layers[i].arrive_speed == 0.f || layers[i].wrap == ParallaxWrapNone);
     }
 
-    // malloc does not clear
     Parallax* parallax = malloc(sizeof(Parallax));
-    memset(parallax, 0, sizeof(Parallax));
     parallax->element.render = parallax_render;
     parallax->element.context = parallax;
     parallax->layers = layers;
