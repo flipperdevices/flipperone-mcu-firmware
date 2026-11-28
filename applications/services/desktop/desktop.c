@@ -59,6 +59,7 @@ struct Desktop {
     Scene* main_scene;
     Scene* header_scene;
     Scene* power_menu_scene;
+    Scene* help_menu_scene;
     Scene* settings_menu_scene;
     Scene* display_settings_scene;
     Scene* power_settings_scene;
@@ -352,6 +353,48 @@ static bool desktop_start_app_by_id(Desktop* desktop, const char* appid) {
     return result;
 }
 
+// The home screen gets the keys: no menu over it and no app in front of it
+static bool desktop_home_is_foreground(Desktop* desktop) {
+    return scene_is_active(desktop->main_scene) && !scene_is_active(desktop->power_menu_scene) && !scene_is_active(desktop->help_menu_scene) &&
+           !scene_is_active(desktop->debug_menu_scene) && !desktop->app.running;
+}
+
+/* Scenes only queue their events, and keys keep coming until this thread
+ * handles them: an event queued behind one that has changed the screen comes
+ * from a scene no longer in front, and is dropped. */
+static bool desktop_scene_event_is_current(Desktop* desktop, const DesktopSceneEventMessage* message) {
+    switch(message->event) {
+    case DesktopSceneEventTypeTogglePowerMenu:
+        return message->data ? scene_is_active(desktop->power_menu_scene) : desktop_home_is_foreground(desktop);
+    case DesktopSceneEventTypeToggleHelpMenu:
+        return message->data ? scene_is_active(desktop->help_menu_scene) : desktop_home_is_foreground(desktop);
+    case DesktopSceneEventTypeOpenDebugMenu:
+        return desktop_home_is_foreground(desktop);
+    case DesktopSceneEventTypeReturnToDesktop:
+    case DesktopSceneEventTypeEnterSettingsMenu:
+    case DesktopSceneEventTypeEnterDisplaySettings:
+    case DesktopSceneEventTypeEnterPowerSettings:
+    case DesktopSceneEventTypeEnterTestingMenu:
+    case DesktopSceneEventTypeEnterLedsMenu:
+        // Their data is the scene they leave
+        if(message->data == desktop->main_scene) return desktop_home_is_foreground(desktop);
+        return !message->data || scene_is_active(message->data);
+    case DesktopSceneEventTypeStartSelfCheckApp:
+    case DesktopSceneEventTypeStartMaskromApp:
+    case DesktopSceneEventTypeStartKeypadApp:
+    case DesktopSceneEventTypeStartTouchpadApp:
+    case DesktopSceneEventTypeStartHapticApp:
+    case DesktopSceneEventTypeStartDisplayTestApp:
+        // Their data is the menu they are picked in
+        return !message->data || scene_is_active(message->data);
+    case DesktopSceneEventTypeStartCpuApp:
+        // Picked in the power menu
+        return scene_is_active(desktop->power_menu_scene);
+    default:
+        return true;
+    }
+}
+
 static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context) {
     furi_check(context);
     Desktop* desktop = context;
@@ -359,6 +402,11 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
 
     DesktopSceneEventMessage message;
     furi_check(furi_message_queue_get(desktop->scene_event_message_queue, &message, 0) == FuriStatusOk);
+
+    if(!desktop_scene_event_is_current(desktop, &message)) {
+        FURI_LOG_D(TAG, "Stale scene event %lu dropped", message.event);
+        return;
+    }
 
     bool consumed = false;
 
@@ -369,6 +417,14 @@ static void desktop_scene_event_logic(FuriEventLoopObject* object, void* context
             scene_exit(desktop->power_menu_scene, desktop);
         } else {
             scene_enter(desktop->power_menu_scene, desktop);
+        }
+        consumed = true;
+        break;
+    case DesktopSceneEventTypeToggleHelpMenu:
+        if(message.data) {
+            scene_exit(desktop->help_menu_scene, desktop);
+        } else {
+            scene_enter(desktop->help_menu_scene, desktop);
         }
         consumed = true;
         break;
@@ -472,6 +528,7 @@ static Desktop* desktop_alloc(void) {
     desktop->header_scene = scene_alloc(&scene_header_callbacks, desktop);
     desktop->main_scene = scene_alloc(&scene_desktop_callbacks, desktop);
     desktop->power_menu_scene = scene_alloc(&scene_power_menu_callbacks, desktop);
+    desktop->help_menu_scene = scene_alloc(&scene_help_menu_callbacks, desktop);
     desktop->settings_menu_scene = scene_alloc(&scene_settings_menu_callbacks, desktop);
     desktop->display_settings_scene = scene_alloc(&scene_display_settings_callbacks, desktop);
     desktop->power_settings_scene = scene_alloc(&scene_power_settings_callbacks, desktop);
@@ -488,6 +545,8 @@ static Desktop* desktop_alloc(void) {
     gui_add_view(desktop->gui, scene_get_view(desktop->power_settings_scene), GuiViewPriorityDesktop);
     gui_add_view(desktop->gui, scene_get_view(desktop->testing_menu_scene), GuiViewPriorityDesktop);
     gui_add_view(desktop->gui, scene_get_view(desktop->leds_menu_scene), GuiViewPriorityDesktop);
+    // Over the home screen it opens from
+    gui_add_view(desktop->gui, scene_get_view(desktop->help_menu_scene), GuiViewPriorityDesktop + 1);
 
     gui_add_view(desktop->gui, scene_get_view(desktop->debug_menu_scene), GuiViewPriorityApplication - 1);
     gui_add_view(desktop->gui, scene_get_view(desktop->power_menu_scene), GuiViewPriorityPowerMenu);

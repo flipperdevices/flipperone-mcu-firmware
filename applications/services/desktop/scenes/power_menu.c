@@ -39,9 +39,14 @@ static void power_menu_on_alloc(Scene* scene, void* context) {
     furi_check(view);
 
     scene_data->menu = popup_menu_alloc(view);
+    // It opens over the home screen, whose keys are the tabs
+    const DesktopHomeTab* tab = &desktop_home_tab_power;
+    popup_menu_set_softkey(scene_data->menu, PopupMenuSoftkeyStyleHomeTab, tab->index, tab->label, tab->key);
+    popup_menu_set_title(scene_data->menu, "Power Menu");
+    popup_menu_set_icon(scene_data->menu, &popup_menu_power_icon);
     popup_menu_set_callback(scene_data->menu, power_menu_item_selected, scene_data->desktop);
-    popup_menu_add_item(scene_data->menu, "Start Flipper OS", PowerMenuItemStartCpu);
-    popup_menu_add_item(scene_data->menu, "Power Off", PowerMenuItemPowerOff);
+    popup_menu_add_item(scene_data->menu, "Start", PowerMenuItemStartCpu);
+    popup_menu_add_item(scene_data->menu, "Power OFF", PowerMenuItemPowerOff);
 }
 
 static void power_menu_on_enter(Scene* scene, void* app) {

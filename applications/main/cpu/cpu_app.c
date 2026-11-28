@@ -33,6 +33,7 @@ typedef enum {
     CpuAppScreenFrame, // a placeholder or the host's frame
     CpuAppScreenSelfCheck,
     CpuAppScreenStartingLinux,
+    CpuAppScreenMaskrom,
 } CpuAppScreen;
 
 /* The model is lock free and Clay keeps the image pointer from layout until
@@ -47,9 +48,7 @@ typedef struct {
 } CpuAppModel;
 
 typedef enum {
-    CpuAppMessageTypeStart,
     CpuAppMessageTypeReset,
-    CpuAppMessageTypeMaskrom,
     CpuAppMessageTypeShutdown,
     CpuAppMessageTypeNewFrame,
 } CpuAppMessageType;
@@ -85,6 +84,32 @@ typedef struct {
     uint8_t* black_frame;
 } CpuApp;
 
+/* From the mock: the mode in the top right corner of a white screen. The
+ * screen is two pixels wider than the mock, which starts at its x 1. */
+#define CPU_APP_MASKROM_TEXT_X (1 + 165)
+#define CPU_APP_MASKROM_ICON_X (1 + 230)
+#define CPU_APP_MASKROM_Y      4
+
+static void cpu_app_maskrom_layout(void) {
+    CLAY(
+        CLAY_APP_ID("Maskrom"),
+        {
+            .backgroundColor = COLOR_WHITE,
+            .layout = {.sizing = {.width = CLAY_SIZING_GROW(0), .height = CLAY_SIZING_GROW(0)}},
+        }) {
+        CLAY(CLAY_APP_ID("MaskromText"), {.floating = {.offset = {CPU_APP_MASKROM_TEXT_X, CPU_APP_MASKROM_Y}, .attachTo = CLAY_ATTACH_TO_PARENT}}) {
+            CLAY_TEXT(CLAY_STRING("Maskrom Mode"), CLAY_TEXT_CONFIG({.fontId = FontBody, .textColor = COLOR_BLACK, .wrapMode = CLAY_TEXT_WRAP_NONE}));
+        }
+        CLAY(
+            CLAY_APP_ID("MaskromIcon"),
+            {
+                .layout = {.sizing = {.width = CLAY_SIZING_FIXED(maskrom_usb_icon.width), .height = CLAY_SIZING_FIXED(maskrom_usb_icon.height)}},
+                .floating = {.offset = {CPU_APP_MASKROM_ICON_X, CPU_APP_MASKROM_Y}, .attachTo = CLAY_ATTACH_TO_PARENT},
+                .image = {.imageData = (void*)&maskrom_usb_icon},
+            }){};
+    }
+}
+
 static bool cpu_app_layout(void* _model) {
     furi_assert(_model);
     CpuAppModel* model = (CpuAppModel*)_model;
@@ -118,6 +143,9 @@ static bool cpu_app_layout(void* _model) {
             case CpuAppScreenStartingLinux:
                 starting_linux_layout(furi_get_tick() - model->starting_linux_tick);
                 break;
+            case CpuAppScreenMaskrom:
+                cpu_app_maskrom_layout();
+                break;
             default:
                 CLAY(
                     CLAY_APP_ID("FrameImage"),
@@ -141,7 +169,8 @@ static void cpu_app_send_message(CpuApp* instance, CpuAppMessageType type) {
 
 static bool cpu_app_model_init(CpuAppModel* model, void* context) {
     model->screen = CpuAppScreenFrame;
-    model->frame = &display_starting;
+    // Not seen: the first screen is set before the view is shown
+    model->frame = &display_waiting;
     model->host_frame.format = ImageFormatRawGray8;
     model->host_frame.width = JD9853_WIDTH;
     model->host_frame.height = JD9853_HEIGHT;
@@ -245,6 +274,11 @@ static void cpu_app_show_host_state(CpuApp* instance) {
     case HostStateHandover:
         cpu_app_show_own_screen(instance, CpuAppScreenStartingLinux);
         return;
+    case HostStateMaskrom:
+        cpu_app_show_own_screen(instance, CpuAppScreenMaskrom);
+        // Not a boot phase that waits for the host to draw: the next state replaces it at once
+        cpu_app_own_screen_done(instance);
+        return;
     case HostStateRunning:
         // Our screen stays until the host draws, it was asked for its screen,
         // or until the timeout
@@ -333,11 +367,6 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
     CpuAppMessage message;
     while(furi_message_queue_get(instance->app_queue, &message, 0) == FuriStatusOk) {
         switch(message.type) {
-        case CpuAppMessageTypeStart:
-            host_power_on(instance->host);
-            // A host powered already publishes nothing
-            cpu_app_show_host_state(instance);
-            break;
         case CpuAppMessageTypeReset:
             host_power_restart(instance->host);
             break;
@@ -346,9 +375,6 @@ static void cpu_app_message_logic(FuriEventLoopObject* object, void* context) {
             // The actual hardware cleanup happens in cpu_app_do_shutdown()
             // after the event loop exits, so it covers every exit path.
             furi_thread_signal(furi_thread_get_current(), FuriSignalExit, NULL);
-            break;
-        case CpuAppMessageTypeMaskrom:
-            host_power_maskrom(instance->host);
             break;
         case CpuAppMessageTypeNewFrame: {
             const HostState state = host_get_state(instance->host);
@@ -412,12 +438,12 @@ static CpuApp* cpu_app_alloc(void) {
     cpu_app_model_apply(instance, cpu_app_model_init, instance->self_check);
 
     view_set_layout_callback(instance->display_view, cpu_app_layout);
-    gui_add_view(instance->gui, instance->display_view, GuiViewPriorityApplication);
 
     instance->menu_view = view_alloc();
     instance->menu = popup_menu_alloc(instance->menu_view);
     popup_menu_set_callback(instance->menu, cpu_app_menu_item_selected, instance);
     popup_menu_set_title(instance->menu, "Flipper OS");
+    popup_menu_set_icon(instance->menu, &popup_menu_power_icon);
     popup_menu_add_item(instance->menu, "Stop", CpuMenuItemStop);
     popup_menu_add_item(instance->menu, "Reboot", CpuMenuItemReboot);
 
@@ -457,18 +483,22 @@ static void cpu_app_free(CpuApp* instance) {
 
 int32_t cpu_app(void* p) {
     CpuApp* instance = cpu_app_alloc();
+    const char* arg = p;
 
-    if(p) {
-        char* arg = (char*)p;
+    // Before the view: the host's power calls return in the state they put it
+    // in, so the first frame is already that state's screen
+    if(arg) {
         FURI_LOG_I(TAG, "CPU app started with arg: %s", arg);
         if(strcmp(arg, CPU_ARG_START) == 0) {
-            cpu_app_send_message(instance, CpuAppMessageTypeStart);
+            host_power_on(instance->host);
         } else if(strcmp(arg, CPU_ARG_MASKROM) == 0) {
-            cpu_app_send_message(instance, CpuAppMessageTypeMaskrom);
+            host_power_maskrom(instance->host);
         } else {
             FURI_LOG_E(TAG, "Unknown argument: %s", arg);
         }
     }
+    cpu_app_show_host_state(instance);
+    gui_add_view(instance->gui, instance->display_view, GuiViewPriorityApplication);
 
     furi_event_loop_run(instance->event_loop);
 

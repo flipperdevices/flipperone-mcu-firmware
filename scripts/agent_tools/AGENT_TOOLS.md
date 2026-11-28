@@ -88,7 +88,7 @@ Commands that need `--yes` refuse without it and change nothing. Write addresses
 - **The probe accepts one SWD client.** Only the `swd` commands and `status` without `--no-swd` use SWD; everything else goes over serial ports and works during a debug session. While a debugger holds the probe, an SWD command fails within a few seconds with `The probe is probably held by another debugger` (OpenOCD: `CMSIS-DAP command CMD_INFO failed`). That is not a fault: ask the user, or do without SWD.
 - **Run `host sync` before anything that cuts host power**: `cli "desktop stop_app"` while the host app runs, `Stop` or `Reboot` in the MCU power menu, `cli "power off"` / `cli "power ship"` / `cli "power reboot"`. `linux stop --hard` runs the sync for you; it is `desktop stop_app` with a `sync` in front. A reset of the MCU (`swd reset`, `swd flash` with or without `--activate`) does not cut it, but see [MCU reset while Linux runs](#mcu-reset-while-linux-runs).
 - **Check each step before the next.** Read state back after every action and stop if it is not what you expected.
-- **Ask before destructive actions** unless the user said the device is free to use: `swd flash`, `swd erase-header`, `probe flash`, `linux stop --hard`, whatever else cuts host power under a running Linux (the list in the rule above), and what switches the device off or sends the MCU to its bootloader: `cli "power off"`, `cli "power ship"`, `cli "power boot"`, `Power Off` in the MCU power menu. `--yes` is how you tell the tool that they agreed. No need to ask before `linux stop`, `swd reset`, a reset of the MCU through the probe, `probe "power reboot"`, or starting and leaving maskrom mode with the host off.
+- **Ask before destructive actions** unless the user said the device is free to use: `swd flash`, `swd erase-header`, `probe flash`, `linux stop --hard`, whatever else cuts host power under a running Linux (the list in the rule above), and what switches the device off or sends the MCU to its bootloader: `cli "power off"`, `cli "power ship"`, `cli "power boot"`, `Power OFF` in the MCU power menu. `--yes` is how you tell the tool that they agreed. No need to ask before `linux stop`, `swd reset`, a reset of the MCU through the probe, `probe "power reboot"`, or starting and leaving maskrom mode with the host off.
 - **Measure time from `log` timestamps**, which are this machine's time. The MCU's own timestamps lose time (see [Pitfalls](#pitfalls)).
 - **If what you observe contradicts what the user says about the device, the user is right.** They are looking at it.
 - **Report what you verified and what you did not**, and the state you leave the device in.
@@ -107,7 +107,7 @@ Touch events are delivered as is, like button events. What a point means on scre
 
 Only one MCU app runs at a time; the desktop itself is not an app. `cli "desktop get_run_app"` tells which (`no app is running` on the desktop), `cli "desktop start_app <appid>"` and `cli "desktop stop_app"` switch; `cli "desktop list_apps"` lists them.
 
-On the MCU desktop: `key2` is Help, `power` opens the power menu, `key4` is Settings. The power menu depends on the host. While Linux is off it has `Start Flipper OS` and `Power Off`; `Power Off` switches the whole device off (ship mode), and only the user can bring it back, by holding the power button. While Linux runs it has `Stop` and `Reboot`, which act on the host, not on the MCU. The `power` button always belongs to the MCU, also while Linux owns the rest of the screen and buttons. In menus `up`/`down` move, `ok` selects, `back` leaves.
+On the MCU desktop: `key2` is Help, `power` opens the power menu, `key4` is Settings. The power menu depends on the host. While Linux is off it has `Start` and `Power OFF`; `Power OFF` switches the whole device off (ship mode), and only the user can bring it back, by holding the power button. While Linux runs it has `Stop` and `Reboot`, which act on the host, not on the MCU. The `power` button always belongs to the MCU, also while Linux owns the rest of the screen and buttons. In menus `up`/`down` move, `ok` selects, `back` leaves.
 
 ## Starting and stopping Linux
 
@@ -153,13 +153,13 @@ A reset of the MCU alone (`swd reset`, `swd flash`, the probe's `mcu_reset`, a f
 - `linux start` still works and attaches to the running Linux: the host app leaves a powered host alone and `--entry` is ignored. The tool runs `sync` on the host first and checks afterwards that the host uptime went on.
 - Rarely the MCU fails to initialise that expander when it boots, because the bus is shared with the running host (see [Pitfalls](#pitfalls)); the MCU log then has `Failed to initialize Main Expander` and the MCU's `cli dmesg` has `Not initialized Main Expander`. Until the next reset the MCU has no control over host power. `linux start` checks that and refuses; reset the MCU again and retry. Linux itself is not disturbed by that state.
 - Should the host restart anyway when the host app starts, `linux start` notices by the host uptime and says so.
-- By hand it is the same: `Start Flipper OS` in the power menu, or `cli "desktop start_app cpu_app_start"`.
+- By hand it is the same: `Start` in the power menu, or `cli "desktop start_app cpu_app_start"`.
 
 ### By hand, through the screen
 
 The same can be done as a person would. Use it only when the screen, the buttons or the UI/UX are what you are testing; it needs screenshots and the commands above do not.
 
-- Start: `press power --shot s.png` shows `Start Flipper OS` selected, `press ok`; after about 10 seconds a screenshot shows the U-Boot menu; `press down ...` and `press ok`.
+- Start: `press power --shot s.png` shows `Start` selected, `press ok`; after about 10 seconds a screenshot shows the U-Boot menu; `press down ...` and `press ok`.
 - Clean stop: on the host panel `press key2` (Menu), select `Settings`, scroll to `Shutdown` (the last item, after `Reboot`), `press ok`. No confirmation dialog. The screen keeps showing the list, then goes black for several seconds; neither means the press failed.
 - Hard stop: with Linux running `press power` shows `Flipper OS` with `Stop` and `Reboot`; `press ok` on `Stop` cuts power within a second.
 
